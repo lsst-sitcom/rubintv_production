@@ -1,4 +1,4 @@
 # -*- python -*-
 from lsst.sconsUtils import scripts
 # Python-only package
-scripts.BasicSConstruct("rubintv_production", disableCc=True)
+scripts.BasicSConstruct("rubintv_production", disableCc=True, noCfgFile=True)
