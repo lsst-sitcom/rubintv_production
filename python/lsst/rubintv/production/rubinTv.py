@@ -40,12 +40,12 @@ except ImportError:
     HAS_EFD_CLIENT = False
 
 from lsst.pex.exceptions import NotFoundError
-from lsst.rapid.analysis.bestEffort import BestEffortIsr
-from lsst.rapid.analysis.imageExaminer import ImageExaminer
-from lsst.rapid.analysis.spectrumExaminer import SpectrumExaminer
-from lsst.rapid.analysis.butlerUtils import (makeDefaultLatissButler, LATISS_REPO_LOCATION_MAP, datasetExists,
-                                             getMostRecentDataId, getExpIdFromDayObsSeqNum)
-from lsst.rapid.analysis.utils import dayObsIntToString
+from lsst.summit.utils.bestEffort import BestEffortIsr
+from lsst.summit.utils.imageExaminer import ImageExaminer
+from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
+from lsst.summit.utils.butlerUtils import (makeDefaultLatissButler, LATISS_REPO_LOCATION_MAP, datasetExists,
+                                           getMostRecentDataId, getExpIdFromDayObsSeqNum)
+from lsst.summit.utils.utils import dayObsIntToString
 from lsst.atmospec.utils import isDispersedDataId
 
 from lsst.rubintv.production.mountTorques import plotMountTracking
@@ -113,7 +113,7 @@ class Uploader():
 
     def __init__(self):
         if not HAS_GOOGLE_STORAGE:
-            from lsst.rapid.analysis.utils import GOOGLE_CLOUD_MISSING_MSG
+            from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
             raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
         self.client = storage.Client()
         self.bucket = self.client.get_bucket('rubintv_data')
@@ -404,7 +404,7 @@ class MountTorqueChannel():
 
     def __init__(self, location, doRaise=False):
         if not HAS_EFD_CLIENT:
-            from lsst.rapid.analysis.utils import EFD_CLIENT_MISSING_MSG
+            from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
         self.dataProduct = 'raw'
         self.watcher = Watcher(location, self.dataProduct)
