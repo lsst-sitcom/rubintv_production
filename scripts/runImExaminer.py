@@ -1,4 +1,4 @@
-# This file is part of rapid_analysis.
+# This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -19,8 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rapid.analysis.rubinTv import ImExaminerChannel
-from lsst.rapid.analysis.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.rubinTv import ImExaminerChannel
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 
 checkRubinTvExternalPackages()
 print('Running imExaminer...')

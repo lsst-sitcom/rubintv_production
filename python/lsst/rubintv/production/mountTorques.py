@@ -1,4 +1,4 @@
-# This file is part of rapid_analysis.
+# This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from astropy.time import Time
 import asyncio
 import lsst.rapid.analysis.butlerUtils as bu
-from .utils import dayObsIntToString
+from lsst.rapid.analysis.utils import dayObsIntToString
 from astro_metadata_translator import ObservationInfo
 
 try:

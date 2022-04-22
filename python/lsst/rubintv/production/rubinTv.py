@@ -1,4 +1,4 @@
-# This file is part of rapid_analysis.
+# This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -43,12 +43,13 @@ from lsst.pex.exceptions import NotFoundError
 from lsst.rapid.analysis.bestEffort import BestEffortIsr
 from lsst.rapid.analysis.imageExaminer import ImageExaminer
 from lsst.rapid.analysis.spectrumExaminer import SpectrumExaminer
-from lsst.rapid.analysis.mountTorques import plotMountTracking
-from lsst.rapid.analysis.monitorPlotting import plotExp
 from lsst.rapid.analysis.butlerUtils import (makeDefaultLatissButler, LATISS_REPO_LOCATION_MAP, datasetExists,
                                              getMostRecentDataId, getExpIdFromDayObsSeqNum)
 from lsst.rapid.analysis.utils import dayObsIntToString
 from lsst.atmospec.utils import isDispersedDataId
+
+from lsst.rubintv.production.mountTorques import plotMountTracking
+from lsst.rubintv.production.monitorPlotting import plotExp
 
 CHANNELS = ["summit_imexam", "summit_specexam", "auxtel_mount_torques",
             "auxtel_monitor"]
