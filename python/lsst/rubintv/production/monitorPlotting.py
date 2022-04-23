@@ -23,7 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from lsst.rapid.analysis.utils import quickSmooth
+from lsst.summit.utils import quickSmooth
 
 
 def plotExp(exp, dataId, figure, saveFilename):

@@ -5,8 +5,8 @@
 setupRequired(atmospec)
 setupRequired(base)
 setupRequired(utils)
-setupRequired(rapid_analysis)
 setupRequired(pex_exceptions)
+setupRequired(summit_utils)
 
 # The following is boilerplate for all packages.
 # See https://dmtn-001.lsst.io for details on LSST_LIBRARY_PATH.
