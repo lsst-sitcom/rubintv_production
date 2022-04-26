@@ -24,7 +24,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy.time import Time
 import asyncio
-import lsst.summit.utils.butlerUtils as bu
+import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import dayObsIntToString
 from astro_metadata_translator import ObservationInfo
 
@@ -75,7 +75,7 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
 
     start = time.time()
 
-    expRecord = bu.getExpRecordFromDataId(butler, dataId)
+    expRecord = butlerUtils.getExpRecordFromDataId(butler, dataId)
     dayString = dayObsIntToString(expRecord.day_obs)
     seqNumString = str(expRecord.seq_num)
     dataIdString = f"{dayString} - seqNum {seqNumString}"

@@ -24,6 +24,5 @@ from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 
 checkRubinTvExternalPackages()
 print('Running spec examiner...')
-location = 'summit'
-specExaminer = SpecExaminerChannel(location)
+specExaminer = SpecExaminerChannel()
 specExaminer.run()

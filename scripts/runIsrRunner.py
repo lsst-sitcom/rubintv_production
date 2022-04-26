@@ -22,6 +22,5 @@
 from lsst.rubintv.production.rubinTv import IsrRunner
 
 print('Running isr runner...')
-location = 'summit'
-isrRunner = IsrRunner(location)
+isrRunner = IsrRunner()
 isrRunner.run()
