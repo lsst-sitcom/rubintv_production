@@ -21,7 +21,9 @@
 
 from lsst.rubintv.production.rubinTv import MountTorqueChannel
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.summit.utils.utils import setupLogging
 
+setupLogging()
 checkRubinTvExternalPackages()
 print('Running mount torque plotter...')
 mountTorquePlotter = MountTorqueChannel(doRaise=False)
