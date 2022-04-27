@@ -20,7 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.rubinTv import IsrRunner
+from lsst.summit.utils.utils import setupLogging
 
+setupLogging()
 print('Running isr runner...')
 isrRunner = IsrRunner()
 isrRunner.run()

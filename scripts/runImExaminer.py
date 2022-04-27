@@ -21,7 +21,9 @@
 
 from lsst.rubintv.production.rubinTv import ImExaminerChannel
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.summit.utils.utils import setupLogging
 
+setupLogging()
 checkRubinTvExternalPackages()
 print('Running imExaminer...')
 imExaminer = ImExaminerChannel()
