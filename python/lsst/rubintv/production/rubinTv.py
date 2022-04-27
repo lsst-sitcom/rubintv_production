@@ -52,7 +52,7 @@ from lsst.rubintv.production.mountTorques import plotMountTracking
 from lsst.rubintv.production.monitorPlotting import plotExp
 
 CHANNELS = ["summit_imexam", "summit_specexam", "auxtel_mount_torques",
-            "auxtel_monitor"]
+            "auxtel_monitor", "comcam_monitor"]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
 
