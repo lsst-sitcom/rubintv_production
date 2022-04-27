@@ -24,6 +24,5 @@ from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 
 checkRubinTvExternalPackages()
 print('Running monitor...')
-location = 'summit'
-monitor = MonitorChannel(location, doRaise=False)
+monitor = MonitorChannel(doRaise=False)
 monitor.run()

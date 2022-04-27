@@ -24,6 +24,5 @@ from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 
 checkRubinTvExternalPackages()
 print('Running mount torque plotter...')
-location = 'summit'
-mountTorquePlotter = MountTorqueChannel(location, doRaise=False)
+mountTorquePlotter = MountTorqueChannel(doRaise=False)
 mountTorquePlotter.run()

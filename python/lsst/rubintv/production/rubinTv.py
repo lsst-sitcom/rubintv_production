@@ -43,7 +43,7 @@ from lsst.pex.exceptions import NotFoundError
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-from lsst.summit.utils.butlerUtils import (makeDefaultLatissButler, LATISS_REPO_LOCATION_MAP, datasetExists,
+from lsst.summit.utils.butlerUtils import (makeDefaultLatissButler, datasetExists,
                                            getMostRecentDataId, getExpIdFromDayObsSeqNum)
 from lsst.summit.utils.utils import dayObsIntToString
 from lsst.atmospec.utils import isDispersedDataId
@@ -163,8 +163,8 @@ class Watcher():
     """
     cadence = 1  # in seconds
 
-    def __init__(self, location, dataProduct, **kwargs):
-        self.butler = makeDefaultLatissButler(location)
+    def __init__(self, dataProduct, **kwargs):
+        self.butler = makeDefaultLatissButler()
         self.dataProduct = dataProduct
         self.log = logging.getLogger("watcher")
 
@@ -219,10 +219,9 @@ class IsrRunner():
     Runs isr via BestEffortIsr, and puts the result in the quickLook rerun.
     """
 
-    def __init__(self, location, **kwargs):
-        self.watcher = Watcher(location, 'raw')
-        repoDir = LATISS_REPO_LOCATION_MAP[location]
-        self.bestEffort = BestEffortIsr(repoDir, **kwargs)
+    def __init__(self, **kwargs):
+        self.watcher = Watcher('raw')
+        self.bestEffort = BestEffortIsr(**kwargs)
         self.log = logging.getLogger("isrRunner")
 
     def callback(self, dataId):
@@ -245,11 +244,11 @@ class ImExaminerChannel():
     """Class for running the ImExam channel on RubinTV.
     """
 
-    def __init__(self, location, doRaise=False):
+    def __init__(self, doRaise=False):
         self.dataProduct = 'quickLookExp'
-        self.watcher = Watcher(location, self.dataProduct)
+        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler(location)
+        self.butler = makeDefaultLatissButler()
         self.log = logging.getLogger("imExaminerChannel")
         self.channel = 'summit_imexam'
         self.doRaise = doRaise
@@ -296,11 +295,11 @@ class SpecExaminerChannel():
     """Class for running the SpecExam channel on RubinTV.
     """
 
-    def __init__(self, location, doRaise=False):
+    def __init__(self, doRaise=False):
         self.dataProduct = 'quickLookExp'
-        self.watcher = Watcher(location, self.dataProduct)
+        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler(location)
+        self.butler = makeDefaultLatissButler()
         self.log = logging.getLogger("specExaminerChannel")
         self.channel = 'summit_specexam'
         self.doRaise = doRaise
@@ -351,11 +350,11 @@ class MonitorChannel():
     """Class for running the monitor channel on RubinTV.
     """
 
-    def __init__(self, location, doRaise=False):
+    def __init__(self, doRaise=False):
         self.dataProduct = 'quickLookExp'
-        self.watcher = Watcher(location, self.dataProduct)
+        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler(location)
+        self.butler = makeDefaultLatissButler()
         self.log = logging.getLogger("monitorChannel")
         self.channel = 'auxtel_monitor'
         self.fig = plt.figure(figsize=(12, 12))
@@ -402,14 +401,14 @@ class MountTorqueChannel():
     """Class for running the mount torque channel on RubinTV.
     """
 
-    def __init__(self, location, doRaise=False):
+    def __init__(self, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
         self.dataProduct = 'raw'
-        self.watcher = Watcher(location, self.dataProduct)
+        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler(location)
+        self.butler = makeDefaultLatissButler()
         self.client = EfdClient('summit_efd')
         self.log = logging.getLogger("mountTorqueChannel")
         self.channel = 'auxtel_mount_torques'
