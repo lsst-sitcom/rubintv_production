@@ -52,12 +52,12 @@ from lsst.rubintv.production.mountTorques import plotMountTracking
 from lsst.rubintv.production.monitorPlotting import plotExp
 
 CHANNELS = ["summit_imexam", "summit_specexam", "auxtel_mount_torques",
-            "auxtel_monitor"]
+            "auxtel_monitor", "all_sky_current", "all_sky_movies"]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
 
 
-def _dataIdToFilename(channel, dataId):
+def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
 
     Parameters
@@ -73,7 +73,7 @@ def _dataIdToFilename(channel, dataId):
         The filename
     """
     dayObsStr = dayObsIntToString(dataId['day_obs'])
-    filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{dataId['seq_num']}.png"
+    filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{dataId['seq_num']}{extension}"
     return filename
 
 
@@ -143,8 +143,9 @@ class Uploader():
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
         if uploadAsFilename and (os.path.basename(sourceFilename) != uploadAsFilename):
-            finalName = os.path.join(os.path.dirname(sourceFilename), uploadAsFilename)
-            shutil.move(sourceFilename, finalName)
+            tempdir = tempfile.mkdtemp()
+            finalName = os.path.join(tempdir, uploadAsFilename)
+            shutil.copy(sourceFilename, finalName)
             assert os.path.exists(finalName)
         else:
             finalName = sourceFilename
