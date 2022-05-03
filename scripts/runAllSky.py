@@ -24,8 +24,8 @@ import sys
 from lsst.rubintv.production.allSky import AllSkyMovieChannel
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 
-rootDataPath = '/lsstdata/offline/allsky/storage/'  # XXX change this for the summit k8s path
-outputRoot = '/home/mfl/allskycamdev/'  # XXX change this to /scratch/rubintv
+rootDataPath = '/data/allsky/'
+outputRoot = '/project/rubintv/allsky/'
 
 checkRubinTvExternalPackages()
 # don't use setupLogging() here to allow for more fine-grained control of
