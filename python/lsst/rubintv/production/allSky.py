@@ -41,7 +41,6 @@ except ImportError:
 
 __all__ = ['DayAnimator', 'AllSkyMovieChannel']
 
-WAITING_FOR_BRIAN_TO_FIX_THIS = True
 FPS = 10
 DRY_RUN = False
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
@@ -422,8 +421,6 @@ class AllSkyMovieChannel():
         """
         # NB lower case %y as dates are like YYMMDD
         today = getCurrentDayObs_datetime().strftime("%y%m%d")
-        if WAITING_FOR_BRIAN_TO_FIX_THIS:  # XXX REMOVE THIS
-            today = '220502'
         return os.path.join(self.rootDataPath, f"ut{today}")
 
     def runDay(self, dayObsInt, todaysDataDir):
