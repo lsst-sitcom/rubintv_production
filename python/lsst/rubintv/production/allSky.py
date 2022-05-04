@@ -33,24 +33,18 @@ from lsst.summit.utils.utils import (dayObsIntToString,
 from lsst.rubintv.production import Uploader
 from lsst.rubintv.production.rubinTv import _dataIdToFilename
 
-try:
-    from google.cloud import storage  # noqa: F401
-    HAS_GOOGLE_STORAGE = True
-except ImportError:
-    HAS_GOOGLE_STORAGE = False
+__all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName']
 
-__all__ = ['DayAnimator', 'AllSkyMovieChannel']
-
-FPS = 10
-DRY_RUN = False
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
 
 def createWritableDir(path):
     """Create a writeable directory with the specified path.
 
+    Parameters
+    ----------
     path : `str`
-        The path.
+        The path to create.
 
     Raises
     ------
@@ -74,6 +68,21 @@ def dayObsFromDirName(fullDirName, logger):
     easily skipped.
 
     Paths look like "/lsstdata/offline/allsky/storage/ut220503".
+
+    Not used in this code, but useful in notebooks/when regenerating historical
+    data.
+
+    Parameters
+    ----------
+    fullDirName : `str`
+        The full directory name.
+    logger : `logging.logger`
+        The logger.
+
+    Returns
+    -------
+    dayObsInt, dayObsStr : `tuple` of `int, str`
+        The dayObs as an int and a str, or ``None, None`` is parsing failed.
     """
     dirname = os.path.basename(fullDirName)
     dirname = dirname.replace('ut', '')
@@ -91,6 +100,13 @@ def dayObsFromDirName(fullDirName, logger):
 def convertJpgScale(inFilename, outFilename):
     """Convert an image file, cropping and stretching for correctly for use
     in the all sky cam TV channel.
+
+    Parameters
+    ----------
+    inFilename : `str`
+        The input filename.
+    outFilename : `str`
+        The output filename.
     """
     cmd = ['convert',
            inFilename,
@@ -102,7 +118,19 @@ def convertJpgScale(inFilename, outFilename):
 
 
 def imagesToMp4(indir, outfile, framerate, verbose=False):
-    """Create the movie with ffmpeg, from files."""
+    """Create the movie with ffmpeg, from files.
+
+    Parameters
+    ----------
+    indir : `str`
+        The directory containing the files to animate.
+    outfile : `str`
+        The full path and filename for the output movie.
+    framerate : `int`
+        The framerate, in frames per second.
+    verbose : `bool`
+        Be verbose?
+    """
     # NOTE: the order of ffmpeg arguments *REALLY MATTERS*.
     # Reorder them at your own peril!
     pathPattern = f'\"{os.path.join(indir, "*.jpg")}\"'
@@ -130,6 +158,16 @@ def imagesToMp4(indir, outfile, framerate, verbose=False):
 
 def seqNumFromFilename(filename):
     """Get the seqNum from a filename.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to get the seqNum from.
+
+    Returns
+    -------
+    seqNum : `int`
+        The seqNum.
     """
     # filenames look like /some/path/asc2204290657.jpg
     seqNum = os.path.basename(filename)[:-4][-4:]  # 0-padded 4 digit string
@@ -139,6 +177,16 @@ def seqNumFromFilename(filename):
 
 def getSortedSubDirs(path):
     """Get an alphabetically sorted list of directories from a given path.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to get the sorted subdirectories from.
+
+    Returns
+    -------
+    dirs : `list` of `str`
+        The sorted list of directories.
     """
     if not os.path.isdir(path):
         raise RuntimeError(f"Cannot get directories from {path}: it is not a path")
@@ -148,6 +196,18 @@ def getSortedSubDirs(path):
 
 def getFilesetFromDir(path, filetype='jpg'):
     """Get an alphabetically sorted list of files of a given type from a dir.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to get the files from.
+    filetype : `str`, optional
+        The filetype.
+
+    Returns
+    -------
+    files : `set` of `str`
+        The set of files in the directory.
     """
     if not os.path.isdir(path):
         raise RuntimeError(f"Cannot get files from {path}: it is not a directory")
@@ -158,7 +218,7 @@ def getFilesetFromDir(path, filetype='jpg'):
 
 class DayAnimator():
     """A class for creating all sky camera stills and animations for a single
-    specificed given day.
+    specified day.
 
     The run() method lasts until the dayObs rolls over, doing the file
     conversions and animations, and then returns.
@@ -184,13 +244,15 @@ class DayAnimator():
         The uploader for sending images and movies to GCS.
     channel : `str`
         The name of the channel. Must match a channel name in rubinTv.py.
-    historical : `bool`
+    historical : `bool`, optional
         Is this historical or live data?
 
     Notes
     -----
     TODO: DM-34631 Add GCS cleanup of old files at the end of each day.
     """
+    FPS = 10
+    DRY_RUN = False
 
     def __init__(self, *,
                  dayObsInt,
@@ -215,6 +277,11 @@ class DayAnimator():
 
         Checks if the current dayObs is the one the class was instantiated with
         and returns False if it is.
+
+        Returns
+        -------
+        hasDayRolledOver : `bool`
+            Whether the day has rolled over.
         """
         currentDay = getCurrentDayObs_int()
         if currentDay == self.dayObsInt:
@@ -227,6 +294,16 @@ class DayAnimator():
 
     def _getConvertedFilename(self, filename):
         """Get the filename and path to write the converted images to.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename to convert.
+
+        Returns
+        -------
+        convertedFilename : `str`
+            The converted filename.
         """
         return os.path.join(self.outputImageDir, os.path.basename(filename))
 
@@ -250,8 +327,7 @@ class DayAnimator():
         for file in sorted(files):  # sort just helps debug
             outputFilename = self._getConvertedFilename(file)
             self.log.debug(f"Converting {file} to {outputFilename}")
-            if not DRY_RUN:
-                # XXX add a try to this? Does convert ever fail?
+            if not self.DRY_RUN:
                 if os.path.exists(outputFilename):
                     self.log.warning(f"Found already converted {outputFilename}")
                     if forceRegen:
@@ -266,6 +342,11 @@ class DayAnimator():
 
         If isFinal is False the filename will end with largest input seqNum in
         the animation. If isFinal is True then it will end with seqNum_final.
+
+        Parameters
+        ----------
+        isFinal : `bool`, optional
+            Is this a final animation?
         """
         files = sorted(getFilesetFromDir(self.outputImageDir))
         lastfile = files[-1]
@@ -280,12 +361,12 @@ class DayAnimator():
         uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.mp4')
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
         self.log.info(f"Creating movie from {self.outputImageDir} as {creationFilename}...")
-        if not DRY_RUN:
-            imagesToMp4(self.outputImageDir, creationFilename, FPS)
+        if not self.DRY_RUN:
+            imagesToMp4(self.outputImageDir, creationFilename, self.FPS)
             if not os.path.isfile(creationFilename):
                 raise RuntimeError(f'Failed to find movie {creationFilename}')
 
-        if not DRY_RUN:
+        if not self.DRY_RUN:
             self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename)
         else:
             self.log.info(f"Would have uploaded {creationFilename} as {uploadAsFilename}")
@@ -297,7 +378,7 @@ class DayAnimator():
         Parameters
         ----------
         convertedFiles : `Iterable` of `str`
-            The set of files from which to upload the most recent of.
+            The set of files from which to upload the most recent.
         """
         channel = 'all_sky_current'
         sourceFilename = sorted(convertedFiles)[-1]
@@ -307,7 +388,7 @@ class DayAnimator():
         fakeDataId = {'day_obs': self.dayObsInt, 'seq_num': seqNumStr}
         uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.jpg')
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
-        if not DRY_RUN:
+        if not self.DRY_RUN:
             self.uploader.googleUpload(channel=channel,
                                        sourceFilename=sourceFilename,
                                        uploadAsFilename=uploadAsFilename)
@@ -325,6 +406,11 @@ class DayAnimator():
         At the end of the day, any remaining images and converted, and a movie
         is uploaded with the filename ending seqNum_final, which gets added
         to the historical all sky movies on the frontend.
+
+        Parameters
+        ----------
+        animationPeriod : `int` or `float`, optional
+            How frequently to upload a new movie, in seconds.
         """
         if self.historical:  # all files are ready, so do it all in one go
             allFiles = getFilesetFromDir(self.todaysDataDir)
@@ -388,7 +474,7 @@ class AllSkyMovieChannel():
     the movie, such that new movies are picked up with the same logic as the
     other "current" channels on the front end.
 
-    At the end of each day, the final movie crystalizes and is uploaded as
+    At the end of each day, the final movie crystallizes and is uploaded as
     _final.mp4 for use in the historical data section.
 
     Parameters
@@ -418,6 +504,11 @@ class AllSkyMovieChannel():
 
     def getCurrentRawDataDir(self):
         """Get the raw data dir corresponding to the current dayObs.
+
+        Returns
+        -------
+        path : `str`
+            The raw data dir for today.
         """
         # NB lower case %y as dates are like YYMMDD
         today = getCurrentDayObs_datetime().strftime("%y%m%d")
@@ -425,6 +516,13 @@ class AllSkyMovieChannel():
 
     def runDay(self, dayObsInt, todaysDataDir):
         """Create a DayAnimator for the current day and run it.
+
+        Parameters
+        ----------
+        dayObsInt : `int`
+            The dayObs as an int.
+        todaysDataDir : `str`
+            The data dir containing the files for today.
         """
         outputMovieDir = os.path.join(self.outputRoot, str(dayObsInt))
         outputJpgDir = os.path.join(self.outputRoot, str(dayObsInt), 'jpgs')
@@ -450,7 +548,7 @@ class AllSkyMovieChannel():
                 todaysDataDir = self.getCurrentRawDataDir()
                 dayObsInt = getCurrentDayObs_int()
                 self.log.debug(f"mostRecentDir={mostRecentDir}, todaysDataDir={todaysDataDir}")
-                if True:  # mostRecentDir == todaysDataDir:  # XXX REMOVE THIS
+                if mostRecentDir == todaysDataDir:
                     self.log.info(f"Starting day's animation for {todaysDataDir}.")
                     self.runDay(dayObsInt, todaysDataDir)
                 elif mostRecentDir < todaysDataDir:
