@@ -38,7 +38,7 @@ __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName']
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
 
-def createWritableDir(path):
+def _createWritableDir(path):
     """Create a writeable directory with the specified path.
 
     Parameters
@@ -97,7 +97,7 @@ def dayObsFromDirName(fullDirName, logger):
         return None, None
 
 
-def convertJpgScale(inFilename, outFilename):
+def _convertJpgScale(inFilename, outFilename):
     """Convert an image file, cropping and stretching for correctly for use
     in the all sky cam TV channel.
 
@@ -117,7 +117,7 @@ def convertJpgScale(inFilename, outFilename):
     subprocess.check_call(r' '.join(cmd), shell=True)
 
 
-def imagesToMp4(indir, outfile, framerate, verbose=False):
+def _imagesToMp4(indir, outfile, framerate, verbose=False):
     """Create the movie with ffmpeg, from files.
 
     Parameters
@@ -156,7 +156,7 @@ def imagesToMp4(indir, outfile, framerate, verbose=False):
     subprocess.check_call(r' '.join(cmd), shell=True)
 
 
-def seqNumFromFilename(filename):
+def _seqNumFromFilename(filename):
     """Get the seqNum from a filename.
 
     Parameters
@@ -175,7 +175,7 @@ def seqNumFromFilename(filename):
     return seqNum
 
 
-def getSortedSubDirs(path):
+def _getSortedSubDirs(path):
     """Get an alphabetically sorted list of directories from a given path.
 
     Parameters
@@ -194,7 +194,7 @@ def getSortedSubDirs(path):
     return sorted([p for d in dirs if (os.path.isdir(p := os.path.join(path, d)))])
 
 
-def getFilesetFromDir(path, filetype='jpg'):
+def _getFilesetFromDir(path, filetype='jpg'):
     """Get an alphabetically sorted list of files of a given type from a dir.
 
     Parameters
@@ -308,7 +308,7 @@ class DayAnimator():
         return os.path.join(self.outputImageDir, os.path.basename(filename))
 
     def convertFiles(self, files, forceRegen=False):
-        """Convert a list of files using convertJpgScale(), writing the
+        """Convert a list of files using _convertJpgScale(), writing the
         converted files to self.outputImageDir
 
         Parameters
@@ -331,9 +331,9 @@ class DayAnimator():
                 if os.path.exists(outputFilename):
                     self.log.warning(f"Found already converted {outputFilename}")
                     if forceRegen:
-                        convertJpgScale(file, outputFilename)
+                        _convertJpgScale(file, outputFilename)
                 else:
-                    convertJpgScale(file, outputFilename)
+                    _convertJpgScale(file, outputFilename)
             convertedFiles.add(file)
         return set(convertedFiles)
 
@@ -348,12 +348,12 @@ class DayAnimator():
         isFinal : `bool`, optional
             Is this a final animation?
         """
-        files = sorted(getFilesetFromDir(self.outputImageDir))
+        files = sorted(_getFilesetFromDir(self.outputImageDir))
         lastfile = files[-1]
         if isFinal:
             seqNumStr = 'final'
         else:
-            seqNum = seqNumFromFilename(lastfile)
+            seqNum = _seqNumFromFilename(lastfile)
             seqNumStr = f"{seqNum:05}"
 
         channel = 'all_sky_movies'
@@ -362,7 +362,7 @@ class DayAnimator():
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
         self.log.info(f"Creating movie from {self.outputImageDir} as {creationFilename}...")
         if not self.DRY_RUN:
-            imagesToMp4(self.outputImageDir, creationFilename, self.FPS)
+            _imagesToMp4(self.outputImageDir, creationFilename, self.FPS)
             if not os.path.isfile(creationFilename):
                 raise RuntimeError(f'Failed to find movie {creationFilename}')
 
@@ -383,7 +383,7 @@ class DayAnimator():
         channel = 'all_sky_current'
         sourceFilename = sorted(convertedFiles)[-1]
         sourceFilename = self._getConvertedFilename(sourceFilename)
-        seqNum = seqNumFromFilename(sourceFilename)
+        seqNum = _seqNumFromFilename(sourceFilename)
         seqNumStr = f"{seqNum:05}"
         fakeDataId = {'day_obs': self.dayObsInt, 'seq_num': seqNumStr}
         uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.jpg')
@@ -413,7 +413,7 @@ class DayAnimator():
             How frequently to upload a new movie, in seconds.
         """
         if self.historical:  # all files are ready, so do it all in one go
-            allFiles = getFilesetFromDir(self.todaysDataDir)
+            allFiles = _getFilesetFromDir(self.todaysDataDir)
             convertedFiles = self.convertFiles(allFiles)
             self.animateFilesAndUpload(isFinal=True)
             return
@@ -421,7 +421,7 @@ class DayAnimator():
         convertedFiles = set()
         lastAnimationTime = time.time()
         while True:
-            allFiles = getFilesetFromDir(self.todaysDataDir)
+            allFiles = _getFilesetFromDir(self.todaysDataDir)
             sleep(1)  # small sleep in case one of the files was being transferred when we listed it
 
             # convert any new files
@@ -448,7 +448,7 @@ class DayAnimator():
 
             if self.hasDayRolledOver():
                 # final sweep for new images
-                allFiles = getFilesetFromDir(self.todaysDataDir)
+                allFiles = _getFilesetFromDir(self.todaysDataDir)
                 newFiles = allFiles - convertedFiles
                 convertedFiles |= self.convertFiles(newFiles)
                 self.uploadLastStill(convertedFiles)
@@ -500,7 +500,7 @@ class AllSkyMovieChannel():
             raise RuntimeError(f"Root data path {rootDataPath} not found")
 
         self.outputRoot = outputRoot
-        createWritableDir(outputRoot)
+        _createWritableDir(outputRoot)
 
     def getCurrentRawDataDir(self):
         """Get the raw data dir corresponding to the current dayObs.
@@ -526,8 +526,8 @@ class AllSkyMovieChannel():
         """
         outputMovieDir = os.path.join(self.outputRoot, str(dayObsInt))
         outputJpgDir = os.path.join(self.outputRoot, str(dayObsInt), 'jpgs')
-        createWritableDir(outputMovieDir)
-        createWritableDir(outputJpgDir)
+        _createWritableDir(outputMovieDir)
+        _createWritableDir(outputJpgDir)
         self.log.info(f"Creating new day animator for {dayObsInt}")
         animator = DayAnimator(dayObsInt=dayObsInt,
                                todaysDataDir=todaysDataDir,
@@ -543,7 +543,7 @@ class AllSkyMovieChannel():
         """
         while True:
             try:
-                dirs = getSortedSubDirs(self.rootDataPath)
+                dirs = _getSortedSubDirs(self.rootDataPath)
                 mostRecentDir = dirs[-1]
                 todaysDataDir = self.getCurrentRawDataDir()
                 dayObsInt = getCurrentDayObs_int()
