@@ -441,7 +441,7 @@ class DayAnimator():
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
-            if time.time() - lastAnimationTime > animationPeriod:
+            if newFiles and (time.time() - lastAnimationTime > animationPeriod):
                 self.log.info(f"Starting periodic animation of {len(allFiles)} images.")
                 self.animateFilesAndUpload(isFinal=False)
                 lastAnimationTime = time.time()
