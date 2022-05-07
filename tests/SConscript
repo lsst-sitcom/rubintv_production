@@ -1,3 +1,15 @@
 # -*- python -*-
-from lsst.sconsUtils import scripts
+import os
+from lsst.sconsUtils import env, scripts
 scripts.BasicSConscript.tests(pyList=[])
+
+passThrough = ['DAF_BUTLER_REPOSITORY_INDEX',  # for repo locations
+               'EXTERNAL_URL',  # needed to determine site location - see utils.getSite()
+               'HOSTNAME'  # needed to determine site location - see utils.getSite()
+               ]
+
+for item in passThrough:
+    # check and set rather than using getenv(item, "") to deal with existing
+    # but empty env vars correctly
+    if item in os.environ:
+        env['ENV'][item] = os.environ[item]
