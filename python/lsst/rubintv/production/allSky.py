@@ -303,10 +303,6 @@ class DayAnimator():
         The name of the channel. Must match a channel name in rubinTv.py.
     historical : `bool`, optional
         Is this historical or live data?
-
-    Notes
-    -----
-    TODO: DM-34631 Add GCS cleanup of old files at the end of each day.
     """
     FPS = 10
     DRY_RUN = False
