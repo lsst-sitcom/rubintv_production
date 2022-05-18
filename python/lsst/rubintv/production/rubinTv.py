@@ -56,6 +56,8 @@ CHANNELS = ["summit_imexam", "summit_specexam", "auxtel_mount_torques",
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
 
+_LOG = logging.getLogger(__name__)
+
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
@@ -117,7 +119,7 @@ class Uploader():
             raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
         self.client = storage.Client()
         self.bucket = self.client.get_bucket('rubintv_data')
-        self.log = logging.getLogger("googleUploader")
+        self.log = _LOG.getChild("googleUploader")
 
     def googleUpload(self, channel, sourceFilename, uploadAsFilename=None):
         """Upload a file to the RubinTV Google cloud storage bucket.
@@ -167,7 +169,7 @@ class Watcher():
     def __init__(self, dataProduct, **kwargs):
         self.butler = makeDefaultLatissButler()
         self.dataProduct = dataProduct
-        self.log = logging.getLogger("watcher")
+        self.log = _LOG.getChild("watcher")
 
     def _getLatestImageDataIdAndExpId(self):
         """Get the dataId and expId for the most recent image in the repo.
@@ -223,7 +225,7 @@ class IsrRunner():
     def __init__(self, **kwargs):
         self.watcher = Watcher('raw')
         self.bestEffort = BestEffortIsr(**kwargs)
-        self.log = logging.getLogger("isrRunner")
+        self.log = _LOG.getChild("isrRunner")
 
     def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
@@ -250,7 +252,7 @@ class ImExaminerChannel():
         self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
-        self.log = logging.getLogger("imExaminerChannel")
+        self.log = _LOG.getChild("imExaminerChannel")
         self.channel = 'summit_imexam'
         self.doRaise = doRaise
 
@@ -301,7 +303,7 @@ class SpecExaminerChannel():
         self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
-        self.log = logging.getLogger("specExaminerChannel")
+        self.log = _LOG.getChild("specExaminerChannel")
         self.channel = 'summit_specexam'
         self.doRaise = doRaise
 
@@ -356,7 +358,7 @@ class MonitorChannel():
         self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
-        self.log = logging.getLogger("monitorChannel")
+        self.log = _LOG.getChild("monitorChannel")
         self.channel = 'auxtel_monitor'
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
@@ -411,7 +413,7 @@ class MountTorqueChannel():
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
         self.client = EfdClient('summit_efd')
-        self.log = logging.getLogger("mountTorqueChannel")
+        self.log = _LOG.getChild("mountTorqueChannel")
         self.channel = 'auxtel_mount_torques'
         self.fig = plt.figure(figsize=(16, 16))
         self.doRaise = doRaise
