@@ -33,6 +33,12 @@ from lsst.summit.utils.utils import (dayObsIntToString,
 from lsst.rubintv.production import Uploader
 from lsst.rubintv.production.rubinTv import _dataIdToFilename
 
+try:
+    from google.cloud import storage
+    HAS_GOOGLE_STORAGE = True
+except ImportError:
+    HAS_GOOGLE_STORAGE = False
+
 __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName']
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
@@ -216,6 +222,57 @@ def _getFilesetFromDir(path, filetype='jpg'):
     return set(files)
 
 
+def cleanupAllSkyIntermediates(logger=None):
+    """Delete all intermediate all-sky data products uploaded to GCS.
+
+    Deletes all but the most recent static image, and all but the most recent
+    intermediate movies, leaving all the historical _final movies.
+
+    Parameters
+    ----------
+    logger : `logging.logger`, optional
+        A logger, created if not supplied.
+    """
+    if not HAS_GOOGLE_STORAGE:
+        from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
+        raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
+
+    if not logger:
+        logger = logging.getLogger('rubintv.cleanup')
+
+    client = storage.Client()
+    bucket = client.get_bucket('rubintv_data')
+
+    prefix = 'all_sky_current'
+    allsky_current_blobs = list(bucket.list_blobs(prefix=prefix))
+    logger.info(f"Found {len(allsky_current_blobs)} blobs for {prefix}")
+    names = [b.name for b in allsky_current_blobs]
+    names = sorted(names)
+    mostRecent = names[-1]
+    to_delete = [b for b in allsky_current_blobs if b.name != mostRecent]
+    logger.info(f"Will delete {len(to_delete)} of {len(allsky_current_blobs)} static all-sky images")
+    logger.info(f"Will not delete most recent image: {mostRecent}")
+    del allsky_current_blobs
+    del names  # no bugs from above!
+    bucket.delete_blobs(to_delete)
+
+    prefix = 'all_sky_movies'
+    blobs = list(bucket.list_blobs(prefix=prefix))
+    logger.info(f"Found {len(blobs)} total {prefix}")
+    non_final_names = [b.name for b in blobs if b.name.find('final') == -1]
+    logger.info(f"of which {len(non_final_names)} are not final movies")
+    most_recent = sorted(non_final_names)[-1]
+    non_final_names.remove(most_recent)
+    non_final_blobs = [b for b in blobs if b.name in non_final_names]
+    assert most_recent not in non_final_names
+    assert len(non_final_names) == len(non_final_blobs)
+    del blobs
+
+    logger.info(f"Will delete {len(non_final_names)} movies")
+    logger.info(f"Will not delete {most_recent}")
+    bucket.delete_blobs(non_final_blobs)
+
+
 class DayAnimator():
     """A class for creating all sky camera stills and animations for a single
     specified day.
@@ -246,10 +303,6 @@ class DayAnimator():
         The name of the channel. Must match a channel name in rubinTv.py.
     historical : `bool`, optional
         Is this historical or live data?
-
-    Notes
-    -----
-    TODO: DM-34631 Add GCS cleanup of old files at the end of each day.
     """
     FPS = 10
     DRY_RUN = False
@@ -456,6 +509,7 @@ class DayAnimator():
                 # make the movie and upload as final
                 self.log.info(f"Starting final animation of {len(allFiles)} for {self.dayObsInt}")
                 self.animateFilesAndUpload(isFinal=True)
+                cleanupAllSkyIntermediates()
                 return
 
 
