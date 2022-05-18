@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
-import sys
 import time
 from time import sleep
 import logging
@@ -41,7 +40,7 @@ except ImportError:
 
 __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName']
 
-logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+_LOG = logging.getLogger(__name__)
 
 
 def _createWritableDir(path):
@@ -238,7 +237,7 @@ def cleanupAllSkyIntermediates(logger=None):
         raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
 
     if not logger:
-        logger = logging.getLogger('rubintv.cleanup')
+        logger = _LOG.getChild("cleanup")
 
     client = storage.Client()
     bucket = client.get_bucket('rubintv_data')
@@ -322,8 +321,7 @@ class DayAnimator():
         self.uploader = uploader
         self.channel = channel
         self.historical = historical
-        self.log = logging.getLogger("allSkyDayAnimator")
-        self.log.setLevel(logging.DEBUG)
+        self.log = _LOG.getChild("allSkyDayAnimator")
 
     def hasDayRolledOver(self):
         """Check if the dayObs has rolled over.
@@ -545,7 +543,7 @@ class AllSkyMovieChannel():
 
     def __init__(self, rootDataPath, outputRoot, doRaise=False):
         self.uploader = Uploader()
-        self.log = logging.getLogger("allSkyMovieMaker")
+        self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
         self.doRaise = doRaise
 
