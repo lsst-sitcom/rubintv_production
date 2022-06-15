@@ -33,7 +33,10 @@ try:
 except ImportError:
     pass
 
-GOOD_IMAGE_TYPES = ['OBJECT', 'SKYEXP', 'ENGTEST', 'SCIENCE', 'ACQ', 'CWFS']
+NON_TRACKING_IMAGE_TYPES = ['BIAS',
+                            'FLAT',
+                            'DARK',
+                            ]
 
 
 def _getEfdData(client, dataSeries, startTime, endTime):
@@ -92,8 +95,8 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     azimuth = obsInfo.altaz_begin.az.value
     logger.debug(f"dataId={dataIdString}, imgType={imgType}, Times={tStart}, {tEnd}")
 
-    if imgType not in GOOD_IMAGE_TYPES:
-        logger.info(f'Skipping image type {imgType} for {dataIdString}')
+    if imgType in NON_TRACKING_IMAGE_TYPES:
+        logger.info(f'Skipping mount torques for non-tracking image type {imgType} for {dataIdString}')
         return False
     if exptime < 1.99:
         logger.info('Skipping sub 2s expsoure')
