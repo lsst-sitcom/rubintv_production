@@ -35,6 +35,7 @@ except ImportError:
 
 GOOD_IMAGE_TYPES = ['OBJECT', 'SKYEXP', 'ENGTEST', 'SCIENCE', 'ACQ', 'CWFS']
 
+
 def _getEfdData(client, dataSeries, startTime, endTime):
     """A synchronous warpper for geting the data from the EFD.
 
@@ -138,7 +139,7 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     times = np.array(az.values[:, 1])
     # The fits are much better if the time variable
     # is centered in the interval
-    fit_times = times - times[int(len(az.values[:,1]) / 2)]
+    fit_times = times - times[int(len(az.values[:, 1]) / 2)]
     logger.debug("Length of packed time series", len(az_vals))
 
     # Fit with a polynomial
