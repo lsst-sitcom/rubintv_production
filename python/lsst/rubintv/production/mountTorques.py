@@ -33,8 +33,7 @@ try:
 except ImportError:
     pass
 
-GOOD_IMAGE_TYPES = ['OBJECT', 'SKYEXP', 'ENGTEST', 'SCIENCE']
-
+GOOD_IMAGE_TYPES = ['OBJECT', 'SKYEXP', 'ENGTEST', 'SCIENCE', 'ACQ', 'CWFS']
 
 def _getEfdData(client, dataSeries, startTime, endTime):
     """A synchronous warpper for geting the data from the EFD.
@@ -137,15 +136,18 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     el_vals = np.array(el.values[:, 0])
     rot_vals = np.array(rot.values[:, 0])
     times = np.array(az.values[:, 1])
+    # The fits are much better if the time variable
+    # is centered in the interval
+    fit_times = times - times[int(len(az.values[:,1]) / 2)]
     logger.debug("Length of packed time series", len(az_vals))
 
-    # Fit with a linear
-    az_fit = np.polyfit(times, az_vals, 1)
-    el_fit = np.polyfit(times, el_vals, 1)
-    rot_fit = np.polyfit(times, rot_vals, 1)
-    az_model = az_fit[0] * times + az_fit[1]
-    el_model = el_fit[0] * times + el_fit[1]
-    rot_model = rot_fit[0] * times + rot_fit[1]
+    # Fit with a polynomial
+    az_fit = np.polyfit(fit_times, az_vals, 4)
+    el_fit = np.polyfit(fit_times, el_vals, 4)
+    rot_fit = np.polyfit(fit_times, rot_vals, 2)
+    az_model = np.polyval(az_fit, fit_times)
+    el_model = np.polyval(el_fit, fit_times)
+    rot_model = np.polyval(rot_fit, fit_times)
 
     # Errors in arcseconds
     az_error = (az_vals - az_model) * 3600
@@ -174,7 +176,7 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     ax1.set_xticks([])
     ax1.set_ylabel("Degrees")
     plt.subplot(3, 3, 4)
-    plt.plot(times, az_error, color='red')
+    plt.plot(fit_times, az_error, color='red')
     plt.title(f"Azimuth RMS error = {az_rms:.2f} arcseconds")
     plt.ylim(-10.0, 10.0)
     plt.xticks([])
@@ -192,7 +194,7 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     ax2.axvline(az.index[0], color="red", linestyle="--")
     ax2.set_xticks([])
     plt.subplot(3, 3, 5)
-    plt.plot(times, el_error, color='green')
+    plt.plot(fit_times, el_error, color='green')
     plt.title(f"Elevation RMS error = {el_rms:.2f} arcseconds")
     plt.ylim(-10.0, 10.0)
     plt.xticks([])
@@ -208,7 +210,7 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     ax3.axvline(az.index[0], color="red", linestyle="--")
     ax3.set_xticks([])
     plt.subplot(3, 3, 6)
-    plt.plot(times, rot_error, color='blue')
+    plt.plot(fit_times, rot_error, color='blue')
     plt.title(f"Nasmyth RMS error = {rot_rms:.2f} arcseconds")
     plt.ylim(-100.0, 100.0)
     plt.subplot(3, 3, 9)
