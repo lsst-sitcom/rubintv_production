@@ -84,23 +84,24 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     dataIdString = f"{dayString} - seqNum {seqNumString}"
 
     imgType = expRecord.observation_type.upper()
+    if imgType in NON_TRACKING_IMAGE_TYPES:
+        logger.info(f'Skipping mount torques for non-tracking image type {imgType} for {dataIdString}')
+        return False
+
+    exptime = expRecord.exposure_time
+    if exptime < 1.99:
+        logger.info('Skipping sub 2s expsoure')
+        return False
+
     tStart = expRecord.timespan.begin.tai.to_value("isot")
     tEnd = expRecord.timespan.end.tai.to_value("isot")
     elevation = 90 - expRecord.zenith_angle
-    exptime = expRecord.exposure_time
 
     # TODO: DM-33859 remove this once it can be got from the expRecord
     md = butler.get('raw.metadata', dataId, detector=0)
     obsInfo = ObservationInfo(md)
     azimuth = obsInfo.altaz_begin.az.value
     logger.debug(f"dataId={dataIdString}, imgType={imgType}, Times={tStart}, {tEnd}")
-
-    if imgType in NON_TRACKING_IMAGE_TYPES:
-        logger.info(f'Skipping mount torques for non-tracking image type {imgType} for {dataIdString}')
-        return False
-    if exptime < 1.99:
-        logger.info('Skipping sub 2s expsoure')
-        return False
 
     end = time.time()
     elapsed = end-start
