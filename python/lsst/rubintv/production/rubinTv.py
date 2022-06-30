@@ -152,7 +152,7 @@ class Uploader():
         uploadAsFilename : `str`, optional
             Optionally rename the file to this upon upload.
         isLiveFile : `bool`, optional
-            The files is being updated constantly, and so caching should be
+            The file is being updated constantly, and so caching should be
         disabled.
 
         Raises
@@ -501,12 +501,12 @@ class MetadataServer():
             The butler.
         dataId : `dict`
             The dataId.
-        keysToRemove : `list` of `str`
+        keysToRemove : `list` [`str`]
             Keys to remove from the exposure record.
 
         Returns
         -------
-        metadata : `dict` of `dict`
+        metadata : `dict` [`dict`]
             A dict, with a single key, corresponding to the dataId's seqNum,
             containing a dict of the dataId's metadata.
         """
