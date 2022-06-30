@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import json
 import os
 from time import sleep
 from pathlib import Path
@@ -26,6 +27,10 @@ import shutil
 import tempfile
 import logging
 import matplotlib.pyplot as plt
+
+import lsst.summit.utils.butlerUtils as butlerUtils
+from astro_metadata_translator import ObservationInfo
+from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
 try:
     from google.cloud import storage
@@ -51,12 +56,26 @@ from lsst.atmospec.utils import isDispersedDataId
 from lsst.rubintv.production.mountTorques import plotMountTracking
 from lsst.rubintv.production.monitorPlotting import plotExp
 
-CHANNELS = ["summit_imexam", "summit_specexam", "auxtel_mount_torques",
-            "auxtel_monitor", "all_sky_current", "all_sky_movies"]
+CHANNELS = ["summit_imexam",
+            "summit_specexam",
+            "auxtel_mount_torques",
+            "auxtel_monitor",
+            "all_sky_current",
+            "all_sky_movies",
+            "auxtel_metadata",
+            ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
 
 _LOG = logging.getLogger(__name__)
+
+SIDECAR_KEYS_TO_REMOVE = ['instrument',
+                          'obs_id',
+                          'seq_start',
+                          'seq_end',
+                          'group_name',
+                          'has_simulated',
+                          ]
 
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
@@ -121,7 +140,7 @@ class Uploader():
         self.bucket = self.client.get_bucket('rubintv_data')
         self.log = _LOG.getChild("googleUploader")
 
-    def googleUpload(self, channel, sourceFilename, uploadAsFilename=None):
+    def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
         """Upload a file to the RubinTV Google cloud storage bucket.
 
         Parameters
@@ -132,6 +151,9 @@ class Uploader():
             The full path and filename of the file to upload.
         uploadAsFilename : `str`, optional
             Optionally rename the file to this upon upload.
+        isLiveFile : `bool`, optional
+            The files is being updated constantly, and so caching should be
+        disabled.
 
         Raises
         ------
@@ -154,8 +176,13 @@ class Uploader():
 
         path = Path(finalName)
         blob = self.bucket.blob("/".join([channel, path.name]))
+        if isLiveFile:
+            blob.cache_control = 'no-store'
         self.log.info(f'Uploaded {sourceFilename} to {finalName}')
         blob.upload_from_filename(finalName)
+        if isLiveFile:
+            blob.reload()
+            assert(blob.cache_control == 'no-store')
 
 
 class Watcher():
@@ -438,6 +465,128 @@ class MountTorqueChannel():
             if self.doRaise:
                 raise RuntimeError(f"Error processing {dataId}") from e
             self.log.warning(f"Skipped creating mount plots for {dataId} because {repr(e)}")
+
+    def run(self):
+        """Run continuously, calling the callback method on the latest dataId.
+        """
+        self.watcher.run(self.callback)
+
+
+class MetadataServer():
+    """Class for serving the metadata to the table on RubinTV.
+    """
+
+    def __init__(self, outputRoot, doRaise=False):
+        self.dataProduct = 'raw'
+        self.watcher = Watcher(self.dataProduct)
+        self.uploader = Uploader()
+        self.butler = makeDefaultLatissButler()
+        self.log = _LOG.getChild("metadataServer")
+        self.channel = 'auxtel_metadata'
+        self.outputRoot = outputRoot
+        self.doRaise = doRaise
+
+    @staticmethod
+    def dataIdToMetadataDict(butler, dataId, keysToRemove):
+        """Create a dictionary of metadata for a dataId.
+
+        Given a dataId, create a dictionary containing all metadata that should
+        be displayed in the table on RubinTV. The table creation is dynamic,
+        so any entries which should not appear as columns in the table should
+        be removed via keysToRemove.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The butler.
+        dataId : `dict`
+            The dataId.
+        keysToRemove : `list` of `str`
+            Keys to remove from the exposure record.
+
+        Returns
+        -------
+        metadata : `dict` of `dict`
+            A dict, with a single key, corresponding to the dataId's seqNum,
+            containing a dict of the dataId's metadata.
+        """
+        seqNum = butlerUtils.getSeqNum(dataId)
+        expRecord = butlerUtils.getExpRecordFromDataId(butler, dataId)
+        d = expRecord.toDict()
+
+        time_begin_tai = expRecord.timespan.begin.to_datetime().strftime("%H:%M:%S")
+        d['time_begin_tai'] = time_begin_tai
+        d.pop('timespan')
+
+        filt, disperser = d['physical_filter'].split(FILTER_DELIMITER)
+        d.pop('physical_filter')
+        d['filter'] = filt
+        d['disperser'] = disperser
+
+        rawmd = butler.get('raw.metadata', dataId)
+        obsInfo = ObservationInfo(rawmd)
+        d['airmass'] = obsInfo.boresight_airmass
+
+        for key in keysToRemove:
+            if key in d:
+                d.pop(key)
+
+        return {seqNum: d}
+
+    @staticmethod
+    def appendToJson(filename, md):
+        """Add a dictionary item to the JSON file containing the sidecar data.
+
+        Updates the file in place.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename
+        md : `dict`
+            The metadata, as a dict, to add to the JSON file.
+        """
+        data = {}
+        if os.path.isfile(filename) and os.path.getsize(filename) > 0:  # json.load() doesn't like empty files
+            with open(filename) as f:
+                data = json.load(f)
+        data.update(md)
+
+        with open(filename, 'w') as f:
+            json.dump(data, f)
+
+    def getSidecarFilename(self, dataId):
+        """Get the name of the metadata sidecar file for the dataId.
+
+        Returns
+        -------
+        filename : `str`
+            The full path to the metadata sidecar file.
+        """
+        dayObs = butlerUtils.getDayObs(dataId)
+        return os.path.join(self.outputRoot, f'dayObs_{dayObs}.json')
+
+    def callback(self, dataId):
+        """Method called on each new dataId as it is found in the repo.
+
+        Add the metadata to the sidecar for the dataId and upload.
+        """
+        try:
+            self.log.info(f'Getting metadata for {dataId}')
+            sidecarFilename = self.getSidecarFilename(dataId)
+
+            md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
+            self.appendToJson(sidecarFilename, md)
+
+            self.log.info("Uploading sidecar file to storage bucket")
+            self.uploader.googleUpload(self.channel, sidecarFilename, isLiveFile=True)
+            self.log.info('Upload complete')
+
+        except Exception as e:
+            if self.doRaise:
+                raise RuntimeError(f"Error processing {dataId}") from e
+            self.log.warning(f"Skipped creating sidecar metadata for {dataId} because {repr(e)}")
+            return None
 
     def run(self):
         """Run continuously, calling the callback method on the latest dataId.
