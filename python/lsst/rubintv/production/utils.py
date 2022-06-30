@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+from time import sleep
 
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
@@ -28,6 +29,7 @@ from . import (ImExaminerChannel,
                SpecExaminerChannel,
                MountTorqueChannel,
                MonitorChannel,
+               MetadataServer,
                )
 
 __all__ = ["checkRubinTvExternalPackages",
@@ -122,7 +124,7 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     return sorted(existing)
 
 
-def createChannelByName(channel, doRaise):
+def createChannelByName(channel, doRaise, **kwargs):
     """Create a RubinTV Channel object using the name of the channel.
 
     Parameters
@@ -155,6 +157,11 @@ def createChannelByName(channel, doRaise):
             return MountTorqueChannel(doRaise=doRaise)
         case "auxtel_monitor":
             return MonitorChannel(doRaise=doRaise)
+        case "auxtel_metadata":
+            if 'outputRoot' not in kwargs:
+                raise RuntimeError("Must provide writeable output root outputRoot via kwargs for "
+                                   "auxtel_metadata channel")
+            return MetadataServer(doRaise=doRaise, **kwargs)
         case "all_sky_current":
             raise ValueError(f"{channel} is not a creatable by name.")
         case "all_sky_movies":
@@ -182,7 +189,7 @@ def remakePlotByDataId(channel, dataId):
     tvChannel.callback(dataId)
 
 
-def remakeDay(channel, dayObs, remakeExisting=False, notebook=True):
+def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, **kwargs):
     """Remake all the plots for a given day.
 
     Parameters
@@ -232,7 +239,9 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True):
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(channel, doRaise=False)
+    tvChannel = createChannelByName(channel, doRaise=False, **kwargs)
     for seqNum in toMake:
         dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
         tvChannel.callback(dataId)
+        if channel in ['auxtel_metadata']:
+            sleep(1.5)  # metadata creation is fast enough that we hit the GCS rate limit without a pause
