@@ -527,6 +527,11 @@ class MetadataServer():
         obsInfo = ObservationInfo(rawmd)
         d['airmass'] = obsInfo.boresight_airmass
 
+        if 'FOCUSZ' in rawmd:
+            d['focus_z'] = rawmd['FOCUSZ']
+        if 'SEEING' in rawmd:
+            d['Seeing'] = rawmd['SEEING']
+
         for key in keysToRemove:
             if key in d:
                 d.pop(key)
