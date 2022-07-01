@@ -63,6 +63,7 @@ CHANNELS = ["summit_imexam",
             "all_sky_current",
             "all_sky_movies",
             "auxtel_metadata",
+            "auxtel_movies",
             ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
