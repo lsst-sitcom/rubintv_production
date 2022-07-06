@@ -38,7 +38,7 @@ try:
 except ImportError:
     HAS_GOOGLE_STORAGE = False
 
-__all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName']
+__all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAllSkyIntermediates']
 
 _LOG = logging.getLogger(__name__)
 
