@@ -192,6 +192,9 @@ def remakePlotByDataId(channel, dataId):
 def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, **kwargs):
     """Remake all the plots for a given day.
 
+    Currently auxtel_metadata does not pull from the bucket to check what is
+    in there, so remakeExisting is not supported.
+
     Parameters
     ----------
     channel : `str`
@@ -210,11 +213,17 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, **kwargs):
     ------
     ValueError:
         Raised if the channel is unknown.
+        Raised if remakeExisting is False and channel is auxtel_metadata
     """
     from google.cloud import storage
 
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
+
+    if remakeExisting and channel in ['auxtel_metadata']:
+        raise ValueError(f"Channel {channel} can currently only remake everything or nothing. "
+                         "If you would like to remake everything, please explicitly pass "
+                         "remakeExisting=True.")
 
     if notebook:
         # notebooks have their own eventloops, so this is necessary if the
