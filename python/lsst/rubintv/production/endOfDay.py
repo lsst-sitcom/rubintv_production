@@ -247,8 +247,7 @@ class RubinTvBackgroundService():
                     lastRun = time.time()
                     if self.hasDayRolledOver():
                         sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
-                        self.runEndOfDay()
-                        self.dayObs = getCurrentDayObs_int()
+                        self.runEndOfDay()  # sets new dayObs in a finally block
                 else:
                     remaining = self.catchupPeriod - timeSince
                     self.log.info(f'Waiting for catchup period to elapse, {remaining:.2f}s to go...')
