@@ -143,6 +143,22 @@ class Uploader():
         self.bucket = self.client.get_bucket('rubintv_data')
         self.log = _LOG.getChild("googleUploader")
 
+    def uploadHeartbeat(self, channel):
+        if channel not in CHANNELS:
+            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+
+        channel += '_heartbeart'
+        text = ???
+
+        blob = self.bucket.blob("/".join([channel, filename]))
+        blob.cache_control = 'no-store'  # must set before upload
+        blob.upload_from_string(text)
+        self.log.info(f'Uploaded heartbeat to channel {channel}')
+
+        blob.reload()
+        if blob.cache_control != 'no-store':
+            raise RuntimeError(f'Live file {filename} has wrong caching metadata {blob.cache_control}')
+
     def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
         """Upload a file to the RubinTV Google cloud storage bucket.
 
