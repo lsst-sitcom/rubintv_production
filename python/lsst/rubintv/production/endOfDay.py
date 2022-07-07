@@ -34,7 +34,7 @@ from lsst.rubintv.production import Uploader
 from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
 from lsst.rubintv.production.utils import remakeDay
 
-__all__ = []
+__all__ = ['RubinTvBackgroundService']
 
 _LOG = logging.getLogger(__name__)
 
