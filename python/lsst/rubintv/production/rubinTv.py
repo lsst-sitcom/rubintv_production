@@ -78,6 +78,8 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
+HEARTBEAT_PERIOD = 120
+
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
@@ -188,15 +190,26 @@ class Uploader():
 
 class Watcher():
     """Class for continuously watching for new data products landing in a repo.
+    Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds.
+
+    Parameters
+    ----------
+    dataProduct : `str`
+        The data product to watch for.
+    channel : `str`
+        The channel for which this is a watcher, needed so that the heartbeat
+        can be uploaded to the right file in GCS.
 
     Wathces a repo for the specified data product to land, and runs a callback
     on the dataId for the data product once it has landed in the repo.
     """
     cadence = 1  # in seconds
 
-    def __init__(self, dataProduct, **kwargs):
+    def __init__(self, dataProduct, channel, **kwargs):
         self.butler = makeDefaultLatissButler()
         self.dataProduct = dataProduct
+        self.channel = channel
+        self.uploader = Uploader()
         self.log = _LOG.getChild("watcher")
 
     def _getLatestImageDataIdAndExpId(self):
@@ -251,9 +264,9 @@ class IsrRunner():
     """
 
     def __init__(self, **kwargs):
-        self.watcher = Watcher('raw')
         self.bestEffort = BestEffortIsr(**kwargs)
         self.log = _LOG.getChild("isrRunner")
+        self.watcher = Watcher(self.dataProduct, 'isr_runner')
 
     def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
@@ -277,11 +290,11 @@ class ImExaminerChannel():
 
     def __init__(self, doRaise=False):
         self.dataProduct = 'quickLookExp'
-        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
         self.log = _LOG.getChild("imExaminerChannel")
         self.channel = 'summit_imexam'
+        self.watcher = Watcher(self.dataProduct, self.channel)
         self.doRaise = doRaise
 
     def _imExamine(self, exp, dataId, outputFilename):
@@ -328,11 +341,11 @@ class SpecExaminerChannel():
 
     def __init__(self, doRaise=False):
         self.dataProduct = 'quickLookExp'
-        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
         self.log = _LOG.getChild("specExaminerChannel")
         self.channel = 'summit_specexam'
+        self.watcher = Watcher(self.dataProduct, self.channel)
         self.doRaise = doRaise
 
     def _specExamine(self, exp, dataId, outputFilename):
@@ -383,11 +396,11 @@ class MonitorChannel():
 
     def __init__(self, doRaise=False):
         self.dataProduct = 'quickLookExp'
-        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
         self.log = _LOG.getChild("monitorChannel")
         self.channel = 'auxtel_monitor'
+        self.watcher = Watcher(self.dataProduct, self.channel)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
 
@@ -437,12 +450,12 @@ class MountTorqueChannel():
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
         self.dataProduct = 'raw'
-        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
         self.client = EfdClient('summit_efd')
         self.log = _LOG.getChild("mountTorqueChannel")
         self.channel = 'auxtel_mount_torques'
+        self.watcher = Watcher(self.dataProduct, self.channel)
         self.fig = plt.figure(figsize=(16, 16))
         self.doRaise = doRaise
 
@@ -482,11 +495,11 @@ class MetadataServer():
 
     def __init__(self, outputRoot, doRaise=False):
         self.dataProduct = 'raw'
-        self.watcher = Watcher(self.dataProduct)
         self.uploader = Uploader()
         self.butler = makeDefaultLatissButler()
         self.log = _LOG.getChild("metadataServer")
         self.channel = 'auxtel_metadata'
+        self.watcher = Watcher(self.dataProduct, self.channel)
         self.outputRoot = outputRoot
         self.doRaise = doRaise
 
