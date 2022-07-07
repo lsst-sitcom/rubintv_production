@@ -92,6 +92,14 @@ class RubinTvBackgroundService():
 
     def _raiseIf(self, error):
         """Raises the error if self.doRaise otherwise logs it as a warning.
+
+        error : ``
+            The error that has been raised.
+
+        Raises
+        ------
+        AnyException
+            Raised if self.doRaise is True, otherwise swallows and warns.
         """
         msg = f'Background service error: {error}'
         if self.doRaise:
@@ -102,8 +110,8 @@ class RubinTvBackgroundService():
     def hasDayRolledOver(self):
         """Check if the dayObs has rolled over.
 
-        Checks if the current dayObs is the one the class was instantiated with
-        and returns False if it is.
+        Checks if the class' dayObs is the current dayObs and returns False
+        if it is.
 
         Returns
         -------
@@ -120,6 +128,8 @@ class RubinTvBackgroundService():
                                f"and now current dayObs is {currentDay}!")
 
     def getMissingQuickLookIds(self):
+        """XXX DOCS
+        """
         allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs)
 
         where = "exposure.day_obs=dayObs AND instrument='LATISS'"
@@ -134,6 +144,8 @@ class RubinTvBackgroundService():
 
     @staticmethod
     def _minimizeDataId(dataId):
+        """XXX DOCS
+        """
         # Need to have this exact set of keys to make removing from work
         keys = ['day_obs', 'seq_num', 'detector']
         for key in keys:
@@ -142,6 +154,8 @@ class RubinTvBackgroundService():
         return {'day_obs': dataId['day_obs'], 'seq_num': dataId['seq_num'], 'detector': dataId['detector']}
 
     def catchupIsrRunner(self):
+        """XXX DOCS
+        """
         # check latest dataId and remove that and previous
         # and then do *not* do that in end of day
         self.log.info(f'Catching up quickLook exposures for {self.dayObs}')
@@ -164,14 +178,20 @@ class RubinTvBackgroundService():
             del exp
 
     def catchupMountTorques(self):
+        """XXX DOCS
+        """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
         remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False)
 
     def catchupMonitor(self):
+        """XXX DOCS
+        """
         self.log.info(f'Catching up monitor images for {self.dayObs}')
         remakeDay('auxtel_monitor', self.dayObs, remakeExisting=False, notebook=False)
 
     def runCatchup(self):
+        """XXX DOCS
+        """
         startTime = time.time()
 
         self.catchupIsrRunner()
@@ -182,6 +202,8 @@ class RubinTvBackgroundService():
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
 
     def deleteAllSkyPngs(self):
+        """XXX DOCS
+        """
         if self.allSkyPngRoot is not None:
             directory = os.path.join(self.allSkyPngRoot, str(self.dayObs))
             if os.path.isdir(directory):
@@ -194,6 +216,8 @@ class RubinTvBackgroundService():
                 self.log.warning(f"Failed to find assumed all-sky png directory {directory}")
 
     def runEndOfDay(self):
+        """XXX DOCS
+        """
         try:
             # TODO: this will move to its own channel to be done routinely
             # during the night, but this is super easy for now, so add here
