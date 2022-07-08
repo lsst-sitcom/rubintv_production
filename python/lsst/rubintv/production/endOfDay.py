@@ -91,9 +91,11 @@ class RubinTvBackgroundService():
         self.uploader = Uploader()
 
     def _raiseIf(self, error):
-        """Raises the error if self.doRaise otherwise logs it as a warning.
+        """Raises the error if self.doRaise, otherwise logs it as a warning.
 
-        error : ``
+        Parameters
+        ----------
+        error : `Exception`
             The error that has been raised.
 
         Raises
@@ -162,7 +164,9 @@ class RubinTvBackgroundService():
         missingQuickLooks = self.getMissingQuickLookIds()
 
         mostRecent = butlerUtils.getMostRecentDataId(self.butler)
-        mostRecent = self._makeMinimalDataId(mostRecent)  # reduce to keys that exactly matches missingQuickLooks
+        # reduce to keys that exactly matches missingQuickLooks
+        mostRecent = self._makeMinimalDataId(mostRecent)
+
         secondMostRecent = copy.copy(mostRecent)
         secondMostRecent['seq_num'] -= 1
 
