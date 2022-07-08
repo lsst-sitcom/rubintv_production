@@ -70,7 +70,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
 
     Returns
     -------
-    axisErrors : `tuple` of (`np.array`)
+    axisErrors : `list` of (`np.array`)
         The RMS errors in the three axes:
             `az_rms` : The RMS in azimuth
             `el_rms` : The RMS in elevation
