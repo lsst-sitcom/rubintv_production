@@ -223,7 +223,7 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
 
-    if remakeExisting and channel in ['auxtel_metadata']:
+    if remakeExisting is False and channel in ['auxtel_metadata']:
         raise ValueError(f"Channel {channel} can currently only remake everything or nothing. "
                          "If you would like to remake everything, please explicitly pass "
                          "remakeExisting=True.")
