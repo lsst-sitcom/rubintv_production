@@ -38,6 +38,7 @@ NON_TRACKING_IMAGE_TYPES = ['BIAS',
                             'DARK',
                             ]
 
+AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC = 280.0
 
 def _getEfdData(client, dataSeries, startTime, endTime):
     """A synchronous warpper for geting the data from the EFD.
@@ -70,7 +71,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
 
     Returns
     -------
-    axisErrors : `list` of (`np.array`)
+    axisErrors : `list` [`numpy.ndarray`], (3, N)
         The RMS errors in the three axes:
             `az_rms` : The RMS in azimuth
             `el_rms` : The RMS in elevation
@@ -171,7 +172,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     # Calculate Image impact RMS
     image_az_rms = az_rms * np.cos(el_vals[0] * np.pi / 180.0)
     image_el_rms = el_rms
-    image_rot_rms = rot_rms * 280.0 * np.pi / 180.0 / 3600.0
+    image_rot_rms = rot_rms * AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC * np.pi / 180.0 / 3600.0
 
     end = time.time()
     elapsed = end-start
