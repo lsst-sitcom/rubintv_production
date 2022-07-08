@@ -192,7 +192,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         plt.subplot(3, 3, 4)
         plt.plot(fit_times, az_error, color='red')
 
-        plt.title(f"Azimuth RMS error = {az_rms:.2f} arcseconds\n" + \
+        plt.title(f"Azimuth RMS error = {az_rms:.2f} arcseconds\n"
                   f"  Image RMS error = {image_az_rms:.2f} arcseconds")
         plt.ylim(-10.0, 10.0)
         plt.xticks([])
@@ -211,7 +211,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         ax2.set_xticks([])
         plt.subplot(3, 3, 5)
         plt.plot(fit_times, el_error, color='green')
-        plt.title(f"Elevation RMS error = {el_rms:.2f} arcseconds\n" + \
+        plt.title(f"Elevation RMS error = {el_rms:.2f} arcseconds\n"
                   f"    Image RMS error = {image_el_rms:.2f} arcseconds")
         plt.ylim(-10.0, 10.0)
         plt.xticks([])
@@ -228,8 +228,8 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         ax3.set_xticks([])
         plt.subplot(3, 3, 6)
         plt.plot(fit_times, rot_error, color='blue')
-        plt.title(f"Nasmyth RMS error = {rot_rms:.2f} arcseconds\n" + \
-                  f"  Image RMS error <= {image_rot_rms:.2f} arcseconds")
+        plt.title(f"Nasmyth RMS error = {rot_rms:.2f} arcseconds\n"
+                  f" Image RMS error <= {image_rot_rms:.2f} arcseconds")
         plt.ylim(-10.0, 10.0)
         plt.subplot(3, 3, 9)
         ax9 = rot_torque['nasmyth2MotorTorque'].plot(legend=True, color='blue')
