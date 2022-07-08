@@ -40,6 +40,7 @@ NON_TRACKING_IMAGE_TYPES = ['BIAS',
 
 AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC = 280.0
 
+
 def _getEfdData(client, dataSeries, startTime, endTime):
     """A synchronous warpper for geting the data from the EFD.
 
@@ -232,6 +233,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         plt.title(f"Nasmyth2 RMS error = {rot_rms:.2f} arcseconds\n"
                   f"  Image RMS error <= {image_rot_rms:.2f} arcseconds")
         plt.ylim(-10.0, 10.0)
+        plt.xticks([])
         plt.subplot(3, 3, 9)
         ax9 = rot_torque['nasmyth2MotorTorque'].plot(legend=True, color='blue')
         ax9.axvline(az.index[0], color="red", linestyle="--")
