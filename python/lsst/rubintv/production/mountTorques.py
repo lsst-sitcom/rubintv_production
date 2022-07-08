@@ -229,8 +229,8 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         ax3.set_xticks([])
         plt.subplot(3, 3, 6)
         plt.plot(fit_times, rot_error, color='blue')
-        plt.title(f"Nasmyth RMS error = {rot_rms:.2f} arcseconds\n"
-                  f" Image RMS error <= {image_rot_rms:.2f} arcseconds")
+        plt.title(f"Nasmyth2 RMS error = {rot_rms:.2f} arcseconds\n"
+                  f"  Image RMS error <= {image_rot_rms:.2f} arcseconds")
         plt.ylim(-10.0, 10.0)
         plt.subplot(3, 3, 9)
         ax9 = rot_torque['nasmyth2MotorTorque'].plot(legend=True, color='blue')
