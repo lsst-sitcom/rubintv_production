@@ -22,6 +22,7 @@
 import json
 import os
 from time import sleep
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import tempfile
@@ -79,6 +80,7 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           ]
 
 HEARTBEAT_PERIOD = 120
+HEARTBEAT_FILE_SUFFIX = "_heartbeat"
 
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
@@ -147,13 +149,16 @@ class Uploader():
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        channel += '_heartbeart'
-        text = ???
+        filename = "/".join([channel, HEARTBEAT_FILE_SUFFIX])
+        currTime = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
 
-        blob = self.bucket.blob("/".join([channel, filename]))
+        # TODO: add any relevant errors to text
+        text = f"{channel}: {currTime}"
+
+        blob = self.bucket.blob("/".join([filename]))
         blob.cache_control = 'no-store'  # must set before upload
         blob.upload_from_string(text)
-        self.log.info(f'Uploaded heartbeat to channel {channel}')
+        self.log.info(f'Uploaded heartbeat to channel {channel} with time {currTime}')
 
         blob.reload()
         if blob.cache_control != 'no-store':
@@ -251,13 +256,11 @@ class Watcher():
             sentinel value to run forever anyway.
         """
 
-        if durationInSeconds == -1:
-            nLoops = int(1e9)
-        else:
-            nLoops = int(durationInSeconds//self.cadence)
-
         lastFound = -1
-        for i in range(nLoops):
+        loopStart = datetime.now()
+        heartbeatStart = loopStart
+
+        while ((datetime.now() - loopStart).seconds < durationInSeconds or durationInSeconds == -1):
             try:
                 dataId, expId = self._getLatestImageDataIdAndExpId()
 
@@ -270,6 +273,11 @@ class Watcher():
 
             except NotFoundError as e:  # NotFoundError when filters aren't defined
                 print(f'Skipped displaying {dataId} due to {e}')
+
+            if ((datetime.now() - heartbeatStart).seconds >= HEARTBEAT_PERIOD):
+                self.uploader.uploadHeartbeat(self.channel)
+                heartbeatStart = datetime.now()
+
         return
 
 
