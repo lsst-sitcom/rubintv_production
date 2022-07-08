@@ -53,7 +53,7 @@ from lsst.summit.utils.butlerUtils import (makeDefaultLatissButler, datasetExist
 from lsst.summit.utils.utils import dayObsIntToString
 from lsst.atmospec.utils import isDispersedDataId
 
-from lsst.rubintv.production.mountTorques import plotMountTracking
+from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
 
 CHANNELS = ["summit_imexam",
@@ -455,7 +455,7 @@ class MountTorqueChannel():
         try:
             tempFilename = tempfile.mktemp(suffix='.png')
             uploadFilename = _dataIdToFilename(self.channel, dataId)
-            plotted = plotMountTracking(dataId, self.butler, self.client, self.fig, tempFilename, self.log)
+            plotted = calculateMountErrors(dataId, self.butler, self.client, self.fig, tempFilename, self.log)
 
             if plotted:  # skips many image types and short exps
                 self.log.info("Uploading mount torque plot to storage bucket")
