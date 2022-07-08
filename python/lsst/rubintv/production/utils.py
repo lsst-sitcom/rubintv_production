@@ -213,7 +213,7 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
     ------
     ValueError:
         Raised if the channel is unknown.
-        Raised if remakeExisting is False and channel is auxtel_metadata
+        Raised if remakeExisting is False and channel is auxtel_metadata.
     """
     if not logger:
         logger = logging.getLogger(__name__)

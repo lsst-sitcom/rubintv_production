@@ -143,7 +143,7 @@ class RubinTvBackgroundService():
         return [{'day_obs': self.dayObs, 'seq_num': s, 'detector': 0} for s in toMakeSeqNums]
 
     @staticmethod
-    def _minimizeDataId(dataId):
+    def _makeMinimalDataId(dataId):
         """XXX DOCS
         """
         # Need to have this exact set of keys to make removing from work
@@ -162,7 +162,7 @@ class RubinTvBackgroundService():
         missingQuickLooks = self.getMissingQuickLookIds()
 
         mostRecent = butlerUtils.getMostRecentDataId(self.butler)
-        mostRecent = self._minimizeDataId(mostRecent)  # reduce to keys that exactly matches missingQuickLooks
+        mostRecent = self._makeMinimalDataId(mostRecent)  # reduce to keys that exactly matches missingQuickLooks
         secondMostRecent = copy.copy(mostRecent)
         secondMostRecent['seq_num'] -= 1
 
@@ -257,7 +257,7 @@ class RubinTvBackgroundService():
 
         Raises
         ------
-        RuntimerError:
+        RuntimeError:
             Raised from the root error on any error if doRaise is True.
         """
         lastRun = time.time()
