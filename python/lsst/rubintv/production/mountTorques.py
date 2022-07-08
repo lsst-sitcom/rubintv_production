@@ -48,8 +48,9 @@ def _getEfdData(client, dataSeries, startTime, endTime):
     return loop.run_until_complete(client.select_time_series(dataSeries, ['*'], startTime.utc, endTime.utc))
 
 
-def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
-    """Queries EFD for given exposure and checks if there were tracking errors.
+def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
+    """Queries EFD for a given exposure and calculates the RMS errors in the
+    axes during the exposure, optionally plotting and saving the data.
 
     Parameters
     ----------
@@ -69,8 +70,11 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
 
     Returns
     -------
-    plotted : `bool`
-        True if the dataId was plotted, False if it was skipped.
+    axisErrors : `tuple` of (`np.array`)
+        The RMS errors in the three axes:
+            `az_rms` : The RMS in azimuth
+            `el_rms` : The RMS in elevation
+            `rot_rms` : The RMS in the rotator
     """
     # lsst-efd-client is not a required import at the top here, but is
     # implicitly required as a client is passed into this function so is not
