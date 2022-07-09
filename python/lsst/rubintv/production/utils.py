@@ -189,8 +189,11 @@ def remakePlotByDataId(channel, dataId):
     tvChannel.callback(dataId)
 
 
-def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, **kwargs):
+def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None, **kwargs):
     """Remake all the plots for a given day.
+
+    Currently auxtel_metadata does not pull from the bucket to check what is
+    in there, so remakeExisting is not supported.
 
     Parameters
     ----------
@@ -210,11 +213,20 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, **kwargs):
     ------
     ValueError:
         Raised if the channel is unknown.
+        Raised if remakeExisting is False and channel is auxtel_metadata.
     """
+    if not logger:
+        logger = logging.getLogger(__name__)
+
     from google.cloud import storage
 
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
+
+    if remakeExisting is False and channel in ['auxtel_metadata']:
+        raise ValueError(f"Channel {channel} can currently only remake everything or nothing. "
+                         "If you would like to remake everything, please explicitly pass "
+                         "remakeExisting=True.")
 
     if notebook:
         # notebooks have their own eventloops, so this is necessary if the
@@ -228,12 +240,13 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, **kwargs):
     butler = makeDefaultLatissButler()
 
     allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
-    print(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
+    logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
     existing = set()
     if not remakeExisting:
         existing = set(getPlotSeqNumsForDayObs(channel, dayObs, bucket=bucket))
         nToMake = len(allSeqNums) - len(existing)
-        print(f"Found {len(existing)} in the bucket which will be skipped, leaving {nToMake} to create.")
+        logger.info(f"Found {len(existing)} in the bucket which will be skipped, "
+                    f"leaving {nToMake} to create.")
 
     toMake = sorted(allSeqNums - existing)
 
