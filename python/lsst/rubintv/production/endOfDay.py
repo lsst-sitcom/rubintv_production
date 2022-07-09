@@ -38,14 +38,14 @@ __all__ = ['RubinTvBackgroundService']
 
 _LOG = logging.getLogger(__name__)
 
-# services:
-# delete the contents of the all sky pngs dir
-# could move the temp movie deletion here
-# for each channel, check the dataIds which weren't produced and try rerunning
-#    Do isr first to fill in gaps
-#    Then redo all the channels,
-#    then the metadata. Do this by loading the local json, checking for gaps
-#    adding just those
+# TODO:
+# Add imExam catchup
+# Add specExam catchup
+# Add metadata server catchup
+#    - this will requie loading the local json, checking for gaps and
+#      just adding those. Hold off on doing this to see if there even are
+#      ever any gaps - there might not be because the service is probably
+#      quick enough that nothing is ever missed.
 
 
 class RubinTvBackgroundService():
@@ -70,7 +70,7 @@ class RubinTvBackgroundService():
         Raise on error?
     """
     catchupPeriod = 300  # in seconds, so 5 mins
-    loopSleep = 20
+    loopSleep = 30
     endOfDayDelay = 600
     allSkyDeletionExtraSleep = 1800  # 30 mins
 
@@ -91,7 +91,7 @@ class RubinTvBackgroundService():
         self.uploader = Uploader()
 
     def _raiseIf(self, error):
-        """Raises the error if self.doRaise, otherwise logs it as a warning.
+        """Raises the error if ``self.doRaise`` otherwise logs it as a warning.
 
         Parameters
         ----------
@@ -101,7 +101,7 @@ class RubinTvBackgroundService():
         Raises
         ------
         AnyException
-            Raised if self.doRaise is True, otherwise swallows and warns.
+            Raised if ``self.doRaise`` is True, otherwise swallows and warns.
         """
         msg = f'Background service error: {error}'
         if self.doRaise:
@@ -113,12 +113,12 @@ class RubinTvBackgroundService():
         """Check if the dayObs has rolled over.
 
         Checks if the class' dayObs is the current dayObs and returns False
-        if it is.
+        if it is. Note that this does not update the attribute itself.
 
         Returns
         -------
         hasDayRolledOver : `bool`
-            Whether the day has rolled over.
+            Whether the day has rolled over?
         """
         currentDay = getCurrentDayObs_int()
         if currentDay == self.dayObs:
@@ -130,7 +130,13 @@ class RubinTvBackgroundService():
                                f"and now current dayObs is {currentDay}!")
 
     def getMissingQuickLookIds(self):
-        """XXX DOCS
+        """Get a list of the dataIds for the current dayObs for which
+        quickLookExps do not exist in the repo.
+
+        Returns
+        -------
+        dataIds : `list` [`dict]
+            A list of the missing dataIds.
         """
         allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs)
 
@@ -146,7 +152,17 @@ class RubinTvBackgroundService():
 
     @staticmethod
     def _makeMinimalDataId(dataId):
-        """XXX DOCS
+        """Given a dataId, strip it to contain only ``day_obs``, ``seq_num``
+        and ``detector``.
+
+        This is necessary because the set of keys used must be consistent so
+        that removal from a list works, as superfluous keys would mean the
+        items do not match.
+
+        Parameters
+        ----------
+        dataId : `dict`
+            The dataId.
         """
         # Need to have this exact set of keys to make removing from work
         keys = ['day_obs', 'seq_num', 'detector']
@@ -156,7 +172,7 @@ class RubinTvBackgroundService():
         return {'day_obs': dataId['day_obs'], 'seq_num': dataId['seq_num'], 'detector': dataId['detector']}
 
     def catchupIsrRunner(self):
-        """XXX DOCS
+        """Create any missing quickLookExps for the current dayObs.
         """
         # check latest dataId and remove that and previous
         # and then do *not* do that in end of day
@@ -182,19 +198,20 @@ class RubinTvBackgroundService():
             del exp
 
     def catchupMountTorques(self):
-        """XXX DOCS
+        """Create and upload any missing mount toruqe plots for the current
+        dayObs.
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
         remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False)
 
     def catchupMonitor(self):
-        """XXX DOCS
+        """Create and upload any missing monitor images for the current dayObs.
         """
         self.log.info(f'Catching up monitor images for {self.dayObs}')
         remakeDay('auxtel_monitor', self.dayObs, remakeExisting=False, notebook=False)
 
     def runCatchup(self):
-        """XXX DOCS
+        """Run all the catchup routines: isr, monitor images, mount torques.
         """
         startTime = time.time()
 
@@ -206,7 +223,8 @@ class RubinTvBackgroundService():
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
 
     def deleteAllSkyPngs(self):
-        """XXX DOCS
+        """Delete all the intermediate on-disk files created when making the
+        all sky movie for the current day.
         """
         if self.allSkyPngRoot is not None:
             directory = os.path.join(self.allSkyPngRoot, str(self.dayObs))
@@ -220,7 +238,12 @@ class RubinTvBackgroundService():
                 self.log.warning(f"Failed to find assumed all-sky png directory {directory}")
 
     def runEndOfDay(self):
-        """XXX DOCS
+        """Routine to run when the summit dayObs rolls over.
+
+        Makes the per-day animation of all the on-sky images and uploads to the
+        auxtel_movies channel. Deletes all the intermediate on-disk files
+        created when making the all sky movie. Deletes all the intermediate
+        movies uploaded during the day for the all sky channel from the bucket.
         """
         try:
             # TODO: this will move to its own channel to be done routinely
@@ -256,13 +279,14 @@ class RubinTvBackgroundService():
             self.dayObs = getCurrentDayObs_int()
 
     def run(self):
-        """Runs forever, running the catchup services during the day
-        and the end of day service when the day ends.
+        """Runs forever, running the catchup services during the day and the
+        end of day service when the day ends.
 
         Raises
         ------
         RuntimeError:
-            Raised from the root error on any error if doRaise is True.
+            Raised from the root error on any error if ``self.doRaise`` is
+            True.
         """
         lastRun = time.time()
         self.dayObs = getCurrentDayObs_int()
