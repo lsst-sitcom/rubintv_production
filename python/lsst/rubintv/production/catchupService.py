@@ -42,7 +42,7 @@ _LOG = logging.getLogger(__name__)
 # Add imExam catchup
 # Add specExam catchup
 # Add metadata server catchup
-#    - this will requie loading the local json, checking for gaps and
+#    - this will require loading the local json, checking for gaps and
 #      just adding those. Hold off on doing this to see if there even are
 #      ever any gaps - there might not be because the service is probably
 #      quick enough that nothing is ever missed.
@@ -66,8 +66,10 @@ class RubinTvBackgroundService():
     moviePngRoot : `str`
         The root path to write all pngs and movies to. It need not exist,
         but must be creatable with write privileges.
-    doRaise `bool`
+    doRaise : `bool`
         Raise on error?
+    **kwargs
+        Additional keyword arguments passed to ``BestEffortIsr`` instantiation.
     """
     catchupPeriod = 300  # in seconds, so 5 mins
     loopSleep = 30
@@ -196,7 +198,7 @@ class RubinTvBackgroundService():
             del exp
 
     def catchupMountTorques(self):
-        """Create and upload any missing mount toruqe plots for the current
+        """Create and upload any missing mount torque plots for the current
         dayObs.
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
