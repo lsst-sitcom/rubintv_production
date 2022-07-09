@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.endOfDay import RubinTvBackgroundService
+from lsst.rubintv.production.catchupService import RubinTvBackgroundService
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
