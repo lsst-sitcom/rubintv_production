@@ -77,12 +77,10 @@ class RubinTvBackgroundService():
     def __init__(self, *,
                  allSkyPngRoot=None,
                  moviePngRoot=None,
-                 dryRunForDeletion=True,
                  doRaise=False,
                  **kwargs):
         self.uploader = Uploader()
         self.log = _LOG.getChild("backgroundService")
-        self.dryRunForDeletion = dryRunForDeletion
         self.allSkyPngRoot = allSkyPngRoot
         self.moviePngRoot = moviePngRoot
         self.doRaise = doRaise
@@ -229,11 +227,8 @@ class RubinTvBackgroundService():
         if self.allSkyPngRoot is not None:
             directory = os.path.join(self.allSkyPngRoot, str(self.dayObs))
             if os.path.isdir(directory):
-                if not self.dryRunForDeletion:
-                    shutil.rmtree(directory)
-                    self.log.info(f"Deleted all-sky png directory {directory}")
-                else:
-                    self.log.info(f"Would shutil.rmtree({directory})")
+                shutil.rmtree(directory)
+                self.log.info(f"Deleted all-sky png directory {directory}")
             else:
                 self.log.warning(f"Failed to find assumed all-sky png directory {directory}")
 

@@ -34,5 +34,5 @@ print('Running RubinTV background catchup service...')
 allSky = RubinTvBackgroundService(allSkyPngRoot=allSkyPngRoot,
                                   moviePngRoot=moviePngRoot,
                                   doRaise=False,
-                                  dryRunForDeletion=True)
+                                  )
 allSky.run()
