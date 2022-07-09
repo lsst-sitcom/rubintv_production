@@ -38,6 +38,8 @@ NON_TRACKING_IMAGE_TYPES = ['BIAS',
                             'DARK',
                             ]
 
+AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC = 280.0
+
 
 def _getEfdData(client, dataSeries, startTime, endTime):
     """A synchronous warpper for geting the data from the EFD.
@@ -48,8 +50,9 @@ def _getEfdData(client, dataSeries, startTime, endTime):
     return loop.run_until_complete(client.select_time_series(dataSeries, ['*'], startTime.utc, endTime.utc))
 
 
-def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
-    """Queries EFD for given exposure and checks if there were tracking errors.
+def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
+    """Queries EFD for a given exposure and calculates the RMS errors in the
+    axes during the exposure, optionally plotting and saving the data.
 
     Parameters
     ----------
@@ -69,8 +72,11 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
 
     Returns
     -------
-    plotted : `bool`
-        True if the dataId was plotted, False if it was skipped.
+    axisErrors : `list` [`numpy.ndarray`], (3, N)
+        The RMS errors in the three axes:
+            `az_rms` : The RMS in azimuth
+            `el_rms` : The RMS in elevation
+            `rot_rms` : The RMS in the rotator
     """
     # lsst-efd-client is not a required import at the top here, but is
     # implicitly required as a client is passed into this function so is not
@@ -164,68 +170,78 @@ def plotMountTracking(dataId, butler, client, figure, saveFilename, logger):
     el_rms = np.sqrt(np.mean(el_error * el_error))
     rot_rms = np.sqrt(np.mean(rot_error * rot_error))
 
+    # Calculate Image impact RMS
+    image_az_rms = az_rms * np.cos(el_vals[0] * np.pi / 180.0)
+    image_el_rms = el_rms
+    image_rot_rms = rot_rms * AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC * np.pi / 180.0 / 3600.0
+
     end = time.time()
     elapsed = end-start
     logger.debug(f"Elapsed time for error calculations = {elapsed}")
     start = time.time()
+    if saveFilename is not None:
+        # Plotting
+        figure.clear()
+        title = f"Mount Tracking {dataIdString}, Azimuth = {azimuth:.1f}, Elevation = {elevation:.1f}"
+        plt.suptitle(title, fontsize=18)
+        # Azimuth axis
+        plt.subplot(3, 3, 1)
+        ax1 = az['azimuthCalculatedAngle'].plot(legend=True, color='red')
+        ax1.set_title("Azimuth axis", fontsize=16)
+        ax1.axvline(az.index[0], color="red", linestyle="--")
+        ax1.set_xticks([])
+        ax1.set_ylabel("Degrees")
+        plt.subplot(3, 3, 4)
+        plt.plot(fit_times, az_error, color='red')
 
-    # Plotting
-    figure.clear()
-    title = f"Mount Tracking {dataIdString}, Azimuth = {azimuth:.1f}, Elevation = {elevation:.1f}"
-    plt.suptitle(title, fontsize=18)
-    # Azimuth axis
-    plt.subplot(3, 3, 1)
-    ax1 = az['azimuthCalculatedAngle'].plot(legend=True, color='red')
-    ax1.set_title("Azimuth axis", fontsize=16)
-    ax1.axvline(az.index[0], color="red", linestyle="--")
-    ax1.set_xticks([])
-    ax1.set_ylabel("Degrees")
-    plt.subplot(3, 3, 4)
-    plt.plot(fit_times, az_error, color='red')
-    plt.title(f"Azimuth RMS error = {az_rms:.2f} arcseconds")
-    plt.ylim(-10.0, 10.0)
-    plt.xticks([])
-    plt.ylabel("Arcseconds")
-    plt.subplot(3, 3, 7)
-    ax7 = az_torque_1['azimuthMotor1Torque'].plot(legend=True, color='blue')
-    ax7 = az_torque_2['azimuthMotor2Torque'].plot(legend=True, color='green')
-    ax7.axvline(az.index[0], color="red", linestyle="--")
-    ax7.set_ylabel("Torque (motor current in amps)")
+        plt.title(f"Azimuth RMS error = {az_rms:.2f} arcseconds\n"
+                  f"  Image RMS error = {image_az_rms:.2f} arcseconds")
+        plt.ylim(-10.0, 10.0)
+        plt.xticks([])
+        plt.ylabel("Arcseconds")
+        plt.subplot(3, 3, 7)
+        ax7 = az_torque_1['azimuthMotor1Torque'].plot(legend=True, color='blue')
+        ax7 = az_torque_2['azimuthMotor2Torque'].plot(legend=True, color='green')
+        ax7.axvline(az.index[0], color="red", linestyle="--")
+        ax7.set_ylabel("Torque (motor current in amps)")
 
-    # Elevation axis
-    plt.subplot(3, 3, 2)
-    ax2 = el['elevationCalculatedAngle'].plot(legend=True, color='green')
-    ax2.set_title("Elevation axis", fontsize=16)
-    ax2.axvline(az.index[0], color="red", linestyle="--")
-    ax2.set_xticks([])
-    plt.subplot(3, 3, 5)
-    plt.plot(fit_times, el_error, color='green')
-    plt.title(f"Elevation RMS error = {el_rms:.2f} arcseconds")
-    plt.ylim(-10.0, 10.0)
-    plt.xticks([])
-    plt.subplot(3, 3, 8)
-    ax8 = el_torque['elevationMotorTorque'].plot(legend=True, color='blue')
-    ax8.axvline(az.index[0], color="red", linestyle="--")
-    ax8.set_ylabel("Torque (motor current in amps)")
+        # Elevation axis
+        plt.subplot(3, 3, 2)
+        ax2 = el['elevationCalculatedAngle'].plot(legend=True, color='green')
+        ax2.set_title("Elevation axis", fontsize=16)
+        ax2.axvline(az.index[0], color="red", linestyle="--")
+        ax2.set_xticks([])
+        plt.subplot(3, 3, 5)
+        plt.plot(fit_times, el_error, color='green')
+        plt.title(f"Elevation RMS error = {el_rms:.2f} arcseconds\n"
+                  f"    Image RMS error = {image_el_rms:.2f} arcseconds")
+        plt.ylim(-10.0, 10.0)
+        plt.xticks([])
+        plt.subplot(3, 3, 8)
+        ax8 = el_torque['elevationMotorTorque'].plot(legend=True, color='blue')
+        ax8.axvline(az.index[0], color="red", linestyle="--")
+        ax8.set_ylabel("Torque (motor current in amps)")
 
-    # Nasmyth2 rotator axis
-    plt.subplot(3, 3, 3)
-    ax3 = rot['nasmyth2CalculatedAngle'].plot(legend=True, color='blue')
-    ax3.set_title("Nasmyth2 axis", fontsize=16)
-    ax3.axvline(az.index[0], color="red", linestyle="--")
-    ax3.set_xticks([])
-    plt.subplot(3, 3, 6)
-    plt.plot(fit_times, rot_error, color='blue')
-    plt.title(f"Nasmyth RMS error = {rot_rms:.2f} arcseconds")
-    plt.ylim(-100.0, 100.0)
-    plt.subplot(3, 3, 9)
-    ax9 = rot_torque['nasmyth2MotorTorque'].plot(legend=True, color='blue')
-    ax9.axvline(az.index[0], color="red", linestyle="--")
-    ax9.set_ylabel("Torque (motor current in amps)")
-    plt.savefig(saveFilename)
+        # Nasmyth2 rotator axis
+        plt.subplot(3, 3, 3)
+        ax3 = rot['nasmyth2CalculatedAngle'].plot(legend=True, color='blue')
+        ax3.set_title("Nasmyth2 axis", fontsize=16)
+        ax3.axvline(az.index[0], color="red", linestyle="--")
+        ax3.set_xticks([])
+        plt.subplot(3, 3, 6)
+        plt.plot(fit_times, rot_error, color='blue')
+        plt.title(f"Nasmyth2 RMS error = {rot_rms:.2f} arcseconds\n"
+                  f"  Image RMS error <= {image_rot_rms:.2f} arcseconds")
+        plt.ylim(-10.0, 10.0)
+        plt.xticks([])
+        plt.subplot(3, 3, 9)
+        ax9 = rot_torque['nasmyth2MotorTorque'].plot(legend=True, color='blue')
+        ax9.axvline(az.index[0], color="red", linestyle="--")
+        ax9.set_ylabel("Torque (motor current in amps)")
+        plt.savefig(saveFilename)
 
-    end = time.time()
-    elapsed = end-start
-    logger.debug(f"Elapsed time for plots = {elapsed}")
+        end = time.time()
+        elapsed = end-start
+        logger.debug(f"Elapsed time for plots = {elapsed}")
 
-    return True
+    return [az_rms, el_rms, rot_rms]
