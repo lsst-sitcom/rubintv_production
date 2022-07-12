@@ -21,6 +21,7 @@
 
 import json
 import os
+import time
 from time import sleep
 from datetime import datetime, timezone
 from pathlib import Path
@@ -208,7 +209,6 @@ class Uploader():
             blob.reload()
             assert(blob.cache_control == 'no-store')
 
-
 class Watcher():
     """Class for continuously watching for new data products landing in a repo.
     Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds.
@@ -257,26 +257,32 @@ class Watcher():
         """
 
         lastFound = -1
-        loopStart = datetime.now()
-        heartbeatStart = loopStart
+        loopStart = time.time()
+        lastHeartbeat = loopStart
 
-        while ((datetime.now() - loopStart).seconds < durationInSeconds or durationInSeconds == -1):
+        def beat():
+            """Perform the heartbeat if enough time has passed.
+            """
+            nonlocal lastHeartbeat
+            if ((time.now() - lastHeartbeat) >= HEARTBEAT_PERIOD):
+                self.uploader.uploadHeartbeat(self.channel)
+                lastHeartbeat = time.time()
+
+        while (time.time() - loopStart < durationInSeconds) or (durationInSeconds == -1):
             try:
                 dataId, expId = self._getLatestImageDataIdAndExpId()
 
                 if lastFound == expId:
                     sleep(self.cadence)
+                    beat()
                     continue
                 else:
                     lastFound = expId
                     callback(dataId)
+                    beat()  # after the callback so as not to delay processing with an upload
 
             except NotFoundError as e:  # NotFoundError when filters aren't defined
                 print(f'Skipped displaying {dataId} due to {e}')
-
-            if ((datetime.now() - heartbeatStart).seconds >= HEARTBEAT_PERIOD):
-                self.uploader.uploadHeartbeat(self.channel)
-                heartbeatStart = datetime.now()
 
         return
 
