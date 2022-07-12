@@ -19,8 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
 import logging
 from time import sleep
+from lsst.utils import getPackageDir
 
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
@@ -30,7 +32,9 @@ from . import (ImExaminerChannel,
                MountTorqueChannel,
                MonitorChannel,
                MetadataServer,
+               Uploader,
                )
+from .rubinTv import _dataIdToFilename
 
 __all__ = ["checkRubinTvExternalPackages",
            ]
@@ -258,3 +262,63 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
         tvChannel.callback(dataId)
         if channel in ['auxtel_metadata']:
             sleep(1.5)  # metadata creation is fast enough that we hit the GCS rate limit without a pause
+
+
+def pushTestImageToCurrent(channel, duration=15):
+    """Push a test image to a channel to see if it shows up automatically.
+
+    Leaves the test image in the bucket for ``duration`` seconds and then
+    removes it. ``duration`` cannot be more than 60s, as test images should not
+    be left in the bucket for long, and a minute should easily be long enough
+    to see if things are working.
+
+    NB: this function is designed for interactive use in notebooks and blocks
+    for ``duration`` and then deletes the file.
+
+    Parameters
+    ----------
+    channel : `str`
+        The name of the lsst.rubintv.production channel. The actual channel
+        object is created internally.
+    duration : `float`, optional
+        The duration to leave the test image up for, in seconds.
+    """
+    logger = logging.getLogger(__name__)
+
+    from google.cloud import storage
+
+    if channel not in CHANNELS:
+        raise ValueError(f"Channel {channel} not in {CHANNELS}")
+    if channel in ['auxtel_metadata']:
+        raise ValueError(f'Pushing test data not supported for {channel}')
+    if duration > 60:
+        raise ValueError(f'Maximum time to leave test images in buckets is 60s, got {duration}')
+
+    client = storage.Client()
+    bucket = client.get_bucket('rubintv_data')
+    prefix = f'{channel}/{PREFIXES[channel]}'
+    blobs = list(bucket.list_blobs(prefix=prefix))
+
+    logger.info(f'Found {len(blobs)} for channel {channel} in bucket')
+
+    # names are like
+    # 'auxtel_monitor/auxtel-monitor_dayObs_2021-07-06_seqNum_100.png'
+    days = set([b.name.split(f'{prefix}_dayObs_')[1].split('_seqNum')[0] for b in blobs])
+    days = [int(d.replace('-', '')) for d in days]  # days are like 2022-01-02
+    recentDay = max(days)
+
+    seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)
+    newSeqNum = max(seqNums) + 1
+
+    mockDataId = {'day_obs': recentDay, 'seq_num': newSeqNum}
+    testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
+    uploadAs = _dataIdToFilename(channel, mockDataId)
+    uploader = Uploader()
+
+    logger.info(f'Uploading test card to {mockDataId} for channel {channel}')
+    blob = uploader.googleUpload(channel, testCardFile, uploadAs, isLiveFile=True)
+
+    logger.info(f'Upload complete, sleeping for {duration} for you to check...')
+    sleep(duration)
+    blob.delete()
+    logger.info('Test card removed')
