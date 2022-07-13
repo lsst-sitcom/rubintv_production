@@ -81,7 +81,7 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           ]
 
 HEARTBEAT_PERIOD = 120
-HEARTBEAT_FILE_SUFFIX = "_heartbeat"
+HEARTBEAT_PREFIX = "heartbeats"
 
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
@@ -150,7 +150,7 @@ class Uploader():
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        filename = "/".join([channel, HEARTBEAT_FILE_SUFFIX])
+        filename = "/".join([HEARTBEAT_PREFIX, channel])
         currTime = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
 
         # TODO: add any relevant errors to text
