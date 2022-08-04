@@ -23,7 +23,7 @@ import json
 import os
 import time
 from time import sleep
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import shutil
 import tempfile
@@ -150,20 +150,32 @@ class Uploader():
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        filename = "/".join([HEARTBEAT_PREFIX, channel])
-        currTime = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        filename = "/".join([HEARTBEAT_PREFIX, channel, ".json"])
 
-        # TODO: add any relevant errors to text
-        text = f"{channel}: {currTime}"
+        timeNow = datetime.now(timezone.utc)
+        currTime = self._timestampFormat(timeNow)
+        nextExpected = self._timestampFormat(timeNow + timedelta(seconds=HEARTBEAT_PERIOD))
+
+        heartbeatJsonDict = {
+            "channel": channel,
+            "currTime": currTime,
+            "nextExpected": nextExpected,
+            "errors": {}
+        }
+        heartbeatJson = json.dumps(heartbeatJsonDict)
 
         blob = self.bucket.blob("/".join([filename]))
         blob.cache_control = 'no-store'  # must set before upload
-        blob.upload_from_string(text)
-        self.log.info(f'Uploaded heartbeat to channel {channel} with time {currTime}')
+        blob.upload_from_string(heartbeatJson)
+
+        self.log.info(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
 
         blob.reload()
         if blob.cache_control != 'no-store':
             raise RuntimeError(f'Live file {filename} has wrong caching metadata {blob.cache_control}')
+
+    def _timestampFormat(self, aDatetime):
+        return aDatetime.strftime('%Y%m%d%H%M%S')
 
     def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
         """Upload a file to the RubinTV Google cloud storage bucket.
@@ -208,6 +220,7 @@ class Uploader():
         if isLiveFile:
             blob.reload()
             assert(blob.cache_control == 'no-store')
+
 
 class Watcher():
     """Class for continuously watching for new data products landing in a repo.
@@ -264,7 +277,7 @@ class Watcher():
             """Perform the heartbeat if enough time has passed.
             """
             nonlocal lastHeartbeat
-            if ((time.now() - lastHeartbeat) >= HEARTBEAT_PERIOD):
+            if ((time.time() - lastHeartbeat) >= HEARTBEAT_PERIOD):
                 self.uploader.uploadHeartbeat(self.channel)
                 lastHeartbeat = time.time()
 
@@ -296,6 +309,7 @@ class IsrRunner():
     def __init__(self, **kwargs):
         self.bestEffort = BestEffortIsr(**kwargs)
         self.log = _LOG.getChild("isrRunner")
+        # self.dataProduct = 'raw'?
         self.watcher = Watcher(self.dataProduct, 'isr_runner')
 
     def callback(self, dataId):
