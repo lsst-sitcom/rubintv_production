@@ -150,7 +150,7 @@ class Uploader():
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        filename = "/".join([HEARTBEAT_PREFIX, channel, ".json"])
+        filename = "/".join([HEARTBEAT_PREFIX, channel]) + ".json"
 
         timeNow = datetime.now(timezone.utc)
         currTime = self._timestampFormat(timeNow)
