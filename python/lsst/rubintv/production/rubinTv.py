@@ -23,7 +23,6 @@ import json
 import os
 import time
 from time import sleep
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import shutil
 import tempfile
@@ -152,9 +151,8 @@ class Uploader():
 
         filename = "/".join([HEARTBEAT_PREFIX, channel]) + ".json"
 
-        timeNow = datetime.now(timezone.utc)
-        currTime = self._timestampFormat(timeNow)
-        nextExpected = self._timestampFormat(timeNow + timedelta(seconds=HEARTBEAT_PERIOD))
+        currTime = int(time.time())
+        nextExpected = currTime + HEARTBEAT_PERIOD
 
         heartbeatJsonDict = {
             "channel": channel,
@@ -173,9 +171,6 @@ class Uploader():
         blob.reload()
         if blob.cache_control != 'no-store':
             raise RuntimeError(f'Live file {filename} has wrong caching metadata {blob.cache_control}')
-
-    def _timestampFormat(self, aDatetime):
-        return aDatetime.strftime('%Y%m%d%H%M%S')
 
     def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
         """Upload a file to the RubinTV Google cloud storage bucket.
