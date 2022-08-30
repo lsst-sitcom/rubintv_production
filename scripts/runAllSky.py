@@ -23,7 +23,7 @@ from lsst.rubintv.production.allSky import AllSkyMovieChannel
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
-rootDataPath = '/data/allsky/'
+rootDataPath = '/project/rubintv/allsky/raw/'
 outputRoot = '/project/rubintv/allsky/'
 
 setupLogging()
