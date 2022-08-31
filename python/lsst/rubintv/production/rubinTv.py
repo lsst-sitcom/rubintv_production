@@ -304,7 +304,6 @@ class IsrRunner():
     def __init__(self, **kwargs):
         self.bestEffort = BestEffortIsr(**kwargs)
         self.log = _LOG.getChild("isrRunner")
-        # self.dataProduct = 'raw'?
         self.watcher = Watcher(self.dataProduct, 'isr_runner')
 
     def callback(self, dataId):
