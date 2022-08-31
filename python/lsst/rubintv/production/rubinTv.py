@@ -304,7 +304,7 @@ class IsrRunner():
     def __init__(self, **kwargs):
         self.bestEffort = BestEffortIsr(**kwargs)
         self.log = _LOG.getChild("isrRunner")
-        self.watcher = Watcher(self.dataProduct, 'isr_runner')
+        self.watcher = Watcher('raw', 'isr_runner')
 
     def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
