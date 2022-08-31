@@ -65,6 +65,7 @@ CHANNELS = ["summit_imexam",
             "all_sky_movies",
             "auxtel_metadata",
             "auxtel_movies",
+            "auxtel_isr_runner",
             ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
@@ -79,7 +80,10 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
-HEARTBEAT_PERIOD = 120
+# upload heartbeat every n seconds
+HEARTBEAT_UPLOAD_PERIOD = 30
+# consider service 'dead' if this time exceeded between heartbeats
+HEARTBEAT_FLATLINE_PERIOD = 120
 HEARTBEAT_PREFIX = "heartbeats"
 
 
@@ -152,7 +156,7 @@ class Uploader():
         filename = "/".join([HEARTBEAT_PREFIX, channel]) + ".json"
 
         currTime = int(time.time())
-        nextExpected = currTime + HEARTBEAT_PERIOD
+        nextExpected = currTime + HEARTBEAT_FLATLINE_PERIOD
 
         heartbeatJsonDict = {
             "channel": channel,
@@ -272,7 +276,7 @@ class Watcher():
             """Perform the heartbeat if enough time has passed.
             """
             nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= HEARTBEAT_PERIOD):
+            if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
                 self.uploader.uploadHeartbeat(self.channel)
                 lastHeartbeat = time.time()
 
@@ -304,7 +308,7 @@ class IsrRunner():
     def __init__(self, **kwargs):
         self.bestEffort = BestEffortIsr(**kwargs)
         self.log = _LOG.getChild("isrRunner")
-        self.watcher = Watcher('raw', 'isr_runner')
+        self.watcher = Watcher('raw', 'auxtel_isr_runner')
 
     def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
