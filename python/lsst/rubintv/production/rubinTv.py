@@ -582,6 +582,9 @@ class MetadataServer():
         rawmd = butler.get('raw.metadata', dataId)
         obsInfo = ObservationInfo(rawmd)
         d['airmass'] = obsInfo.boresight_airmass
+        d['Altitude'] = 'null'
+        if obsInfo.altaz_begin is not None:
+            d['Altitude'] = obsInfo.altaz_begin.alt.value
 
         if 'FOCUSZ' in rawmd:
             d['focus_z'] = rawmd['FOCUSZ']
