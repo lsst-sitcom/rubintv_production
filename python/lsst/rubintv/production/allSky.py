@@ -42,6 +42,9 @@ __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAll
 
 _LOG = logging.getLogger(__name__)
 
+# consider service 'dead' if this time exceeded between heartbeats
+HEARTBEAT_FLATLINE_PERIOD = 120
+HEARTBEAT_HANDLE = 'allsky'
 
 def _createWritableDir(path):
     """Create a writeable directory with the specified path.
@@ -471,12 +474,18 @@ class DayAnimator():
 
         convertedFiles = set()
         lastAnimationTime = time.time()
+        lastHeartbeat = lastAnimationTime
+
         while True:
+
             allFiles = _getFilesetFromDir(self.todaysDataDir)
             sleep(1)  # small sleep in case one of the files was being transferred when we listed it
 
             # convert any new files
             newFiles = allFiles - convertedFiles
+
+            self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
+
             if newFiles:
                 newFiles = sorted(newFiles)
                 # Never do more than 200 without making a movie along the way
@@ -489,6 +498,11 @@ class DayAnimator():
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug('Sleeping 20s waiting for new files')
+
+                if ((time.time() - lastHeartbeat) >= HEARTBEAT_FLATLINE_PERIOD):
+                    self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
+                    lastHeartbeat = time.time()
+
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
@@ -592,6 +606,8 @@ class AllSkyMovieChannel():
     def run(self):
         """The main entry point - start running the all sky camera TV channels.
         See class init docs for details.
+        This function does not generate heartbeats as it makes more sense to have them
+        in the DayAnimator class
         """
         while True:
             try:
