@@ -31,6 +31,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      )
 from lsst.rubintv.production import Uploader
 from lsst.rubintv.production.rubinTv import _dataIdToFilename
+from python.lsst.rubintv.production.rubinTv import HEARTBEAT_FLATLINE_PERIOD
 
 try:
     from google.cloud import storage
@@ -43,7 +44,8 @@ __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAll
 _LOG = logging.getLogger(__name__)
 
 # consider service 'dead' if this time exceeded between heartbeats
-HEARTBEAT_FLATLINE_PERIOD = 120
+HEARTBEAT_FLATLINE_PERIOD = 600
+HEARTBEAT_UPLOAD_PERIOD = 120
 HEARTBEAT_HANDLE = 'allsky'
 
 def _createWritableDir(path):
@@ -476,6 +478,14 @@ class DayAnimator():
         lastAnimationTime = time.time()
         lastHeartbeat = lastAnimationTime
 
+        def beat():
+            """Perform the heartbeat if enough time has passed.
+            """
+            nonlocal lastHeartbeat
+            if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
+                self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
+                lastHeartbeat = time.time()
+
         while True:
 
             allFiles = _getFilesetFromDir(self.todaysDataDir)
@@ -484,7 +494,7 @@ class DayAnimator():
             # convert any new files
             newFiles = allFiles - convertedFiles
 
-            self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
+            beat()
 
             if newFiles:
                 newFiles = sorted(newFiles)
@@ -499,10 +509,7 @@ class DayAnimator():
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug('Sleeping 20s waiting for new files')
 
-                if ((time.time() - lastHeartbeat) >= HEARTBEAT_FLATLINE_PERIOD):
-                    self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
-                    lastHeartbeat = time.time()
-
+                beat()
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
