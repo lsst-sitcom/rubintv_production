@@ -150,9 +150,6 @@ class Uploader():
         self.log = _LOG.getChild("googleUploader")
 
     def uploadHeartbeat(self, channel):
-        if channel not in CHANNELS:
-            raise ValueError(f"Error: {channel} not in {CHANNELS}")
-
         filename = "/".join([HEARTBEAT_PREFIX, channel]) + ".json"
 
         currTime = int(time.time())
