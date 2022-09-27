@@ -316,7 +316,7 @@ class RubinTvBackgroundService():
             """
             nonlocal lastHeartbeat
             if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
+                self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE, HEARTBEAT_FLATLINE_PERIOD)
                 lastHeartbeat = time.time()
 
         while True:

@@ -149,11 +149,11 @@ class Uploader():
         self.bucket = self.client.get_bucket('rubintv_data')
         self.log = _LOG.getChild("googleUploader")
 
-    def uploadHeartbeat(self, channel):
+    def uploadHeartbeat(self, channel, flatlinePeriod):
         filename = "/".join([HEARTBEAT_PREFIX, channel]) + ".json"
 
         currTime = int(time.time())
-        nextExpected = currTime + HEARTBEAT_FLATLINE_PERIOD
+        nextExpected = currTime + flatlinePeriod
 
         heartbeatJsonDict = {
             "channel": channel,
@@ -274,7 +274,7 @@ class Watcher():
             """
             nonlocal lastHeartbeat
             if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(self.channel)
+                self.uploader.uploadHeartbeat(self.channel, HEARTBEAT_FLATLINE_PERIOD)
                 lastHeartbeat = time.time()
 
         while (time.time() - loopStart < durationInSeconds) or (durationInSeconds == -1):
