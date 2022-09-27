@@ -38,6 +38,10 @@ __all__ = ['RubinTvBackgroundService']
 
 _LOG = logging.getLogger(__name__)
 
+HEARTBEAT_HANDLE = "backgroundService"
+HEARTBEAT_UPLOAD_PERIOD = 30
+HEARTBEAT_FLATLINE_PERIOD = 600
+
 # TODO:
 # Add imExam catchup
 # Add specExam catchup
@@ -304,6 +308,17 @@ class RubinTvBackgroundService():
         lastRun = time.time()
         self.dayObs = getCurrentDayObs_int()
 
+        lastAnimationTime = time.time()
+        lastHeartbeat = lastAnimationTime
+
+        def beat():
+            """Perform the heartbeat if enough time has passed.
+            """
+            nonlocal lastHeartbeat
+            if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
+                self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE)
+                lastHeartbeat = time.time()
+
         while True:
             try:
                 timeSince = time.time() - lastRun
@@ -317,6 +332,8 @@ class RubinTvBackgroundService():
                     remaining = self.catchupPeriod - timeSince
                     self.log.info(f'Waiting for catchup period to elapse, {remaining:.2f}s to go...')
                     sleep(self.loopSleep)
+
+                beat()
 
             except Exception as e:
                 self._raiseIf(e)
