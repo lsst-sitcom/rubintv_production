@@ -170,7 +170,7 @@ class Uploader():
         blob.cache_control = 'no-store'  # must set before upload
         blob.upload_from_string(heartbeatJson)
 
-        self.log.info(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
+        self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
 
         blob.reload()
         if blob.cache_control != 'no-store':
