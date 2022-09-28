@@ -80,11 +80,6 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
-# upload heartbeat every n seconds
-HEARTBEAT_UPLOAD_PERIOD = 30
-# consider service 'dead' if this time exceeded between heartbeats
-HEARTBEAT_FLATLINE_PERIOD = 120
-HEARTBEAT_PREFIX = "heartbeats"
 
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
@@ -140,6 +135,7 @@ def _waitForDataProduct(butler, dataProduct, dataId, logger, maxTime=20):
 class Uploader():
     """Class for handling uploads to the Google cloud storage bucket.
     """
+    HEARTBEAT_PREFIX = "heartbeats"
 
     def __init__(self):
         if not HAS_GOOGLE_STORAGE:
@@ -150,7 +146,7 @@ class Uploader():
         self.log = _LOG.getChild("googleUploader")
 
     def uploadHeartbeat(self, channel, flatlinePeriod):
-        filename = "/".join([HEARTBEAT_PREFIX, channel]) + ".json"
+        filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
 
         currTime = int(time.time())
         nextExpected = currTime + flatlinePeriod
@@ -235,6 +231,11 @@ class Watcher():
     """
     cadence = 1  # in seconds
 
+    # upload heartbeat every n seconds
+    HEARTBEAT_UPLOAD_PERIOD = 30
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 120
+
     def __init__(self, dataProduct, channel, **kwargs):
         self.butler = makeDefaultLatissButler()
         self.dataProduct = dataProduct
@@ -273,8 +274,8 @@ class Watcher():
             """Perform the heartbeat if enough time has passed.
             """
             nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(self.channel, HEARTBEAT_FLATLINE_PERIOD)
+            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
+                self.uploader.uploadHeartbeat(self.channel, self.HEARTBEAT_FLATLINE_PERIOD)
                 lastHeartbeat = time.time()
 
         while (time.time() - loopStart < durationInSeconds) or (durationInSeconds == -1):

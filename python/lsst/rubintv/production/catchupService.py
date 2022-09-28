@@ -38,9 +38,6 @@ __all__ = ['RubinTvBackgroundService']
 
 _LOG = logging.getLogger(__name__)
 
-HEARTBEAT_HANDLE = "backgroundService"
-HEARTBEAT_UPLOAD_PERIOD = 30
-HEARTBEAT_FLATLINE_PERIOD = 600
 
 # TODO:
 # Add imExam catchup
@@ -79,6 +76,10 @@ class RubinTvBackgroundService():
     loopSleep = 30
     endOfDayDelay = 600
     allSkyDeletionExtraSleep = 1800  # 30 mins
+
+    HEARTBEAT_HANDLE = "backgroundService"
+    HEARTBEAT_UPLOAD_PERIOD = 30
+    HEARTBEAT_FLATLINE_PERIOD = 600
 
     def __init__(self, *,
                  allSkyPngRoot=None,
@@ -315,8 +316,8 @@ class RubinTvBackgroundService():
             """Perform the heartbeat if enough time has passed.
             """
             nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE, HEARTBEAT_FLATLINE_PERIOD)
+            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
+                self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD)
                 lastHeartbeat = time.time()
 
         while True:

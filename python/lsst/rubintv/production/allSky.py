@@ -42,10 +42,6 @@ __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAll
 
 _LOG = logging.getLogger(__name__)
 
-# consider service 'dead' if this time exceeded between heartbeats
-HEARTBEAT_FLATLINE_PERIOD = 600
-HEARTBEAT_UPLOAD_PERIOD = 120
-HEARTBEAT_HANDLE = 'allsky'
 
 def _createWritableDir(path):
     """Create a writeable directory with the specified path.
@@ -310,6 +306,11 @@ class DayAnimator():
     FPS = 10
     DRY_RUN = False
 
+    HEARTBEAT_HANDLE = 'allsky'
+    HEARTBEAT_UPLOAD_PERIOD = 120
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 600
+
     def __init__(self, *,
                  dayObsInt,
                  todaysDataDir,
@@ -481,8 +482,8 @@ class DayAnimator():
             """Perform the heartbeat if enough time has passed.
             """
             nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(HEARTBEAT_HANDLE, HEARTBEAT_FLATLINE_PERIOD)
+            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
+                self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD)
                 lastHeartbeat = time.time()
 
         while True:
