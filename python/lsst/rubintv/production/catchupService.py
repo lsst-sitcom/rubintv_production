@@ -38,7 +38,6 @@ __all__ = ['RubinTvBackgroundService']
 
 _LOG = logging.getLogger(__name__)
 
-
 # TODO:
 # Add imExam catchup
 # Add specExam catchup

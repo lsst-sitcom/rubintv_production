@@ -487,13 +487,11 @@ class DayAnimator():
                 lastHeartbeat = time.time()
 
         while True:
-
             allFiles = _getFilesetFromDir(self.todaysDataDir)
             sleep(1)  # small sleep in case one of the files was being transferred when we listed it
 
             # convert any new files
             newFiles = allFiles - convertedFiles
-
             beat()
 
             if newFiles:
@@ -508,7 +506,6 @@ class DayAnimator():
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug('Sleeping 20s waiting for new files')
-
                 beat()
                 sleep(20)
 
@@ -613,8 +610,15 @@ class AllSkyMovieChannel():
     def run(self):
         """The main entry point - start running the all sky camera TV channels.
         See class init docs for details.
-        This function does not generate heartbeats as it makes more sense to have them
-        in the DayAnimator class
+
+        Notes
+        -----
+        This class does not generate heartbeats. The heartbeating is done by
+        the DayAnimator class, as this is the one that actually does the work,
+        including the uploading. Moreover, if we get into a situation where
+        this loop is being gone around without directories being created we
+        should not be emitting heartbeats - in such a situation the service
+        should be considered down.
         """
         while True:
             try:

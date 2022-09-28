@@ -81,7 +81,6 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           ]
 
 
-
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
 
