@@ -584,7 +584,7 @@ class MetadataServer():
         d['airmass'] = obsInfo.boresight_airmass
         d['focus_z'] = obsInfo.focus_z.value
 
-        d['Altitude'] = 'null'  # altaz_begin is None when not on sky so need check it's not None first
+        d['Altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
         if obsInfo.altaz_begin is not None:
             d['Altitude'] = obsInfo.altaz_begin.alt.value
 
