@@ -31,8 +31,8 @@ checkRubinTvExternalPackages()
 
 print('Running RubinTV background catchup service...')
 # TODO: change dryRunForDeletion for deployment, but test like this first
-allSky = RubinTvBackgroundService(allSkyPngRoot=allSkyPngRoot,
-                                  moviePngRoot=moviePngRoot,
-                                  doRaise=False,
-                                  )
-allSky.run()
+backgroundService = RubinTvBackgroundService(allSkyPngRoot=allSkyPngRoot,
+                                             moviePngRoot=moviePngRoot,
+                                             doRaise=False,
+                                             )
+backgroundService.run()
