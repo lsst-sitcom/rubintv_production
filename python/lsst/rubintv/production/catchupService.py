@@ -244,6 +244,29 @@ class RubinTvBackgroundService:
         # the next image. We do, however, call it on end-of-day to catch any
         # leftover shards
 
+    def catchupImageExaminer(self):
+        """Create and upload any missing imExam images for the current dayObs.
+        """
+        self.log.info(f'Catching up imExam images for {self.dayObs}')
+        remakeDay(self.locationConfig.location,
+                  self.instrument,
+                  'summit_imexam',
+                  self.dayObs,
+                  remakeExisting=False,
+                  notebook=False)
+
+    def catchupSpectrumExaminer(self):
+        """Create and upload any missing specExam images for the current
+        dayObs.
+        """
+        self.log.info(f'Catching up specExam images for {self.dayObs}')
+        remakeDay(self.locationConfig.location,
+                  self.instrument,
+                  'summit_specexam',
+                  self.dayObs,
+                  remakeExisting=False,
+                  notebook=False)
+
     def runCatchup(self):
         """Run all the catchup routines: isr, monitor images, mount torques.
         """
@@ -256,6 +279,8 @@ class RubinTvBackgroundService:
         for component in [self.catchupMetadata,
                           self.catchupIsrRunner,
                           self.catchupMonitor,
+                          self.catchupImageExaminer,
+                          self.catchupSpectrumExaminer,
                           self.catchupMountTorques]:
             try:
                 component.__call__()
