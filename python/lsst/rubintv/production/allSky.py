@@ -306,6 +306,11 @@ class DayAnimator():
     FPS = 10
     DRY_RUN = False
 
+    HEARTBEAT_HANDLE = 'allsky'
+    HEARTBEAT_UPLOAD_PERIOD = 120
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 600
+
     def __init__(self, *,
                  dayObsInt,
                  todaysDataDir,
@@ -471,12 +476,24 @@ class DayAnimator():
 
         convertedFiles = set()
         lastAnimationTime = time.time()
+        lastHeartbeat = lastAnimationTime
+
+        def beat():
+            """Perform the heartbeat if enough time has passed.
+            """
+            nonlocal lastHeartbeat
+            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
+                self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD)
+                lastHeartbeat = time.time()
+
         while True:
             allFiles = _getFilesetFromDir(self.todaysDataDir)
             sleep(1)  # small sleep in case one of the files was being transferred when we listed it
 
             # convert any new files
             newFiles = allFiles - convertedFiles
+            beat()
+
             if newFiles:
                 newFiles = sorted(newFiles)
                 # Never do more than 200 without making a movie along the way
@@ -489,6 +506,7 @@ class DayAnimator():
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug('Sleeping 20s waiting for new files')
+                beat()
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
@@ -592,6 +610,15 @@ class AllSkyMovieChannel():
     def run(self):
         """The main entry point - start running the all sky camera TV channels.
         See class init docs for details.
+
+        Notes
+        -----
+        This class does not generate heartbeats. The heartbeating is done by
+        the DayAnimator class, as this is the one that actually does the work,
+        including the uploading. Moreover, if we get into a situation where
+        this loop is being gone around without directories being created we
+        should not be emitting heartbeats - in such a situation the service
+        should be considered down.
         """
         while True:
             try:
