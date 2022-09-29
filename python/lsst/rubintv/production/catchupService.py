@@ -326,6 +326,8 @@ class RubinTvBackgroundService():
                     self.runCatchup()
                     lastRun = time.time()
                     if self.hasDayRolledOver():
+                        self.log.info(f'Day has rolled over, sleeping for {self.endOfDayDelay}s before '
+                                      'running end of day routine.')
                         sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
                         self.runEndOfDay()  # sets new dayObs in a finally block
                 else:

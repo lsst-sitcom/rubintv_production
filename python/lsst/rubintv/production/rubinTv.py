@@ -582,10 +582,13 @@ class MetadataServer():
         rawmd = butler.get('raw.metadata', dataId)
         obsInfo = ObservationInfo(rawmd)
         d['airmass'] = obsInfo.boresight_airmass
+        d['focus_z'] = obsInfo.focus_z.value
 
-        if 'FOCUSZ' in rawmd:
-            d['focus_z'] = rawmd['FOCUSZ']
-        if 'SEEING' in rawmd:
+        d['Altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
+        if obsInfo.altaz_begin is not None:
+            d['Altitude'] = obsInfo.altaz_begin.alt.value
+
+        if 'SEEING' in rawmd:  # SEEING not yet in the obsInfo so take direct from header
             d['Seeing'] = rawmd['SEEING']
 
         for key in keysToRemove:
