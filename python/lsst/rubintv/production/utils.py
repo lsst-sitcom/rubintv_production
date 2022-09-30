@@ -300,7 +300,8 @@ def pushTestImageToCurrent(channel, duration=15):
 
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
-    if channel in ['auxtel_metadata', 'auxtel_isr_runner']:
+    if channel in ['auxtel_metadata', 'auxtel_isr_runner', 'all_sky_current', 'all_sky_movies',
+                   'auxtel_movies']:
         raise ValueError(f'Pushing test data not supported for {channel}')
     if duration > 60:
         raise ValueError(f'Maximum time to leave test images in buckets is 60s, got {duration}')
