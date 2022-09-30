@@ -282,6 +282,12 @@ def pushTestImageToCurrent(channel, duration=15):
         object is created internally.
     duration : `float`, optional
         The duration to leave the test image up for, in seconds.
+
+    Raises
+    ------
+    ValueError: Raised when the channel is unknown or the channel does support
+        test images being pushed to it, or is the requested duration for the
+        test image to remain is too long (max of 60s).
     """
     logger = logging.getLogger(__name__)
 
@@ -289,7 +295,7 @@ def pushTestImageToCurrent(channel, duration=15):
 
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
-    if channel in ['auxtel_metadata']:
+    if channel in ['auxtel_metadata', 'auxtel_isr_runner']:
         raise ValueError(f'Pushing test data not supported for {channel}')
     if duration > 60:
         raise ValueError(f'Maximum time to leave test images in buckets is 60s, got {duration}')
