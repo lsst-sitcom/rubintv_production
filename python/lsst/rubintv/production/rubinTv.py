@@ -211,6 +211,7 @@ class Uploader():
         if isLiveFile:
             blob.reload()
             assert(blob.cache_control == 'no-store')
+        return blob
 
 
 class Watcher():
