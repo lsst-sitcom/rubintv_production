@@ -542,6 +542,8 @@ class MetadataServer():
         self.watcher = Watcher(self.dataProduct, self.channel)
         self.outputRoot = outputRoot
         self.doRaise = doRaise
+        self.uploadEveryNimages = 1
+        self._imageCounter = 0
 
     @staticmethod
     def dataIdToMetadataDict(butler, dataId, keysToRemove):
@@ -631,7 +633,7 @@ class MetadataServer():
         dayObs = butlerUtils.getDayObs(dataId)
         return os.path.join(self.outputRoot, f'dayObs_{dayObs}.json')
 
-    def callback(self, dataId):
+    def callback(self, dataId, alwaysUpload=False):
         """Method called on each new dataId as it is found in the repo.
 
         Add the metadata to the sidecar for the dataId and upload.
@@ -643,9 +645,11 @@ class MetadataServer():
             md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
             self.appendToJson(sidecarFilename, md)
 
-            self.log.info("Uploading sidecar file to storage bucket")
-            self.uploader.googleUpload(self.channel, sidecarFilename, isLiveFile=True)
-            self.log.info('Upload complete')
+            if alwaysUpload or (self._imageCounter % self.uploadEveryNimages == 0):
+                self.log.info("Uploading sidecar file to storage bucket")
+                self.uploader.googleUpload(self.channel, sidecarFilename, isLiveFile=True)
+                self.log.info('Upload complete')
+            self._imageCounter += 1
 
         except Exception as e:
             if self.doRaise:
