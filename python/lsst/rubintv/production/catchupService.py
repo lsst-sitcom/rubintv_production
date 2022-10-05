@@ -32,7 +32,7 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
 from lsst.rubintv.production import Uploader
 from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
-from lsst.rubintv.production.utils import remakeDay
+from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
 
 __all__ = ['RubinTvBackgroundService']
 
@@ -130,8 +130,10 @@ class RubinTvBackgroundService():
         elif currentDay == self.dayObs+1:
             return True
         else:
-            raise RuntimeError(f"Encountered non-linear time! Day cleaner was started with {self.dayObs}"
-                               f"and now current dayObs is {currentDay}!")
+            if not isDayObsContiguous(currentDay, self.dayObs):
+                self.log.warning(f"Encountered non-linear time! Day cleaner was started with {self.dayObs} "
+                                 f"and now current dayObs is {currentDay}!")
+            return True  # the day has still rolled over, just in an unexpected way
 
     def getMissingQuickLookIds(self):
         """Get a list of the dataIds for the current dayObs for which
