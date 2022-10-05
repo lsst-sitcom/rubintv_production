@@ -163,8 +163,8 @@ class Uploader():
         blob.cache_control = 'no-store'  # must set before upload
 
         # heartbeat retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(0.02)
-        modified_retry = modified_retry.with_delay(initial=1, multiplier=1, maximum=1)
+        modified_retry = DEFAULT_RETRY.with_deadline(0.003)
+        modified_retry = modified_retry.with_delay(initial=1, multiplier=2, maximum=2)
 
         blob.upload_from_string(heartbeatJson, retry=modified_retry)
 
