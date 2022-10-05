@@ -35,6 +35,7 @@ from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
 try:
     from google.cloud import storage
+    from google.cloud.storage.retry import DEFAULT_RETRY
     HAS_GOOGLE_STORAGE = True
 except ImportError:
     HAS_GOOGLE_STORAGE = False
@@ -160,7 +161,12 @@ class Uploader():
 
         blob = self.bucket.blob("/".join([filename]))
         blob.cache_control = 'no-store'  # must set before upload
-        blob.upload_from_string(heartbeatJson)
+
+        # heartbeat retry strategy
+        modified_retry = DEFAULT_RETRY.with_deadline(0.02)
+        modified_retry = modified_retry.with_delay(initial=1, multiplier=1, maximum=1)
+
+        blob.upload_from_string(heartbeatJson, retry=modified_retry)
 
         self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
 
@@ -207,7 +213,12 @@ class Uploader():
         if isLiveFile:
             blob.cache_control = 'no-store'
         self.log.info(f'Uploaded {sourceFilename} to {finalName}')
-        blob.upload_from_filename(finalName)
+
+        # general retry strategy
+        modified_retry = DEFAULT_RETRY.with_deadline(5.0) # in seconds
+        modified_retry = modified_retry.with_delay(initial=1, multiplier=2, maximum=64)
+        blob.upload_from_filename(finalName, retry=modified_retry)
+
         if isLiveFile:
             blob.reload()
             assert(blob.cache_control == 'no-store')
