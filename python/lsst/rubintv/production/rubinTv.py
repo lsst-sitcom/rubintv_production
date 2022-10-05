@@ -308,7 +308,7 @@ class IsrRunner():
         self.log = _LOG.getChild("isrRunner")
         self.watcher = Watcher('raw', 'auxtel_isr_runner')
 
-    def callback(self, dataId):
+    def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
         Produce a quickLookExp of the latest image, and butler.put() it to the
@@ -344,7 +344,7 @@ class ImExaminerChannel():
         imexam = ImageExaminer(exp, savePlots=outputFilename, doTweakCentroid=True)
         imexam.plot()
 
-    def callback(self, dataId):
+    def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
         Plot the quick imExam analysis of the latest image, writing the plot
@@ -395,7 +395,7 @@ class SpecExaminerChannel():
         summary = SpectrumExaminer(exp, savePlotAs=outputFilename)
         summary.run()
 
-    def callback(self, dataId):
+    def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
         Plot the quick spectral reduction of the latest image, writing the plot
@@ -450,7 +450,7 @@ class MonitorChannel():
             return
         plotExp(exp, dataId, self.fig, outputFilename)
 
-    def callback(self, dataId):
+    def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
         Plot the image for display on the monitor, writing the plot
@@ -499,7 +499,7 @@ class MountTorqueChannel():
         self.fig = plt.figure(figsize=(16, 16))
         self.doRaise = doRaise
 
-    def callback(self, dataId):
+    def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
         Plot the mount torques, pulling data from the EFD, writing the plot
