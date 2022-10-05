@@ -23,6 +23,7 @@ import os
 import logging
 from time import sleep
 from lsst.utils import getPackageDir
+from datetime import datetime, timedelta
 
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
@@ -267,6 +268,29 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
     # ensure that the end of the list always gets uploaded
     tvChannel.callback(dataId={'day_obs': dayObs, 'seq_num': toMake[-1], 'detector': 0},
                        alwaysUpload=True)
+
+
+def isDayObsContiguous(dayObs, otherDayObs):
+    """Check if two dayObs integers are coniguous or not.
+
+    DayObs take forms like 20220727 and therefore don't trivially compare.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        The first dayObs to compare.
+    otherDayObs : `int`
+        The second dayObs to compare.
+
+    Returns
+    -------
+    contiguous : `bool`
+        Are the days contiguous?
+    """
+    d1 = datetime.strptime(str(dayObs), '%Y%m%d')
+    d2 = datetime.strptime(str(otherDayObs), '%Y%m%d')
+    deltaDays = d2.date() - d1.date()
+    return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
 
 
 def pushTestImageToCurrent(channel, duration=15):
