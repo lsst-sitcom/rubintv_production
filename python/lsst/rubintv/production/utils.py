@@ -257,11 +257,16 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
     tvChannel = createChannelByName(channel, doRaise=False, **kwargs)
-    for seqNum in toMake:
+    if channel in ['auxtel_metadata']:
+        tvChannel.uploadEveryNimages = 100
+
+    for seqNum in toMake[:-1]:
         dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
         tvChannel.callback(dataId)
-        if channel in ['auxtel_metadata']:
-            sleep(1.5)  # metadata creation is fast enough that we hit the GCS rate limit without a pause
+    # do the last number of the day separately with alwaysUpload=True so we
+    # ensure that the end of the list always gets uploaded
+    tvChannel.callback(dataId={'day_obs': dayObs, 'seq_num': toMake[-1], 'detector': 0},
+                       alwaysUpload=True)
 
 
 def pushTestImageToCurrent(channel, duration=15):
@@ -295,7 +300,8 @@ def pushTestImageToCurrent(channel, duration=15):
 
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
-    if channel in ['auxtel_metadata', 'auxtel_isr_runner']:
+    if channel in ['auxtel_metadata', 'auxtel_isr_runner', 'all_sky_current', 'all_sky_movies',
+                   'auxtel_movies']:
         raise ValueError(f'Pushing test data not supported for {channel}')
     if duration > 60:
         raise ValueError(f'Maximum time to leave test images in buckets is 60s, got {duration}')
