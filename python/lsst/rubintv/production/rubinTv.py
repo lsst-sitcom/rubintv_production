@@ -146,6 +146,20 @@ class Uploader():
         self.log = _LOG.getChild("googleUploader")
 
     def uploadHeartbeat(self, channel, flatlinePeriod):
+        """Upload a heartbeat for the specified channel to the bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The channel name.
+        flatlinePeriod : `float`
+            The period after which to consider the channel dead.
+
+        Returns
+        -------
+        success : `bool`
+            Did the upload succeed?
+        """
         filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
 
         currTime = int(time.time())
@@ -163,16 +177,15 @@ class Uploader():
         blob.cache_control = 'no-store'  # must set before upload
 
         # heartbeat retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(0.6)
+        modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
         modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
 
-        blob.upload_from_string(heartbeatJson, retry=modified_retry)
-
-        self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
-
-        blob.reload()
-        if blob.cache_control != 'no-store':
-            raise RuntimeError(f'Live file {filename} has wrong caching metadata {blob.cache_control}')
+        try:
+            blob.upload_from_string(heartbeatJson, retry=modified_retry)
+            self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
+            return True
+        except Exception:
+            return False
 
     def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
         """Upload a file to the RubinTV Google cloud storage bucket.
@@ -215,13 +228,12 @@ class Uploader():
         self.log.info(f'Uploaded {sourceFilename} to {finalName}')
 
         # general retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(5.0)  # in seconds
+        # still quite gentle as the catchup service will fill in gaps
+        # and we don't want to hold up new images landing
+        modified_retry = DEFAULT_RETRY.with_deadline(2.0)  # in seconds
         modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
         blob.upload_from_filename(finalName, retry=modified_retry)
 
-        if isLiveFile:
-            blob.reload()
-            assert(blob.cache_control == 'no-store')
         return blob
 
 
@@ -286,8 +298,8 @@ class Watcher():
             """
             nonlocal lastHeartbeat
             if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(self.channel, self.HEARTBEAT_FLATLINE_PERIOD)
-                lastHeartbeat = time.time()
+                if self.uploader.uploadHeartbeat(self.channel, self.HEARTBEAT_FLATLINE_PERIOD):
+                    lastHeartbeat = time.time()  # only reset this if the upload was successful
 
         while (time.time() - loopStart < durationInSeconds) or (durationInSeconds == -1):
             try:

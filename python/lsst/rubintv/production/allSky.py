@@ -483,8 +483,8 @@ class DayAnimator():
             """
             nonlocal lastHeartbeat
             if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
-                self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD)
-                lastHeartbeat = time.time()
+                if self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD):
+                    lastHeartbeat = time.time()  # only reset this if the upload was successful
 
         while True:
             allFiles = _getFilesetFromDir(self.todaysDataDir)
