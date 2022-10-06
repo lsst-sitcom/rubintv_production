@@ -163,8 +163,8 @@ class Uploader():
         blob.cache_control = 'no-store'  # must set before upload
 
         # heartbeat retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(0.003)
-        modified_retry = modified_retry.with_delay(initial=1, multiplier=2, maximum=2)
+        modified_retry = DEFAULT_RETRY.with_deadline(0.6)
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
 
         blob.upload_from_string(heartbeatJson, retry=modified_retry)
 
@@ -215,8 +215,8 @@ class Uploader():
         self.log.info(f'Uploaded {sourceFilename} to {finalName}')
 
         # general retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(5.0) # in seconds
-        modified_retry = modified_retry.with_delay(initial=1, multiplier=2, maximum=64)
+        modified_retry = DEFAULT_RETRY.with_deadline(5.0)  # in seconds
+        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
         blob.upload_from_filename(finalName, retry=modified_retry)
 
         if isLiveFile:
