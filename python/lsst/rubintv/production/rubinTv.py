@@ -232,7 +232,10 @@ class Uploader():
         # and we don't want to hold up new images landing
         modified_retry = DEFAULT_RETRY.with_deadline(2.0)  # in seconds
         modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
-        blob.upload_from_filename(finalName, retry=modified_retry)
+        try:
+            blob.upload_from_filename(finalName, retry=modified_retry)
+        except Exception:
+            pass
 
         return blob
 
