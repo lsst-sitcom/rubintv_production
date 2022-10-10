@@ -254,6 +254,9 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
                     f"leaving {nToMake} to create.")
 
     toMake = sorted(allSeqNums - existing)
+    if not toMake:
+        logger.info(f"Nothing to do for {channel} on {dayObs}")
+        return
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
