@@ -57,6 +57,7 @@ from lsst.atmospec.utils import isDispersedDataId
 
 from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
+from lsst.rubintv.production import Heartbeater
 
 CHANNELS = ["summit_imexam",
             "summit_specexam",
@@ -268,6 +269,9 @@ class Watcher():
         self.channel = channel
         self.uploader = Uploader()
         self.log = _LOG.getChild("watcher")
+        self.heartbeater = Heartbeater(channel,
+                                       self.HEARTBEAT_UPLOAD_PERIOD,
+                                       self.HEARTBEAT_FLATLINE_PERIOD)
 
     def _getLatestImageDataIdAndExpId(self):
         """Get the dataId and expId for the most recent image in the repo.
@@ -294,15 +298,6 @@ class Watcher():
 
         lastFound = -1
         loopStart = time.time()
-        lastHeartbeat = loopStart
-
-        def beat():
-            """Perform the heartbeat if enough time has passed.
-            """
-            nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
-                if self.uploader.uploadHeartbeat(self.channel, self.HEARTBEAT_FLATLINE_PERIOD):
-                    lastHeartbeat = time.time()  # only reset this if the upload was successful
 
         while (time.time() - loopStart < durationInSeconds) or (durationInSeconds == -1):
             try:
@@ -310,12 +305,12 @@ class Watcher():
 
                 if lastFound == expId:
                     sleep(self.cadence)
-                    beat()
+                    self.heartbeater.beat()
                     continue
                 else:
                     lastFound = expId
                     callback(dataId)
-                    beat()  # after the callback so as not to delay processing with an upload
+                    self.heartbeater.beat()  # after the callback so as not to delay processing with an upload
 
             except NotFoundError as e:  # NotFoundError when filters aren't defined
                 print(f'Skipped displaying {dataId} due to {e}')
