@@ -323,10 +323,11 @@ class RubinTvBackgroundService():
                     if self.hasDayRolledOver():
                         self.log.info(f'Day has rolled over, sleeping for {self.endOfDayDelay}s before '
                                       'running end of day routine.')
-                        self.heartbeater.beat(flatlinePeriod=self.endOfDayDelay*1.5)  # endOfDayDelay is long
+                        # endOfDayDelay is long so send a heartbeat first
+                        self.heartbeater.beat(customFlatlinePeriod=self.endOfDayDelay*1.5)
                         sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
                         # animation can take a very long time
-                        self.heartbeater.beat(flatlinePeriod=1.5*60*60)
+                        self.heartbeater.beat(customFlatlinePeriod=1.5*60*60)
                         self.runEndOfDay()  # sets new dayObs in a finally block
                         self.heartbeater.beat()
                 else:
