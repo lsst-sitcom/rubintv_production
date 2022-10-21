@@ -30,7 +30,7 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
-from lsst.rubintv.production import Uploader
+from .uploadTools import Uploader, Heartbeater
 from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
 from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
 
@@ -93,6 +93,9 @@ class RubinTvBackgroundService():
         self.butler = butlerUtils.makeDefaultLatissButler()
         self.bestEffort = BestEffortIsr(**kwargs)
         self.uploader = Uploader()
+        self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       self.HEARTBEAT_UPLOAD_PERIOD,
+                                       self.HEARTBEAT_FLATLINE_PERIOD)
 
     def _raiseIf(self, error):
         """Raises the error if ``self.doRaise`` otherwise logs it as a warning.
@@ -310,34 +313,29 @@ class RubinTvBackgroundService():
         lastRun = time.time()
         self.dayObs = getCurrentDayObs_int()
 
-        lastAnimationTime = time.time()
-        lastHeartbeat = lastAnimationTime
-
-        def beat():
-            """Perform the heartbeat if enough time has passed.
-            """
-            nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
-                if self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD):
-                    lastHeartbeat = time.time()  # only reset this if the upload was successful
-
         while True:
             try:
                 timeSince = time.time() - lastRun
                 if timeSince >= self.catchupPeriod:
                     self.runCatchup()
+                    self.heartbeater.beat()
                     lastRun = time.time()
                     if self.hasDayRolledOver():
                         self.log.info(f'Day has rolled over, sleeping for {self.endOfDayDelay}s before '
                                       'running end of day routine.')
+                        # endOfDayDelay is long so send a heartbeat first
+                        self.heartbeater.beat(customFlatlinePeriod=self.endOfDayDelay*1.5)
                         sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
+                        # animation can take a very long time
+                        self.heartbeater.beat(customFlatlinePeriod=1.5*60*60)
                         self.runEndOfDay()  # sets new dayObs in a finally block
+                        self.heartbeater.beat()
                 else:
                     remaining = self.catchupPeriod - timeSince
                     self.log.info(f'Waiting for catchup period to elapse, {remaining:.2f}s to go...')
                     sleep(self.loopSleep)
 
-                beat()
+                self.heartbeater.beat()
 
             except Exception as e:
                 self._raiseIf(e)

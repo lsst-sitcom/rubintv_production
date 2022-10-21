@@ -27,17 +27,23 @@ from datetime import datetime, timedelta
 
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
-from . import CHANNELS, PREFIXES
-from . import (ImExaminerChannel,
-               SpecExaminerChannel,
-               MountTorqueChannel,
-               MonitorChannel,
-               MetadataServer,
-               Uploader,
-               )
-from .rubinTv import _dataIdToFilename
+from .channels import CHANNELS, PREFIXES
+from .rubinTv import (ImExaminerChannel,
+                      SpecExaminerChannel,
+                      MountTorqueChannel,
+                      MonitorChannel,
+                      MetadataServer,
+                      Uploader,
+                      _dataIdToFilename,
+                      )
 
 __all__ = ["checkRubinTvExternalPackages",
+           "getPlotSeqNumsForDayObs",
+           "createChannelByName",
+           "remakePlotByDataId",
+           "remakeDay",
+           "isDayObsContiguous",
+           "pushTestImageToCurrent",
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -254,6 +260,9 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
                     f"leaving {nToMake} to create.")
 
     toMake = sorted(allSeqNums - existing)
+    if not toMake:
+        logger.info(f"Nothing to do for {channel} on {dayObs}")
+        return
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.

@@ -1,0 +1,200 @@
+# This file is part of rubintv_production.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import os
+import json
+import time
+from pathlib import Path
+import shutil
+import logging
+import tempfile
+
+from .channels import CHANNELS
+
+try:
+    from google.cloud import storage
+    from google.cloud.storage.retry import DEFAULT_RETRY
+    HAS_GOOGLE_STORAGE = True
+except ImportError:
+    HAS_GOOGLE_STORAGE = False
+
+__all__ = ['Uploader',
+           'Heartbeater']
+
+_LOG = logging.getLogger(__name__)
+
+
+class Uploader():
+    """Class for handling uploads to the Google cloud storage bucket.
+    """
+    HEARTBEAT_PREFIX = "heartbeats"
+
+    def __init__(self):
+        if not HAS_GOOGLE_STORAGE:
+            from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
+            raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
+        self.client = storage.Client()
+        self.bucket = self.client.get_bucket('rubintv_data')
+        self.log = _LOG.getChild("googleUploader")
+
+    def uploadHeartbeat(self, channel, flatlinePeriod):
+        """Upload a heartbeat for the specified channel to the bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The channel name.
+        flatlinePeriod : `float`
+            The period after which to consider the channel dead.
+
+        Returns
+        -------
+        success : `bool`
+            Did the upload succeed?
+        """
+        filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
+
+        currTime = int(time.time())
+        nextExpected = currTime + flatlinePeriod
+
+        heartbeatJsonDict = {
+            "channel": channel,
+            "currTime": currTime,
+            "nextExpected": nextExpected,
+            "errors": {}
+        }
+        heartbeatJson = json.dumps(heartbeatJsonDict)
+
+        blob = self.bucket.blob("/".join([filename]))
+        blob.cache_control = 'no-store'  # must set before upload
+
+        # heartbeat retry strategy
+        modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+
+        try:
+            blob.upload_from_string(heartbeatJson, retry=modified_retry)
+            self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
+            return True
+        except Exception:
+            return False
+
+    def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
+        """Upload a file to the RubinTV Google cloud storage bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        sourceFilename : `str`
+            The full path and filename of the file to upload.
+        uploadAsFilename : `str`, optional
+            Optionally rename the file to this upon upload.
+        isLiveFile : `bool`, optional
+            The file is being updated constantly, and so caching should be
+        disabled.
+
+        Raises
+        ------
+        ValueError
+            Raised if the specified channel is not in the list of existing
+            channels as specified in CHANNELS
+        RuntimeError
+            Raised if the Google cloud storage is not installed/importable.
+        """
+        if channel not in CHANNELS:
+            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+
+        if uploadAsFilename and (os.path.basename(sourceFilename) != uploadAsFilename):
+            tempdir = tempfile.mkdtemp()
+            finalName = os.path.join(tempdir, uploadAsFilename)
+            shutil.copy(sourceFilename, finalName)
+            assert os.path.exists(finalName)
+        else:
+            finalName = sourceFilename
+
+        path = Path(finalName)
+        blob = self.bucket.blob("/".join([channel, path.name]))
+        if isLiveFile:
+            blob.cache_control = 'no-store'
+        self.log.info(f'Uploaded {sourceFilename} to {finalName}')
+
+        # general retry strategy
+        # still quite gentle as the catchup service will fill in gaps
+        # and we don't want to hold up new images landing
+        modified_retry = DEFAULT_RETRY.with_deadline(2.0)  # in seconds
+        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
+        try:
+            blob.upload_from_filename(finalName, retry=modified_retry)
+        except Exception:
+            pass
+
+        return blob
+
+
+class Heartbeater():
+    """A class for uploading heartbeats to the GCS bucket.
+
+    Call ``beater.beat()`` as often as you like. Files will only be uploaded
+    once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when calling
+    beat.
+
+    Parameters
+    ----------
+    handle : `str`
+        The name of the channel to which the heartbeat corresponds.
+    uploadPeriod : `float`
+        The time, in seconds, which must have passed since the last successful
+        heartbeat for a new upload to be undertaken.
+    flatlinePeriod : `float`
+        If a new heartbeat is not received before the flatlinePeriod elapses,
+        in seconds, the channel will be considered down.
+    """
+    def __init__(self, handle, uploadPeriod, flatlinePeriod):
+        self.handle = handle
+        self.uploadPeriod = uploadPeriod
+        self.flatlinePeriod = flatlinePeriod
+
+        self.lastUpload = -1
+        self.uploader = Uploader()
+
+    def beat(self, ensure=False, customFlatlinePeriod=None):
+        """Upload the heartbeat if enough time has passed or ensure=True.
+
+        customFlatlinePeriod implies ensure, as long forecasts should always be
+        uploaded.
+
+        Parameters
+        ----------
+        ensure : `str`
+            Ensure that the heartbeat is uploaded, even if one has been sent
+            within the last ``uploadPeriod``.
+        customFlatlinePeriod : `float`
+            Upload with a different flatline period. Use before starting long
+            running jobs.
+        """
+        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
+
+        now = time.time()
+        elapsed = now - self.lastUpload
+        if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
+            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
+                self.lastUpload = now  # only reset this if the upload was successful

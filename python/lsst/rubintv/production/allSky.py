@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from lsst.rubintv.production import Uploader
+from lsst.rubintv.production import Uploader, Heartbeater
 from lsst.rubintv.production.rubinTv import _dataIdToFilename
 
 try:
@@ -327,6 +327,9 @@ class DayAnimator():
         self.channel = channel
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
+        self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       self.HEARTBEAT_UPLOAD_PERIOD,
+                                       self.HEARTBEAT_FLATLINE_PERIOD)
 
     def hasDayRolledOver(self):
         """Check if the dayObs has rolled over.
@@ -476,15 +479,6 @@ class DayAnimator():
 
         convertedFiles = set()
         lastAnimationTime = time.time()
-        lastHeartbeat = lastAnimationTime
-
-        def beat():
-            """Perform the heartbeat if enough time has passed.
-            """
-            nonlocal lastHeartbeat
-            if ((time.time() - lastHeartbeat) >= self.HEARTBEAT_UPLOAD_PERIOD):
-                if self.uploader.uploadHeartbeat(self.HEARTBEAT_HANDLE, self.HEARTBEAT_FLATLINE_PERIOD):
-                    lastHeartbeat = time.time()  # only reset this if the upload was successful
 
         while True:
             allFiles = _getFilesetFromDir(self.todaysDataDir)
@@ -492,7 +486,7 @@ class DayAnimator():
 
             # convert any new files
             newFiles = allFiles - convertedFiles
-            beat()
+            self.heartbeater.beat()
 
             if newFiles:
                 newFiles = sorted(newFiles)
@@ -506,7 +500,7 @@ class DayAnimator():
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug('Sleeping 20s waiting for new files')
-                beat()
+                self.heartbeater.beat()
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
