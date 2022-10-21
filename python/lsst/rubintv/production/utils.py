@@ -38,6 +38,12 @@ from . import (ImExaminerChannel,
 from .rubinTv import _dataIdToFilename
 
 __all__ = ["checkRubinTvExternalPackages",
+           "getPlotSeqNumsForDayObs",
+           "createChannelByName",
+           "remakePlotByDataId",
+           "remakeDay",
+           "isDayObsContiguous",
+           "pushTestImageToCurrent",
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
