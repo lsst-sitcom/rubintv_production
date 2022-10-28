@@ -20,7 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
+import yaml
 import os
+from glob import glob
 import time
 from time import sleep
 import tempfile
@@ -62,6 +64,7 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
+config = yaml.safe_load(open("config.yaml", "rb"))
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
@@ -437,6 +440,9 @@ class MetadataServer():
         self.doRaise = doRaise
         self.uploadEveryNimages = 1
         self._imageCounter = 0
+        self._shardsDir = config.get("shardsDir")
+        if not os.path.exists(self._shardsDir):
+            os.mkdir(self._shardsDir)
 
     @staticmethod
     def dataIdToMetadataDict(butler, dataId, keysToRemove):
@@ -494,7 +500,7 @@ class MetadataServer():
         return {seqNum: d}
 
     @staticmethod
-    def appendToJson(filename, md):
+    def appendToJson(filename, md, shardsDir):
         """Add a dictionary item to the JSON file containing the sidecar data.
 
         Updates the file in place.
@@ -511,6 +517,18 @@ class MetadataServer():
             with open(filename) as f:
                 data = json.load(f)
         data.update(md)
+
+        shardFiles = glob(os.path.join(shardsDir, "metadata_*"))
+        for shardFile in shardFiles:
+            with open(shardFile) as f:
+                shard = json.load(f)
+            if shard:
+                for row in shard:
+                    if row in data:
+                        data[row].update(shard[row])
+                    else:
+                        data.update({row: shard[row]})
+            os.remove(shardFile)
 
         with open(filename, 'w') as f:
             json.dump(data, f)
@@ -536,7 +554,7 @@ class MetadataServer():
             sidecarFilename = self.getSidecarFilename(dataId)
 
             md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
-            self.appendToJson(sidecarFilename, md)
+            self.appendToJson(sidecarFilename, md, self._shardsDir)
 
             if alwaysUpload or (self._imageCounter % self.uploadEveryNimages == 0):
                 self.log.info("Uploading sidecar file to storage bucket")
