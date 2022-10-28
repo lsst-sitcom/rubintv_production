@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import yaml
 import logging
 from time import sleep
 from lsst.utils import getPackageDir
@@ -52,6 +53,12 @@ EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please instal
 GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please install with:\n'
                             '    pip install google-cloud-storage')
 
+
+def initConfig():
+    packageDir = getPackageDir('rubintv_production')
+    configFile = os.path.join(packageDir, 'config', 'config.yaml')
+    config = yaml.safe_load(open(configFile, "rb"))
+    return config
 
 def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
     """Check whether the prerequsite installs for RubinTV are present.

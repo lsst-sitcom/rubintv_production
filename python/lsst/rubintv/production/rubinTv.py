@@ -52,11 +52,9 @@ from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .uploadTools import Heartbeater, Uploader
 from .channels import PREFIXES
+from .utils import initConfig
 
-from lsst.utils import getPackageDir
-packageDir = getPackageDir('rubintv_production')
-configFile = os.path.join(packageDir, 'config', 'config.yaml')
-config = yaml.safe_load(open(configFile, "rb"))
+config = initConfig()
 
 _LOG = logging.getLogger(__name__)
 
