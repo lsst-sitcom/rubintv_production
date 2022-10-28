@@ -53,6 +53,10 @@ from lsst.rubintv.production.monitorPlotting import plotExp
 from .uploadTools import Heartbeater, Uploader
 from .channels import PREFIXES
 
+from lsst.utils import getPackageDir
+packageDir = getPackageDir('rubintv_production')
+configFile = os.path.join(packageDir, 'config', 'config.yaml')
+config = yaml.safe_load(open(configFile, "rb"))
 
 _LOG = logging.getLogger(__name__)
 
@@ -64,7 +68,6 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
-config = yaml.safe_load(open("config.yaml", "rb"))
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.

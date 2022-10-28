@@ -23,8 +23,16 @@ from lsst.rubintv.production.catchupService import RubinTvBackgroundService
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
-allSkyPngRoot = '/project/rubintv/allsky/'
-moviePngRoot = '/project/rubintv/auxTel_animation/'
+from lsst.utils import getPackageDir
+import os
+import yaml
+
+packageDir = getPackageDir('rubintv_production')
+configFile = os.path.join(packageDir, 'config', 'config.yaml')
+config = yaml.safe_load(open(configFile, "rb"))
+
+allSkyPngRoot = config.get('allSkyOutputRoot')
+moviePngRoot = config.get('moviePngRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()

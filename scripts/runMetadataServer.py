@@ -23,7 +23,15 @@ from lsst.rubintv.production.rubinTv import MetadataServer
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
-outputRoot = '/project/rubintv/sidecar_metadata/'
+from lsst.utils import getPackageDir
+import os
+import yaml
+
+packageDir = getPackageDir('rubintv_production')
+configFile = os.path.join(packageDir, 'config', 'config.yaml')
+config = yaml.safe_load(open(configFile, "rb"))
+
+outputRoot = config.get('metadataOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()

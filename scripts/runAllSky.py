@@ -23,8 +23,16 @@ from lsst.rubintv.production.allSky import AllSkyMovieChannel
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
-rootDataPath = '/project/rubintv/allsky/raw/'
-outputRoot = '/project/rubintv/allsky/'
+from lsst.utils import getPackageDir
+import os
+import yaml
+
+packageDir = getPackageDir('rubintv_production')
+configFile = os.path.join(packageDir, 'config', 'config.yaml')
+config = yaml.safe_load(open(configFile, "rb"))
+
+rootDataPath = config.get('allSkyRootDataPath')
+outputRoot = config.get('allSkyOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()

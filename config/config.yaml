@@ -1,0 +1,8 @@
+shardsDir: "/project/rubintv/shards"
+
+metadataOutputRoot: "/project/rubintv/sidecar_metadata/"
+
+allSkyRootDataPath: "/project/rubintv/allsky/raw/"
+allSkyOutputRoot: "/project/rubintv/allsky/"
+
+moviePngRoot: "/project/rubintv/auxTel_animation/"
