@@ -441,8 +441,7 @@ class MetadataServer():
         self.uploadEveryNimages = 1
         self._imageCounter = 0
         self._shardsDir = config.get("shardsDir")
-        if not os.path.exists(self._shardsDir):
-            os.mkdir(self._shardsDir)
+        os.mkdir(self._shardsDir, exist_ok=True)
 
     @staticmethod
     def dataIdToMetadataDict(butler, dataId, keysToRemove):
