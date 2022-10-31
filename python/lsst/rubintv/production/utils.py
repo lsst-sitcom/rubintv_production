@@ -54,7 +54,7 @@ GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please
                             '    pip install google-cloud-storage')
 
 
-def initConfig():
+def getConfig():
     packageDir = getPackageDir('rubintv_production')
     configFile = os.path.join(packageDir, 'config', 'config.yaml')
     config = yaml.safe_load(open(configFile, "rb"))

@@ -52,9 +52,9 @@ from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .uploadTools import Heartbeater, Uploader
 from .channels import PREFIXES
-from .utils import initConfig
+from .utils import getConfig
 
-config = initConfig()
+config = getConfig()
 
 _LOG = logging.getLogger(__name__)
 

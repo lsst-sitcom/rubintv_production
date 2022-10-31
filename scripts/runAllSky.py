@@ -20,10 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.allSky import AllSkyMovieChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, initConfig
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getConfig
 from lsst.summit.utils.utils import setupLogging
 
-config = initConfig()
+config = getConfig()
 rootDataPath = config.get('allSkyRootDataPath')
 outputRoot = config.get('allSkyOutputRoot')
 
