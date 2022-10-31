@@ -66,6 +66,29 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
+MD_NAMES_MAP = {
+  "id": 'Exposure id',
+  "exposure_time": 'Exposure time',
+  "dark_time": 'Darktime',
+  "observation_type": 'Image type',
+  "observation_reason": 'Observation reason',
+  "day_obs": 'dayObs',
+  "seq_num": 'seqNum',
+  "group_id": 'Group id',
+  "target_name": 'Target',
+  "science_program": 'Science program',
+  "tracking_ra": 'RA',
+  "tracking_dec": 'Dec.',
+  "sky_angle": 'Sky angle',
+  "azimuth": 'Azimuth',
+  "zenith_angle": 'Zenith angle',
+  "time_begin_tai": 'TAI',
+  "filter": 'Filter',
+  "disperser": 'Disperser',
+  "airmass": 'Airmass',
+  "focus_z": 'Focus-Z',
+  "Seeing": 'DIMM Seeing'
+}
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
@@ -497,7 +520,9 @@ class MetadataServer():
             if key in d:
                 d.pop(key)
 
-        return {seqNum: d}
+        properNames = { MD_NAMES_MAP[attrName]: d[attrName] for attrName in d }
+
+        return {seqNum: properNames}
 
     @staticmethod
     def appendToJson(filename, md, shardsDir):
