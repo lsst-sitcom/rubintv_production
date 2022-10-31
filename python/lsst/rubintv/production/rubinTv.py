@@ -20,13 +20,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-import yaml
 import os
-from glob import glob
 import time
-from time import sleep
-import tempfile
+from pathlib import Path
+import shutil
 import logging
+import tempfile
+from glob import glob
+from time import sleep
 import matplotlib.pyplot as plt
 
 import lsst.summit.utils.butlerUtils as butlerUtils
@@ -39,6 +40,13 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
+try:
+    from google.cloud import storage
+    from google.cloud.storage.retry import DEFAULT_RETRY
+    HAS_GOOGLE_STORAGE = True
+except ImportError:
+    HAS_GOOGLE_STORAGE = False
+
 from lsst.pex.exceptions import NotFoundError
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
@@ -50,8 +58,7 @@ from lsst.atmospec.utils import isDispersedDataId
 
 from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .uploadTools import Heartbeater, Uploader
-from .channels import PREFIXES
+from .channels import PREFIXES, CHANNELS
 from .utils import getConfig
 
 config = getConfig()
@@ -66,29 +73,29 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
-MD_NAMES_MAP = {
-  "id": 'Exposure id',
-  "exposure_time": 'Exposure time',
-  "dark_time": 'Darktime',
-  "observation_type": 'Image type',
-  "observation_reason": 'Observation reason',
-  "day_obs": 'dayObs',
-  "seq_num": 'seqNum',
-  "group_id": 'Group id',
-  "target_name": 'Target',
-  "science_program": 'Science program',
-  "tracking_ra": 'RA',
-  "tracking_dec": 'Dec.',
-  "sky_angle": 'Sky angle',
-  "azimuth": 'Azimuth',
-  "zenith_angle": 'Zenith angle',
-  "time_begin_tai": 'TAI',
-  "filter": 'Filter',
-  "disperser": 'Disperser',
-  "airmass": 'Airmass',
-  "focus_z": 'Focus-Z',
-  "Seeing": 'DIMM Seeing'
-}
+MD_NAMES_MAP = {"id": 'Exposure id',
+                "exposure_time": 'Exposure time',
+                "dark_time": 'Darktime',
+                "observation_type": 'Image type',
+                "observation_reason": 'Observation reason',
+                "day_obs": 'dayObs',
+                "seq_num": 'seqNum',
+                "group_id": 'Group id',
+                "target_name": 'Target',
+                "science_program": 'Science program',
+                "tracking_ra": 'RA',
+                "tracking_dec": 'Dec.',
+                "sky_angle": 'Sky angle',
+                "azimuth": 'Azimuth',
+                "zenith_angle": 'Zenith angle',
+                "time_begin_tai": 'TAI',
+                "filter": 'Filter',
+                "disperser": 'Disperser',
+                "airmass": 'Airmass',
+                "focus_z": 'Focus-Z',
+                "Seeing": 'DIMM Seeing',
+                }
+
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
     """Convert a dataId to a png filename.
@@ -520,7 +527,7 @@ class MetadataServer():
             if key in d:
                 d.pop(key)
 
-        properNames = { MD_NAMES_MAP[attrName]: d[attrName] for attrName in d }
+        properNames = {MD_NAMES_MAP[attrName]: d[attrName] for attrName in d}
 
         return {seqNum: properNames}
 
@@ -597,3 +604,161 @@ class MetadataServer():
         """Run continuously, calling the callback method on the latest dataId.
         """
         self.watcher.run(self.callback)
+
+
+class Uploader():
+    """Class for handling uploads to the Google cloud storage bucket.
+    """
+    HEARTBEAT_PREFIX = "heartbeats"
+
+    def __init__(self):
+        if not HAS_GOOGLE_STORAGE:
+            from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
+            raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
+        self.client = storage.Client()
+        self.bucket = self.client.get_bucket('rubintv_data')
+        self.log = _LOG.getChild("googleUploader")
+
+    def uploadHeartbeat(self, channel, flatlinePeriod):
+        """Upload a heartbeat for the specified channel to the bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The channel name.
+        flatlinePeriod : `float`
+            The period after which to consider the channel dead.
+
+        Returns
+        -------
+        success : `bool`
+            Did the upload succeed?
+        """
+        filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
+
+        currTime = int(time.time())
+        nextExpected = currTime + flatlinePeriod
+
+        heartbeatJsonDict = {
+            "channel": channel,
+            "currTime": currTime,
+            "nextExpected": nextExpected,
+            "errors": {}
+        }
+        heartbeatJson = json.dumps(heartbeatJsonDict)
+
+        blob = self.bucket.blob("/".join([filename]))
+        blob.cache_control = 'no-store'  # must set before upload
+
+        # heartbeat retry strategy
+        modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+
+        try:
+            blob.upload_from_string(heartbeatJson, retry=modified_retry)
+            self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
+            return True
+        except Exception:
+            return False
+
+    def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
+        """Upload a file to the RubinTV Google cloud storage bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        sourceFilename : `str`
+            The full path and filename of the file to upload.
+        uploadAsFilename : `str`, optional
+            Optionally rename the file to this upon upload.
+        isLiveFile : `bool`, optional
+            The file is being updated constantly, and so caching should be
+        disabled.
+
+        Raises
+        ------
+        ValueError
+            Raised if the specified channel is not in the list of existing
+            channels as specified in CHANNELS
+        RuntimeError
+            Raised if the Google cloud storage is not installed/importable.
+        """
+        if channel not in CHANNELS:
+            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+
+        if uploadAsFilename and (os.path.basename(sourceFilename) != uploadAsFilename):
+            tempdir = tempfile.mkdtemp()
+            finalName = os.path.join(tempdir, uploadAsFilename)
+            shutil.copy(sourceFilename, finalName)
+            assert os.path.exists(finalName)
+        else:
+            finalName = sourceFilename
+
+        path = Path(finalName)
+        blob = self.bucket.blob("/".join([channel, path.name]))
+        if isLiveFile:
+            blob.cache_control = 'no-store'
+        self.log.info(f'Uploaded {sourceFilename} to {finalName}')
+
+        # general retry strategy
+        # still quite gentle as the catchup service will fill in gaps
+        # and we don't want to hold up new images landing
+        modified_retry = DEFAULT_RETRY.with_deadline(2.0)  # in seconds
+        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
+        try:
+            blob.upload_from_filename(finalName, retry=modified_retry)
+        except Exception:
+            pass
+
+        return blob
+
+
+class Heartbeater():
+    """A class for uploading heartbeats to the GCS bucket.
+
+    Call ``beater.beat()`` as often as you like. Files will only be uploaded
+    once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when calling
+    beat.
+
+    Parameters
+    ----------
+    handle : `str`
+        The name of the channel to which the heartbeat corresponds.
+    uploadPeriod : `float`
+        The time, in seconds, which must have passed since the last successful
+        heartbeat for a new upload to be undertaken.
+    flatlinePeriod : `float`
+        If a new heartbeat is not received before the flatlinePeriod elapses,
+        in seconds, the channel will be considered down.
+    """
+    def __init__(self, handle, uploadPeriod, flatlinePeriod):
+        self.handle = handle
+        self.uploadPeriod = uploadPeriod
+        self.flatlinePeriod = flatlinePeriod
+
+        self.lastUpload = -1
+        self.uploader = Uploader()
+
+    def beat(self, ensure=False, customFlatlinePeriod=None):
+        """Upload the heartbeat if enough time has passed or ensure=True.
+
+        customFlatlinePeriod implies ensure, as long forecasts should always be
+        uploaded.
+
+        Parameters
+        ----------
+        ensure : `str`
+            Ensure that the heartbeat is uploaded, even if one has been sent
+            within the last ``uploadPeriod``.
+        customFlatlinePeriod : `float`
+            Upload with a different flatline period. Use before starting long
+            running jobs.
+        """
+        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
+
+        now = time.time()
+        elapsed = now - self.lastUpload
+        if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
+            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
+                self.lastUpload = now  # only reset this if the upload was successful

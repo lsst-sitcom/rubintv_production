@@ -29,14 +29,7 @@ from datetime import datetime, timedelta
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from .channels import CHANNELS, PREFIXES
-from .rubinTv import (ImExaminerChannel,
-                      SpecExaminerChannel,
-                      MountTorqueChannel,
-                      MonitorChannel,
-                      MetadataServer,
-                      Uploader,
-                      _dataIdToFilename,
-                      )
+
 
 __all__ = ["checkRubinTvExternalPackages",
            "getPlotSeqNumsForDayObs",
@@ -59,6 +52,7 @@ def getConfig():
     configFile = os.path.join(packageDir, 'config', 'config.yaml')
     config = yaml.safe_load(open(configFile, "rb"))
     return config
+
 
 def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
     """Check whether the prerequsite installs for RubinTV are present.
@@ -163,6 +157,12 @@ def createChannelByName(channel, doRaise, **kwargs):
         Raised if the channel is unknown, or creating by name is not supported
         for the channel in question.
     """
+    from .rubinTv import (ImExaminerChannel,
+                          SpecExaminerChannel,
+                          MountTorqueChannel,
+                          MonitorChannel,
+                          MetadataServer,
+                          )
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}.")
 
@@ -334,6 +334,8 @@ def pushTestImageToCurrent(channel, duration=15):
         test images being pushed to it, or is the requested duration for the
         test image to remain is too long (max of 60s).
     """
+    from .rubinTv import Uploader, _dataIdToFilename
+
     logger = logging.getLogger(__name__)
 
     from google.cloud import storage

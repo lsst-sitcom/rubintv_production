@@ -30,7 +30,7 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
-from .uploadTools import Uploader, Heartbeater
+from .rubinTv import Uploader, Heartbeater
 from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
 from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
 
