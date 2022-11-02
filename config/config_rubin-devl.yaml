@@ -1,0 +1,10 @@
+# metadata
+shardsDir: "/sdf/group/rubin/u/mfl/rubintv/shards/"
+metadataOutputRoot: "/sdf/group/rubin/u/mfl/rubintv/sidecar_metadata/"
+
+# all sky
+allSkyRootDataPath: "/sdf/group/rubin/u/mfl/rubintv/allsky/raw/"
+allSkyOutputRoot: "/sdf/group/rubin/u/mfl/rubintv/allsky/"
+
+# animation
+moviePngRoot: "/sdf/group/rubin/u/mfl/rubintv/auxTel_animation/"
