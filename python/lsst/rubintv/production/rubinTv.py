@@ -592,6 +592,7 @@ class MetadataServer():
 
             with open(mainFile, 'w') as f:
                 json.dump(data, f)
+            os.chmod(mainFile, 0o777)  # file may be amended by another process
 
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")

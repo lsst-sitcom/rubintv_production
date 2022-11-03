@@ -416,5 +416,6 @@ def writeMetataShard(path, dayObs, mdDict):
 
     with open(filename, 'w') as f:
         json.dump(mdDict, f)
+    os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
     return
