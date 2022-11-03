@@ -59,7 +59,7 @@ from lsst.atmospec.utils import isDispersedDataId
 from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .channels import PREFIXES, CHANNELS
-from .utils import writeMetataShard
+from .utils import writeMetataShard, isFileWorldWritable
 
 _LOG = logging.getLogger(__name__)
 
@@ -592,7 +592,8 @@ class MetadataServer():
 
             with open(mainFile, 'w') as f:
                 json.dump(data, f)
-            os.chmod(mainFile, 0o777)  # file may be amended by another process
+            if not isFileWorldWritable(mainFile):
+                os.chmod(mainFile, 0o777)  # file may be amended by another process
 
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")

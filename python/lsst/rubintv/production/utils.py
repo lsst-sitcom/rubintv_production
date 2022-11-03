@@ -416,6 +416,24 @@ def writeMetataShard(path, dayObs, mdDict):
 
     with open(filename, 'w') as f:
         json.dump(mdDict, f)
-    os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+    if not isFileWorldWritable(filename):
+        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
     return
+
+
+def isFileWorldWritable(filename):
+    """Check that the file has the correct permissions for write access.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to check.
+
+    Returns
+    -------
+    ok : `bool`
+        True if the file has the correct permissions, False otherwise.
+    """
+    stat = os.stat(filename)
+    return stat.st_mode & 0o777 == 0o777
