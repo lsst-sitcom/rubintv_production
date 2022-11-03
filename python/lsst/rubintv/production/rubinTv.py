@@ -59,9 +59,7 @@ from lsst.atmospec.utils import isDispersedDataId
 from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .channels import PREFIXES, CHANNELS
-from .utils import getConfig
-
-config = getConfig()
+from .utils import writeMetataShard
 
 _LOG = logging.getLogger(__name__)
 
@@ -73,6 +71,7 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'has_simulated',
                           ]
 
+# The values here are used in HTML so do not include periods in them, eg "Dec."
 MD_NAMES_MAP = {"id": 'Exposure id',
                 "exposure_time": 'Exposure time',
                 "dark_time": 'Darktime',
@@ -84,7 +83,7 @@ MD_NAMES_MAP = {"id": 'Exposure id',
                 "target_name": 'Target',
                 "science_program": 'Science program',
                 "tracking_ra": 'RA',
-                "tracking_dec": 'Dec.',
+                "tracking_dec": 'Dec',
                 "sky_angle": 'Sky angle',
                 "azimuth": 'Azimuth',
                 "zenith_angle": 'Zenith angle',
@@ -93,7 +92,8 @@ MD_NAMES_MAP = {"id": 'Exposure id',
                 "disperser": 'Disperser',
                 "airmass": 'Airmass',
                 "focus_z": 'Focus-Z',
-                "Seeing": 'DIMM Seeing',
+                "seeing": 'DIMM Seeing',
+                "altitude": 'DIMM Seeing',
                 }
 
 
@@ -460,19 +460,23 @@ class MetadataServer():
     """Class for serving the metadata to the table on RubinTV.
     """
 
-    def __init__(self, outputRoot, doRaise=False):
+    def __init__(self, outputRoot, *,
+                 oga=False,
+                 doRaise=False):
         self.dataProduct = 'raw'
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler()
+        self.butler = makeDefaultLatissButler(oga=oga)
         self.log = _LOG.getChild("metadataServer")
         self.channel = 'auxtel_metadata'
         self.watcher = Watcher(self.dataProduct, self.channel)
         self.outputRoot = outputRoot
+        self.shardsDir = os.path.join(outputRoot, 'shards')
         self.doRaise = doRaise
-        self.uploadEveryNimages = 1
-        self._imageCounter = 0
-        self._shardsDir = config.get("shardsDir")
-        os.mkdirs(self._shardsDir, exist_ok=True)
+        for path in (self.outputRoot, self.shardsDir):
+            try:
+                os.makedirs(path, exist_ok=True)
+            except Exception as e:
+                raise RuntimeError(f"Failed to find/create {path}") from e
 
     @staticmethod
     def dataIdToMetadataDict(butler, dataId, keysToRemove):
@@ -516,12 +520,12 @@ class MetadataServer():
         d['airmass'] = obsInfo.boresight_airmass
         d['focus_z'] = obsInfo.focus_z.value
 
-        d['Altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
+        d['altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
         if obsInfo.altaz_begin is not None:
-            d['Altitude'] = obsInfo.altaz_begin.alt.value
+            d['altitude'] = obsInfo.altaz_begin.alt.value
 
         if 'SEEING' in rawmd:  # SEEING not yet in the obsInfo so take direct from header
-            d['Seeing'] = rawmd['SEEING']
+            d['seeing'] = rawmd['SEEING']
 
         for key in keysToRemove:
             if key in d:
@@ -531,27 +535,51 @@ class MetadataServer():
 
         return {seqNum: properNames}
 
-    @staticmethod
-    def appendToJson(filename, md, shardsDir):
-        """Add a dictionary item to the JSON file containing the sidecar data.
+    def writeShardForDataId(self, dataId):
+        """Write a standard shard for this dataId from the exposure record.
 
-        Updates the file in place.
+        Calls dataIdToMetadataDict to get the normal set of metadata components
+        and then writes it to a shard file in the shards directory ready for
+        upload.
 
         Parameters
         ----------
-        filename : `str`
-            The filename
-        md : `dict`
-            The metadata, as a dict, to add to the JSON file.
+        dataId : `dict`
+            The dataId.
         """
-        data = {}
-        if os.path.isfile(filename) and os.path.getsize(filename) > 0:  # json.load() doesn't like empty files
-            with open(filename) as f:
-                data = json.load(f)
-        data.update(md)
+        md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
+        dayObs = butlerUtils.getDayObs(dataId)
+        writeMetataShard(self.shardsDir, dayObs, md)
+        return
 
-        shardFiles = glob(os.path.join(shardsDir, "metadata_*"))
+    def mergeShardsAndUpload(self):
+        """Merge all the shards in the shard directory into their respective
+        files and upload the updated files.
+
+        For each file found in the shard directory, merge its contents into the
+        main json file for the corresponding dayObs, and for each file updated,
+        upload it.
+        """
+        filesTouched = set()
+        shardFiles = sorted(glob(os.path.join(self.shardsDir, "metadata-*")))
+        if shardFiles:
+            self.log.debug(f'Found {len(shardFiles)} shardFiles')
+            sleep(0.1)  # just in case a shard is in the process of being written
+
         for shardFile in shardFiles:
+            # filenames look like
+            # metadata-dayObs_20221027_049a5f12-5b96-11ed-80f0-348002f0628.json
+            filename = os.path.basename(shardFile)
+            dayObs = int(filename.split("_", 2)[1])
+            mainFile = self.getSidecarFilename(dayObs)
+            filesTouched.add(mainFile)
+
+            data = {}
+            # json.load() doesn't like empty files so check size is non-zero
+            if os.path.isfile(mainFile) and os.path.getsize(mainFile) > 0:
+                with open(mainFile) as f:
+                    data = json.load(f)
+
             with open(shardFile) as f:
                 shard = json.load(f)
             if shard:
@@ -562,37 +590,34 @@ class MetadataServer():
                         data.update({row: shard[row]})
             os.remove(shardFile)
 
-        with open(filename, 'w') as f:
-            json.dump(data, f)
+            with open(mainFile, 'w') as f:
+                json.dump(data, f)
 
-    def getSidecarFilename(self, dataId):
-        """Get the name of the metadata sidecar file for the dataId.
+        if filesTouched:
+            self.log.info(f"Uploading {len(filesTouched)} metadata files")
+            for file in filesTouched:
+                self.uploader.googleUpload(self.channel, file, isLiveFile=True)
+        return
+
+    def getSidecarFilename(self, dayObs):
+        """Get the name of the metadata sidecar file for the dayObs.
 
         Returns
         -------
-        filename : `str`
-            The full path to the metadata sidecar file.
+        dayObs : `int`
+            The dayObs.
         """
-        dayObs = butlerUtils.getDayObs(dataId)
         return os.path.join(self.outputRoot, f'dayObs_{dayObs}.json')
 
-    def callback(self, dataId, alwaysUpload=False):
+    def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
 
         Add the metadata to the sidecar for the dataId and upload.
         """
         try:
             self.log.info(f'Getting metadata for {dataId}')
-            sidecarFilename = self.getSidecarFilename(dataId)
-
-            md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
-            self.appendToJson(sidecarFilename, md, self._shardsDir)
-
-            if alwaysUpload or (self._imageCounter % self.uploadEveryNimages == 0):
-                self.log.info("Uploading sidecar file to storage bucket")
-                self.uploader.googleUpload(self.channel, sidecarFilename, isLiveFile=True)
-                self.log.info('Upload complete')
-            self._imageCounter += 1
+            self.writeShardForDataId(dataId)
+            self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
             if self.doRaise:
@@ -709,7 +734,7 @@ class Uploader():
         try:
             blob.upload_from_filename(finalName, retry=modified_retry)
         except Exception:
-            pass
+            return None
 
         return blob
 

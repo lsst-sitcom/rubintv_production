@@ -282,15 +282,16 @@ def remakeDay(channel, dayObs, *,
     # due to image types, short exposures, etc.
     tvChannel = createChannelByName(channel, doRaise=False, **kwargs)
     if channel in ['auxtel_metadata']:
-        tvChannel.uploadEveryNimages = 100
+        # special case so we only upload once after all the shards are made
+        for seqNum in toMake:
+            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
+            tvChannel.writeShardForDataId(dataId)
+        tvChannel.mergeShardsAndUpload()
 
-    for seqNum in toMake[:-1]:
-        dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-        tvChannel.callback(dataId)
-    # do the last number of the day separately with alwaysUpload=True so we
-    # ensure that the end of the list always gets uploaded
-    tvChannel.callback(dataId={'day_obs': dayObs, 'seq_num': toMake[-1], 'detector': 0},
-                       alwaysUpload=True)
+    else:
+        for seqNum in toMake:
+            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
+            tvChannel.callback(dataId)
 
 
 def isDayObsContiguous(dayObs, otherDayObs):
