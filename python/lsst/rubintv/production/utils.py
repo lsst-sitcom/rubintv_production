@@ -20,8 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import uuid
 import yaml
 import logging
+import json
 from time import sleep
 from lsst.utils import getPackageDir
 from datetime import datetime, timedelta
@@ -47,9 +49,9 @@ GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please
                             '    pip install google-cloud-storage')
 
 
-def getConfig():
+def getSiteConfig(site='summit'):
     packageDir = getPackageDir('rubintv_production')
-    configFile = os.path.join(packageDir, 'config', 'config.yaml')
+    configFile = os.path.join(packageDir, 'config', f'config_{site}.yaml')
     config = yaml.safe_load(open(configFile, "rb"))
     return config
 
@@ -207,7 +209,12 @@ def remakePlotByDataId(channel, dataId):
     tvChannel.callback(dataId)
 
 
-def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None, **kwargs):
+def remakeDay(channel, dayObs, *,
+              remakeExisting=False,
+              notebook=True,
+              logger=None,
+              oga=False,
+              **kwargs):
     """Remake all the plots for a given day.
 
     Currently auxtel_metadata does not pull from the bucket to check what is
@@ -255,7 +262,7 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
 
     client = storage.Client()
     bucket = client.get_bucket('rubintv_data')
-    butler = makeDefaultLatissButler()
+    butler = makeDefaultLatissButler(oga=oga)
 
     allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
     logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
@@ -376,3 +383,37 @@ def pushTestImageToCurrent(channel, duration=15):
     sleep(duration)
     blob.delete()
     logger.info('Test card removed')
+
+
+def writeMetataShard(path, dayObs, mdDict):
+    """Write a piece of metadata for uploading to the main table.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        The dayObs.
+    mdDict : `dict` of `dict`
+        The metadata items to write, as a dict of dicts. Each key in the main
+        dict should be a sequence number. Each value is a dict of values for
+        that seqNum, as {'measurement_name': value}.
+
+    Raises
+    ------
+    TypeError
+        Raised if mdDict is not a dictionary.
+    """
+    if not isinstance(mdDict, dict):
+        raise TypeError(f'mdDict must be a dict, not {type(mdDict)}')
+
+    if not os.path.isdir(path):
+        os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
+
+    suffix = uuid.uuid1()
+    # this pattern is relied up elsewhere, so don't change it without updating
+    # in at least the following places: mergeShardsAndUpload
+    filename = os.path.join(path, f'metadata-dayObs_{dayObs}_{suffix}.json')
+
+    with open(filename, 'w') as f:
+        json.dump(mdDict, f)
+
+    return

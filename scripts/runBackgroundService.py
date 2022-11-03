@@ -20,10 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.catchupService import RubinTvBackgroundService
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getConfig
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
 from lsst.summit.utils.utils import setupLogging
 
-config = getConfig()
+config = getSiteConfig()
 allSkyPngRoot = config.get('allSkyOutputRoot')
 moviePngRoot = config.get('moviePngRoot')
 
