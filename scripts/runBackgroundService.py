@@ -26,6 +26,7 @@ from lsst.summit.utils.utils import setupLogging
 config = getSiteConfig()
 allSkyPngRoot = config.get('allSkyOutputRoot')
 moviePngRoot = config.get('moviePngRoot')
+metadataOutputRoot = config.get('metadataOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
@@ -34,6 +35,7 @@ print('Running RubinTV background catchup service...')
 # TODO: change dryRunForDeletion for deployment, but test like this first
 backgroundService = RubinTvBackgroundService(allSkyPngRoot=allSkyPngRoot,
                                              moviePngRoot=moviePngRoot,
+                                             metadataOutputRoot=metadataOutputRoot,
                                              doRaise=False,
                                              )
 backgroundService.run()
