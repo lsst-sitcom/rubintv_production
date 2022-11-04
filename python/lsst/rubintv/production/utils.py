@@ -280,7 +280,7 @@ def remakeDay(channel, dayObs, *,
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(channel, doRaise=False, **kwargs)
+    tvChannel = createChannelByName(channel, doRaise=True, oga=oga, **kwargs)
     if channel in ['auxtel_metadata']:
         # special case so we only upload once after all the shards are made
         for seqNum in toMake:
