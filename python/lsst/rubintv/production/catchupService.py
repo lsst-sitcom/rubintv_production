@@ -227,8 +227,13 @@ class RubinTvBackgroundService():
         """
         self.log.info(f'Catching up metadata for {self.dayObs}')
         mdFilename = self.mdServer.getSidecarFilename(self.dayObs)
-        with open(mdFilename) as f:
-            data = json.load(f)
+        if not os.path.isfile(mdFilename):
+            # we haven't taken any data yet today
+            self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does not exist yet, waiting...")
+            return
+        else:
+            with open(mdFilename) as f:
+                data = json.load(f)
 
         seqNums = [int(k) for k in data.keys()]
         maxVal = max(seqNums)
