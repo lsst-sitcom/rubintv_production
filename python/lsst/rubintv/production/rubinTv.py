@@ -461,11 +461,11 @@ class MetadataServer():
     """
 
     def __init__(self, outputRoot, *,
-                 oga=False,
+                 embargo=False,
                  doRaise=False):
         self.dataProduct = 'raw'
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler(oga=oga)
+        self.butler = makeDefaultLatissButler(embargo=embargo)
         self.log = _LOG.getChild("metadataServer")
         self.channel = 'auxtel_metadata'
         self.watcher = Watcher(self.dataProduct, self.channel)

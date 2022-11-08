@@ -213,7 +213,7 @@ def remakeDay(channel, dayObs, *,
               remakeExisting=False,
               notebook=True,
               logger=None,
-              oga=False,
+              embargo=False,
               **kwargs):
     """Remake all the plots for a given day.
 
@@ -233,6 +233,8 @@ def remakeDay(channel, dayObs, *,
     notebook : `bool`, optional
         Is the code being run from within a notebook? Needed to correctly nest
         asyncio event loops in notebook-type environments.
+    embargo : `bool`, optional
+        Use the embargoed repo?
 
     Raises
     ------
@@ -262,7 +264,7 @@ def remakeDay(channel, dayObs, *,
 
     client = storage.Client()
     bucket = client.get_bucket('rubintv_data')
-    butler = makeDefaultLatissButler(oga=oga)
+    butler = makeDefaultLatissButler(embargo=embargo)
 
     allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
     logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
@@ -280,7 +282,7 @@ def remakeDay(channel, dayObs, *,
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(channel, doRaise=True, oga=oga, **kwargs)
+    tvChannel = createChannelByName(channel, doRaise=True, embargo=embargo, **kwargs)
     if channel in ['auxtel_metadata']:
         # special case so we only upload once after all the shards are made
         for seqNum in toMake:
