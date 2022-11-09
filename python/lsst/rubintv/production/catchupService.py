@@ -301,7 +301,7 @@ class RubinTvBackgroundService():
             if writtenMovie:
                 channel = 'auxtel_movies'
                 uploadAs = f'dayObs_{self.dayObs}.mp4'
-                self.uploader.googleUpload(channel, writtenMovie, uploadAs)
+                self.uploader.googleUpload(channel, writtenMovie, uploadAs, isLargeFile=True)
             else:
                 self.log.warning(f'Failed to find movie for {self.dayObs}')
             # clean up animation pngs here?
