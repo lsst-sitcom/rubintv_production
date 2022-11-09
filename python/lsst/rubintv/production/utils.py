@@ -388,7 +388,7 @@ def pushTestImageToCurrent(channel, duration=15):
     logger.info('Test card removed')
 
 
-def writeMetataShard(path, dayObs, mdDict):
+def writeMetadataShard(path, dayObs, mdDict):
     """Write a piece of metadata for uploading to the main table.
 
     Parameters

@@ -59,7 +59,7 @@ from lsst.atmospec.utils import isDispersedDataId
 from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .channels import PREFIXES, CHANNELS
-from .utils import writeMetataShard, isFileWorldWritable
+from .utils import writeMetadataShard, isFileWorldWritable
 
 _LOG = logging.getLogger(__name__)
 
@@ -549,7 +549,7 @@ class MetadataServer():
         """
         md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
         dayObs = butlerUtils.getDayObs(dataId)
-        writeMetataShard(self.shardsDir, dayObs, md)
+        writeMetadataShard(self.shardsDir, dayObs, md)
         return
 
     def mergeShardsAndUpload(self):
