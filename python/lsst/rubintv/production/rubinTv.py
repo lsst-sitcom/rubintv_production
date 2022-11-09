@@ -735,7 +735,8 @@ class Uploader():
         modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
         try:
             blob.upload_from_filename(finalName, retry=modified_retry)
-        except Exception:
+        except Exception as e:
+            self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
             return None
 
         return blob
