@@ -22,9 +22,12 @@
 import json
 import os
 import time
-from time import sleep
-import tempfile
+from pathlib import Path
+import shutil
 import logging
+import tempfile
+from glob import glob
+from time import sleep
 import matplotlib.pyplot as plt
 
 import lsst.summit.utils.butlerUtils as butlerUtils
@@ -37,6 +40,13 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
+try:
+    from google.cloud import storage
+    from google.cloud.storage.retry import DEFAULT_RETRY
+    HAS_GOOGLE_STORAGE = True
+except ImportError:
+    HAS_GOOGLE_STORAGE = False
+
 from lsst.pex.exceptions import NotFoundError
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
@@ -48,9 +58,8 @@ from lsst.atmospec.utils import isDispersedDataId
 
 from lsst.rubintv.production.mountTorques import calculateMountErrors
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .uploadTools import Heartbeater, Uploader
-from .channels import PREFIXES
-
+from .channels import PREFIXES, CHANNELS
+from .utils import writeMetadataShard, isFileWorldWritable
 
 _LOG = logging.getLogger(__name__)
 
@@ -61,6 +70,31 @@ SIDECAR_KEYS_TO_REMOVE = ['instrument',
                           'group_name',
                           'has_simulated',
                           ]
+
+# The values here are used in HTML so do not include periods in them, eg "Dec."
+MD_NAMES_MAP = {"id": 'Exposure id',
+                "exposure_time": 'Exposure time',
+                "dark_time": 'Darktime',
+                "observation_type": 'Image type',
+                "observation_reason": 'Observation reason',
+                "day_obs": 'dayObs',
+                "seq_num": 'seqNum',
+                "group_id": 'Group id',
+                "target_name": 'Target',
+                "science_program": 'Science program',
+                "tracking_ra": 'RA',
+                "tracking_dec": 'Dec',
+                "sky_angle": 'Sky angle',
+                "azimuth": 'Azimuth',
+                "zenith_angle": 'Zenith angle',
+                "time_begin_tai": 'TAI',
+                "filter": 'Filter',
+                "disperser": 'Disperser',
+                "airmass": 'Airmass',
+                "focus_z": 'Focus-Z',
+                "seeing": 'DIMM Seeing',
+                "altitude": 'Altitude',
+                }
 
 
 def _dataIdToFilename(channel, dataId, extension='.png'):
@@ -426,17 +460,23 @@ class MetadataServer():
     """Class for serving the metadata to the table on RubinTV.
     """
 
-    def __init__(self, outputRoot, doRaise=False):
+    def __init__(self, outputRoot, *,
+                 embargo=False,
+                 doRaise=False):
         self.dataProduct = 'raw'
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler()
+        self.butler = makeDefaultLatissButler(embargo=embargo)
         self.log = _LOG.getChild("metadataServer")
         self.channel = 'auxtel_metadata'
         self.watcher = Watcher(self.dataProduct, self.channel)
         self.outputRoot = outputRoot
+        self.shardsDir = os.path.join(outputRoot, 'shards')
         self.doRaise = doRaise
-        self.uploadEveryNimages = 1
-        self._imageCounter = 0
+        for path in (self.outputRoot, self.shardsDir):
+            try:
+                os.makedirs(path, exist_ok=True)
+            except Exception as e:
+                raise RuntimeError(f"Failed to find/create {path}") from e
 
     @staticmethod
     def dataIdToMetadataDict(butler, dataId, keysToRemove):
@@ -480,69 +520,106 @@ class MetadataServer():
         d['airmass'] = obsInfo.boresight_airmass
         d['focus_z'] = obsInfo.focus_z.value
 
-        d['Altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
+        d['altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
         if obsInfo.altaz_begin is not None:
-            d['Altitude'] = obsInfo.altaz_begin.alt.value
+            d['altitude'] = obsInfo.altaz_begin.alt.value
 
         if 'SEEING' in rawmd:  # SEEING not yet in the obsInfo so take direct from header
-            d['Seeing'] = rawmd['SEEING']
+            d['seeing'] = rawmd['SEEING']
 
         for key in keysToRemove:
             if key in d:
                 d.pop(key)
 
-        return {seqNum: d}
+        properNames = {MD_NAMES_MAP[attrName]: d[attrName] for attrName in d}
 
-    @staticmethod
-    def appendToJson(filename, md):
-        """Add a dictionary item to the JSON file containing the sidecar data.
+        return {seqNum: properNames}
 
-        Updates the file in place.
+    def writeShardForDataId(self, dataId):
+        """Write a standard shard for this dataId from the exposure record.
+
+        Calls dataIdToMetadataDict to get the normal set of metadata components
+        and then writes it to a shard file in the shards directory ready for
+        upload.
 
         Parameters
         ----------
-        filename : `str`
-            The filename
-        md : `dict`
-            The metadata, as a dict, to add to the JSON file.
+        dataId : `dict`
+            The dataId.
         """
-        data = {}
-        if os.path.isfile(filename) and os.path.getsize(filename) > 0:  # json.load() doesn't like empty files
-            with open(filename) as f:
-                data = json.load(f)
-        data.update(md)
+        md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
+        dayObs = butlerUtils.getDayObs(dataId)
+        writeMetadataShard(self.shardsDir, dayObs, md)
+        return
 
-        with open(filename, 'w') as f:
-            json.dump(data, f)
+    def mergeShardsAndUpload(self):
+        """Merge all the shards in the shard directory into their respective
+        files and upload the updated files.
 
-    def getSidecarFilename(self, dataId):
-        """Get the name of the metadata sidecar file for the dataId.
+        For each file found in the shard directory, merge its contents into the
+        main json file for the corresponding dayObs, and for each file updated,
+        upload it.
+        """
+        filesTouched = set()
+        shardFiles = sorted(glob(os.path.join(self.shardsDir, "metadata-*")))
+        if shardFiles:
+            self.log.debug(f'Found {len(shardFiles)} shardFiles')
+            sleep(0.1)  # just in case a shard is in the process of being written
+
+        for shardFile in shardFiles:
+            # filenames look like
+            # metadata-dayObs_20221027_049a5f12-5b96-11ed-80f0-348002f0628.json
+            filename = os.path.basename(shardFile)
+            dayObs = int(filename.split("_", 2)[1])
+            mainFile = self.getSidecarFilename(dayObs)
+            filesTouched.add(mainFile)
+
+            data = {}
+            # json.load() doesn't like empty files so check size is non-zero
+            if os.path.isfile(mainFile) and os.path.getsize(mainFile) > 0:
+                with open(mainFile) as f:
+                    data = json.load(f)
+
+            with open(shardFile) as f:
+                shard = json.load(f)
+            if shard:
+                for row in shard:
+                    if row in data:
+                        data[row].update(shard[row])
+                    else:
+                        data.update({row: shard[row]})
+            os.remove(shardFile)
+
+            with open(mainFile, 'w') as f:
+                json.dump(data, f)
+            if not isFileWorldWritable(mainFile):
+                os.chmod(mainFile, 0o777)  # file may be amended by another process
+
+        if filesTouched:
+            self.log.info(f"Uploading {len(filesTouched)} metadata files")
+            for file in filesTouched:
+                self.uploader.googleUpload(self.channel, file, isLiveFile=True)
+        return
+
+    def getSidecarFilename(self, dayObs):
+        """Get the name of the metadata sidecar file for the dayObs.
 
         Returns
         -------
-        filename : `str`
-            The full path to the metadata sidecar file.
+        dayObs : `int`
+            The dayObs.
         """
-        dayObs = butlerUtils.getDayObs(dataId)
         return os.path.join(self.outputRoot, f'dayObs_{dayObs}.json')
 
-    def callback(self, dataId, alwaysUpload=False):
+    def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
 
         Add the metadata to the sidecar for the dataId and upload.
         """
         try:
             self.log.info(f'Getting metadata for {dataId}')
-            sidecarFilename = self.getSidecarFilename(dataId)
-
-            md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
-            self.appendToJson(sidecarFilename, md)
-
-            if alwaysUpload or (self._imageCounter % self.uploadEveryNimages == 0):
-                self.log.info("Uploading sidecar file to storage bucket")
-                self.uploader.googleUpload(self.channel, sidecarFilename, isLiveFile=True)
-                self.log.info('Upload complete')
-            self._imageCounter += 1
+            self.writeShardForDataId(dataId)
+            self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
             if self.doRaise:
@@ -554,3 +631,162 @@ class MetadataServer():
         """Run continuously, calling the callback method on the latest dataId.
         """
         self.watcher.run(self.callback)
+
+
+class Uploader():
+    """Class for handling uploads to the Google cloud storage bucket.
+    """
+    HEARTBEAT_PREFIX = "heartbeats"
+
+    def __init__(self):
+        if not HAS_GOOGLE_STORAGE:
+            from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
+            raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
+        self.client = storage.Client()
+        self.bucket = self.client.get_bucket('rubintv_data')
+        self.log = _LOG.getChild("googleUploader")
+
+    def uploadHeartbeat(self, channel, flatlinePeriod):
+        """Upload a heartbeat for the specified channel to the bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The channel name.
+        flatlinePeriod : `float`
+            The period after which to consider the channel dead.
+
+        Returns
+        -------
+        success : `bool`
+            Did the upload succeed?
+        """
+        filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
+
+        currTime = int(time.time())
+        nextExpected = currTime + flatlinePeriod
+
+        heartbeatJsonDict = {
+            "channel": channel,
+            "currTime": currTime,
+            "nextExpected": nextExpected,
+            "errors": {}
+        }
+        heartbeatJson = json.dumps(heartbeatJsonDict)
+
+        blob = self.bucket.blob("/".join([filename]))
+        blob.cache_control = 'no-store'  # must set before upload
+
+        # heartbeat retry strategy
+        modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+
+        try:
+            blob.upload_from_string(heartbeatJson, retry=modified_retry)
+            self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
+            return True
+        except Exception:
+            return False
+
+    def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
+        """Upload a file to the RubinTV Google cloud storage bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        sourceFilename : `str`
+            The full path and filename of the file to upload.
+        uploadAsFilename : `str`, optional
+            Optionally rename the file to this upon upload.
+        isLiveFile : `bool`, optional
+            The file is being updated constantly, and so caching should be
+        disabled.
+
+        Raises
+        ------
+        ValueError
+            Raised if the specified channel is not in the list of existing
+            channels as specified in CHANNELS
+        RuntimeError
+            Raised if the Google cloud storage is not installed/importable.
+        """
+        if channel not in CHANNELS:
+            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+
+        if uploadAsFilename and (os.path.basename(sourceFilename) != uploadAsFilename):
+            tempdir = tempfile.mkdtemp()
+            finalName = os.path.join(tempdir, uploadAsFilename)
+            shutil.copy(sourceFilename, finalName)
+            assert os.path.exists(finalName)
+        else:
+            finalName = sourceFilename
+
+        path = Path(finalName)
+        blob = self.bucket.blob("/".join([channel, path.name]))
+        if isLiveFile:
+            blob.cache_control = 'no-store'
+        self.log.info(f'Uploaded {sourceFilename} to {finalName}')
+
+        # general retry strategy
+        # still quite gentle as the catchup service will fill in gaps
+        # and we don't want to hold up new images landing
+        modified_retry = DEFAULT_RETRY.with_deadline(2.0)  # in seconds
+        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
+        try:
+            blob.upload_from_filename(finalName, retry=modified_retry)
+        except Exception as e:
+            self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
+            return None
+
+        return blob
+
+
+class Heartbeater():
+    """A class for uploading heartbeats to the GCS bucket.
+
+    Call ``beater.beat()`` as often as you like. Files will only be uploaded
+    once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when calling
+    beat.
+
+    Parameters
+    ----------
+    handle : `str`
+        The name of the channel to which the heartbeat corresponds.
+    uploadPeriod : `float`
+        The time, in seconds, which must have passed since the last successful
+        heartbeat for a new upload to be undertaken.
+    flatlinePeriod : `float`
+        If a new heartbeat is not received before the flatlinePeriod elapses,
+        in seconds, the channel will be considered down.
+    """
+    def __init__(self, handle, uploadPeriod, flatlinePeriod):
+        self.handle = handle
+        self.uploadPeriod = uploadPeriod
+        self.flatlinePeriod = flatlinePeriod
+
+        self.lastUpload = -1
+        self.uploader = Uploader()
+
+    def beat(self, ensure=False, customFlatlinePeriod=None):
+        """Upload the heartbeat if enough time has passed or ensure=True.
+
+        customFlatlinePeriod implies ensure, as long forecasts should always be
+        uploaded.
+
+        Parameters
+        ----------
+        ensure : `str`
+            Ensure that the heartbeat is uploaded, even if one has been sent
+            within the last ``uploadPeriod``.
+        customFlatlinePeriod : `float`
+            Upload with a different flatline period. Use before starting long
+            running jobs.
+        """
+        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
+
+        now = time.time()
+        elapsed = now - self.lastUpload
+        if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
+            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
+                self.lastUpload = now  # only reset this if the upload was successful

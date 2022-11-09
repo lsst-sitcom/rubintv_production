@@ -20,11 +20,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.catchupService import RubinTvBackgroundService
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
 from lsst.summit.utils.utils import setupLogging
 
-allSkyPngRoot = '/project/rubintv/allsky/'
-moviePngRoot = '/project/rubintv/auxTel_animation/'
+config = getSiteConfig()
+allSkyPngRoot = config.get('allSkyOutputRoot')
+moviePngRoot = config.get('moviePngRoot')
+metadataOutputRoot = config.get('metadataOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
@@ -33,6 +35,7 @@ print('Running RubinTV background catchup service...')
 # TODO: change dryRunForDeletion for deployment, but test like this first
 backgroundService = RubinTvBackgroundService(allSkyPngRoot=allSkyPngRoot,
                                              moviePngRoot=moviePngRoot,
+                                             metadataOutputRoot=metadataOutputRoot,
                                              doRaise=False,
                                              )
 backgroundService.run()

@@ -20,7 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import uuid
+import yaml
 import logging
+import json
 from time import sleep
 from lsst.utils import getPackageDir
 from datetime import datetime, timedelta
@@ -28,14 +31,7 @@ from datetime import datetime, timedelta
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from .channels import CHANNELS, PREFIXES
-from .rubinTv import (ImExaminerChannel,
-                      SpecExaminerChannel,
-                      MountTorqueChannel,
-                      MonitorChannel,
-                      MetadataServer,
-                      Uploader,
-                      _dataIdToFilename,
-                      )
+
 
 __all__ = ["checkRubinTvExternalPackages",
            "getPlotSeqNumsForDayObs",
@@ -51,6 +47,13 @@ EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please instal
 
 GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please install with:\n'
                             '    pip install google-cloud-storage')
+
+
+def getSiteConfig(site='summit'):
+    packageDir = getPackageDir('rubintv_production')
+    configFile = os.path.join(packageDir, 'config', f'config_{site}.yaml')
+    config = yaml.safe_load(open(configFile, "rb"))
+    return config
 
 
 def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
@@ -156,6 +159,12 @@ def createChannelByName(channel, doRaise, **kwargs):
         Raised if the channel is unknown, or creating by name is not supported
         for the channel in question.
     """
+    from .rubinTv import (ImExaminerChannel,
+                          SpecExaminerChannel,
+                          MountTorqueChannel,
+                          MonitorChannel,
+                          MetadataServer,
+                          )
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}.")
 
@@ -200,7 +209,12 @@ def remakePlotByDataId(channel, dataId):
     tvChannel.callback(dataId)
 
 
-def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None, **kwargs):
+def remakeDay(channel, dayObs, *,
+              remakeExisting=False,
+              notebook=True,
+              logger=None,
+              embargo=False,
+              **kwargs):
     """Remake all the plots for a given day.
 
     Currently auxtel_metadata does not pull from the bucket to check what is
@@ -219,6 +233,8 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
     notebook : `bool`, optional
         Is the code being run from within a notebook? Needed to correctly nest
         asyncio event loops in notebook-type environments.
+    embargo : `bool`, optional
+        Use the embargoed repo?
 
     Raises
     ------
@@ -248,7 +264,7 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
 
     client = storage.Client()
     bucket = client.get_bucket('rubintv_data')
-    butler = makeDefaultLatissButler()
+    butler = makeDefaultLatissButler(embargo=embargo)
 
     allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
     logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
@@ -266,17 +282,18 @@ def remakeDay(channel, dayObs, remakeExisting=False, notebook=True, logger=None,
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(channel, doRaise=False, **kwargs)
+    tvChannel = createChannelByName(channel, doRaise=True, embargo=embargo, **kwargs)
     if channel in ['auxtel_metadata']:
-        tvChannel.uploadEveryNimages = 100
+        # special case so we only upload once after all the shards are made
+        for seqNum in toMake:
+            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
+            tvChannel.writeShardForDataId(dataId)
+        tvChannel.mergeShardsAndUpload()
 
-    for seqNum in toMake[:-1]:
-        dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-        tvChannel.callback(dataId)
-    # do the last number of the day separately with alwaysUpload=True so we
-    # ensure that the end of the list always gets uploaded
-    tvChannel.callback(dataId={'day_obs': dayObs, 'seq_num': toMake[-1], 'detector': 0},
-                       alwaysUpload=True)
+    else:
+        for seqNum in toMake:
+            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
+            tvChannel.callback(dataId)
 
 
 def isDayObsContiguous(dayObs, otherDayObs):
@@ -327,6 +344,8 @@ def pushTestImageToCurrent(channel, duration=15):
         test images being pushed to it, or is the requested duration for the
         test image to remain is too long (max of 60s).
     """
+    from .rubinTv import Uploader, _dataIdToFilename
+
     logger = logging.getLogger(__name__)
 
     from google.cloud import storage
@@ -367,3 +386,56 @@ def pushTestImageToCurrent(channel, duration=15):
     sleep(duration)
     blob.delete()
     logger.info('Test card removed')
+
+
+def writeMetadataShard(path, dayObs, mdDict):
+    """Write a piece of metadata for uploading to the main table.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        The dayObs.
+    mdDict : `dict` of `dict`
+        The metadata items to write, as a dict of dicts. Each key in the main
+        dict should be a sequence number. Each value is a dict of values for
+        that seqNum, as {'measurement_name': value}.
+
+    Raises
+    ------
+    TypeError
+        Raised if mdDict is not a dictionary.
+    """
+    if not isinstance(mdDict, dict):
+        raise TypeError(f'mdDict must be a dict, not {type(mdDict)}')
+
+    if not os.path.isdir(path):
+        os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
+
+    suffix = uuid.uuid1()
+    # this pattern is relied up elsewhere, so don't change it without updating
+    # in at least the following places: mergeShardsAndUpload
+    filename = os.path.join(path, f'metadata-dayObs_{dayObs}_{suffix}.json')
+
+    with open(filename, 'w') as f:
+        json.dump(mdDict, f)
+    if not isFileWorldWritable(filename):
+        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+
+    return
+
+
+def isFileWorldWritable(filename):
+    """Check that the file has the correct permissions for write access.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to check.
+
+    Returns
+    -------
+    ok : `bool`
+        True if the file has the correct permissions, False otherwise.
+    """
+    stat = os.stat(filename)
+    return stat.st_mode & 0o777 == 0o777

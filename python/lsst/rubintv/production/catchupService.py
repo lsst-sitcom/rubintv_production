@@ -25,12 +25,13 @@ import time
 from time import sleep
 import logging
 import shutil
+import json
 
 from lsst.summit.utils.bestEffort import BestEffortIsr
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
-from .uploadTools import Uploader, Heartbeater
+from .rubinTv import Uploader, Heartbeater, MetadataServer
 from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
 from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
 
@@ -83,6 +84,7 @@ class RubinTvBackgroundService():
     def __init__(self, *,
                  allSkyPngRoot=None,
                  moviePngRoot=None,
+                 metadataOutputRoot=None,
                  doRaise=False,
                  **kwargs):
         self.uploader = Uploader()
@@ -96,6 +98,7 @@ class RubinTvBackgroundService():
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
+        self.mdServer = MetadataServer(outputRoot=metadataOutputRoot)  # costly-ish to create, so put in class
 
     def _raiseIf(self, error):
         """Raises the error if ``self.doRaise`` otherwise logs it as a warning.
@@ -219,14 +222,50 @@ class RubinTvBackgroundService():
         self.log.info(f'Catching up monitor images for {self.dayObs}')
         remakeDay('auxtel_monitor', self.dayObs, remakeExisting=False, notebook=False)
 
+    def catchupMetadata(self):
+        """Create shards for any seqNums missing their metadata. Do not upload.
+        """
+        self.log.info(f'Catching up metadata for {self.dayObs}')
+        mdFilename = self.mdServer.getSidecarFilename(self.dayObs)
+        if not os.path.isfile(mdFilename):
+            # we haven't taken any data yet today
+            self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does not exist yet, waiting...")
+            return
+        else:
+            with open(mdFilename) as f:
+                data = json.load(f)
+
+        seqNums = [int(k) for k in data.keys()]
+        maxVal = max(seqNums)
+        missing = [k for k in range(1, maxVal) if k not in seqNums]
+        self.log.info(f'Found {len(missing)} rows missing metadata to create shards for')
+
+        for seqNum in missing:
+            dataId = {'day_obs': self.dayObs, 'seq_num': seqNum, 'detector': 0}
+            self.mdServer.writeShardForDataId(dataId)
+        # note we do *not* call mdServer.mergeShardsAndUpload() here
+        # as that writes to the main file, which could collide with the main
+        # channel. Instead, we leave the shards in place to be uploaded with
+        # the next image. We do, however, call it on end-of-day to catch any
+        # leftover shards
+
     def runCatchup(self):
         """Run all the catchup routines: isr, monitor images, mount torques.
         """
         startTime = time.time()
 
-        self.catchupIsrRunner()
-        self.catchupMonitor()
-        self.catchupMountTorques()
+        # a little ugly but saves copy/pasting the try block 4 times
+        # we need to try each one because raising here has bad consequences
+        # on the try block in run()
+        # (the day doesn't roll over, we constantly hammer on the same images...)
+        for component in [self.catchupMetadata,
+                          self.catchupIsrRunner,
+                          self.catchupMonitor,
+                          self.catchupMountTorques]:
+            try:
+                component.__call__()
+            except Exception as e:
+                self._raiseIf(e)
 
         endTime = time.time()
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
@@ -251,6 +290,7 @@ class RubinTvBackgroundService():
         created when making the all sky movie. Deletes all the intermediate
         movies uploaded during the day for the all sky channel from the bucket.
         """
+        self.mdServer.mergeShardsAndUpload()  # just catch any leftover shards
         try:
             # TODO: this will move to its own channel to be done routinely
             # during the night, but this is super easy for now, so add here

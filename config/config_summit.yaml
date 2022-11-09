@@ -1,0 +1,9 @@
+# metadata
+metadataOutputRoot: "/project/rubintv/sidecar_metadata/"
+
+# all sky
+allSkyRootDataPath: "/project/rubintv/allsky/raw/"
+allSkyOutputRoot: "/project/rubintv/allsky/"
+
+# animation
+moviePngRoot: "/project/rubintv/auxTel_animation/"
