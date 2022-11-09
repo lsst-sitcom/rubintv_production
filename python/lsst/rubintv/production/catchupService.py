@@ -254,10 +254,18 @@ class RubinTvBackgroundService():
         """
         startTime = time.time()
 
-        self.catchupMetadata()
-        self.catchupIsrRunner()
-        self.catchupMonitor()
-        self.catchupMountTorques()
+        # a little ugly but saves copy/pasting the try block 4 times
+        # we need to try each one because raising here has bad conqquences
+        # on the try block in run()
+        # (the day doesn't roll over, we constantly hammer on the same images...)
+        for component in [self.catchupMetadata,
+                          self.catchupIsrRunner,
+                          self.catchupMonitor,
+                          self.catchupMountTorques]:
+            try:
+                component.__call__()
+            except Exception as e:
+                self._raiseIf(e)
 
         endTime = time.time()
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
