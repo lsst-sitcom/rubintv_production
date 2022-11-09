@@ -688,7 +688,11 @@ class Uploader():
         except Exception:
             return False
 
-    def googleUpload(self, channel, sourceFilename, uploadAsFilename=None, isLiveFile=False):
+    def googleUpload(self, channel, sourceFilename,
+                     uploadAsFilename=None,
+                     isLiveFile=False,
+                     isLargeFile=False,
+                     ):
         """Upload a file to the RubinTV Google cloud storage bucket.
 
         Parameters
@@ -702,6 +706,8 @@ class Uploader():
         isLiveFile : `bool`, optional
             The file is being updated constantly, and so caching should be
         disabled.
+        isLargeFile : `bool`, optional
+            The file is large, so add a longer timeout to the upload.
 
         Raises
         ------
@@ -731,10 +737,12 @@ class Uploader():
         # general retry strategy
         # still quite gentle as the catchup service will fill in gaps
         # and we don't want to hold up new images landing
-        modified_retry = DEFAULT_RETRY.with_deadline(2.0)  # in seconds
+        timeout = 1000 if isLargeFile else 60  # default is 60s
+        deadline = timeout if isLargeFile else 2.0
+        modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
         modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
         try:
-            blob.upload_from_filename(finalName, retry=modified_retry)
+            blob.upload_from_filename(finalName, retry=modified_retry, timeout=timeout)
         except Exception as e:
             self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
             return None
