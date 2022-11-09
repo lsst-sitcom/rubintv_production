@@ -93,7 +93,7 @@ MD_NAMES_MAP = {"id": 'Exposure id',
                 "airmass": 'Airmass',
                 "focus_z": 'Focus-Z',
                 "seeing": 'DIMM Seeing',
-                "altitude": 'DIMM Seeing',
+                "altitude": 'Altitude',
                 }
 
 
