@@ -255,7 +255,7 @@ class RubinTvBackgroundService():
         startTime = time.time()
 
         # a little ugly but saves copy/pasting the try block 4 times
-        # we need to try each one because raising here has bad conqquences
+        # we need to try each one because raising here has bad consequences
         # on the try block in run()
         # (the day doesn't roll over, we constantly hammer on the same images...)
         for component in [self.catchupMetadata,
