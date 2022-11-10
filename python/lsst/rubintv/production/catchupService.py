@@ -242,7 +242,11 @@ class RubinTvBackgroundService():
 
         for seqNum in missing:
             dataId = {'day_obs': self.dayObs, 'seq_num': seqNum, 'detector': 0}
-            self.mdServer.writeShardForDataId(dataId)
+            try:
+                self.mdServer.writeShardForDataId(dataId)
+            except Exception as e:
+                self.log.warning(f"Failed to create metadata shard for {dataId}: {e}")
+
         # note we do *not* call mdServer.mergeShardsAndUpload() here
         # as that writes to the main file, which could collide with the main
         # channel. Instead, we leave the shards in place to be uploaded with
