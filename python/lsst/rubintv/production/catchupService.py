@@ -242,7 +242,11 @@ class RubinTvBackgroundService():
 
         for seqNum in missing:
             dataId = {'day_obs': self.dayObs, 'seq_num': seqNum, 'detector': 0}
-            self.mdServer.writeShardForDataId(dataId)
+            try:
+                self.mdServer.writeShardForDataId(dataId)
+            except Exception as e:
+                self.log.warning(f"Failed to create metadata shard for {dataId}: {e}")
+
         # note we do *not* call mdServer.mergeShardsAndUpload() here
         # as that writes to the main file, which could collide with the main
         # channel. Instead, we leave the shards in place to be uploaded with
@@ -256,8 +260,8 @@ class RubinTvBackgroundService():
 
         # a little ugly but saves copy/pasting the try block 4 times
         # we need to try each one because raising here has bad consequences
-        # on the try block in run()
-        # (the day doesn't roll over, we constantly hammer on the same images...)
+        # on the try block in run():
+        # the day doesn't roll over, we constantly hammer on the same images...
         for component in [self.catchupMetadata,
                           self.catchupIsrRunner,
                           self.catchupMonitor,
@@ -301,7 +305,7 @@ class RubinTvBackgroundService():
             if writtenMovie:
                 channel = 'auxtel_movies'
                 uploadAs = f'dayObs_{self.dayObs}.mp4'
-                self.uploader.googleUpload(channel, writtenMovie, uploadAs)
+                self.uploader.googleUpload(channel, writtenMovie, uploadAs, isLargeFile=True)
             else:
                 self.log.warning(f'Failed to find movie for {self.dayObs}')
             # clean up animation pngs here?
