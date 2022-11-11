@@ -413,7 +413,7 @@ class MountTorqueChannel():
     """Class for running the mount torque channel on RubinTV.
     """
 
-    def __init__(self, outputRoot, doRaise=False):
+    def __init__(self, outputRoot, doRaise=False, **kwargs):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
