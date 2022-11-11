@@ -469,7 +469,8 @@ class MountTorqueChannel():
                 self.log.info('Upload complete')
 
             # write the mount error shard, including the cell coloring flag
-            self.writeMountErrorShard(errors, dataId)
+            if errors:  # if the mount torque fails or skips it returns False
+                self.writeMountErrorShard(errors, dataId)
 
         except Exception as e:
             if self.doRaise:
