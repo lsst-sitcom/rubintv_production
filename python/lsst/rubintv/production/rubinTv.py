@@ -438,10 +438,10 @@ class MountTorqueChannel():
         imageError = (az_rms ** 2 + el_rms ** 2) ** .5
         contents = {'Mount image degradation': imageError}
 
-        if imageError > MOUNT_IMAGE_WARNING_LEVEL:
-            contents.update({'_Mount image degradation': 'warning'})
-        elif imageError > MOUNT_IMAGE_BAD_LEVEL:
+        if imageError > MOUNT_IMAGE_BAD_LEVEL:
             contents.update({'_Mount image degradation': 'bad'})
+        elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
+            contents.update({'_Mount image degradation': 'warning'})
 
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
