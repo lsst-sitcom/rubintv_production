@@ -436,12 +436,14 @@ class MountTorqueChannel():
         seqNum = butlerUtils.getSeqNum(dataId)
         az_rms, el_rms, _ = errors  # we don't need the rot errors here so assign to _
         imageError = (az_rms ** 2 + el_rms ** 2) ** .5
-        contents = {'Mount image degradation': imageError}
+        key = 'Mount motion image degradation'
+        flagKey = '_' + key  # color coding of cells always done by prepending with an underscore
+        contents = {key: imageError}
 
         if imageError > MOUNT_IMAGE_BAD_LEVEL:
-            contents.update({'_Mount image degradation': 'bad'})
+            contents.update({flagKey: 'bad'})
         elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
-            contents.update({'_Mount image degradation': 'warning'})
+            contents.update({flagKey: 'warning'})
 
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
