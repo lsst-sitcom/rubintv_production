@@ -40,6 +40,7 @@ __all__ = ["checkRubinTvExternalPackages",
            "remakeDay",
            "isDayObsContiguous",
            "pushTestImageToCurrent",
+           "getSiteConfig",
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
