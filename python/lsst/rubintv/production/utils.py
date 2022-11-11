@@ -175,7 +175,10 @@ def createChannelByName(channel, doRaise, **kwargs):
         case "summit_specexam":
             return SpecExaminerChannel(doRaise=doRaise)
         case "auxtel_mount_torques":
-            return MountTorqueChannel(doRaise=doRaise)
+            if 'outputRoot' not in kwargs:
+                raise RuntimeError("Must provide writeable output root outputRoot via kwargs for "
+                                   "auxtel_metadata channel")
+            return MountTorqueChannel(doRaise=doRaise, **kwargs)
         case "auxtel_monitor":
             return MonitorChannel(doRaise=doRaise)
         case "auxtel_metadata":
