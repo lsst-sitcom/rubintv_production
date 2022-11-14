@@ -29,6 +29,7 @@ import tempfile
 from glob import glob
 from time import sleep
 import matplotlib.pyplot as plt
+from functools import partial
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -235,13 +236,41 @@ class IsrRunner():
         self.log = _LOG.getChild("isrRunner")
         self.watcher = Watcher('raw', 'auxtel_isr_runner')
 
+    @staticmethod
+    def calculateBandingMetrics(raw, shardsDir, dayObs, seqNum):
+        import numpy as np
+        def calcBanding(raw):
+            print(f'called with {raw}')
+
+        print(f'called with shardsDir {shardsDir}')
+        print(f'called with shardsDir {dayObs}')
+        print(f'called with shardsDir {seqNum}')
+
+        banding = calcBanding(raw)
+        md = {seqNum: {'banding': banding}}
+        print(md)
+        # writeMetadataShard(shardsDir, dayObs, md)
+
+        # log.info(f'Wrote banding metrics to {shardsDir}')
+
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
         Produce a quickLookExp of the latest image, and butler.put() it to the
         repo so that downstream processes can find and use it.
         """
-        quickLookExp = self.bestEffort.getExposure(dataId)  # noqa: F841 - automatically puts
+        dayObs = butlerUtils.getDayObs(dataId)
+        seqNum = butlerUtils.getSeqNum(dataId)
+
+        bandingFunc = partial(self.calculateBandingMetrics,
+                              shardsDir='/test/path',
+                              dayObs=dayObs,
+                              seqNum=seqNum,
+                              )
+        self.bestEffort._rawHook = bandingFunc  # calculates banding and writes to a shard
+        # XXX REMOVE THIS LINE!
+        quickLookExp = self.bestEffort.getExposure(dataId, forceRemake=True)  # noqa: F841 - automatically puts
+        # quickLookExp = self.bestEffort.getExposure(dataId)  # noqa: F841 - automatically puts
         del quickLookExp
         self.log.info(f'Put quickLookExp for {dataId}, awaiting next image...')
 
