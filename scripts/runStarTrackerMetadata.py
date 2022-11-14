@@ -20,11 +20,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.rubinTv import StarTrackerMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
 from lsst.summit.utils.utils import setupLogging
+
+config = getSiteConfig()
+metadataRoot = config.get('starTrackerMetadataRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
 print('Running star tracker metadata server...')
-starTrackerMetadata = StarTrackerMetadataServer()
+starTrackerMetadata = StarTrackerMetadataServer(metadataRoot=metadataRoot)
 starTrackerMetadata.run()

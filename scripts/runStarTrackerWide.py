@@ -20,11 +20,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.rubinTv import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
 from lsst.summit.utils.utils import setupLogging
+
+config = getSiteConfig()
+rootDataPath = config.get('starTrackerDataPath')
+metadataRoot = config.get('starTrackerMetadataRoot')
+outputRoot = config.get('starTrackerOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
 print('Running wide star tracker channel...')
-starTracker = StarTrackerChannel(wide=True)
+starTracker = StarTrackerChannel(rootDataPath=rootDataPath,
+                                 metadataRoot=metadataRoot,
+                                 outputRoot=outputRoot,
+                                 wide=True)
 starTracker.run()
