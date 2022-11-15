@@ -22,14 +22,17 @@
 import json
 import os
 import logging
+import time
 from glob import glob
 from time import sleep
 
 import lsst.afw.image as afwImage
+from astroquery.astrometry_net import AstrometryNet
 from lsst.afw.geom import SkyWcs
 from lsst.daf.base import PropertySet
 from lsst.summit.utils.utils import getCurrentDayObs_datetime
 from lsst.summit.utils.utils import dayObsIntToString
+from lsst.summit.utils.blindSolving import plot, runImchar, _filterSourceCatalog, getApiKey
 
 from .channels import PREFIXES, CHANNELS
 from .utils import writeMetadataShard, isFileWorldWritable
@@ -75,6 +78,8 @@ def dayObsSeqNumFromFilename(filename):
     return dayObs, seqNum
 
 
+# don't be tempted to get cute and try to combine these 4 functions. It would
+# be a easy to do but it's not unlikley they will diverge in the future.
 def getAverageRaFromHeader(header):
     raStart = header.get('RASTART')
     raEnd = header.get('RAEND')
@@ -267,7 +272,7 @@ class StarTrackerChannel():
         exp.setWcs(wcs)
         return exp
 
-    def writeMdShardForNominalFilename(self, exp, filename):
+    def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
         """
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
@@ -286,20 +291,96 @@ class StarTrackerChannel():
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
+    def _getUploadFilename(self, channel, filename):
+        """Calculate the filename to use for uploading.
+        """
+        dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        dayObsStr = dayObsIntToString(dayObs)
+        filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
+        return filename
+
+    def runAnalysis(self, exp, filename):
+        """Run the analysis and upload the results.
+        """
+        adn = AstrometryNet()
+        adn.api_key = getApiKey()
+
+        t0 = time.time()
+        basename = os.path.basename(filename).removesuffix('.fits')
+        fittedPngFilename = os.path.join(self.outputRoot, basename + '_fitted.png')
+        dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        self.heartbeaterAnalysis.beat()  # we're alive and at least trying to solve
+
+        snr = 5
+        minPix = 25
+        radiusInDegrees = 5
+        brightSourceFraction = 0.1
+        imCharResult = runImchar(exp, snr, minPix)
+
+        sourceCatalog = imCharResult.sourceCat
+        md = {seqNum: {f"nSources{' wide' if self.wide else ''}": len(sourceCatalog)}}
+        writeMetadataShard(self.shardsDir, dayObs, md)
+        if not sourceCatalog:
+            raise RuntimeError('Failed to find any sources in image')
+
+        filteredSources = _filterSourceCatalog(sourceCatalog, brightSourceFraction)
+        md = {seqNum: {f"nSources filtered{' wide' if self.wide else ''}": len(filteredSources)}}
+        writeMetadataShard(self.shardsDir, dayObs, md)
+
+        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename)
+        uploadAs = self._getUploadFilename(self.channelAnalysis, filename, extension='.png')
+        self.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
+
+        image_height, image_width = exp.image.array.shape
+        ra, dec = exp.getWcs().getSkyOrigin()
+        scale_units = 'arcsecperpix'
+        scale_type = 'ev'  # ev means submit estimate and % error
+        scale_err = 3.0  # error as percentage
+        center_ra = ra.asDegrees()
+        center_dec = dec.asDegrees()
+        scaleEstimate = exp.getWcs().getPixelScale().asArcseconds()
+        wcs_header = adn.solve_from_source_list(filteredSources['base_SdssCentroid_x'],
+                                                filteredSources['base_SdssCentroid_y'],
+                                                image_width, image_height,
+                                                scale_units=scale_units,
+                                                scale_type=scale_type,
+                                                scale_est=scaleEstimate,
+                                                scale_err=scale_err,
+                                                center_ra=center_ra,
+                                                center_dec=center_dec,
+                                                radius=radiusInDegrees,
+                                                solve_timeout=240)
+        if 'CRVAL1' not in wcs_header:  # this is a failed solve
+            self.log.warning(f"Failed to find solution for {basename}")
+            return
+        else:
+            self.log.info(f"Finished source finding and solving for {basename} in {t1-t0:.2f}s")
+
+        contents = {}
+        md = {seqNum: {f"nSources filtered{' wide' if self.wide else ''}": len(filteredSources)}}
+        writeMetadataShard(self.shardsDir, dayObs, md)
+
+        t1 = time.time()
+
     def callback(self, filename):
         """Callback for the watcher, called when a new image lands.
         """
+        exp = self.filenameToExposure(filename)  # make the exp and set the wcs from the header
+        self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
+
+        # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix('.fits')
-        rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')
-        self.heartbeaterRaw.beat()
+        rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
+        plot(exp, saveAs=rawPngFilename)
+        uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
+        self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
 
-        # plot the raw here, with sources over plotted
-        # metadata shard with source info
-        # shard with nominal pointing info here
+        # metadata a shard with just the pointing info etc
+        self.writeDefaultPointingShardForFilename(exp, filename)
+        self.runAnalysis(exp, filename)
 
-        fittedPngFilename = os.path.join(self.outputRoot, basename + '_fitted.png')
-        self.heartbeaterAnalysis.beat()
         # do the fit here
+        # shard with source info here
         # plot the final result
         # metadata shard with deltas on the pointing infos
 
