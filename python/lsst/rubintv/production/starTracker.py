@@ -425,6 +425,7 @@ class StarTrackerMetadataServer():
                  metadataRoot,
                  doRaise=False):
         self.uploader = Uploader()
+        self.heartbeater = Heartbeater('startracker_metadata')
         self.channel = 'startracker_metadata'
         self.log = _LOG.getChild(f"{self.channel}")
         self.metadataRoot = metadataRoot
@@ -514,4 +515,5 @@ class StarTrackerMetadataServer():
         """
         while True:
             self.callback()
+            self.heartbeater.beat()
             sleep(1.5)
