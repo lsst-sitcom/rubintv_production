@@ -19,11 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.rubinTv import StarTrackerMetadataServer
+from lsst.rubintv.production.starTracker import StarTrackerMetadataServer
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
-from lsst.summit.utils.utils import setupLogging
+from lsst.summit.utils.utils import setupLogging, getSite
 
-config = getSiteConfig()
+try:
+    site = getSite()
+except ValueError:  # raised when it can't be found, as is the case for the summit
+    site = 'summit'
+
+config = getSiteConfig(site=site)
 metadataRoot = config.get('starTrackerMetadataRoot')
 
 setupLogging()
