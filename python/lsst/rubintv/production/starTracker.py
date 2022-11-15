@@ -159,6 +159,8 @@ class StarTrackerWatcher():
         The root directory to watch for files landing in. Should not include
         the GenericCamera/101/ or GenericCamera/102/ part, just the base
         directory that these are being written to, as visible from k8s.
+    wide : `bool`
+        Whether to watch the wide or narrow camera.
     """
     cadence = 1  # in seconds
 
@@ -172,6 +174,7 @@ class StarTrackerWatcher():
         self.wide = wide
         self.uploader = Uploader()
         self.log = _LOG.getChild("watcher")
+        self.heartbeater = None
 
     def _getLatestImageDataIdAndExpId(self):
         """Get the dataId and expId for the most recent image in the repo.
@@ -205,6 +208,8 @@ class StarTrackerWatcher():
             try:
                 filename, _, _, expId = self._getLatestImageDataIdAndExpId()
                 self.log.debug(f"{filename}")
+                if self.heartbeater:  # gets set by the channel post-init
+                    self.heartbeater.beat()
 
                 if lastFound == expId:
                     sleep(self.cadence)
@@ -263,6 +268,7 @@ class StarTrackerChannel():
         self.heartbeaterRaw = Heartbeater(self.channelRaw,
                                           self.HEARTBEAT_UPLOAD_PERIOD,
                                           self.HEARTBEAT_FLATLINE_PERIOD)
+        self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
     def filenameToExposure(self, filename):
         """Read the exposure from the file and set the wcs from the header.
