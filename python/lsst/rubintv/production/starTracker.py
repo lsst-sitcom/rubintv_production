@@ -25,7 +25,9 @@ import logging
 import time
 from glob import glob
 from time import sleep
+import traceback
 
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 from astroquery.astrometry_net import AstrometryNet
 from lsst.afw.geom import SkyWcs
@@ -34,7 +36,7 @@ from lsst.summit.utils.utils import getCurrentDayObs_datetime
 from lsst.summit.utils.utils import dayObsIntToString
 from lsst.summit.utils.blindSolving import plot, runImchar, _filterSourceCatalog, getApiKey
 
-from .channels import PREFIXES, CHANNELS
+from .channels import PREFIXES
 from .utils import writeMetadataShard, isFileWorldWritable
 from .rubinTv import Uploader, Heartbeater
 
@@ -71,7 +73,7 @@ def dayObsSeqNumFromFilename(filename):
         The seqNum.
     """
     # filenames are like GC101_O_20221114_000005.fits
-    filename = os.path.basename(filename)  # in case we're passed a full path
+    filename = os.path.basename(filename)  # in case we're passed a full path
     _, _, dayObs, seqNumAndSuffix = filename.split('_')
     dayObs = int(dayObs)
     seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
@@ -187,7 +189,6 @@ class StarTrackerWatcher():
         dayObs = int(dayObs)
         seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
         expId = int(str(dayObs) + seqNumAndSuffix.removesuffix('.fits'))
-        # return {'day_obs': dayObs, 'seq_num': seqNum}, expId
         return latestFile, dayObs, seqNum, expId
 
     def run(self, callback):
@@ -199,25 +200,24 @@ class StarTrackerWatcher():
             The method to call, with the latest filename as the argument.
         """
         lastFound = -1
-
+        filename = 'no filename'
         while True:
             try:
-                filename, seqNum, expId = self._getLatestImageDataIdAndExpId()
+                filename, _, _, expId = self._getLatestImageDataIdAndExpId()
                 self.log.debug(f"{filename}")
 
                 if lastFound == expId:
                     sleep(self.cadence)
                     self.log.debug('Found nothing, sleeping')
-                    # self.heartbeater.beat()
                     continue
                 else:
                     lastFound = expId
                     self.log.debug(f'Calling back with {filename}')
                     callback(filename)
-                    # self.heartbeater.beat()  # after the callback so as not to delay processing with an upload
 
             except Exception as e:
-                print(f'Skipped {filename} due to {e}')
+                self.log.warning(f'Skipped {filename} due to {e}')
+                traceback.print_exc()
 
 
 class StarTrackerChannel():
@@ -275,18 +275,21 @@ class StarTrackerChannel():
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
         """
+        _ifWide = ' wide' if self.wide else ''
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         expMd = exp.getMetadata().toDict()
+        expTime = exp.visitInfo.exposureTime
         contents = {}
         ra = exp.getWcs().getSkyOrigin().getRa().asDegrees()
         dec = exp.getWcs().getSkyOrigin().getDec().asDegrees()
         az = getAverageAzFromHeader(expMd)
         el = getAverageElFromHeader(expMd)
         contents = {
-            f"Ra{' Wide' if self.wide else ''}": ra,
-            f"Dec{' Wide' if self.wide else ''}": dec,
-            f"Az{' Wide' if self.wide else ''}": az,
-            f"El{' Wide' if self.wide else ''}": el,
+            f"Exposure Time{_ifWide}": expTime,
+            f"Ra{_ifWide}": ra,
+            f"Dec{_ifWide}": dec,
+            f"Az{_ifWide}": az,
+            f"El{_ifWide}": el,
         }
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
@@ -302,6 +305,7 @@ class StarTrackerChannel():
     def runAnalysis(self, exp, filename):
         """Run the analysis and upload the results.
         """
+        _ifWide = ' wide' if self.wide else ''  # the string to append to md keys
         adn = AstrometryNet()
         adn.api_key = getApiKey()
 
@@ -318,26 +322,26 @@ class StarTrackerChannel():
         imCharResult = runImchar(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
-        md = {seqNum: {f"nSources{' wide' if self.wide else ''}": len(sourceCatalog)}}
+        md = {seqNum: {f"nSources{_ifWide}": len(sourceCatalog)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
         if not sourceCatalog:
             raise RuntimeError('Failed to find any sources in image')
 
         filteredSources = _filterSourceCatalog(sourceCatalog, brightSourceFraction)
-        md = {seqNum: {f"nSources filtered{' wide' if self.wide else ''}": len(filteredSources)}}
+        md = {seqNum: {f"nSources filtered{_ifWide}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
         plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename)
-        uploadAs = self._getUploadFilename(self.channelAnalysis, filename, extension='.png')
-        self.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
+        uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
+        self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
         image_height, image_width = exp.image.array.shape
-        ra, dec = exp.getWcs().getSkyOrigin()
+        nominalRa, nominalDec = exp.getWcs().getSkyOrigin()
         scale_units = 'arcsecperpix'
         scale_type = 'ev'  # ev means submit estimate and % error
         scale_err = 3.0  # error as percentage
-        center_ra = ra.asDegrees()
-        center_dec = dec.asDegrees()
+        center_ra = nominalRa.asDegrees()
+        center_dec = nominalDec.asDegrees()
         scaleEstimate = exp.getWcs().getPixelScale().asArcseconds()
         wcs_header = adn.solve_from_source_list(filteredSources['base_SdssCentroid_x'],
                                                 filteredSources['base_SdssCentroid_y'],
@@ -350,17 +354,29 @@ class StarTrackerChannel():
                                                 center_dec=center_dec,
                                                 radius=radiusInDegrees,
                                                 solve_timeout=240)
+        t1 = time.time()
+
         if 'CRVAL1' not in wcs_header:  # this is a failed solve
             self.log.warning(f"Failed to find solution for {basename}")
             return
         else:
             self.log.info(f"Finished source finding and solving for {basename} in {t1-t0:.2f}s")
 
-        contents = {}
-        md = {seqNum: {f"nSources filtered{' wide' if self.wide else ''}": len(filteredSources)}}
-        writeMetadataShard(self.shardsDir, dayObs, md)
+        calculatedRa = geom.Angle(wcs_header['CRVAL1'], geom.degrees)
+        calculatedDec = geom.Angle(wcs_header['CRVAL2'], geom.degrees)
 
-        t1 = time.time()
+        deltaRa = geom.Angle(wcs_header['CRVAL1'] - nominalRa.asDegrees(), geom.degrees)
+        deltaDec = geom.Angle(wcs_header['CRVAL2'] - nominalDec.asDegrees(), geom.degrees)
+
+        result = {
+            'Calculated Ra': calculatedRa.asDegrees(),
+            'Calculated Dec': calculatedDec.asDegrees(),
+            'Delta Ra Arcsec': deltaRa.asArcseconds(),
+            'Delta Dec Arcsec': deltaDec.asArcseconds(),
+        }
+        contents = {k + _ifWide: v for k, v in result.items()}
+        md = {seqNum: contents}
+        writeMetadataShard(self.shardsDir, dayObs, md)
 
     def callback(self, filename):
         """Callback for the watcher, called when a new image lands.
@@ -377,12 +393,12 @@ class StarTrackerChannel():
 
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
-        self.runAnalysis(exp, filename)
-
-        # do the fit here
-        # shard with source info here
-        # plot the final result
-        # metadata shard with deltas on the pointing infos
+        try:
+            # writes shards as it goes
+            self.runAnalysis(exp, filename)
+        except Exception as e:
+            self.log.warning(f"Failed to run analysis on {filename}: {repr(e)}")
+            traceback.print_exc()
 
     def run(self):
         """Run continuously, calling the callback method on the latest filename
@@ -390,31 +406,23 @@ class StarTrackerChannel():
         self.watcher.run(self.callback)
 
 
-class StarTrackerMetadataChannel():
+class StarTrackerMetadataServer():
     """Class for serving star tracker metadata to RubinTV.
     """
 
     def __init__(self, *,
-                 rootDataPath,
-                 outputRoot,
                  metadataRoot,
-                 wide=False,
                  doRaise=False):
         self.uploader = Uploader()
         self.channel = 'startracker_metadata'
         self.log = _LOG.getChild(f"{self.channel}")
-        self.watcher = StarTrackerWatcher(wide=wide)
-        self.rootDataPath = rootDataPath
-        self.outputRoot = outputRoot
-        self.outputRoot = metadataRoot
+        self.metadataRoot = metadataRoot
         self.doRaise = doRaise
-        self.wide = wide
-        self.shardsDir = os.path.join(outputRoot, 'shards')
-        for path in (self.outputRoot, self.shardsDir):
-            try:
-                os.makedirs(path, exist_ok=True)
-            except Exception as e:
-                raise RuntimeError(f"Failed to find/create {path}") from e
+        self.shardsDir = os.path.join(self.metadataRoot, 'shards')
+        try:
+            os.makedirs(self.shardsDir, exist_ok=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to find/create {self.shardsDir}") from e
 
     def mergeShardsAndUpload(self):
         """Merge all the shards in the shard directory into their respective
@@ -475,22 +483,24 @@ class StarTrackerMetadataChannel():
         """
         return os.path.join(self.metadataRoot, f'dayObs_{dayObs}.json')
 
-    def callback(self, dataId):
+    def callback(self):
         """Method called on each new dataId as it is found in the repo.
 
         Add the metadata to the sidecar for the dataId and upload.
         """
         try:
-            self.log.info(f'Getting metadata for {dataId}')
+            self.log.info('Getting metadata from shards')
             self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
             if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped creating sidecar metadata for {dataId} because {repr(e)}")
+                raise RuntimeError("Error when collection metadata") from e
+            self.log.warning(f"Error when collection metadata because {repr(e)}")
             return None
 
     def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
+        """Run continuously, looking for metadata and uploading.
         """
-        self.watcher.run(self.callback)
+        while True:
+            self.callback()
+            sleep(1.5)

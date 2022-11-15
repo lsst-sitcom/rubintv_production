@@ -38,5 +38,6 @@ print('Running star tracker channel...')
 starTracker = StarTrackerChannel(rootDataPath=rootDataPath,
                                  metadataRoot=metadataRoot,
                                  outputRoot=outputRoot,
+                                 wide=False,
                                  )
 starTracker.run()
