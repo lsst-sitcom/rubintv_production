@@ -282,8 +282,19 @@ class StarTrackerChannel():
         contents = {}
         ra = exp.getWcs().getSkyOrigin().getRa().asDegrees()
         dec = exp.getWcs().getSkyOrigin().getDec().asDegrees()
-        az = getAverageAzFromHeader(expMd)
-        el = getAverageElFromHeader(expMd)
+
+        az = None
+        try:
+            az = getAverageAzFromHeader(expMd)
+        except RuntimeError:
+            self.log.warning(f'Failed to get az from header for {filename}')
+
+        el = None
+        try:
+            el = getAverageElFromHeader(expMd)
+        except RuntimeError:
+            self.log.warning(f'Failed to get el from header for {filename}')
+
         contents = {
             f"Exposure Time{_ifWide}": expTime,
             f"Ra{_ifWide}": ra,
