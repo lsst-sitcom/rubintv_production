@@ -453,6 +453,7 @@ def remakeStarTrackerDay(*, dayObs,
                          wide,
                          remakeExisting=False,
                          logger=None,
+                         dryRun=False  # remove this eventually?
                          ):
     """Remake all the star tracker plots for a given day.
 
@@ -473,7 +474,7 @@ def remakeStarTrackerDay(*, dayObs,
         Raised if the channel is unknown.
         Raised if remakeExisting is False and channel is auxtel_metadata.
     """
-    from .rubinTv import StarTrackerChannel, getRawDataDirForDayObs
+    from .starTracker import StarTrackerChannel, getRawDataDirForDayObs
 
     if not logger:
         logger = logging.getLogger('lsst.starTracker.remake')
@@ -483,13 +484,11 @@ def remakeStarTrackerDay(*, dayObs,
                                    rootDataPath=rootDataPath,
                                    metadataRoot=metadataRoot,
                                    outputRoot=outputRoot,
-                                   doRaise=False)
+                                   doRaise=False,
+                                   )
 
     _ifWide = '_wide' if wide else ''
-    rawChannel = f"startracker_raw{_ifWide}"
-    # analysisChannel = f"startracker{_ifWide}_analysis"  # TODO: run the analysis later on
-    # TODO: work out how to deal with the channel name needing(?) to be
-    # different for the analysis?
+    rawChannel = f"startracker{_ifWide}_raw"
 
     existing = getPlotSeqNumsForDayObs(rawChannel, dayObs)
     maxSeqNum = max(existing)
@@ -509,10 +508,13 @@ def remakeStarTrackerDay(*, dayObs,
         foundFiles[seqNum] = filename
 
     toRemake = missing if not remakeExisting else list(range(1, maxSeqNum))
+    toRemake.reverse()  # always do the most recent ones first, burning down the list, not up
 
     for seqNum in toRemake:
         if seqNum not in foundFiles.keys():
             logger.warning(f'Failed to find raw file for {seqNum}, skipping...')
             continue
         filename = foundFiles[seqNum]
-        tvChannel.callback(filename)
+        logger.info(f'Processing {seqNum} from {filename}')
+        if not dryRun:
+            tvChannel.callback(filename)
