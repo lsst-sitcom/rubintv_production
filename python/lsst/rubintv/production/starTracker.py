@@ -303,7 +303,7 @@ class StarTrackerChannel():
 
         snr = 5
         minPix = 25
-        radiusInDegrees = 20
+        radiusInDegrees = 30
         brightSourceFraction = 0.2
         imCharResult = runImchar(exp, snr, minPix)
 
