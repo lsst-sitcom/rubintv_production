@@ -25,6 +25,7 @@ import logging
 import time
 from glob import glob
 from time import sleep
+import datetime
 import traceback
 
 import lsst.geom as geom
@@ -32,7 +33,7 @@ import lsst.afw.image as afwImage
 from astroquery.astrometry_net import AstrometryNet
 from lsst.afw.geom import SkyWcs
 from lsst.daf.base import PropertySet
-from lsst.summit.utils.utils import getCurrentDayObs_datetime
+from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.utils.utils import dayObsIntToString
 from lsst.summit.utils.blindSolving import plot, runImchar, _filterSourceCatalog, getApiKey
 
@@ -51,10 +52,42 @@ def getCurrentRawDataDir(rootDataPath, wide):
     path : `str`
         The raw data dir for today.
     """
-    datetime = getCurrentDayObs_datetime()
+    todayInt = getCurrentDayObs_int()
+    return getRawDataDirForDayObs(rootDataPath, wide, todayInt)
+
+
+def getRawDataDirForDayObs(rootDataPath, wide, dayObs):
+    """Get the raw data dir for a given dayObs.
+
+    Parameters
+    ----------
+    rootDataPath : `str`
+        The root data path.
+    wide : `bool`
+        Whether this is a wide field camera or not
+    dayObs : `int`
+        The dayObs
+    """
     camNum = 101 if wide else 102  # TODO move this config to the top somehow?
-    dirSuffix = f'GenericCamera/{camNum}/{datetime.year}/{datetime.month}/{datetime.day}/'
+    dayObsDateTime = datetime.datetime.strptime(str(dayObs), '%Y%m%d')
+    dirSuffix = f'GenericCamera/{camNum}/{dayObsDateTime.year}/{dayObsDateTime.month}/{dayObsDateTime.day}/'
     return os.path.join(rootDataPath, dirSuffix)
+
+
+def dayObsToDateTime(dayObs):
+    """Convert a dayObs to a datetime.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        The dayObs.
+
+    Returns
+    -------
+    datetime : `datetime`
+        The datetime.
+    """
+    return datetime.datetime.strptime(dayObsIntToString(dayObs), '%Y%m%d')
 
 
 def dayObsSeqNumFromFilename(filename):
@@ -183,7 +216,7 @@ class StarTrackerWatcher():
         files = glob(os.path.join(currentDir, '*.fits'))
         files = sorted(files, reverse=True)  # everything is zero-padded so sorts nicely
         if not files:
-            return None, None, None
+            return None, None, None, None
 
         latestFile = files[0]
 
