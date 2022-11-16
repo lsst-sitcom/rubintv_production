@@ -395,12 +395,18 @@ class StarTrackerChannel():
 class StarTrackerMetadataServer():
     """Class for serving star tracker metadata to RubinTV.
     """
+    # upload heartbeat every n seconds
+    HEARTBEAT_UPLOAD_PERIOD = 30
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, *,
                  metadataRoot,
                  doRaise=False):
         self.uploader = Uploader()
-        self.heartbeater = Heartbeater('startracker_metadata')
+        self.heartbeater = Heartbeater('startracker_metadata',
+                                        self.HEARTBEAT_UPLOAD_PERIOD,
+                                        self.HEARTBEAT_FLATLINE_PERIOD)
         self.channel = 'startracker_metadata'
         self.log = _LOG.getChild(f"{self.channel}")
         self.metadataRoot = metadataRoot
