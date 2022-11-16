@@ -303,8 +303,8 @@ class StarTrackerChannel():
 
         snr = 5
         minPix = 25
-        radiusInDegrees = 5
-        brightSourceFraction = 0.1
+        radiusInDegrees = 20
+        brightSourceFraction = 0.2
         imCharResult = runImchar(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
