@@ -24,6 +24,7 @@ import uuid
 import yaml
 import logging
 import json
+import glob
 from time import sleep
 from lsst.utils import getPackageDir
 from datetime import datetime, timedelta
@@ -443,3 +444,75 @@ def isFileWorldWritable(filename):
     """
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
+
+
+def remakeStarTrackerDay(*, dayObs,
+                         rootDataPath,
+                         metadataRoot,
+                         outputRoot,
+                         wide,
+                         remakeExisting=False,
+                         logger=None,
+                         ):
+    """Remake all the star tracker plots for a given day.
+
+
+    Parameters
+    ----------
+    wide : `bool`
+        Do this for the wide or narrow camera?
+    dayObs : `int`
+        The dayObs.
+    remakeExisting : `bool`, optional
+        Remake all plots, regardless of whether they already exist in the
+        bucket?
+
+    Raises
+    ------
+    ValueError:
+        Raised if the channel is unknown.
+        Raised if remakeExisting is False and channel is auxtel_metadata.
+    """
+    from .rubinTv import StarTrackerChannel, getRawDataDirForDayObs
+
+    if not logger:
+        logger = logging.getLogger('lsst.starTracker.remake')
+
+    # doRaise is False because during bulk plot remaking we expect many fails
+    tvChannel = StarTrackerChannel(wide=wide,
+                                   rootDataPath=rootDataPath,
+                                   metadataRoot=metadataRoot,
+                                   outputRoot=outputRoot,
+                                   doRaise=False)
+
+    _ifWide = '_wide' if wide else ''
+    rawChannel = f"startracker_raw{_ifWide}"
+    # analysisChannel = f"startracker{_ifWide}_analysis"  # TODO: run the analysis later on
+    # TODO: work out how to deal with the channel name needing(?) to be
+    # different for the analysis?
+
+    existing = getPlotSeqNumsForDayObs(rawChannel, dayObs)
+    maxSeqNum = max(existing)
+    missing = [_ for _ in range(1, maxSeqNum) if _ not in existing]
+    logger.info(f"Most recent = {maxSeqNum}, found {len(missing)} missing to create plots for: {missing}")
+
+    dayPath = getRawDataDirForDayObs(rootDataPath=rootDataPath,
+                                     wide=wide,
+                                     dayObs=dayObs)
+
+    files = glob.glob(os.path.join(dayPath, '*.fits'))
+    foundFiles = {}
+    for filename in files:
+        # filenames are like GC101_O_20221114_000005.fits
+        _, _, dayObs, seqNumAndSuffix = filename.split('_')
+        seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
+        foundFiles[seqNum] = filename
+
+    toRemake = missing if not remakeExisting else list(range(1, maxSeqNum))
+
+    for seqNum in toRemake:
+        if seqNum not in foundFiles.keys():
+            logger.warning(f'Failed to find raw file for {seqNum}, skipping...')
+            continue
+        filename = foundFiles[seqNum]
+        tvChannel.callback(filename)
