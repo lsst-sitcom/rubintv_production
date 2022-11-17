@@ -22,24 +22,23 @@
 import json
 import os
 import logging
-import time
 from glob import glob
 from time import sleep
 import datetime
 import traceback
 
-import lsst.geom as geom
 import lsst.afw.image as afwImage
-from astroquery.astrometry_net import AstrometryNet
-from lsst.summit.utils.utils import getCurrentDayObs_int
-from lsst.summit.utils.utils import dayObsIntToString
+from lsst.summit.utils.utils import (getCurrentDayObs_int,
+                                     getAltAzFromSkyPosition,
+                                     dayObsIntToString,
+                                     )
 from lsst.summit.utils.blindSolving import (plot,
                                             runImchar,
                                             _filterSourceCatalog,
-                                            getApiKey,
                                             getAverageAzFromHeader,
                                             getAverageElFromHeader,
                                             genericCameraHeaderToWcs,
+                                            CommandLineSolver,
                                             )
 
 from .channels import PREFIXES
@@ -239,6 +238,10 @@ class StarTrackerChannel():
                                           self.HEARTBEAT_FLATLINE_PERIOD)
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
+        indexLocation = '/project/shared/ref_cats/astrometry_net/4100'  # TODO remove hardcoding
+        self.solver = CommandLineSolver(indexFiles=indexLocation,
+                                        checkInParallel=True)
+
     def filenameToExposure(self, filename):
         """Read the exposure from the file and set the wcs from the header.
         """
@@ -292,10 +295,8 @@ class StarTrackerChannel():
         """Run the analysis and upload the results.
         """
         _ifWide = ' wide' if self.wide else ''  # the string to append to md keys
-        adn = AstrometryNet()
-        adn.api_key = getApiKey()
+        oldWcs = exp.getWcs()
 
-        t0 = time.time()
         basename = os.path.basename(filename).removesuffix('.fits')
         fittedPngFilename = os.path.join(self.outputRoot, basename + '_fitted.png')
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
@@ -303,7 +304,6 @@ class StarTrackerChannel():
 
         snr = 5
         minPix = 25
-        radiusInDegrees = 30
         brightSourceFraction = 0.2
         imCharResult = runImchar(exp, snr, minPix)
 
@@ -321,44 +321,36 @@ class StarTrackerChannel():
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
-        image_height, image_width = exp.image.array.shape
-        nominalRa, nominalDec = exp.getWcs().getSkyOrigin()
-        scale_units = 'arcsecperpix'
-        scale_type = 'ev'  # ev means submit estimate and % error
-        scale_err = 3.0  # error as percentage
-        center_ra = nominalRa.asDegrees()
-        center_dec = nominalDec.asDegrees()
-        scaleEstimate = exp.getWcs().getPixelScale().asArcseconds()
-        wcs_header = adn.solve_from_source_list(filteredSources['base_SdssCentroid_x'],
-                                                filteredSources['base_SdssCentroid_y'],
-                                                image_width, image_height,
-                                                scale_units=scale_units,
-                                                scale_type=scale_type,
-                                                scale_est=scaleEstimate,
-                                                scale_err=scale_err,
-                                                center_ra=center_ra,
-                                                center_dec=center_dec,
-                                                radius=radiusInDegrees,
-                                                solve_timeout=240)
-        t1 = time.time()
+        newWcs = self.solver.run(exp, filteredSources, silent=True)
 
-        if 'CRVAL1' not in wcs_header:  # this is a failed solve
+        if not newWcs:
             self.log.warning(f"Failed to find solution for {basename}")
             return
-        else:
-            self.log.info(f"Finished source finding and solving for {basename} in {t1-t0:.2f}s")
 
-        calculatedRa = geom.Angle(wcs_header['CRVAL1'], geom.degrees)
-        calculatedDec = geom.Angle(wcs_header['CRVAL2'], geom.degrees)
+        calculatedRa, calculatedDec = newWcs.getSkyOrigin()
+        nominalRa, nominalDec = oldWcs.getSkyOrigin()
 
-        deltaRa = geom.Angle(wcs_header['CRVAL1'] - nominalRa.asDegrees(), geom.degrees)
-        deltaDec = geom.Angle(wcs_header['CRVAL2'] - nominalDec.asDegrees(), geom.degrees)
+        deltaRa = calculatedRa - nominalRa
+        deltaDec = calculatedDec - nominalDec
+
+        oldAlt, oldAz = getAltAzFromSkyPosition(oldWcs.getSkyOrigin(), exp.visitInfo)
+        newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(), exp.visitInfo)
+
+        deltaAlt = newAlt - oldAlt
+        deltaAz = newAz - oldAz
+
+        deltaRot = newWcs.getRelativeRotationToWcs(oldWcs).asArcseconds()
 
         result = {
             'Calculated Ra': calculatedRa.asDegrees(),
             'Calculated Dec': calculatedDec.asDegrees(),
+            'Calculated Alt': newAlt.asDegrees(),
+            'Calculated Az': newAz.asDegrees(),
             'Delta Ra Arcsec': deltaRa.asArcseconds(),
             'Delta Dec Arcsec': deltaDec.asArcseconds(),
+            'Delta Alt Arcsec': deltaAlt.asArcseconds(),
+            'Delta Az Arcsec': deltaAz.asArcseconds(),
+            'Delta Rot Arcsec': deltaRot,
         }
         contents = {k + _ifWide: v for k, v in result.items()}
         md = {seqNum: contents}
@@ -405,8 +397,8 @@ class StarTrackerMetadataServer():
                  doRaise=False):
         self.uploader = Uploader()
         self.heartbeater = Heartbeater('startracker_metadata',
-                                        self.HEARTBEAT_UPLOAD_PERIOD,
-                                        self.HEARTBEAT_FLATLINE_PERIOD)
+                                       self.HEARTBEAT_UPLOAD_PERIOD,
+                                       self.HEARTBEAT_FLATLINE_PERIOD)
         self.channel = 'startracker_metadata'
         self.log = _LOG.getChild(f"{self.channel}")
         self.metadataRoot = metadataRoot
