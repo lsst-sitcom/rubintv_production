@@ -327,7 +327,7 @@ class StarTrackerChannel():
             self.log.warning(f"Failed to find solution for {basename}")
             return
 
-        newWcs = result.newWcs
+        newWcs = result.wcs
 
         calculatedRa, calculatedDec = newWcs.getSkyOrigin()
         nominalRa, nominalDec = oldWcs.getSkyOrigin()
