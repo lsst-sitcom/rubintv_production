@@ -453,6 +453,7 @@ def remakeStarTrackerDay(*, dayObs,
                          wide,
                          remakeExisting=False,
                          logger=None,
+                         forceMaxNum=None
                          ):
     """Remake all the star tracker plots for a given day.
 
@@ -490,7 +491,7 @@ def remakeStarTrackerDay(*, dayObs,
     rawChannel = f"startracker{_ifWide}_raw"
 
     existing = getPlotSeqNumsForDayObs(rawChannel, dayObs)
-    maxSeqNum = max(existing)
+    maxSeqNum = max(existing) if not forceMaxNum else forceMaxNum
     missing = [_ for _ in range(1, maxSeqNum) if _ not in existing]
     logger.info(f"Most recent = {maxSeqNum}, found {len(missing)} missing to create plots for: {missing}")
 
