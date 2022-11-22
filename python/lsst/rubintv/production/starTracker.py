@@ -34,7 +34,7 @@ from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      )
 from lsst.summit.utils.blindSolving import (plot,
                                             runImchar,
-                                            _filterSourceCatalog,
+                                            filterOnBrightest,
                                             getAverageAzFromHeader,
                                             getAverageElFromHeader,
                                             genericCameraHeaderToWcs,
@@ -304,7 +304,7 @@ class StarTrackerChannel():
 
         snr = 5
         minPix = 25
-        brightSourceFraction = 0.2
+        brightSourceFraction = 0.8
         imCharResult = runImchar(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
@@ -313,7 +313,7 @@ class StarTrackerChannel():
         if not sourceCatalog:
             raise RuntimeError('Failed to find any sources in image')
 
-        filteredSources = _filterSourceCatalog(sourceCatalog, brightSourceFraction)
+        filteredSources = filterOnBrightest(sourceCatalog, brightSourceFraction)
         md = {seqNum: {f"nSources filtered{_ifWide}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
