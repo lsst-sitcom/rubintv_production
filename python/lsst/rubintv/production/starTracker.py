@@ -321,11 +321,13 @@ class StarTrackerChannel():
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
-        newWcs = self.solver.run(exp, filteredSources, silent=True)
+        result = self.solver.run(exp, filteredSources, silent=True)
 
-        if not newWcs:
+        if not result:
             self.log.warning(f"Failed to find solution for {basename}")
             return
+
+        newWcs = result.newWcs
 
         calculatedRa, calculatedDec = newWcs.getSkyOrigin()
         nominalRa, nominalDec = oldWcs.getSkyOrigin()
@@ -351,6 +353,8 @@ class StarTrackerChannel():
             'Delta Alt Arcsec': deltaAlt.asArcseconds(),
             'Delta Az Arcsec': deltaAz.asArcseconds(),
             'Delta Rot Arcsec': deltaRot,
+            'RMS scatter arcsec': result.scatterArcseconds,
+            'RMS scatter pixels': result.scatterPixels,
         }
         contents = {k + _ifWide: v for k, v in result.items()}
         md = {seqNum: contents}
