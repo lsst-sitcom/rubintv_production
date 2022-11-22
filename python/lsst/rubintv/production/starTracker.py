@@ -267,18 +267,18 @@ class StarTrackerChannel():
         except RuntimeError:
             self.log.warning(f'Failed to get az from header for {filename}')
 
-        el = None
+        alt = None
         try:
-            el = getAverageElFromHeader(expMd)
+            alt = getAverageElFromHeader(expMd)
         except RuntimeError:
-            self.log.warning(f'Failed to get el from header for {filename}')
+            self.log.warning(f'Failed to get alt from header for {filename}')
 
         contents = {
             f"Exposure Time{_ifWide}": expTime,
             f"Ra{_ifWide}": ra,
             f"Dec{_ifWide}": dec,
+            f"Alt{_ifWide}": alt,
             f"Az{_ifWide}": az,
-            f"El{_ifWide}": el,
         }
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
