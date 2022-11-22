@@ -453,7 +453,6 @@ def remakeStarTrackerDay(*, dayObs,
                          wide,
                          remakeExisting=False,
                          logger=None,
-                         dryRun=False  # remove this eventually?
                          ):
     """Remake all the star tracker plots for a given day.
 
@@ -516,5 +515,4 @@ def remakeStarTrackerDay(*, dayObs,
             continue
         filename = foundFiles[seqNum]
         logger.info(f'Processing {seqNum} from {filename}')
-        if not dryRun:
-            tvChannel.callback(filename)
+        tvChannel.callback(filename)
