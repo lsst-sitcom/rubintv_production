@@ -33,6 +33,9 @@ try:
 except ImportError:
     pass
 
+
+__all__ = ["calculateMountErrors"]
+
 NON_TRACKING_IMAGE_TYPES = ['BIAS',
                             'FLAT',
                             'DARK',
