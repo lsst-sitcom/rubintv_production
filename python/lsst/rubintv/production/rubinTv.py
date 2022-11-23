@@ -56,7 +56,8 @@ from lsst.summit.utils.butlerUtils import (makeDefaultLatissButler, datasetExist
 from lsst.summit.utils.utils import dayObsIntToString
 from lsst.atmospec.utils import isDispersedDataId
 
-from lsst.rubintv.production.mountTorques import calculateMountErrors
+from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
+                                                  MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .channels import PREFIXES, CHANNELS
 from .utils import writeMetadataShard, isFileWorldWritable
@@ -412,7 +413,7 @@ class MountTorqueChannel():
     """Class for running the mount torque channel on RubinTV.
     """
 
-    def __init__(self, doRaise=False):
+    def __init__(self, outputRoot, doRaise=False, **kwargs):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
@@ -422,9 +423,31 @@ class MountTorqueChannel():
         self.client = EfdClient('summit_efd')
         self.log = _LOG.getChild("mountTorqueChannel")
         self.channel = 'auxtel_mount_torques'
+        self.shardsDir = os.path.join(outputRoot, 'shards')
         self.watcher = Watcher(self.dataProduct, self.channel)
         self.fig = plt.figure(figsize=(16, 16))
         self.doRaise = doRaise
+
+    def writeMountErrorShard(self, errors, dataId):
+        """Write a metadata shard for the mount error, including the flag
+        for coloring the cell based on the threshold values.
+        """
+        dayObs = butlerUtils.getDayObs(dataId)
+        seqNum = butlerUtils.getSeqNum(dataId)
+        az_rms, el_rms, _ = errors  # we don't need the rot errors here so assign to _
+        imageError = (az_rms ** 2 + el_rms ** 2) ** .5
+        key = 'Mount motion image degradation'
+        flagKey = '_' + key  # color coding of cells always done by prepending with an underscore
+        contents = {key: imageError}
+
+        if imageError > MOUNT_IMAGE_BAD_LEVEL:
+            contents.update({flagKey: 'bad'})
+        elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
+            contents.update({flagKey: 'warning'})
+
+        md = {seqNum: contents}
+        writeMetadataShard(self.shardsDir, dayObs, md)
+        return
 
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
@@ -437,13 +460,17 @@ class MountTorqueChannel():
             uploadFilename = _dataIdToFilename(self.channel, dataId)
 
             # calculateMountErrors() calculates the errors, but also performs
-            # the plotting. We don't need the errors here so we throw them away
-            _ = calculateMountErrors(dataId, self.butler, self.client, self.fig, tempFilename, self.log)
+            # the plotting.
+            errors = calculateMountErrors(dataId, self.butler, self.client, self.fig, tempFilename, self.log)
 
             if os.path.exists(tempFilename):  # skips many image types and short exps
                 self.log.info("Uploading mount torque plot to storage bucket")
                 self.uploader.googleUpload(self.channel, tempFilename, uploadFilename)
                 self.log.info('Upload complete')
+
+            # write the mount error shard, including the cell coloring flag
+            if errors:  # if the mount torque fails or skips it returns False
+                self.writeMountErrorShard(errors, dataId)
 
         except Exception as e:
             if self.doRaise:

@@ -40,6 +40,7 @@ __all__ = ["checkRubinTvExternalPackages",
            "remakeDay",
            "isDayObsContiguous",
            "pushTestImageToCurrent",
+           "getSiteConfig",
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -174,7 +175,10 @@ def createChannelByName(channel, doRaise, **kwargs):
         case "summit_specexam":
             return SpecExaminerChannel(doRaise=doRaise)
         case "auxtel_mount_torques":
-            return MountTorqueChannel(doRaise=doRaise)
+            if 'outputRoot' not in kwargs:
+                raise RuntimeError("Must provide writeable output root outputRoot via kwargs for "
+                                   "auxtel_metadata channel")
+            return MountTorqueChannel(doRaise=doRaise, **kwargs)
         case "auxtel_monitor":
             return MonitorChannel(doRaise=doRaise)
         case "auxtel_metadata":
@@ -282,7 +286,7 @@ def remakeDay(channel, dayObs, *,
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(channel, doRaise=True, embargo=embargo, **kwargs)
+    tvChannel = createChannelByName(channel, doRaise=False, embargo=embargo, **kwargs)
     if channel in ['auxtel_metadata']:
         # special case so we only upload once after all the shards are made
         for seqNum in toMake:

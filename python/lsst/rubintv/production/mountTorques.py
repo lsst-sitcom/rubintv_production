@@ -33,12 +33,17 @@ try:
 except ImportError:
     pass
 
+
+__all__ = ["calculateMountErrors"]
+
 NON_TRACKING_IMAGE_TYPES = ['BIAS',
                             'FLAT',
                             'DARK',
                             ]
 
 AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC = 280.0
+MOUNT_IMAGE_WARNING_LEVEL = .25  # this determines the colouring of the cells in the table, yellow for this
+MOUNT_IMAGE_BAD_LEVEL = .4  # and red for this
 
 
 def _getEfdData(client, dataSeries, startTime, endTime):
