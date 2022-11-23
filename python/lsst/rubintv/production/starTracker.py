@@ -238,7 +238,7 @@ class StarTrackerChannel():
                                           self.HEARTBEAT_FLATLINE_PERIOD)
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
-        indexLocation = '/project/shared/ref_cats/astrometry_net/4100'  # TODO remove hardcoding
+        indexLocation = f"/project/shared/ref_cats/astrometry_net/{'4100' if self.wide else '4200'}"
         self.solver = CommandLineSolver(indexFiles=indexLocation,
                                         checkInParallel=True)
 
@@ -302,9 +302,11 @@ class StarTrackerChannel():
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.heartbeaterAnalysis.beat()  # we're alive and at least trying to solve
 
-        snr = 5
-        minPix = 25
-        brightSourceFraction = 0.8
+        # TODO: Need to pull these wide/non-wide config options into a
+        # centralised place. snr, minPix, scaleError, indexFiles on init
+        snr = 5 if self.wide else 2.5
+        minPix = 25 if self.wide else 10
+        brightSourceFraction = 0.8 if self.wide else 0.95
         imCharResult = runImchar(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
@@ -321,7 +323,8 @@ class StarTrackerChannel():
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
-        result = self.solver.run(exp, filteredSources, silent=True)
+        scaleError = 10 if self.wide else 40
+        result = self.solver.run(exp, filteredSources, percentageScaleError=scaleError, silent=True)
 
         if not result:
             self.log.warning(f"Failed to find solution for {basename}")
