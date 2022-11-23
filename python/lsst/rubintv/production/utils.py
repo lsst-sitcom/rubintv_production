@@ -195,7 +195,7 @@ def createChannelByName(channel, doRaise, **kwargs):
             raise ValueError(f"Unrecognized channel {channel}.")
 
 
-def remakePlotByDataId(channel, dataId):
+def remakePlotByDataId(channel, dataId, **kwargs):
     """Remake the plot for the given channel for a single dataId.
     Reproduces the plot regardless of whether it exists. Raises on error.
 
@@ -210,7 +210,7 @@ def remakePlotByDataId(channel, dataId):
     dataId : `dict`
         The dataId.
     """
-    tvChannel = createChannelByName(channel, doRaise=True)
+    tvChannel = createChannelByName(channel, doRaise=True, **kwargs)
     tvChannel.callback(dataId)
 
 
