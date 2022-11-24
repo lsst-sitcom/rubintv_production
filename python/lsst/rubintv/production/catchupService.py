@@ -95,6 +95,7 @@ class RubinTvBackgroundService():
         self.butler = butlerUtils.makeDefaultLatissButler()
         self.bestEffort = BestEffortIsr(**kwargs)
         self.uploader = Uploader()
+        self.metadataOutputRoot = metadataOutputRoot
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
@@ -214,7 +215,8 @@ class RubinTvBackgroundService():
         dayObs.
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
-        remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False)
+        remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False,
+                  outputRoot=self.metadataOutputRoot)  # outputRoot is passed through to createChannelByName
 
     def catchupMonitor(self):
         """Create and upload any missing monitor images for the current dayObs.
