@@ -28,6 +28,7 @@ import logging
 import tempfile
 from glob import glob
 from time import sleep
+import numpy as np
 import matplotlib.pyplot as plt
 
 import lsst.summit.utils.butlerUtils as butlerUtils
@@ -36,6 +37,7 @@ from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
 from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
+from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 
 try:
     from lsst_efd_client import EfdClient
@@ -845,10 +847,22 @@ class CharacterizeImageRunner():
         self.shardsDir = os.path.join(outputRoot, 'shards')
 
         config = CharacterizeImageConfig()
+        basicConfig = CharacterizeImageConfig()
         obs_lsst = getPackageDir("obs_lsst")
         config.load(os.path.join(obs_lsst, "config", "characterizeImage.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "characterizeImage.py"))
+        config.measurement = basicConfig.measurement
         self.charImage = CharacterizeImageTask(config=config)
+
+        config = CalibrateConfig()
+        basicConfig = CalibrateConfig()
+        config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
+        config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
+        # until we can figure out a good way to make refcats available
+        config.doAstrometry = False
+        config.doPhotoCal = False
+        config.measurement = basicConfig.measurement
+        self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
@@ -871,6 +885,29 @@ class CharacterizeImageRunner():
             dayObs = butlerUtils.getDayObs(dataId)
             seqNum = butlerUtils.getSeqNum(dataId)
             outputDict = {"50-sigma sources": nSources}
+            mdDict = {seqNum: outputDict}
+            writeMetadataShard(self.shardsDir, dayObs, mdDict)
+
+            calibrateRes = self.calibrate.run(charRes.exposure,
+                                              background=charRes.background,
+                                              icSourceCat=charRes.sourceCat)
+            summaryStats = calibrateRes.outputExposure.getInfo().getSummaryStats()
+            pixToArcseconds = calibrateRes.outputExposure.getWcs().getPixelScale().asArcseconds()
+            SIGMA2FWHM = np.sqrt(8 * np.log(2))
+            e1 = (summaryStats.psfIxx - summaryStats.psfIyy) / (summaryStats.psfIxx + summaryStats.psfIyy)
+            e2 = 2*summaryStats.psfIxy / (summaryStats.psfIxx + summaryStats.psfIyy)
+
+            outputDict = {
+                '5-sigma source count': len(calibrateRes.outputCat),
+                'psf FWHM': summaryStats.psfSigma * SIGMA2FWHM * pixToArcseconds,
+                'psf e1': e1,
+                'psf e2': e2,
+                'skyBg': summaryStats.skyBg,
+                'skyNoise': summaryStats.skyNoise,
+                'meanVar': summaryStats.meanVar,
+                'nPsfStar': summaryStats.nPsfStar,
+            }
+
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
 
