@@ -57,7 +57,7 @@ from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.butlerUtils import (makeDefaultLatissButler, datasetExists,
                                            getMostRecentDataId, getExpIdFromDayObsSeqNum)
 from lsst.summit.utils.utils import dayObsIntToString
-from lsst.atmospec.utils import isDispersedDataId
+from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
@@ -862,6 +862,10 @@ class CharacterizeImageRunner():
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
 
+            if isDispersedExp(exp):
+                self.log.info(f'Skipping dispersed image: {dataId}')
+                return
+
             charRes = self.charImage.run(exp)
             nSources = len(charRes.sourceCat)
             dayObs = butlerUtils.getDayObs(dataId)
@@ -875,7 +879,7 @@ class CharacterizeImageRunner():
         except Exception as e:
             if self.doRaise:
                 raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped monitor image for {dataId} because {repr(e)}")
+            self.log.warning(f"Skipped image characterization for {dataId} because {repr(e)}")
             return None
 
     def run(self):
