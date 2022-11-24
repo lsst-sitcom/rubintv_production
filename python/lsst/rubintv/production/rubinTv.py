@@ -34,6 +34,9 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
+from lsst.utils import getPackageDir
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
+
 try:
     from lsst_efd_client import EfdClient
     HAS_EFD_CLIENT = True
@@ -825,3 +828,63 @@ class Heartbeater():
         if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
             if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
                 self.lastUpload = now  # only reset this if the upload was successful
+
+
+class CharacterizeImageRunner():
+    """Class for running the CharacterizeImage channel on RubinTV.
+    """
+    def __init__(self, outputRoot, *, doRaise=False, embargo=False):
+        self.dataProduct = 'quickLookExp'
+        self.uploader = Uploader()
+        self.butler = makeDefaultLatissButler(embargo=embargo)
+        self.log = _LOG.getChild("monitorChannel")
+        self.channel = 'auxtel_characterizeImage'
+        self.watcher = Watcher(self.dataProduct, self.channel)
+        self.fig = plt.figure(figsize=(12, 12))
+        self.doRaise = doRaise
+        self.shardsDir = os.path.join(outputRoot, 'shards')
+
+        config = CharacterizeImageConfig()
+        obs_lsst = getPackageDir("obs_lsst")
+        config.load(os.path.join(obs_lsst, "config", "characterizeImage.py"))
+        config.load(os.path.join(obs_lsst, "config", "latiss", "characterizeImage.py"))
+        self.charImage = CharacterizeImageTask(config=config)
+
+    def _plotImage(self, exp, dataId, outputFilename):
+        if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
+            self.log.warning(f"Skipping {outputFilename}")
+            return
+        plotExp(exp, dataId, self.fig, outputFilename)
+
+    def callback(self, dataId, **kwargs):
+        """Method called on each new dataId as it is found in the repo.
+
+        Plot the image for display on the monitor, writing the plot
+        to a temp file, and upload it to Google cloud storage via the uploader.
+        """
+        try:
+            self.log.info(f'Running Image Characterization for {dataId}')
+            exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+            if not exp:
+                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+
+            charRes = self.charImage.run(exp)
+            nSources = len(charRes.sourceCat)
+            dayObs = butlerUtils.getDayObs(dataId)
+            seqNum = butlerUtils.getSeqNum(dataId)
+            outputDict = {"50-sigma sources": nSources}
+            mdDict = {seqNum: outputDict}
+            writeMetadataShard(self.shardsDir, dayObs, mdDict)
+
+            self.log.info("Wrote image characterization shard")
+
+        except Exception as e:
+            if self.doRaise:
+                raise RuntimeError(f"Error processing {dataId}") from e
+            self.log.warning(f"Skipped monitor image for {dataId} because {repr(e)}")
+            return None
+
+    def run(self):
+        """Run continuously, calling the callback method on the latest dataId.
+        """
+        self.watcher.run(self.callback)
