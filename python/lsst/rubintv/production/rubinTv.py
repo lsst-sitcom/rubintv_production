@@ -850,12 +850,6 @@ class CharacterizeImageRunner():
         config.load(os.path.join(obs_lsst, "config", "latiss", "characterizeImage.py"))
         self.charImage = CharacterizeImageTask(config=config)
 
-    def _plotImage(self, exp, dataId, outputFilename):
-        if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
-            self.log.warning(f"Skipping {outputFilename}")
-            return
-        plotExp(exp, dataId, self.fig, outputFilename)
-
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
