@@ -872,7 +872,6 @@ class CharacterizeImageRunner():
                          for ref in astromRefs]
         astromDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in astromRefs]
 
-
         loader = ReferenceObjectLoader(
             astromDataIds,
             astromHandles,
@@ -896,7 +895,6 @@ class CharacterizeImageRunner():
             config=self.calibrate.config.photoRefObjLoader
         )
         self.calibrate.photoCal.match.setRefObjLoader(loader)
-
 
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
