@@ -38,6 +38,8 @@ from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
+from lsst.meas.algorithms import ReferenceObjectLoader
+import lsst.daf.butler as dafButler
 
 try:
     from lsst_efd_client import EfdClient
@@ -288,6 +290,7 @@ class ImExaminerChannel():
             tempFilename = tempfile.mktemp(suffix='.png')
             uploadFilename = _dataIdToFilename(self.channel, dataId)
             exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
             self._imExamine(exp, dataId, tempFilename)
@@ -858,11 +861,42 @@ class CharacterizeImageRunner():
         basicConfig = CalibrateConfig()
         config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
-        # until we can figure out a good way to make refcats available
-        config.doAstrometry = False
-        config.doPhotoCal = False
         config.measurement = basicConfig.measurement
+
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
+
+        # Preload refcat dataids and deferred dataset handles
+        astrometryRefCatName = self.calibrate.config.connections.astromRefCat
+        astromRefs = self.butler.registry.queryDatasets(astrometryRefCatName).expanded()
+        astromHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
+                         for ref in astromRefs]
+        astromDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in astromRefs]
+
+
+        loader = ReferenceObjectLoader(
+            astromDataIds,
+            astromHandles,
+            name=astrometryRefCatName,
+            log=self.log,
+            config=self.calibrate.config.astromRefObjLoader
+        )
+        self.calibrate.astrometry.setRefObjLoader(loader)
+
+        photometryRefCatName = self.calibrate.config.connections.photoRefCat
+        photoRefs = self.butler.registry.queryDatasets(photometryRefCatName).expanded()
+        photoHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
+                        for ref in photoRefs]
+        photoDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in photoRefs]
+
+        loader = ReferenceObjectLoader(
+            photoDataIds,
+            photoHandles,
+            name=photometryRefCatName,
+            log=self.log,
+            config=self.calibrate.config.photoRefObjLoader
+        )
+        self.calibrate.photoCal.match.setRefObjLoader(loader)
+
 
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
@@ -873,6 +907,7 @@ class CharacterizeImageRunner():
         try:
             self.log.info(f'Running Image Characterization for {dataId}')
             exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
 
@@ -906,6 +941,9 @@ class CharacterizeImageRunner():
                 'skyNoise': summaryStats.skyNoise,
                 'meanVar': summaryStats.meanVar,
                 'nPsfStar': summaryStats.nPsfStar,
+                'astromOffsetMean': summaryStats.astromOffsetMean,
+                'astromOffsetStd': summaryStats.astromOffsetStd,
+                'zeroPoint': summaryStats.zeroPoint,
             }
 
             mdDict = {seqNum: outputDict}
