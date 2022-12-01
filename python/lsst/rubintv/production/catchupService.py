@@ -82,9 +82,9 @@ class RubinTvBackgroundService():
     HEARTBEAT_FLATLINE_PERIOD = 600
 
     def __init__(self, *,
-                 allSkyPngRoot=None,
-                 moviePngRoot=None,
-                 metadataOutputRoot=None,
+                 allSkyPngRoot=None,  # where to write all sky pngs to
+                 moviePngRoot=None,  # where to write animation pngs to
+                 metadataOutputRoot=None,  # where to metadatafiles (and shards in ./shards) to
                  doRaise=False,
                  **kwargs):
         self.uploader = Uploader()
