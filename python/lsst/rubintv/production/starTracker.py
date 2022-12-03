@@ -28,18 +28,21 @@ import datetime
 import traceback
 
 import lsst.afw.image as afwImage
+import lsst.daf.base as dafBase
+
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
                                      dayObsIntToString,
                                      )
-from lsst.summit.utils.blindSolving import (plot,
-                                            runImchar,
-                                            filterOnBrightest,
-                                            getAverageAzFromHeader,
-                                            getAverageElFromHeader,
-                                            genericCameraHeaderToWcs,
-                                            CommandLineSolver,
-                                            )
+from lsst.summit.utils.astrometry import CommandLineSolver
+from lsst.summit.utils.astrometry.plotting import plot
+from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
+                                                filterSourceCatOnBrightest,
+                                                getAverageAzFromHeader,
+                                                getAverageElFromHeader,
+                                                genericCameraHeaderToWcs,
+                                                )
+
 
 from .channels import PREFIXES
 from .utils import writeMetadataShard, isFileWorldWritable
@@ -210,6 +213,7 @@ class StarTrackerChannel():
                  rootDataPath,
                  outputRoot,
                  metadataRoot,
+                 astrometryNetRefCatRoot,
                  wide,
                  doRaise=False):
         self.uploader = Uploader()
@@ -222,6 +226,7 @@ class StarTrackerChannel():
                                           wide=wide)
         self.outputRoot = outputRoot
         self.metadataRoot = metadataRoot
+        self.astrometryNetRefCatRoot = astrometryNetRefCatRoot
         self.doRaise = doRaise
         self.shardsDir = os.path.join(self.metadataRoot, 'shards')
         for path in (self.outputRoot, self.shardsDir, self.metadataRoot):
@@ -238,8 +243,7 @@ class StarTrackerChannel():
                                           self.HEARTBEAT_FLATLINE_PERIOD)
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
-        indexLocation = f"/project/shared/ref_cats/astrometry_net/{'4100' if self.wide else '4200'}"
-        self.solver = CommandLineSolver(indexFiles=indexLocation,
+        self.solver = CommandLineSolver(indexFilePath=astrometryNetRefCatRoot,
                                         checkInParallel=True)
 
     def filenameToExposure(self, filename):
@@ -248,6 +252,20 @@ class StarTrackerChannel():
         exp = afwImage.ExposureF(filename)
         wcs = genericCameraHeaderToWcs(exp)
         exp.setWcs(wcs)
+
+        # for some reason the date isn't being set correctly
+        # DATE-OBS is present in the original header, but it's being
+        # stripped out and somehow not set (plus it doesn't give the midpoint
+        # of the exposure), so set it manually from the midpoint here
+        md = exp.getMetadata()
+        begin = datetime.datetime.fromisoformat(md['DATE-BEG'])
+        end = datetime.datetime.fromisoformat(md['DATE-END'])
+        duration = end - begin
+        mid = begin + duration/2
+        newTime = dafBase.DateTime(mid.isoformat(), dafBase.DateTime.Timescale.TAI)
+        newVi = exp.visitInfo.copyWith(date=newTime)
+        exp.info.setVisitInfo(newVi)
+
         return exp
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
@@ -307,7 +325,7 @@ class StarTrackerChannel():
         snr = 5 if self.wide else 2.5
         minPix = 25 if self.wide else 10
         brightSourceFraction = 0.8 if self.wide else 0.95
-        imCharResult = runImchar(exp, snr, minPix)
+        imCharResult = runCharactierizeImage(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
         md = {seqNum: {f"nSources{_ifWide}": len(sourceCatalog)}}
@@ -315,7 +333,7 @@ class StarTrackerChannel():
         if not sourceCatalog:
             raise RuntimeError('Failed to find any sources in image')
 
-        filteredSources = filterOnBrightest(sourceCatalog, brightSourceFraction)
+        filteredSources = filterSourceCatOnBrightest(sourceCatalog, brightSourceFraction)
         md = {seqNum: {f"nSources filtered{_ifWide}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
@@ -324,7 +342,10 @@ class StarTrackerChannel():
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
         scaleError = 10 if self.wide else 40
-        result = self.solver.run(exp, filteredSources, percentageScaleError=scaleError, silent=True)
+        result = self.solver.run(exp, filteredSources,
+                                 isWideField=self.wide,
+                                 percentageScaleError=scaleError,
+                                 silent=True)
 
         if not result:
             self.log.warning(f"Failed to find solution for {basename}")

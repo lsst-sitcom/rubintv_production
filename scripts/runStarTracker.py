@@ -31,6 +31,7 @@ config = getSiteConfig(site=site)
 rootDataPath = config.get('starTrackerDataPath')
 metadataRoot = config.get('starTrackerMetadataRoot')
 outputRoot = config.get('starTrackerOutputRoot')
+astrometryNetRefCatRoot = config.get('astrometryNetRefCatRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
@@ -38,6 +39,7 @@ print('Running star tracker channel...')
 starTracker = StarTrackerChannel(rootDataPath=rootDataPath,
                                  metadataRoot=metadataRoot,
                                  outputRoot=outputRoot,
+                                 astrometryNetRefCatRoot=astrometryNetRefCatRoot,
                                  wide=False,
                                  )
 starTracker.run()
