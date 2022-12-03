@@ -58,6 +58,8 @@ def getCurrentRawDataDir(rootDataPath, wide):
     -------
     path : `str`
         The raw data dir for today.
+    wide : `bool`
+        Is this the wide field camera?
     """
     todayInt = getCurrentDayObs_int()
     return getRawDataDirForDayObs(rootDataPath, wide, todayInt)
@@ -71,9 +73,9 @@ def getRawDataDirForDayObs(rootDataPath, wide, dayObs):
     rootDataPath : `str`
         The root data path.
     wide : `bool`
-        Whether this is a wide field camera or not
+        Is this the wide field camera?
     dayObs : `int`
-        The dayObs
+        The dayObs.
     """
     camNum = 101 if wide else 102  # TODO move this config to the top somehow?
     dayObsDateTime = datetime.datetime.strptime(str(dayObs), '%Y%m%d')
@@ -182,13 +184,12 @@ class StarTrackerWatcher():
                 if self.heartbeater:  # gets set by the channel post-init
                     self.heartbeater.beat()
 
-                if lastFound == expId:
-                    sleep(self.cadence)
+                if (filename is None) or (lastFound == expId):
                     self.log.debug('Found nothing, sleeping')
+                    sleep(self.cadence)
                     continue
                 else:
                     lastFound = expId
-                    self.log.debug(f'Calling back with {filename}')
                     callback(filename)
 
             except Exception as e:
@@ -201,8 +202,23 @@ class StarTrackerChannel():
 
     These channels are somewhat hybrid channels which serve both the raw
     images and their analyses. The metadata is also written as shards from
-    these channels, with the metadata server itseld just functioning to collate
+    these channels, with the metadata server itself just functioning to collate
     the shards and upload them.
+
+    rootDataPath : `str`
+        The path at which to find the data on disk. Does not include the
+        GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
+    outputRoot : str``
+        The path to write the fits out to.
+    metadataRoot : `str`
+        The path to write metadata to.
+    astrometryNetRefCatRoot : `str`
+        The path to the astrometry.net reference catalogs. Do not include
+        the /4100 or /4200, just the base directory.
+    wide : `bool`
+        Do this for the wide or narrow camera?
+    doRaise : `bool`, optional
+        Raise on error? Default False, useful for debugging.
     """
     # upload heartbeat every n seconds
     HEARTBEAT_UPLOAD_PERIOD = 30
@@ -248,6 +264,11 @@ class StarTrackerChannel():
 
     def filenameToExposure(self, filename):
         """Read the exposure from the file and set the wcs from the header.
+
+        TODO: At some point move this to a utility package, but it needs to
+        wait for a bunch of other tickets to merge so that it can go inside
+        files which don't yet exist, and if we made an obs_package for this,
+        this will be moot, so best not to do it yet.
         """
         exp = afwImage.ExposureF(filename)
         wcs = genericCameraHeaderToWcs(exp)

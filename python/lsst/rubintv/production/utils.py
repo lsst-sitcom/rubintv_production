@@ -448,8 +448,9 @@ def isFileWorldWritable(filename):
 
 def remakeStarTrackerDay(*, dayObs,
                          rootDataPath,
-                         metadataRoot,
                          outputRoot,
+                         metadataRoot,
+                         astrometryNetRefCatRoot,
                          wide,
                          remakeExisting=False,
                          logger=None,
@@ -457,22 +458,29 @@ def remakeStarTrackerDay(*, dayObs,
                          ):
     """Remake all the star tracker plots for a given day.
 
-
     Parameters
     ----------
-    wide : `bool`
-        Do this for the wide or narrow camera?
     dayObs : `int`
         The dayObs.
+    rootDataPath : `str`
+        The path at which to find the data, passed through to the channel.
+    outputRoot : str``
+        The path to write the results out to, passed through to the channel.
+    metadataRoot : `str`
+        The path to write metadata to, passed through to the channel.
+    astrometryNetRefCatRoot : `str`
+        The path to the astrometry.net reference catalogs. Do not include
+        the /4100 or /4200, just the base directory.
+    wide : `bool`
+        Do this for the wide or narrow camera?
     remakeExisting : `bool`, optional
         Remake all plots, regardless of whether they already exist in the
         bucket?
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown.
-        Raised if remakeExisting is False and channel is auxtel_metadata.
+    logger : `logging.Logger`, optional
+        The logger.
+    forceMaxNum : `int`
+        Force the maximum seqNum to be this value. This is useful for remaking
+        days from scratch or in full, rather than running as a catchup.
     """
     from .starTracker import StarTrackerChannel, getRawDataDirForDayObs
 
@@ -484,6 +492,7 @@ def remakeStarTrackerDay(*, dayObs,
                                    rootDataPath=rootDataPath,
                                    metadataRoot=metadataRoot,
                                    outputRoot=outputRoot,
+                                   astrometryNetRefCatRoot=astrometryNetRefCatRoot,
                                    doRaise=False,
                                    )
 

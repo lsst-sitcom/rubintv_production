@@ -37,8 +37,8 @@ setupLogging()
 checkRubinTvExternalPackages()
 print('Running wide star tracker channel...')
 starTracker = StarTrackerChannel(rootDataPath=rootDataPath,
-                                 metadataRoot=metadataRoot,
                                  outputRoot=outputRoot,
+                                 metadataRoot=metadataRoot,
                                  astrometryNetRefCatRoot=astrometryNetRefCatRoot,
                                  wide=True)
 starTracker.run()
