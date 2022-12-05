@@ -26,5 +26,5 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 checkRubinTvExternalPackages()
 print('Running imExaminer...')
-imExaminer = ImExaminerChannel()
+imExaminer = ImExaminerChannel(location='summit')
 imExaminer.run()

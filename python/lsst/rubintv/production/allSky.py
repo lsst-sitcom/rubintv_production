@@ -31,6 +31,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      )
 from lsst.rubintv.production import Uploader, Heartbeater
 from lsst.rubintv.production.rubinTv import _dataIdToFilename
+from .utils import LocationConfig
 
 try:
     from google.cloud import storage
@@ -300,6 +301,8 @@ class DayAnimator():
         The uploader for sending images and movies to GCS.
     channel : `str`
         The name of the channel. Must match a channel name in rubinTv.py.
+    bucketName : `str`
+        The name of the GCS bucket to upload to.
     historical : `bool`, optional
         Is this historical or live data?
     """
@@ -318,6 +321,7 @@ class DayAnimator():
                  outputMovieDir,
                  uploader,
                  channel,
+                 bucketName,
                  historical=False):
         self.dayObsInt = dayObsInt
         self.todaysDataDir = todaysDataDir
@@ -328,6 +332,7 @@ class DayAnimator():
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
@@ -553,18 +558,20 @@ class AllSkyMovieChannel():
         Raise on error?
     """
 
-    def __init__(self, rootDataPath, outputRoot, doRaise=False):
-        self.uploader = Uploader()
+    def __init__(self, location, doRaise=False):
+        self.location = location
+        self.config = LocationConfig(location)
+        self.uploader = Uploader(self.config.bucketName)
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
         self.doRaise = doRaise
 
-        self.rootDataPath = rootDataPath
-        if not os.path.exists(rootDataPath):
-            raise RuntimeError(f"Root data path {rootDataPath} not found")
+        self.rootDataPath = self.location.allSkyRootDataPath
+        if not os.path.exists(self.rootDataPath):
+            raise RuntimeError(f"Root data path {self.rootDataPath} not found")
 
-        self.outputRoot = outputRoot
-        _createWritableDir(outputRoot)
+        self.outputRoot = self.location.allSkyOutputPath
+        _createWritableDir(self.outputRoot)
 
     def getCurrentRawDataDir(self):
         """Get the raw data dir corresponding to the current dayObs.
@@ -598,7 +605,8 @@ class AllSkyMovieChannel():
                                outputImageDir=outputJpgDir,
                                outputMovieDir=outputMovieDir,
                                uploader=self.uploader,
-                               channel=self.channel,)
+                               channel=self.channel,
+                               bucketName=self.config.bucketName,)
         animator.run()
 
     def run(self):

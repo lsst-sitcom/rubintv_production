@@ -26,5 +26,5 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 checkRubinTvExternalPackages()
 print('Running monitor...')
-monitor = MonitorChannel(doRaise=False)
+monitor = MonitorChannel(location='summit', doRaise=False)
 monitor.run()

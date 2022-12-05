@@ -1,15 +1,39 @@
 # metadata
-metadataOutputRoot: "/project/rubintv/sidecar_metadata/"
+metadataPath: '/project/rubintv/sidecar_metadata'
 
 # all sky
-allSkyRootDataPath: "/project/rubintv/allsky/raw/"
-allSkyOutputRoot: "/project/rubintv/allsky/"
+allSkyRootDataPath: '/project/rubintv/allsky/raw'
+allSkyOutputPath: '/project/rubintv/allsky'
 
 # animation
-moviePngRoot: "/project/rubintv/auxTel_animation/"
+# moviePngRoot: '/project/rubintv/auxTel_animation'
+moviePngPath: '/project/rubintv/auxTel_animation'
 
-# Star Trackers
-starTrackerDataPath: "/project/"
-starTrackerMetadataRoot: "/project/rubintv/starTracker/sidecar_metadata/"
-starTrackerOutputRoot: "/project/rubintv/starTracker/output/"
-astrometryNetRefCatRoot: "/project/shared/ref_cats/astrometry_net/"
+# Star Trackers paths:
+# The path at which to find the data on disk. Does not include the
+# GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
+starTrackerDataPath: '/project'
+
+# for writing the per-day json files to for the star tracker channels
+starTrackerMetadataPath: '/project/rubintv/starTracker/sidecar_metadata'
+
+# for writing the rendered pngs of the a.net fits out to
+starTrackerOutputPath: '/project/rubintv/starTracker/output'
+
+# The path to the astrometry.net reference catalogs. Do not include
+# the /4100 or /4200, just the base directory.
+astrometryNetRefCatPath: '/project/shared/ref_cats/astrometry_net'
+
+
+# Use full paths not aliases here as path existence is checked
+ts8ButlerPath: ''
+botButlerPath: ''
+scratchPath:        '/project/rubintv'
+dataIdScanPath:     '/project/rubintv/dataIds'
+metadataPath:       '/project/rubintv/sidecar_metadata'
+metadataShardPath:  '/project/rubintv/sidecar_metadata/shards'
+plotPath:           '/project/rubintv/plots'
+binnedImagePath:    '/project/rubintv/binnedImages'
+calculatedDataPath: '/project/rubintv/calculatedData'
+bucketName: 'rubintv_data'
+binning: 8

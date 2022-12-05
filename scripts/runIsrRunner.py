@@ -24,5 +24,5 @@ from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 print('Running isr runner...')
-isrRunner = IsrRunner()
+isrRunner = IsrRunner(location='summit')
 isrRunner.run()

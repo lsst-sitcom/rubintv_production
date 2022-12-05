@@ -1,3 +1,4 @@
+
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -18,13 +19,21 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from lsst.rubintv.production.starTracker import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+
+from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-print('Running star tracker channel...')
-starTracker = StarTrackerChannel(location='summit',
-                                 wide=False)
-starTracker.run()
+print('Running TEST raw processor...')
+
+location = 'slac_testing'
+config = LocationConfig(location)
+butler = dafButler.Butler(config.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            location=location,
+                            instrument='LSST-TS8',
+                            detector=123,
+                            doRaise=True)
+rawProcessor.run()

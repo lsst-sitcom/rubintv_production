@@ -12,6 +12,8 @@ CHANNELS = ["summit_imexam",
             "startracker_analysis",
             "startracker_wide_analysis",
             "startracker_metadata",
+            "ts8_noise_map",
+            "ts8_focal_plane_mosiac",
             ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}

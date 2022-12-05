@@ -20,15 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.rubinTv import MountTorqueChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
 
-config = getSiteConfig()
-outputRoot = config.get('metadataOutputRoot')
-
 print('Running mount torque plotter...')
-mountTorquePlotter = MountTorqueChannel(outputRoot=outputRoot, doRaise=False)
+mountTorquePlotter = MountTorqueChannel(location='summit', doRaise=False)
 mountTorquePlotter.run()

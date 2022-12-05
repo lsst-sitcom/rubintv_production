@@ -1,3 +1,7 @@
+import os
+from lsst.utils import getPackageDir
+
+isrRunnerScript = """
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -18,13 +22,25 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from lsst.rubintv.production.starTracker import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+
+from lsst.rubintv.production.slac import RawProcesser
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-print('Running star tracker channel...')
-starTracker = StarTrackerChannel(location='summit',
-                                 wide=False)
-starTracker.run()
+print('Running raw processor for detector {}...')
+isrRunner = RawProcesser(detector={})
+isrRunner.run()
+"""
+
+packageDir = getPackageDir('rubintv_production')
+outputDir = os.path.join(packageDir, 'scripts', 'slac', 'ts8')
+if os.path.isdir(outputDir) is False:
+    print(f"Output directory {outputDir} does not exist, creating it")
+    os.makedirs(outputDir)
+
+for detNum in range(18, 27):
+    scriptName = os.path.join(outputDir, f"runIsrRunner_{detNum:03}.py")
+    with open(scriptName, 'w') as f:
+        contents = isrRunnerScript.format(detNum, detNum)
+        f.write(contents)
+        print(f"Wrote runner script for {detNum} to {scriptName}")

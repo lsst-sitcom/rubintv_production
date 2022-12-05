@@ -1,0 +1,9 @@
+ts8ButlerPath: '/sdf/group/rubin/repo/ir2'
+botButlerPath: '/repo/main'
+scratchPath: '/scratch/rubinTv'
+dataIdScanPath: '/scratch/rubinTv/dataIds/'
+metadataPath: '/scratch/rubinTv/metadata/'
+metadataShardPath: '/scratch/rubinTv/metadata/shards/'
+plotPath: '/scratch/rubinTv/plots/'
+bucketName: 'rubintv-data-slac'
+binning: 8

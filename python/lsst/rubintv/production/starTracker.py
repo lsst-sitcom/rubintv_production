@@ -43,7 +43,7 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
 
 
 from .channels import PREFIXES
-from .utils import writeMetadataShard, isFileWorldWritable
+from .utils import writeMetadataShard, isFileWorldWritable, LocationConfig
 from .rubinTv import Uploader, Heartbeater
 
 _LOG = logging.getLogger(__name__)
@@ -131,6 +131,8 @@ class StarTrackerWatcher():
         The root directory to watch for files landing in. Should not include
         the GenericCamera/101/ or GenericCamera/102/ part, just the base
         directory that these are being written to, as visible from k8s.
+    bucketName : `str`
+        The bucket to upload the heartbeats to.
     wide : `bool`
         Whether to watch the wide or narrow camera.
     """
@@ -141,10 +143,10 @@ class StarTrackerWatcher():
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
 
-    def __init__(self, *, rootDataPath, wide):
+    def __init__(self, *, rootDataPath, bucketName, wide):
         self.rootDataPath = rootDataPath
         self.wide = wide
-        self.uploader = Uploader()
+        self.uploader = Uploader(bucketName)
         self.log = _LOG.getChild("watcher")
         self.heartbeater = None
 
@@ -204,16 +206,10 @@ class StarTrackerChannel():
     these channels, with the metadata server itself just functioning to collate
     the shards and upload them.
 
-    rootDataPath : `str`
-        The path at which to find the data on disk. Does not include the
-        GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
-    outputRoot : str``
-        The path to write the fits out to.
-    metadataRoot : `str`
-        The path to write metadata to.
-    astrometryNetRefCatRoot : `str`
-        The path to the astrometry.net reference catalogs. Do not include
-        the /4100 or /4200, just the base directory.
+    Parameters
+    ----------
+    location : `str`
+        The location, for use with LocationConfig.
     wide : `bool`
         Do this for the wide or narrow camera?
     doRaise : `bool`, optional
@@ -224,24 +220,25 @@ class StarTrackerChannel():
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
 
-    def __init__(self, *,
-                 rootDataPath,
-                 outputRoot,
-                 metadataRoot,
-                 astrometryNetRefCatRoot,
+    def __init__(self,
+                 location,
+                 *,
                  wide,
                  doRaise=False):
-        self.uploader = Uploader()
+        self.location = location
+        self.config = LocationConfig(location)
+        self.uploader = Uploader(self.config.bucketName)
         self.log = _LOG.getChild(f"starTracker{'_wide' if wide else ''}")
         self.channelRaw = f"startracker{'_wide' if wide else ''}_raw"
         self.channelAnalysis = f"startracker{'_wide' if wide else ''}_analysis"
         self.wide = wide
-        self.rootDataPath = rootDataPath
-        self.watcher = StarTrackerWatcher(rootDataPath=rootDataPath,
+        self.rootDataPath = self.config.starTrackerDataPath
+        self.watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
+                                          bucketName=self.config.bucketName,
                                           wide=wide)
-        self.outputRoot = outputRoot
-        self.metadataRoot = metadataRoot
-        self.astrometryNetRefCatRoot = astrometryNetRefCatRoot
+        self.outputRoot = self.config.starTrackerOutputPath
+        self.metadataRoot = self.config.starTrackerMetadataPath
+        self.astrometryNetRefCatRoot = self.config.astrometryNetRefCatPath
         self.doRaise = doRaise
         self.shardsDir = os.path.join(self.metadataRoot, 'shards')
         for path in (self.outputRoot, self.shardsDir, self.metadataRoot):
@@ -251,14 +248,16 @@ class StarTrackerChannel():
                 raise RuntimeError(f"Failed to find/create {path}") from e
 
         self.heartbeaterAnalysis = Heartbeater(self.channelAnalysis,
+                                               self.config.bucketName,
                                                self.HEARTBEAT_UPLOAD_PERIOD,
                                                self.HEARTBEAT_FLATLINE_PERIOD)
         self.heartbeaterRaw = Heartbeater(self.channelRaw,
+                                          self.config.bucketName,
                                           self.HEARTBEAT_UPLOAD_PERIOD,
                                           self.HEARTBEAT_FLATLINE_PERIOD)
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
-        self.solver = CommandLineSolver(indexFilePath=astrometryNetRefCatRoot,
+        self.solver = CommandLineSolver(indexFilePath=self.config.astrometryNetRefCatPath,
                                         checkInParallel=True)
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
@@ -420,18 +419,21 @@ class StarTrackerMetadataServer():
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, *,
-                 metadataRoot,
+    def __init__(self, location,
+                 *,
                  doRaise=False):
-        self.uploader = Uploader()
+        self.location = location
+        self.config = LocationConfig(location)
+        self.uploader = Uploader(self.config.bucketName)
         self.heartbeater = Heartbeater('startracker_metadata',
+                                       self.config.bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
         self.channel = 'startracker_metadata'
         self.log = _LOG.getChild(f"{self.channel}")
-        self.metadataRoot = metadataRoot
-        self.doRaise = doRaise
+        self.metadataRoot = self.config.starTrackerMetadataPath
         self.shardsDir = os.path.join(self.metadataRoot, 'shards')
+        self.doRaise = doRaise
         try:
             os.makedirs(self.shardsDir, exist_ok=True)
         except Exception as e:

@@ -25,9 +25,12 @@ import yaml
 import logging
 import json
 import glob
-from time import sleep
+import time
+
 from lsst.utils import getPackageDir
 from datetime import datetime, timedelta
+from functools import cached_property
+from dataclasses import dataclass
 
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
@@ -42,6 +45,7 @@ __all__ = ["checkRubinTvExternalPackages",
            "isDayObsContiguous",
            "pushTestImageToCurrent",
            "getSiteConfig",
+           "LocationConfig",
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -49,6 +53,147 @@ EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please instal
 
 GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please install with:\n'
                             '    pip install google-cloud-storage')
+
+
+@dataclass(frozen=True)
+class LocationConfig:
+    """A frozen dataclass for holding location-based configurations.
+    """
+    location: str
+    log: logging.Logger = logging.getLogger('lsst.rubintv.production.utils.LocationConfig')
+
+    def __post_init__(self) -> None:
+        # touch all config and all the path-like items to ensure everything is
+        # there/can be created
+
+        # TODO: probably need to only touch the _config so that unessential
+        # things can be allowed to not exist without failing
+        self._config
+        # self.ts8ButlerPath
+        # self.botButlerPath
+        self.dataIdScanPath
+        self.metadataPath
+        self.metadataShardPath
+        self.plotPath
+        self.binnedImagePath
+        self.calculatedDataPath
+
+        # summit migration:
+        # self.starTrackerDataPath
+        # self.starTrackerMetadataPath
+        # self.starTrackerOutputPath
+        # self.astrometryNetRefCatPath
+        # self.moviePngPath
+        # self.allSkyRootDataPath
+        # self.allSkyOutputPath
+
+    def _checkDir(self, dirName: str, createIfMissing=True) -> None:
+        if not os.path.isdir(dirName):
+            if createIfMissing:
+                self.log.warning(f'Directory {dirName} does not exist, creating it.')
+                os.makedirs(dirName, exist_ok=True)  # exist_ok necessary due to potential startup race
+        if not os.path.isdir(dirName):
+            raise RuntimeError(f'Could not create directory {dirName}')
+
+    @cached_property
+    def _config(self):
+        return getSiteConfig(self.location)
+
+    @cached_property
+    def ts8ButlerPath(self):
+        directory = self._config['ts8ButlerPath']
+        self._checkDir(directory, createIfMissing=False)
+        return directory
+
+    @cached_property
+    def botButlerPath(self):
+        directory = self._config['botButlerPath']
+        self._checkDir(directory, createIfMissing=False)
+        return directory
+
+    @cached_property
+    def dataIdScanPath(self):
+        directory = self._config['dataIdScanPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def metadataPath(self):
+        directory = self._config['metadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def metadataShardPath(self):
+        directory = self._config['metadataShardPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def plotPath(self):
+        directory = self._config['plotPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def binnedImagePath(self):
+        directory = self._config['binnedImagePath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def calculatedDataPath(self):
+        directory = self._config['calculatedDataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def bucketName(self):
+        return self._config['bucketName']
+
+    @cached_property
+    def binning(self):
+        return self._config['binning']
+
+    # start of the summit migration stuff:
+    # star tracker paths
+    @cached_property
+    def starTrackerDataPath(self):
+        directory = self._config['starTrackerDataPath']
+        self._checkDir(directory)
+        return directory
+
+    def starTrackerMetadataPath(self):
+        directory = self._config['starTrackerMetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    def starTrackerOutputPath(self):
+        directory = self._config['starTrackerOutputPath']
+        self._checkDir(directory)
+        return directory
+
+    def astrometryNetRefCatPath(self):
+        directory = self._config['astrometryNetRefCatPath']
+        self._checkDir(directory)
+        return directory
+
+    # animation paths
+    def moviePngPath(self):
+        directory = self._config['moviePngPath']
+        self._checkDir(directory)
+        return directory
+
+    # all sky cam paths
+    def allSkyRootDataPath(self):
+        directory = self._config['allSkyRootDataPath']
+        self._checkDir(directory)
+        return directory
+
+    def allSkyOutputPath(self):
+        directory = self._config['allSkyOutputPath']
+        self._checkDir(directory)
+        return directory
 
 
 def getSiteConfig(site='summit'):
@@ -101,6 +246,33 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
         exit()
 
 
+def raiseIf(doRaise, error, logger):
+    """Raises the error if ``doRaise`` otherwise logs it as a warning.
+
+    TODO: get this to print the full traceback when warning.
+
+    Parameters
+    ----------
+    doRaise : `bool`
+        Raise the error if True, otherwise logs it as a warning.
+    error : `Exception`
+        The error that has been raised.
+    logger : `logging.`
+        The logger to warn with if ``doRaise`` is False.
+
+    Raises
+    ------
+    AnyException
+        Raised if ``self.doRaise`` is True, otherwise swallows and warns.
+    """
+    msg = f'{error}'
+    if doRaise:
+        raise RuntimeError(msg) from error
+    else:
+        # TODO: make this print the full traceback
+        logger.warning(msg)
+
+
 def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     """Return the list of seqNums for which the plot exists in the bucket for
     the specified channel.
@@ -140,11 +312,13 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     return sorted(existing)
 
 
-def createChannelByName(channel, doRaise, **kwargs):
+def createChannelByName(location, channel, doRaise):
     """Create a RubinTV Channel object using the name of the channel.
 
     Parameters
     ----------
+    location : `str`
+        The location, for use with LocationConfig.
     channel : `str`
         The name of the channel, as found in lsst.rubintv.production.CHANNELS.
     doRaise : `bool`
@@ -172,21 +346,15 @@ def createChannelByName(channel, doRaise, **kwargs):
 
     match channel:
         case "summit_imexam":
-            return ImExaminerChannel(doRaise=doRaise)
+            return ImExaminerChannel(location=location, doRaise=doRaise)
         case "summit_specexam":
-            return SpecExaminerChannel(doRaise=doRaise)
+            return SpecExaminerChannel(location=location, doRaise=doRaise)
         case "auxtel_mount_torques":
-            if 'outputRoot' not in kwargs:
-                raise RuntimeError("Must provide writeable output root outputRoot via kwargs for "
-                                   "auxtel_metadata channel")
-            return MountTorqueChannel(doRaise=doRaise, **kwargs)
+            return MountTorqueChannel(location=location, doRaise=doRaise)
         case "auxtel_monitor":
-            return MonitorChannel(doRaise=doRaise)
+            return MonitorChannel(location=location, doRaise=doRaise)
         case "auxtel_metadata":
-            if 'outputRoot' not in kwargs:
-                raise RuntimeError("Must provide writeable output root outputRoot via kwargs for "
-                                   "auxtel_metadata channel")
-            return MetadataServer(doRaise=doRaise, **kwargs)
+            return MetadataServer(location=location, doRaise=doRaise)
         case "all_sky_current":
             raise ValueError(f"{channel} is not a creatable by name.")
         case "all_sky_movies":
@@ -195,7 +363,7 @@ def createChannelByName(channel, doRaise, **kwargs):
             raise ValueError(f"Unrecognized channel {channel}.")
 
 
-def remakePlotByDataId(channel, dataId, **kwargs):
+def remakePlotByDataId(location, channel, dataId):
     """Remake the plot for the given channel for a single dataId.
     Reproduces the plot regardless of whether it exists. Raises on error.
 
@@ -205,21 +373,25 @@ def remakePlotByDataId(channel, dataId, **kwargs):
 
     Parameters
     ----------
+    location : `str`
+        The location, for use with LocationConfig.
     channel : `str`
         The name of the channel.
     dataId : `dict`
         The dataId.
     """
-    tvChannel = createChannelByName(channel, doRaise=True, **kwargs)
+    tvChannel = createChannelByName(location, channel, doRaise=True)
     tvChannel.callback(dataId)
 
 
-def remakeDay(channel, dayObs, *,
+def remakeDay(location,
+              channel,
+              dayObs,
+              *,
               remakeExisting=False,
               notebook=True,
               logger=None,
-              embargo=False,
-              **kwargs):
+              embargo=False):
     """Remake all the plots for a given day.
 
     Currently auxtel_metadata does not pull from the bucket to check what is
@@ -227,6 +399,8 @@ def remakeDay(channel, dayObs, *,
 
     Parameters
     ----------
+    location : `str`
+        The location, for use with LocationConfig.
     channel : `str`
         The name of the lsst.rubintv.production channel. The actual channel
         object is created internally.
@@ -287,7 +461,7 @@ def remakeDay(channel, dayObs, *,
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(channel, doRaise=False, embargo=embargo, **kwargs)
+    tvChannel = createChannelByName(location, channel, doRaise=False, embargo=embargo)
     if channel in ['auxtel_metadata']:
         # special case so we only upload once after all the shards are made
         for seqNum in toMake:
@@ -324,7 +498,7 @@ def isDayObsContiguous(dayObs, otherDayObs):
     return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
 
 
-def pushTestImageToCurrent(channel, duration=15):
+def pushTestImageToCurrent(channel, bucketName, duration=15):
     """Push a test image to a channel to see if it shows up automatically.
 
     Leaves the test image in the bucket for ``duration`` seconds and then
@@ -340,6 +514,8 @@ def pushTestImageToCurrent(channel, duration=15):
     channel : `str`
         The name of the lsst.rubintv.production channel. The actual channel
         object is created internally.
+    bucketName : `str`
+        The name of the GCS bucket to push the test image to.
     duration : `float`, optional
         The duration to leave the test image up for, in seconds.
 
@@ -382,13 +558,13 @@ def pushTestImageToCurrent(channel, duration=15):
     mockDataId = {'day_obs': recentDay, 'seq_num': newSeqNum}
     testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
     uploadAs = _dataIdToFilename(channel, mockDataId)
-    uploader = Uploader()
+    uploader = Uploader(bucketName)
 
     logger.info(f'Uploading test card to {mockDataId} for channel {channel}')
     blob = uploader.googleUpload(channel, testCardFile, uploadAs, isLiveFile=True)
 
     logger.info(f'Upload complete, sleeping for {duration} for you to check...')
-    sleep(duration)
+    time.sleep(duration)
     blob.delete()
     logger.info('Test card removed')
 
@@ -427,6 +603,115 @@ def writeMetadataShard(path, dayObs, mdDict):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
     return
+
+
+def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
+    """Write some per-image data for merging later.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to write to.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The seqNum.
+    dataSetName : `str`
+        The name of the data, e.g. 'perAmpNoise'
+    dataDict : `dict` of `dict`
+        The data to write.
+
+    Raises
+    ------
+    TypeError
+        Raised if dataDict is not a dictionary.
+    """
+    if not isinstance(dataDict, dict):
+        raise TypeError(f'dataDict must be a dict, not {type(dataDict)}')
+
+    if not os.path.isdir(path):
+        os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
+
+    suffix = uuid.uuid1()
+    # this pattern is relied up elsewhere, so don't change it without updating
+    # in at least the following places: mergeShardsAndUpload
+    filename = os.path.join(path, f'dataShard-{dataSetName}-dayObs_{dayObs}_seqNum_{seqNum:06}_{suffix}.json')
+
+    with open(filename, 'w') as f:
+        json.dump(dataDict, f)
+    if not isFileWorldWritable(filename):
+        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+
+    return
+
+
+def getShardedData(path,
+                   dayObs,
+                   seqNum,
+                   dataSetName,
+                   nExpected,
+                   timeout=5,
+                   logger=None,
+                   deleteAfterReading=False):
+    """Read back the data from all shards for a given dayObs and seqNum.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to write to.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The seqNum.
+    dataSetName : `str`
+        The name of the data, e.g. 'perAmpNoise'
+    nExpected : `int`
+        The number of expected items to wait for.
+    timeout : `float`, optional
+        The timeout period after which to give up waiting for files to land.
+    logger : `logging.Logger`, optional
+        The logger for logging warnings if files don't appear.
+    deleteAfterReading : `bool`, optional
+        If True, delete the files after reading them.
+
+    Returns
+    -------
+    data : `dict` of `dict`
+        The sharded data
+    nFiles : `int`
+        The number of shard files found and merged into ``data``.
+
+    Raises
+    ------
+    TypeError
+        Raised if dataDict is not a dictionary.
+    """
+    pattern = os.path.join(path, f'dataShard-{dataSetName}-dayObs_{dayObs}_seqNum_{seqNum:06}_*.json')
+
+    start = time.time()
+    while time.time() - start < timeout:
+        files = glob.glob(pattern)
+        if len(files) == nExpected:
+            break
+        time.sleep(0.2)
+
+    if len(files) != nExpected:
+        if not logger:
+            logger = logging.getLogger(__name__)
+        logger.warning(f'Found {len(files)} files after waiting {timeout}s for {dataSetName}'
+                       f' for {dayObs=}-{seqNum=} but expected {nExpected}')
+
+    if not files:
+        return None
+
+    data = {}
+    for dataShard in files:
+        with open(dataShard) as f:
+            shard = json.load(f)
+        data.update(shard)
+        if deleteAfterReading:
+            os.remove(dataShard)
+    return data
 
 
 def isFileWorldWritable(filename):

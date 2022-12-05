@@ -1,0 +1,12 @@
+# Use full paths not aliases here as path existence is checked
+ts8ButlerPath: '/sdf/group/rubin/repo/ir2'
+botButlerPath: '/sdf/group/rubin/repo/main'
+scratchPath: '/sdf/home/m/mfl/scratch/rubinTv'
+dataIdScanPath: '/sdf/home/m/mfl/scratch/rubinTv/dataIds'
+metadataPath: '/sdf/home/m/mfl/scratch/rubinTv/metadata'
+metadataShardPath: '/sdf/home/m/mfl/scratch/rubinTv/metadata/shards'
+plotPath: '/sdf/home/m/mfl/scratch/rubinTv/plots'
+binnedImagePath: '/sdf/home/m/mfl/scratch/rubinTv/binnedImages'
+calculatedDataPath: '/sdf/home/m/mfl/scratch/rubinTv/calculatedData'
+bucketName: 'rubintv_data_slac'
+binning: 8

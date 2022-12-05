@@ -26,5 +26,5 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 checkRubinTvExternalPackages()
 print('Running spec examiner...')
-specExaminer = SpecExaminerChannel()
+specExaminer = SpecExaminerChannel(location='summit')
 specExaminer.run()

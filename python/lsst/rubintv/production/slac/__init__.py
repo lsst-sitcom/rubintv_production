@@ -18,13 +18,5 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from lsst.rubintv.production.starTracker import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
-from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
-checkRubinTvExternalPackages()
-print('Running star tracker channel...')
-starTracker = StarTrackerChannel(location='summit',
-                                 wide=False)
-starTracker.run()
+from .botTesting import *

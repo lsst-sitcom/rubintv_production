@@ -20,15 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production import CalibrateCcdRunner
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
-
-config = getSiteConfig()
-outputRoot = config.get('metadataOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
 
 print('Running CalibrateCcd runner...')
-channel = CalibrateCcdRunner(outputRoot)
+channel = CalibrateCcdRunner(location='summit')
 channel.run()

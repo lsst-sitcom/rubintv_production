@@ -1,3 +1,4 @@
+
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -18,13 +19,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from lsst.rubintv.production.starTracker import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+
+from lsst.rubintv.production.slac import RawProcesser
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-print('Running star tracker channel...')
-starTracker = StarTrackerChannel(location='summit',
-                                 wide=False)
-starTracker.run()
+print('Running raw processor for detector 25...')
+isrRunner = RawProcesser(detector=25)
+isrRunner.run()

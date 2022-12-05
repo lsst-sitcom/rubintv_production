@@ -32,6 +32,7 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
 from .rubinTv import Uploader, Heartbeater, MetadataServer
+from .utils import LocationConfig
 from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
 from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
 
@@ -62,15 +63,10 @@ class RubinTvBackgroundService():
 
     Parameters
     ----------
-    allSkyPngRoot : `str`
-        The path at which the all sky movie channel is writing its images to.
-    moviePngRoot : `str`
-        The root path to write all pngs and movies to. It need not exist,
-        but must be creatable with write privileges.
+    location : `str`
+        The location, for use with LocationConfig.
     doRaise : `bool`
         Raise on error?
-    **kwargs
-        Additional keyword arguments passed to ``BestEffortIsr`` instantiation.
     """
     catchupPeriod = 300  # in seconds, so 5 mins
     loopSleep = 30
@@ -81,25 +77,25 @@ class RubinTvBackgroundService():
     HEARTBEAT_UPLOAD_PERIOD = 30
     HEARTBEAT_FLATLINE_PERIOD = 600
 
-    def __init__(self, *,
-                 allSkyPngRoot=None,  # where to write all sky pngs to
-                 moviePngRoot=None,  # where to write animation pngs to
-                 metadataOutputRoot=None,  # where to metadatafiles (and shards in ./shards) to
-                 doRaise=False,
-                 **kwargs):
-        self.uploader = Uploader()
+    def __init__(self,
+                 location,
+                 *,
+                 doRaise=False):
+        self.location = location
+        self.config = LocationConfig(location)
+        self.uploader = Uploader(self.config.bucketName)
         self.log = _LOG.getChild("backgroundService")
-        self.allSkyPngRoot = allSkyPngRoot
-        self.moviePngRoot = moviePngRoot
+        self.allSkyPngRoot = self.config.allSkyOutputPath
+        self.moviePngRoot = self.config.moviePngPath
         self.doRaise = doRaise
         self.butler = butlerUtils.makeDefaultLatissButler()
-        self.bestEffort = BestEffortIsr(**kwargs)
-        self.uploader = Uploader()
-        self.metadataOutputRoot = metadataOutputRoot
+        self.bestEffort = BestEffortIsr()
+
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       self.config.bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
-        self.mdServer = MetadataServer(outputRoot=metadataOutputRoot)  # costly-ish to create, so put in class
+        self.mdServer = MetadataServer(self.location)  # costly-ish to create, so put in class
 
     def _raiseIf(self, error):
         """Raises the error if ``self.doRaise`` otherwise logs it as a warning.
@@ -215,8 +211,7 @@ class RubinTvBackgroundService():
         dayObs.
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
-        remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False,
-                  outputRoot=self.metadataOutputRoot)  # outputRoot is passed through to createChannelByName
+        remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False)
 
     def catchupMonitor(self):
         """Create and upload any missing monitor images for the current dayObs.
