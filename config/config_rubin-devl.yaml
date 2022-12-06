@@ -7,3 +7,9 @@ allSkyOutputRoot: "/sdf/group/rubin/u/mfl/rubintv/allsky/"
 
 # animation
 moviePngRoot: "/sdf/group/rubin/u/mfl/rubintv/auxTel_animation/"
+
+# Star Trackers
+starTrackerDataPath: "/sdf/home/m/mfl/u/starTracker/"
+starTrackerMetadataRoot: "/sdf/group/rubin/u/mfl/rubintv/starTracker/sidecar_metadata/"
+starTrackerOutputRoot: "/sdf/group/rubin/u/mfl/rubintv/starTracker/output/"
+astrometryNetRefCatRoot: "/sdf/home/m/mfl/u/astrometry_net/"

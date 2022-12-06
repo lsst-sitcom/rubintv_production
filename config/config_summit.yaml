@@ -7,3 +7,9 @@ allSkyOutputRoot: "/project/rubintv/allsky/"
 
 # animation
 moviePngRoot: "/project/rubintv/auxTel_animation/"
+
+# Star Trackers
+starTrackerDataPath: "/project/"
+starTrackerMetadataRoot: "/project/rubintv/starTracker/sidecar_metadata/"
+starTrackerOutputRoot: "/project/rubintv/starTracker/output/"
+astrometryNetRefCatRoot: "/project/shared/ref_cats/astrometry_net/"

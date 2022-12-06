@@ -24,6 +24,7 @@ import uuid
 import yaml
 import logging
 import json
+import glob
 from time import sleep
 from lsst.utils import getPackageDir
 from datetime import datetime, timedelta
@@ -194,7 +195,7 @@ def createChannelByName(channel, doRaise, **kwargs):
             raise ValueError(f"Unrecognized channel {channel}.")
 
 
-def remakePlotByDataId(channel, dataId):
+def remakePlotByDataId(channel, dataId, **kwargs):
     """Remake the plot for the given channel for a single dataId.
     Reproduces the plot regardless of whether it exists. Raises on error.
 
@@ -209,7 +210,7 @@ def remakePlotByDataId(channel, dataId):
     dataId : `dict`
         The dataId.
     """
-    tvChannel = createChannelByName(channel, doRaise=True)
+    tvChannel = createChannelByName(channel, doRaise=True, **kwargs)
     tvChannel.callback(dataId)
 
 
@@ -443,3 +444,85 @@ def isFileWorldWritable(filename):
     """
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
+
+
+def remakeStarTrackerDay(*, dayObs,
+                         rootDataPath,
+                         outputRoot,
+                         metadataRoot,
+                         astrometryNetRefCatRoot,
+                         wide,
+                         remakeExisting=False,
+                         logger=None,
+                         forceMaxNum=None
+                         ):
+    """Remake all the star tracker plots for a given day.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        The dayObs.
+    rootDataPath : `str`
+        The path at which to find the data, passed through to the channel.
+    outputRoot : str``
+        The path to write the results out to, passed through to the channel.
+    metadataRoot : `str`
+        The path to write metadata to, passed through to the channel.
+    astrometryNetRefCatRoot : `str`
+        The path to the astrometry.net reference catalogs. Do not include
+        the /4100 or /4200, just the base directory.
+    wide : `bool`
+        Do this for the wide or narrow camera?
+    remakeExisting : `bool`, optional
+        Remake all plots, regardless of whether they already exist in the
+        bucket?
+    logger : `logging.Logger`, optional
+        The logger.
+    forceMaxNum : `int`
+        Force the maximum seqNum to be this value. This is useful for remaking
+        days from scratch or in full, rather than running as a catchup.
+    """
+    from .starTracker import StarTrackerChannel, getRawDataDirForDayObs
+
+    if not logger:
+        logger = logging.getLogger('lsst.starTracker.remake')
+
+    # doRaise is False because during bulk plot remaking we expect many fails
+    tvChannel = StarTrackerChannel(wide=wide,
+                                   rootDataPath=rootDataPath,
+                                   metadataRoot=metadataRoot,
+                                   outputRoot=outputRoot,
+                                   astrometryNetRefCatRoot=astrometryNetRefCatRoot,
+                                   doRaise=False,
+                                   )
+
+    _ifWide = '_wide' if wide else ''
+    rawChannel = f"startracker{_ifWide}_raw"
+
+    existing = getPlotSeqNumsForDayObs(rawChannel, dayObs)
+    maxSeqNum = max(existing) if not forceMaxNum else forceMaxNum
+    missing = [_ for _ in range(1, maxSeqNum) if _ not in existing]
+    logger.info(f"Most recent = {maxSeqNum}, found {len(missing)} missing to create plots for: {missing}")
+
+    dayPath = getRawDataDirForDayObs(rootDataPath=rootDataPath,
+                                     wide=wide,
+                                     dayObs=dayObs)
+
+    files = glob.glob(os.path.join(dayPath, '*.fits'))
+    foundFiles = {}
+    for filename in files:
+        # filenames are like GC101_O_20221114_000005.fits
+        _, _, dayObs, seqNumAndSuffix = filename.split('_')
+        seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
+        foundFiles[seqNum] = filename
+
+    toRemake = missing if not remakeExisting else list(range(1, maxSeqNum))
+    toRemake.reverse()  # always do the most recent ones first, burning down the list, not up
+
+    for seqNum in toRemake:
+        if seqNum not in foundFiles.keys():
+            logger.warning(f'Failed to find raw file for {seqNum}, skipping...')
+            continue
+        filename = foundFiles[seqNum]
+        logger.info(f'Processing {seqNum} from {filename}')
+        tvChannel.callback(filename)
