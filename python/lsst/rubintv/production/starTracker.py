@@ -79,7 +79,8 @@ def getRawDataDirForDayObs(rootDataPath, wide, dayObs):
     """
     camNum = 101 if wide else 102  # TODO move this config to the top somehow?
     dayObsDateTime = datetime.datetime.strptime(str(dayObs), '%Y%m%d')
-    dirSuffix = f'GenericCamera/{camNum}/{dayObsDateTime.year}/{dayObsDateTime.month}/{dayObsDateTime.day}/'
+    dirSuffix = (f'GenericCamera/{camNum}/{dayObsDateTime.year}/'
+                 f'{dayObsDateTime.month:02}/{dayObsDateTime.day:02}/')
     return os.path.join(rootDataPath, dirSuffix)
 
 
