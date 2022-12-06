@@ -27,12 +27,11 @@ from time import sleep
 import datetime
 import traceback
 
-import lsst.afw.image as afwImage
-import lsst.daf.base as dafBase
 
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
                                      dayObsIntToString,
+                                     starTrackerFileToExposure,
                                      )
 from lsst.summit.utils.astrometry import CommandLineSolver
 from lsst.summit.utils.astrometry.plotting import plot
@@ -40,7 +39,6 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 filterSourceCatOnBrightest,
                                                 getAverageAzFromHeader,
                                                 getAverageElFromHeader,
-                                                genericCameraHeaderToWcs,
                                                 )
 
 
@@ -263,39 +261,6 @@ class StarTrackerChannel():
         self.solver = CommandLineSolver(indexFilePath=astrometryNetRefCatRoot,
                                         checkInParallel=True)
 
-    def filenameToExposure(self, filename):
-        """Read the exposure from the file and set the wcs from the header.
-
-        TODO: At some point move this to a utility package, but it needs to
-        wait for a bunch of other tickets to merge so that it can go inside
-        files which don't yet exist, and if we made an obs_package for this,
-        this will be moot, so best not to do it yet.
-        """
-        exp = afwImage.ExposureF(filename)
-        try:
-            wcs = genericCameraHeaderToWcs(exp)
-            exp.setWcs(wcs)
-        except Exception as e:
-            self.log.warning(f"Failed to set wcs from header: {e}")
-
-        # for some reason the date isn't being set correctly
-        # DATE-OBS is present in the original header, but it's being
-        # stripped out and somehow not set (plus it doesn't give the midpoint
-        # of the exposure), so set it manually from the midpoint here
-        try:
-            md = exp.getMetadata()
-            begin = datetime.datetime.fromisoformat(md['DATE-BEG'])
-            end = datetime.datetime.fromisoformat(md['DATE-END'])
-            duration = end - begin
-            mid = begin + duration/2
-            newTime = dafBase.DateTime(mid.isoformat(), dafBase.DateTime.Timescale.TAI)
-            newVi = exp.visitInfo.copyWith(date=newTime)
-            exp.info.setVisitInfo(newVi)
-        except Exception as e:
-            self.log.warning(f"Failed to set date from header: {e}")
-
-        return exp
-
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
         """
@@ -415,7 +380,7 @@ class StarTrackerChannel():
     def callback(self, filename):
         """Callback for the watcher, called when a new image lands.
         """
-        exp = self.filenameToExposure(filename)  # make the exp and set the wcs from the header
+        exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
         self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
 
         # plot the raw file and upload it
