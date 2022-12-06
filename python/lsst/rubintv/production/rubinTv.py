@@ -917,7 +917,7 @@ class CharacterizeImageRunner():
             nSources = len(charRes.sourceCat)
             dayObs = butlerUtils.getDayObs(dataId)
             seqNum = butlerUtils.getSeqNum(dataId)
-            outputDict = {"50-sigma sources": nSources}
+            outputDict = {"50-sigma source count": nSources}
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
 
@@ -932,18 +932,20 @@ class CharacterizeImageRunner():
 
             outputDict = {
                 '5-sigma source count': len(calibrateRes.outputCat),
-                'psf FWHM': summaryStats.psfSigma * SIGMA2FWHM * pixToArcseconds,
-                'psf e1': e1,
-                'psf e2': e2,
-                'skyBg': summaryStats.skyBg,
-                'skyNoise': summaryStats.skyNoise,
-                'meanVar': summaryStats.meanVar,
-                'nPsfStar': summaryStats.nPsfStar,
-                'astromOffsetMean': summaryStats.astromOffsetMean,
-                'astromOffsetStd': summaryStats.astromOffsetStd,
-                'zeroPoint': summaryStats.zeroPoint,
+                'PSF FWHM': summaryStats.psfSigma * SIGMA2FWHM * pixToArcseconds,
+                'PSF e1': e1,
+                'PSF e2': e2,
+                'Sky mean': summaryStats.skyBg,
+                'Sky RMS': summaryStats.skyNoise,
+                'Variance plane mean': summaryStats.meanVar,
+                'PSF star count': summaryStats.nPsfStar,
+                'Astrometric bias': summaryStats.astromOffsetMean,
+                'Astrometric scatter': summaryStats.astromOffsetStd,
+                'Zeropoint': summaryStats.zeroPoint
             }
 
+            labels = {"_" + k: "measured" for k in outputDict.keys()}
+            outputDict.update(labels)
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
 
