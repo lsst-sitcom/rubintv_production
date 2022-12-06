@@ -398,8 +398,8 @@ class StarTrackerChannel():
             'Delta Alt Arcsec': deltaAlt.asArcseconds(),
             'Delta Az Arcsec': deltaAz.asArcseconds(),
             'Delta Rot Arcsec': deltaRot,
-            'RMS scatter arcsec': result.scatterArcseconds,
-            'RMS scatter pixels': result.scatterPixels,
+            'RMS scatter arcsec': result.rmsErrorArsec,
+            'RMS scatter pixels': result.rmsErrorPixels,
         }
         contents = {k + _ifWide: v for k, v in result.items()}
         md = {seqNum: contents}
