@@ -69,6 +69,21 @@ from lsst.rubintv.production.monitorPlotting import plotExp
 from .channels import PREFIXES, CHANNELS
 from .utils import writeMetadataShard, isFileWorldWritable
 
+__all__ = [
+    '_dataIdToFilename',
+    'Watcher',
+    'IsrRunner',
+    'ImExaminerChannel',
+    'SpecExaminerChannel',
+    'MonitorChannel',
+    'MountTorqueChannel',
+    'MetadataServer',
+    'Uploader',
+    'Heartbeater',
+    'CalibrateCcdRunner',
+]
+
+
 _LOG = logging.getLogger(__name__)
 
 SIDECAR_KEYS_TO_REMOVE = ['instrument',
@@ -835,8 +850,11 @@ class Heartbeater():
                 self.lastUpload = now  # only reset this if the upload was successful
 
 
-class CharacterizeImageRunner():
-    """Class for running the CharacterizeImage channel on RubinTV.
+class CalibrateCcdRunner():
+    """Class for running CharacterizeImageTask and CalibrateTasks on images.
+
+    Runs these tasks and writes shards with various measured quantities for
+    upload to the table.
     """
     def __init__(self, outputRoot, *, doRaise=False, embargo=False):
         self.dataProduct = 'quickLookExp'
@@ -899,8 +917,9 @@ class CharacterizeImageRunner():
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
 
-        Plot the image for display on the monitor, writing the plot
-        to a temp file, and upload it to Google cloud storage via the uploader.
+        Runs on the quickLookExp and writes shards with various measured
+        quantities, as calculated by the CharacterizeImageTask and
+        CalibrateTask.
         """
         try:
             self.log.info(f'Running Image Characterization for {dataId}')
@@ -944,12 +963,14 @@ class CharacterizeImageRunner():
                 'Zeropoint': summaryStats.zeroPoint
             }
 
+            # flag all these as measured items to color the cell
             labels = {"_" + k: "measured" for k in outputDict.keys()}
             outputDict.update(labels)
+
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
 
-            self.log.info("Wrote image characterization shard")
+            self.log.info(f"Wrote final image characterization shard for {dataId}")
 
         except Exception as e:
             if self.doRaise:

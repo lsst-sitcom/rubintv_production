@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production import CharacterizeImageRunner
+from lsst.rubintv.production import CalibrateCcdRunner
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
 from lsst.summit.utils.utils import setupLogging
 
@@ -29,6 +29,6 @@ outputRoot = config.get('metadataOutputRoot')
 setupLogging()
 checkRubinTvExternalPackages()
 
-print('Running metadata server...')
-channel = CharacterizeImageRunner(outputRoot)
+print('Running CalibrateCcd runner...')
+channel = CalibrateCcdRunner(outputRoot)
 channel.run()
