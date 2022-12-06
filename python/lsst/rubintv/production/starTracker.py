@@ -272,8 +272,11 @@ class StarTrackerChannel():
         this will be moot, so best not to do it yet.
         """
         exp = afwImage.ExposureF(filename)
-        wcs = genericCameraHeaderToWcs(exp)
-        exp.setWcs(wcs)
+        try:
+            wcs = genericCameraHeaderToWcs(exp)
+            exp.setWcs(wcs)
+        except Exception as e:
+            self.log.warning(f"Failed to set wcs from header: {e}")
 
         # for some reason the date isn't being set correctly
         # DATE-OBS is present in the original header, but it's being
@@ -418,6 +421,10 @@ class StarTrackerChannel():
         plot(exp, saveAs=rawPngFilename)
         uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
         self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
+
+        if not exp.wcs:
+            self.log.info(f"Skipping {filename} as it has no WCS")
+            return
 
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
