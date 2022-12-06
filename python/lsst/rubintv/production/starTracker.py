@@ -282,14 +282,17 @@ class StarTrackerChannel():
         # DATE-OBS is present in the original header, but it's being
         # stripped out and somehow not set (plus it doesn't give the midpoint
         # of the exposure), so set it manually from the midpoint here
-        md = exp.getMetadata()
-        begin = datetime.datetime.fromisoformat(md['DATE-BEG'])
-        end = datetime.datetime.fromisoformat(md['DATE-END'])
-        duration = end - begin
-        mid = begin + duration/2
-        newTime = dafBase.DateTime(mid.isoformat(), dafBase.DateTime.Timescale.TAI)
-        newVi = exp.visitInfo.copyWith(date=newTime)
-        exp.info.setVisitInfo(newVi)
+        try:
+            md = exp.getMetadata()
+            begin = datetime.datetime.fromisoformat(md['DATE-BEG'])
+            end = datetime.datetime.fromisoformat(md['DATE-END'])
+            duration = end - begin
+            mid = begin + duration/2
+            newTime = dafBase.DateTime(mid.isoformat(), dafBase.DateTime.Timescale.TAI)
+            newVi = exp.visitInfo.copyWith(date=newTime)
+            exp.info.setVisitInfo(newVi)
+        except Exception as e:
+            self.log.warning(f"Failed to set date from header: {e}")
 
         return exp
 
@@ -425,6 +428,9 @@ class StarTrackerChannel():
         if not exp.wcs:
             self.log.info(f"Skipping {filename} as it has no WCS")
             return
+        if not exp.visitInfo.date.isValid():
+            self.log.warning(f"exp.visitInfo.date is not valid. {filename} will still be fitted"
+                             " but the alt/az values reported will be garbage")
 
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
