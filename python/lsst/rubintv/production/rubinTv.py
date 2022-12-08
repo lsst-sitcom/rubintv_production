@@ -881,6 +881,8 @@ class CalibrateCcdRunner():
         config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
         config.measurement = basicConfig.measurement
+        config.requireAstrometry = False
+        config.requirePhotoCal = False
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
