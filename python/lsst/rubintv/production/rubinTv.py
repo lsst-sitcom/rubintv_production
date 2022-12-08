@@ -905,6 +905,7 @@ class CalibrateCcdRunner():
 
         photometryRefCatName = self.calibrate.config.connections.photoRefCat
         photoRefs = self.butler.registry.queryDatasets(photometryRefCatName).expanded()
+        photoRefs = list(photoRefs)
         photoHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
                         for ref in photoRefs]
         photoDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in photoRefs]
