@@ -859,13 +859,14 @@ class CalibrateCcdRunner():
     def __init__(self, outputRoot, *, doRaise=False, embargo=False):
         self.dataProduct = 'quickLookExp'
         self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler(embargo=embargo)
+        self.butler = makeDefaultLatissButler(embargo=embargo, writeable=True)
         self.log = _LOG.getChild("monitorChannel")
         self.channel = 'auxtel_characterizeImage'
         self.watcher = Watcher(self.dataProduct, self.channel)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.shardsDir = os.path.join(outputRoot, 'shards')
+        self.run = "LATISS/runs/quickLook/1"
 
         config = CharacterizeImageConfig()
         basicConfig = CharacterizeImageConfig()
@@ -969,14 +970,35 @@ class CalibrateCcdRunner():
 
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
-
-            self.log.info(f"Wrote final image characterization shard for {dataId}")
+            self.log.info(f'Wrote metadata shard. Putting calexp. {dataId}')
+            self.safeWrite(calibrateRes.outputExposure, "calexp", dataId)
 
         except Exception as e:
             if self.doRaise:
                 raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped image characterization for {dataId} because {repr(e)}")
+            self.log.warning(f"Did not finish calibration of {dataId} because {repr(e)}")
             return None
+
+    def safeWrite(self, object, datasetType, dataId):
+        """Put object in the butler.
+
+        Remove beforehand, if there is one already there.
+        """
+        expId = butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)
+        visitDataIds = self.butler.registry.queryDataIds(["visit" ,"detector"], dataId=expId)
+        visitDataIds = list(set(visitDataIds))
+        if len(visitDataIds) == 1:
+            visitDataId = visitDataIds[0]
+        else:
+            self.log.warning(f"I don't know what to do. Not putting {dataId}")
+            return
+
+        self.butler.registry.registerRun(self.run)
+        if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
+            dRef = self.butler.registry.findDataset(datasetType, visitDataId)
+            self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
+        self.butler.put(object, datasetType, dataId=visitDataId, run=self.run)
+
 
     def run(self):
         """Run continuously, calling the callback method on the latest dataId.
