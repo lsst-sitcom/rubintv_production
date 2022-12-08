@@ -893,21 +893,21 @@ class CalibrateCcdRunner():
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
-    def _getRefObjLoader(self, refcatName, dataId):
+    def _getRefObjLoader(self, refcatName, dataId, config):
         """Get a reference object loader for a given refcat and dataId.
         """
-        astromRefs = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
-        astromRefs = list(astromRefs)
-        astromHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
-                         for ref in astromRefs]
-        astromDataIds = [ref.dataId for ref in astromRefs]
+        refs = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
+        refs = list(refs)
+        handles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
+                   for ref in refs]
+        dataIds = [ref.dataId for ref in refs]
 
         loader = ReferenceObjectLoader(
-            astromDataIds,
-            astromHandles,
+            dataIds,
+            handles,
             name=refcatName,
             log=self.log,
-            config=self.calibrate.config.astromRefObjLoader
+            config=config
         )
         return loader
 
@@ -933,9 +933,11 @@ class CalibrateCcdRunner():
 
             visitDataId = self.getVisitDataId(dataId)
 
-            loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId)
+            loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId,
+                                           config=self.calibrate.config.astromRefObjLoader)
             self.calibrate.astrometry.setRefObjLoader(loader)
-            loader = self._getRefObjLoader(self.calibrate.config.connections.photoRefCat, visitDataId)
+            loader = self._getRefObjLoader(self.calibrate.config.connections.photoRefCat, visitDataId,
+                                           config=self.calibrate.config.photoRefObjLoader)
             self.calibrate.photoCal.match.setRefObjLoader(loader)
 
             charRes = self.charImage.run(exp)
