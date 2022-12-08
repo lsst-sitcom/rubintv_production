@@ -888,8 +888,6 @@ class CalibrateCcdRunner():
 
         config.doApCorr = False
         config.doDeblend = False
-        config.requireAstrometry = False
-        config.requirePhotoCal = False
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
