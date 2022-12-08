@@ -25,7 +25,6 @@ import time
 from pathlib import Path
 import shutil
 import logging
-import time
 import tempfile
 from glob import glob
 from time import sleep
@@ -996,7 +995,7 @@ class CalibrateCcdRunner():
         """Get the visitId for the dataId.
         """
         expId = butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)
-        visitDataIds = self.butler.registry.queryDataIds(["visit" ,"detector"], dataId=expId)
+        visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expId)
         visitDataIds = list(set(visitDataIds))
         if len(visitDataIds) == 1:
             visitDataId = visitDataIds[0]
