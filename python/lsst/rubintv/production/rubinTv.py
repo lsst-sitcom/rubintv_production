@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 import shutil
 import logging
+import time
 import tempfile
 from glob import glob
 from time import sleep
@@ -874,6 +875,9 @@ class CalibrateCcdRunner():
         config.load(os.path.join(obs_lsst, "config", "characterizeImage.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "characterizeImage.py"))
         config.measurement = basicConfig.measurement
+
+        config.doApCorr = False
+        config.doDeblend = False
         self.charImage = CharacterizeImageTask(config=config)
 
         config = CalibrateConfig()
@@ -881,43 +885,31 @@ class CalibrateCcdRunner():
         config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
         config.measurement = basicConfig.measurement
+
+        config.doApCorr = False
+        config.doDeblend = False
         config.requireAstrometry = False
         config.requirePhotoCal = False
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
-        # Preload refcat dataids and deferred dataset handles
-        astrometryRefCatName = self.calibrate.config.connections.astromRefCat
-        astromRefs = self.butler.registry.queryDatasets(astrometryRefCatName).expanded()
+    def _getRefObjLoader(self, refcatName, dataId):
+        """Get a reference object loader for a given refcat and dataId.
+        """
+        astromRefs = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
         astromRefs = list(astromRefs)
         astromHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
                          for ref in astromRefs]
-        astromDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in astromRefs]
+        astromDataIds = [ref.dataId for ref in astromRefs]
 
         loader = ReferenceObjectLoader(
             astromDataIds,
             astromHandles,
-            name=astrometryRefCatName,
+            name=refcatName,
             log=self.log,
             config=self.calibrate.config.astromRefObjLoader
         )
-        self.calibrate.astrometry.setRefObjLoader(loader)
-
-        photometryRefCatName = self.calibrate.config.connections.photoRefCat
-        photoRefs = self.butler.registry.queryDatasets(photometryRefCatName).expanded()
-        photoRefs = list(photoRefs)
-        photoHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
-                        for ref in photoRefs]
-        photoDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in photoRefs]
-
-        loader = ReferenceObjectLoader(
-            photoDataIds,
-            photoHandles,
-            name=photometryRefCatName,
-            log=self.log,
-            config=self.calibrate.config.photoRefObjLoader
-        )
-        self.calibrate.photoCal.match.setRefObjLoader(loader)
+        return loader
 
     def callback(self, dataId, **kwargs):
         """Method called on each new dataId as it is found in the repo.
@@ -927,6 +919,8 @@ class CalibrateCcdRunner():
         CalibrateTask.
         """
         try:
+            tStart = time.time()
+
             self.log.info(f'Running Image Characterization for {dataId}')
             exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
 
@@ -937,7 +931,17 @@ class CalibrateCcdRunner():
                 self.log.info(f'Skipping dispersed image: {dataId}')
                 return
 
+            visitDataId = self.getVisitDataId(dataId)
+
+            loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId)
+            self.calibrate.astrometry.setRefObjLoader(loader)
+            loader = self._getRefObjLoader(self.calibrate.config.connections.photoRefCat, visitDataId)
+            self.calibrate.photoCal.match.setRefObjLoader(loader)
+
             charRes = self.charImage.run(exp)
+            tCharacterize = time.time()
+            self.log.info(f"Ran characterizeImageTask in {tCharacterize-tStart:.2f} seconds")
+
             nSources = len(charRes.sourceCat)
             dayObs = butlerUtils.getDayObs(dataId)
             seqNum = butlerUtils.getSeqNum(dataId)
@@ -948,6 +952,9 @@ class CalibrateCcdRunner():
             calibrateRes = self.calibrate.run(charRes.exposure,
                                               background=charRes.background,
                                               icSourceCat=charRes.sourceCat)
+            tCalibrate = time.time()
+            self.log.info(f"Ran calibrateTask in {tCalibrate-tCharacterize:.2f} seconds")
+
             summaryStats = calibrateRes.outputExposure.getInfo().getSummaryStats()
             pixToArcseconds = calibrateRes.outputExposure.getWcs().getPixelScale().asArcseconds()
             SIGMA2FWHM = np.sqrt(8 * np.log(2))
@@ -976,6 +983,8 @@ class CalibrateCcdRunner():
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
             self.log.info(f'Wrote metadata shard. Putting calexp. {dataId}')
             self.safeWrite(calibrateRes.outputExposure, "calexp", dataId)
+            tFinal = time.time()
+            self.log.info(f"Ran everything in {tFinal-tStart:.2f} seconds")
 
         except Exception as e:
             if self.doRaise:
@@ -983,26 +992,37 @@ class CalibrateCcdRunner():
             self.log.warning(f"Did not finish calibration of {dataId} because {repr(e)}")
             return None
 
-    def safeWrite(self, object, datasetType, dataId):
-        """Put object in the butler.
-
-        Remove beforehand, if there is one already there.
+    def getVisitDataId(self, dataId):
+        """Get the visitId for the dataId.
         """
         expId = butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)
         visitDataIds = self.butler.registry.queryDataIds(["visit" ,"detector"], dataId=expId)
         visitDataIds = list(set(visitDataIds))
         if len(visitDataIds) == 1:
             visitDataId = visitDataIds[0]
+            return visitDataId
         else:
-            self.log.warning(f"I don't know what to do. Not putting {dataId}")
+            self.log.warning(f"Failed to find visitId for {dataId}, got {visitDataIds}. Do you need to run"
+                             " define-visits?")
+            return None
+
+    def safeWrite(self, object, datasetType, dataId):
+        """Put object in the butler.
+
+        Remove beforehand, if there is one already there.
+        """
+        if not (visitDataId := self.getVisitDataId(dataId)):
+            self.log.warning(f'Skipped butler.put of {datasetType} for {dataId} due to lack of visitId.'
+                             " Do you need to run define-visits?")
             return
 
-        self.butler.registry.registerRun(self.run)
+        self.butler.registry.registerRun(self.run)  # XXX maybe no harm, but should this always be run?
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
+            self.log.warning(f'Overwriting existing {datasetType} for {dataId}')
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.run)
-
+        self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
 
     def run(self):
         """Run continuously, calling the callback method on the latest dataId.
