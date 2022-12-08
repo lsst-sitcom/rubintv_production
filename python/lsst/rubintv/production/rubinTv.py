@@ -889,6 +889,7 @@ class CalibrateCcdRunner():
         # Preload refcat dataids and deferred dataset handles
         astrometryRefCatName = self.calibrate.config.connections.astromRefCat
         astromRefs = self.butler.registry.queryDatasets(astrometryRefCatName).expanded()
+        astromRefs = list(astromRefs)
         astromHandles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
                          for ref in astromRefs]
         astromDataIds = [self.butler.registry.expandDataId(ref.dataId) for ref in astromRefs]
