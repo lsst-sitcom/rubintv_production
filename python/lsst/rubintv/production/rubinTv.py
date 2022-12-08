@@ -866,7 +866,7 @@ class CalibrateCcdRunner():
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.shardsDir = os.path.join(outputRoot, 'shards')
-        self.run = "LATISS/runs/quickLook/1"
+        self.outputRunName = "LATISS/runs/quickLook/1"
 
         config = CharacterizeImageConfig()
         basicConfig = CharacterizeImageConfig()
@@ -1015,12 +1015,12 @@ class CalibrateCcdRunner():
                              " Do you need to run define-visits?")
             return
 
-        self.butler.registry.registerRun(self.run)  # XXX maybe no harm, but should this always be run?
+        self.butler.registry.registerRun(self.outputRunName)  # XXX maybe no harm, but should this always be run?
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
             self.log.warning(f'Overwriting existing {datasetType} for {dataId}')
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
-        self.butler.put(object, datasetType, dataId=visitDataId, run=self.run)
+        self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
 
     def run(self):
