@@ -40,6 +40,8 @@ from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, Characteriz
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
+from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
+from lsst.pipe.base import Instrument
 
 try:
     from lsst_efd_client import EfdClient
@@ -928,6 +930,7 @@ class CalibrateCcdRunner():
                 self.log.info(f'Skipping dispersed image: {dataId}')
                 return
 
+            self.defineVisit(dataId)
             visitDataId = self.getVisitDataId(dataId)
 
             loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId,
@@ -990,6 +993,20 @@ class CalibrateCcdRunner():
                 raise RuntimeError(f"Error processing {dataId}") from e
             self.log.warning(f"Did not finish calibration of {dataId} because {repr(e)}")
             return None
+
+    def defineVisit(self, dataId):
+        """Define a visit, takes about 9ms regardless of whether it exists already.
+
+        NB: butler must be writeable for this to work.
+        """
+        instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'], self.butler.registry)
+        config = DefineVisitsConfig()
+        instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
+
+        task = DefineVisitsTask(config=config, butler=self.butler)
+
+        task.run([butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)],
+                 collections=self.butler.collections)
 
     def getVisitDataId(self, dataId):
         """Get the visitId for the dataId.
