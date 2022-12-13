@@ -995,11 +995,15 @@ class CalibrateCcdRunner():
             return None
 
     def defineVisit(self, dataId):
-        """Define a visit, takes about 9ms regardless of whether it exists already.
+        """Define a visit in the registry, given a dataId.
+
+        Note that this takes about 9ms regardless of whether it exists, so it
+        is no quicker to check than just run the define call.
 
         NB: butler must be writeable for this to work.
         """
-        instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'], self.butler.registry)
+        instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'],
+                                       self.butler.registry)
         config = DefineVisitsConfig()
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
@@ -1032,7 +1036,7 @@ class CalibrateCcdRunner():
                              " Do you need to run define-visits?")
             return
 
-        self.butler.registry.registerRun(self.outputRunName)  # XXX maybe no harm, but should this always be run?
+        self.butler.registry.registerRun(self.outputRunName)
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
             self.log.warning(f'Overwriting existing {datasetType} for {dataId}')
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
