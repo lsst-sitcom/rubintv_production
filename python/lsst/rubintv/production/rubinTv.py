@@ -861,13 +861,14 @@ class CalibrateCcdRunner():
     def __init__(self, outputRoot, *, doRaise=False, embargo=False):
         self.dataProduct = 'quickLookExp'
         self.uploader = Uploader()
+        # writeable true is required to define visits
         self.butler = makeDefaultLatissButler(embargo=embargo, writeable=True)
-        self.log = _LOG.getChild("monitorChannel")
-        self.channel = 'auxtel_characterizeImage'
+        self.log = _LOG.getChild("calibrateCcdRunner")
+        self.channel = 'auxtel_calibrateCcd'
         self.watcher = Watcher(self.dataProduct, self.channel)
-        self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.shardsDir = os.path.join(outputRoot, 'shards')
+        # TODO DM-37272 need to get the collection name from a central place
         self.outputRunName = "LATISS/runs/quickLook/1"
 
         config = CharacterizeImageConfig()
@@ -887,15 +888,31 @@ class CalibrateCcdRunner():
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
         config.measurement = basicConfig.measurement
 
+        # TODO DM-37426 add some more overrides to speed up runtime
         config.doApCorr = False
         config.doDeblend = False
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
     def _getRefObjLoader(self, refcatName, dataId, config):
-        """Get a reference object loader for a given refcat and dataId.
+        """Construct a referenceObjectLoader for a given refcat
+
+        Parameters
+        ----------
+        refcatName : `str`
+            Name of the reference catalog to load
+        dataId : `dict`
+            DataId to determine bounding box of sources to load
+        config : `lsst.meas.algorithms.LoadReferenceObjectsConfig`
+            Configuration for the reference object loader
+
+        Returns
+        -------
+        loader : `lsst.meas.algorithms.ReferenceObjectLoader`
         """
         refs = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
+        # generator not guaranteed to yield in the same order every iteration
+        # therefore critical to materialize a list before iterating twice
         refs = list(refs)
         handles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
                    for ref in refs]
@@ -926,12 +943,15 @@ class CalibrateCcdRunner():
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
 
+            # TODO DM-37427 dispersed images do not have a filter and fail
             if isDispersedExp(exp):
                 self.log.info(f'Skipping dispersed image: {dataId}')
                 return
 
-            self.defineVisit(dataId)
             visitDataId = self.getVisitDataId(dataId)
+            if not visitDataId:
+                self.defineVisit(dataId)
+                visitDataId = self.getVisitDataId(dataId)
 
             loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId,
                                            config=self.calibrate.config.astromRefObjLoader)
@@ -948,6 +968,10 @@ class CalibrateCcdRunner():
             dayObs = butlerUtils.getDayObs(dataId)
             seqNum = butlerUtils.getSeqNum(dataId)
             outputDict = {"50-sigma source count": nSources}
+            # flag as measured to color the cells in the table
+            labels = {"_" + k: "measured" for k in outputDict.keys()}
+            outputDict.update(labels)
+
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
 
@@ -983,10 +1007,10 @@ class CalibrateCcdRunner():
 
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.shardsDir, dayObs, mdDict)
-            self.log.info(f'Wrote metadata shard. Putting calexp. {dataId}')
-            self.safeWrite(calibrateRes.outputExposure, "calexp", dataId)
+            self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
+            self.clobber(calibrateRes.outputExposure, "calexp", dataId)
             tFinal = time.time()
-            self.log.info(f"Ran everything in {tFinal-tStart:.2f} seconds")
+            self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
 
         except Exception as e:
             if self.doRaise:
@@ -1001,6 +1025,11 @@ class CalibrateCcdRunner():
         is no quicker to check than just run the define call.
 
         NB: butler must be writeable for this to work.
+
+        Parameters
+        ----------
+        dataId : `dict`
+            DataId to define a visit for
         """
         instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'],
                                        self.butler.registry)
@@ -1013,7 +1042,19 @@ class CalibrateCcdRunner():
                  collections=self.butler.collections)
 
     def getVisitDataId(self, dataId):
-        """Get the visitId for the dataId.
+        """Lookup visitId for a dataId containing an exposureId or
+
+        other uniquely identifying keys such as dayObs and seqNum.
+
+        Parameters
+        ----------
+        dataId : `dict`
+            DataId to look up the visitId
+
+        Returns
+        -------
+        visitDataId : lsst.daf.butler.DataCoordinate
+            Data Id containing a visitId
         """
         expId = butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)
         visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expId)
@@ -1026,10 +1067,19 @@ class CalibrateCcdRunner():
                              " define-visits?")
             return None
 
-    def safeWrite(self, object, datasetType, dataId):
+    def clobber(self, object, datasetType, dataId):
         """Put object in the butler.
 
-        Remove beforehand, if there is one already there.
+        If there is one already there, remove it beforehand
+
+        Parameters
+        ----------
+        object : `object`
+            Any object to put in the butler
+        datasetType : `str`
+            Dataset type name to put it as
+        dataId : `dict`
+            DataId to put the object at
         """
         if not (visitDataId := self.getVisitDataId(dataId)):
             self.log.warning(f'Skipped butler.put of {datasetType} for {dataId} due to lack of visitId.'
