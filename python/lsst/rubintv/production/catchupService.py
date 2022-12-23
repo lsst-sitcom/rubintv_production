@@ -37,8 +37,9 @@ from .rubinTv import MetadataCreator
 from .uploaders import Uploader, Heartbeater
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
-from .utils import isDayObsContiguous, raiseIf
+from .utils import raiseIf, hasDayRolledOver
 from .metadataServers import TimedMetadataServer
+
 
 __all__ = ['RubinTvBackgroundService']
 
@@ -100,28 +101,6 @@ class RubinTvBackgroundService:
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
         self.mdServer = MetadataCreator(self.locationConfig)  # costly-ish to create, so put in class
-
-    def hasDayRolledOver(self):
-        """Check if the dayObs has rolled over.
-
-        Checks if the class' dayObs is the current dayObs and returns False
-        if it is. Note that this does not update the attribute itself.
-
-        Returns
-        -------
-        hasDayRolledOver : `bool`
-            Whether the day has rolled over?
-        """
-        currentDay = getCurrentDayObs_int()
-        if currentDay == self.dayObs:
-            return False
-        elif currentDay == self.dayObs+1:
-            return True
-        else:
-            if not isDayObsContiguous(currentDay, self.dayObs):
-                self.log.warning(f"Encountered non-linear time! Day cleaner was started with {self.dayObs} "
-                                 f"and now current dayObs is {currentDay}!")
-            return True  # the day has still rolled over, just in an unexpected way
 
     def getMissingQuickLookIds(self):
         """Get a list of the dataIds for the current dayObs for which
@@ -370,7 +349,7 @@ class RubinTvBackgroundService:
                     self.runCatchup()
                     self.heartbeater.beat()
                     lastRun = time.time()
-                    if self.hasDayRolledOver():
+                    if hasDayRolledOver(self.dayObs):
                         self.log.info(f'Day has rolled over, sleeping for {self.endOfDayDelay}s before '
                                       'running end of day routine.')
                         # endOfDayDelay is long so send a heartbeat first

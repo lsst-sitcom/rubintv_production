@@ -47,15 +47,18 @@ except ImportError:
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
+from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
+from lsst.summit.utils import NightReport
 
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf
+from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDayRolledOver, catchPrintOutput
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
+
 
 __all__ = [
     'IsrRunner',
@@ -67,6 +70,7 @@ __all__ = [
     'Uploader',
     'Heartbeater',
     'CalibrateCcdRunner',
+    'NightReportChannel',
 ]
 
 
@@ -810,3 +814,99 @@ class CalibrateCcdRunner(BaseButlerChannel):
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
+
+
+class NightReportChannel():
+    """Class for running the AuxTel Night Report channel on RubinTV.
+    """
+    def __init__(self, location, doRaise=False):
+        self.location = location
+        # self.config = LocationConfig(location)  # XXX reinstante this
+
+        # we update when the quickLookExp lands, but we scrape for everything,
+        # updating the CcdVisitSummaryTable in the hope that the
+        # CalibrateCcdRunner is producing. Because that takes longer to run,
+        # this means the summary table is often a visit behind, but the only
+        # alternative is to block on waiting for calexps, which, if images
+        # fail/aren't attempted to be produced, would result in no update at
+        # all.
+        # This solution is fine as long as there is an end-of-night
+        # finalization step to catch everything in the end, and this is
+        # easily achieved as we need to reinstantiate a report as each day
+        # rolls over anyway.
+        self.dataProduct = 'quickLookExp'
+        self.uploader = Uploader()
+        self.butler = makeDefaultLatissButler()
+        self.log = _LOG.getChild("NightReportChannel")
+        self.channel = 'auxtel_night_report'
+        self.watcher = Watcher(self.dataProduct, self.channel)
+        self.doRaise = doRaise
+        self.dayObs = getCurrentDayObs_int()
+
+        # always attempt to resume on init
+        saveFile = self.getSaveFile()
+        if os.path.isfile(saveFile):
+            self.report = NightReport(self.butler, self.dayObs, saveFile)
+
+    def finalizeDay(self):
+        # do the final scrape and upload here. Does this need to be any
+        # different to the normal code which is run on each dataId though?
+        # Likely not, but let's see how development goes
+        raise NotImplementedError
+
+    def getSaveFile(self):
+        # return os.path.join(self.config.???, f'report_{self.dayObs}.pickle')
+        return 'XXX'
+
+    def callback(self, dataId):
+        """Method called on each new dataId as it is found in the repo.
+
+        Plot the quick imExam analysis of the latest image, writing the plot
+        to a temp file, and upload it to Google cloud storage via the uploader.
+        """
+        try:
+            if hasDayRolledOver(self.dayObs):
+                self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
+                self.finalizeDay()
+
+                self.dayObs = getCurrentDayObs_int()
+                self.saveFile = self.getSaveFile()
+                self.log.info(f'Starting new report for dayObs {self.dayObs}')
+                self.report = NightReport(self.butler, self.dayObs)
+
+            else:
+                self.report.rebuild()
+                self.report.save(self.saveFile)  # save on each
+
+                # make plots here
+                airMassPlotFile = ''
+                self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
+
+                altAzCoveragePlotFile = ''
+                self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
+
+                text = catchPrintOutput(self.report.printObsGaps)
+                # add the text to the md to upload
+
+                text = catchPrintOutput(self.report.calcShutterTimes)
+                # add the text to the md to upload
+
+                text = catchPrintOutput(self.report.printShutterTimes)
+                # add the text to the md to upload
+
+                # upload text here
+
+                # upload plots here
+                self.uploader.googleUpload(XXX)
+                self.log.info(f'Finished updating plots and table for {dataId}')
+
+        except Exception as e:
+            if self.doRaise:
+                raise RuntimeError(f"Error processing {dataId}") from e
+            self.log.warning(f"Skipped updating the night report for {dataId} because {repr(e)}")
+            return None
+
+    def run(self):
+        """Run continuously, calling the callback method on the latest dataId.
+        """
+        self.watcher.run(self.callback)
