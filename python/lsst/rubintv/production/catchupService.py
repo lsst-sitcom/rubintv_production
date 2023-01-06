@@ -31,10 +31,13 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
-from .rubinTv import Uploader, Heartbeater, MetadataServer
+
+from .rubinTv import MetadataServer  # TODO: change this to use TimedMetadataServer from base.py
+from .uploaders import Uploader, Heartbeater
 from .utils import LocationConfig
-from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
-from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
+from .allSky import cleanupAllSkyIntermediates
+from .highLevelTools import remakeDay
+from .utils import isDayObsContiguous, raiseIf
 
 __all__ = ['RubinTvBackgroundService']
 
@@ -96,25 +99,6 @@ class RubinTvBackgroundService():
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
         self.mdServer = MetadataServer(self.location)  # costly-ish to create, so put in class
-
-    def _raiseIf(self, error):
-        """Raises the error if ``self.doRaise`` otherwise logs it as a warning.
-
-        Parameters
-        ----------
-        error : `Exception`
-            The error that has been raised.
-
-        Raises
-        ------
-        AnyException
-            Raised if ``self.doRaise`` is True, otherwise swallows and warns.
-        """
-        msg = f'Background service error: {error}'
-        if self.doRaise:
-            raise RuntimeError(msg) from error
-        else:
-            self.log.warn(msg)
 
     def hasDayRolledOver(self):
         """Check if the dayObs has rolled over.
@@ -266,7 +250,7 @@ class RubinTvBackgroundService():
             try:
                 component.__call__()
             except Exception as e:
-                self._raiseIf(e)
+                raiseIf(self.doRaise, e, self.log)
 
         endTime = time.time()
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
@@ -320,7 +304,7 @@ class RubinTvBackgroundService():
             cleanupAllSkyIntermediates()
 
         except Exception as e:
-            self._raiseIf(e)
+            raiseIf(self.doRaise, e, self.log)
 
         finally:
             self.dayObs = getCurrentDayObs_int()
@@ -379,4 +363,4 @@ class RubinTvBackgroundService():
                 self.heartbeater.beat()
 
             except Exception as e:
-                self._raiseIf(e)
+                raiseIf(self.doRaise, e, self.log)

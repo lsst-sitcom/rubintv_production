@@ -47,29 +47,21 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
-try:
-    from google.cloud import storage
-    from google.cloud.storage.retry import DEFAULT_RETRY
-    HAS_GOOGLE_STORAGE = True
-except ImportError:
-    HAS_GOOGLE_STORAGE = False
-
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 
-from lsst.summit.utils.utils import dayObsIntToString
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .channels import PREFIXES, CHANNELS
-from .utils import writeMetadataShard, isFileWorldWritable, LocationConfig
-from .base import FileWatcher
+from .utils import writeMetadataShard, isFileWorldWritable, LocationConfig, _dataIdToFilename, raiseIf
+from .watchers import FileWatcher
+from .uploaders import Uploader, Heartbeater
+from .baseChannels import BaseButlerChannel
 
 __all__ = [
-    '_dataIdToFilename',
     'IsrRunner',
     'ImExaminerChannel',
     'SpecExaminerChannel',
@@ -118,67 +110,18 @@ MD_NAMES_MAP = {"id": 'Exposure id',
                 }
 
 
-def _dataIdToFilename(channel, dataId, extension='.png'):
-    """Convert a dataId to a png filename.
-
-    Parameters
-    ----------
-    channel : `str`
-        The name of the RubinTV channel
-    dataId : `dict`
-        The dataId
-
-    Returns
-    -------
-    filename : `str`
-        The filename
-    """
-    dayObsStr = dayObsIntToString(dataId['day_obs'])
-    filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{dataId['seq_num']}{extension}"
-    return filename
-
-
-def _waitForDataProduct(butler, dataProduct, dataId, logger, maxTime=20):
-    """Wait for a dataProduct to land inside a repo, timing out in maxTime.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The butler to use.
-    dataProduct : `str`
-        The dataProduct to wait for, e.g. postISRCCD or calexp etc
-    logger : `logging.Logger`
-        Logger
-    maxTime : `int` or `float`
-        The timeout, in seconds, to wait before giving up and returning None.
-
-    Returns
-    -------
-    dataProduct : dataProduct or None
-        Either the dataProduct being waiter for, or None if maxTime elapsed.
-    """
-    cadence = 0.25
-    maxLoops = int(maxTime//cadence)
-    for retry in range(maxLoops):
-        if butlerUtils.datasetExists(butler, dataProduct, dataId):
-            return butler.get(dataProduct, dataId)
-        else:
-            sleep(cadence)
-    logger.warning(f'Waited {maxTime}s for {dataProduct} for {dataId} to no avail')
-    return None
-
-
-class IsrRunner():
+class IsrRunner(BaseButlerChannel):
     """Class to run isr for each image that lands in the repo.
 
     Runs isr via BestEffortIsr, and puts the result in the quickLook rerun.
     """
-
-    def __init__(self, location):
-        self.config = LocationConfig(location)
+    def __init__(self, locationConfig, doRaise=False):
         self.bestEffort = BestEffortIsr()
-        self.log = _LOG.getChild("isrRunner")
-        self.watcher = FileWatcher(location, 'raw', 'auxtel_isr_runner')
+        super().__init__(locationConfig=locationConfig,
+                         butler=self.bestEffort.butler,
+                         dataProduct='raw',
+                         channelName='auxtel_isr_runner',
+                         doRaise=doRaise)
 
     def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
@@ -190,25 +133,16 @@ class IsrRunner():
         del quickLookExp
         self.log.info(f'Put quickLookExp for {dataId}, awaiting next image...')
 
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)
 
-
-class ImExaminerChannel():
+class ImExaminerChannel(BaseButlerChannel):
     """Class for running the ImExam channel on RubinTV.
     """
-
-    def __init__(self, location, doRaise=False):
-        self.config = LocationConfig(location)
-        self.dataProduct = 'quickLookExp'
-        self.uploader = Uploader(self.config.bucketName)
-        self.butler = butlerUtils.makeDefaultLatissButler()
-        self.log = _LOG.getChild("imExaminerChannel")
-        self.channel = 'summit_imexam'
-        self.watcher = FileWatcher(location, self.dataProduct, self.channel)
-        self.doRaise = doRaise
+    def __init__(self, locationConfig, doRaise=False):
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(),
+                         dataProduct='quickLookExp',
+                         channelName='summit_imexam',
+                         doRaise=doRaise)
 
     def _imExamine(self, exp, dataId, outputFilename):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
@@ -226,42 +160,31 @@ class ImExaminerChannel():
         try:
             self.log.info(f'Running imexam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channel, dataId)
-            exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            exp = self._waitForDataProduct(dataId)
 
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
             self._imExamine(exp, dataId, tempFilename)
 
             self.log.info("Uploading imExam to storage bucket")
-            self.uploader.googleUpload(self.channel, tempFilename, uploadFilename)
+            self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped imExam on {dataId} because {repr(e)}")
-            return None
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)
+            raiseIf(self.doRaise, e, self.log)
 
 
-class SpecExaminerChannel():
+class SpecExaminerChannel(BaseButlerChannel):
     """Class for running the SpecExam channel on RubinTV.
     """
 
-    def __init__(self, location, doRaise=False):
-        self.config = LocationConfig(location)
-        self.dataProduct = 'quickLookExp'
-        self.uploader = Uploader(self.config.bucketName)
-        self.butler = butlerUtils.makeDefaultLatissButler()
-        self.log = _LOG.getChild("specExaminerChannel")
-        self.channel = 'summit_specexam'
-        self.watcher = FileWatcher(location, self.dataProduct, self.channel)
-        self.doRaise = doRaise
+    def __init__(self, locationConfig, doRaise=False):
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(),
+                         dataProduct='quickLookExp',
+                         channelName='summit_specexam',
+                         doRaise=doRaise)
 
     def _specExamine(self, exp, dataId, outputFilename):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile?
@@ -283,42 +206,30 @@ class SpecExaminerChannel():
 
             self.log.info(f'Running specExam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channel, dataId)
-            exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
             self._specExamine(exp, dataId, tempFilename)
 
             self.log.info("Uploading specExam to storage bucket")
-            self.uploader.googleUpload(self.channel, tempFilename, uploadFilename)
+            self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.info(f"Skipped imExam on {dataId} because {repr(e)}")
-            return None
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)
+            raiseIf(self.doRaise, e, self.log)
 
 
-class MonitorChannel():
+class MonitorChannel(BaseButlerChannel):
     """Class for running the monitor channel on RubinTV.
     """
-
-    def __init__(self, location, doRaise=False):
-        self.config = LocationConfig(location)
-        self.dataProduct = 'quickLookExp'
-        self.uploader = Uploader(self.config.bucketName)
-        self.butler = butlerUtils.makeDefaultLatissButler()
-        self.log = _LOG.getChild("monitorChannel")
-        self.channel = 'auxtel_monitor'
-        self.watcher = FileWatcher(location, self.dataProduct, self.channel)
+    def __init__(self, locationConfig, doRaise=False):
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(),
+                         dataProduct='quickLookExp',
+                         channelName='auxtel_monitor',
+                         doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
-        self.doRaise = doRaise
 
     def _plotImage(self, exp, dataId, outputFilename):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
@@ -335,47 +246,37 @@ class MonitorChannel():
         try:
             self.log.info(f'Generating monitor image for {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channel, dataId)
-            exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
             self._plotImage(exp, dataId, tempFilename)
 
             self.log.info("Uploading monitor image to storage bucket")
-            self.uploader.googleUpload(self.channel, tempFilename, uploadFilename)
+            self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped monitor image for {dataId} because {repr(e)}")
-            return None
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)
+            raiseIf(self.doRaise, e, self.log)
 
 
-class MountTorqueChannel():
+class MountTorqueChannel(BaseButlerChannel):
     """Class for running the mount torque channel on RubinTV.
     """
-
-    def __init__(self, location, doRaise=False):
+    def __init__(self, locationConfig, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
-        self.config = LocationConfig(location)
-        self.dataProduct = 'raw'
-        self.uploader = Uploader(self.config.bucketName)
-        self.butler = butlerUtils.makeDefaultLatissButler()
+
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(),
+                         dataProduct='raw',
+                         channelName='auxtel_mount_torques',
+                         doRaise=doRaise)
         self.client = EfdClient('summit_efd')
-        self.log = _LOG.getChild("mountTorqueChannel")
-        self.channel = 'auxtel_mount_torques'
-        self.shardsDir = self.config.metadataShardPath
-        self.watcher = FileWatcher(location, self.dataProduct, self.channel)
+        # TODO: move this from the class to the methods
+        self.shardsDir = self.locationConfig.metadataShardPath
         self.fig = plt.figure(figsize=(16, 16))
-        self.doRaise = doRaise
 
     def writeMountErrorShard(self, errors, dataId):
         """Write a metadata shard for the mount error, including the flag
@@ -406,7 +307,7 @@ class MountTorqueChannel():
         """
         try:
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channel, dataId)
+            uploadFilename = _dataIdToFilename(self.channelName, dataId)
 
             # calculateMountErrors() calculates the errors, but also performs
             # the plotting.
@@ -414,7 +315,7 @@ class MountTorqueChannel():
 
             if os.path.exists(tempFilename):  # skips many image types and short exps
                 self.log.info("Uploading mount torque plot to storage bucket")
-                self.uploader.googleUpload(self.channel, tempFilename, uploadFilename)
+                self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
                 self.log.info('Upload complete')
 
             # write the mount error shard, including the cell coloring flag
@@ -422,14 +323,7 @@ class MountTorqueChannel():
                 self.writeMountErrorShard(errors, dataId)
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped creating mount plots for {dataId} because {repr(e)}")
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)
+            raiseIf(self.doRaise, e, self.log)
 
 
 class MetadataServer():
@@ -442,8 +336,8 @@ class MetadataServer():
         self.uploader = Uploader(self.config.bucketName)
         self.butler = butlerUtils.makeDefaultLatissButler(embargo=embargo)
         self.log = _LOG.getChild("metadataServer")
-        self.channel = 'auxtel_metadata'
-        self.watcher = FileWatcher(location, self.dataProduct, self.channel)
+        self.channelName = 'auxtel_metadata'
+        self.watcher = FileWatcher(self.config, self.dataProduct, self.channelName)
         self.outputRoot = self.config.metadataPath
         self.shardsDir = self.config.metadataShardPath
         self.doRaise = doRaise
@@ -573,7 +467,7 @@ class MetadataServer():
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
             for file in filesTouched:
-                self.uploader.googleUpload(self.channel, file, isLiveFile=True)
+                self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
         return
 
     def getSidecarFilename(self, dayObs):
@@ -597,10 +491,7 @@ class MetadataServer():
             self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped creating sidecar metadata for {dataId} because {repr(e)}")
-            return None
+            raiseIf(self.doRaise, e, self.log)
 
     def run(self):
         """Run continuously, calling the callback method on the latest dataId.
@@ -608,251 +499,20 @@ class MetadataServer():
         self.watcher.run(self.callback)
 
 
-class Uploader():
-    """Class for handling uploads to the Google cloud storage bucket.
-    """
-    HEARTBEAT_PREFIX = "heartbeats"
-
-    def __init__(self, bucketName):
-        if not HAS_GOOGLE_STORAGE:
-            from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
-            raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
-        self.client = storage.Client()
-        self.bucket = self.client.get_bucket(bucketName)
-        self.log = _LOG.getChild("googleUploader")
-
-    def uploadHeartbeat(self, channel, flatlinePeriod):
-        """Upload a heartbeat for the specified channel to the bucket.
-
-        Parameters
-        ----------
-        channel : `str`
-            The channel name.
-        flatlinePeriod : `float`
-            The period after which to consider the channel dead.
-
-        Returns
-        -------
-        success : `bool`
-            Did the upload succeed?
-        """
-        filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
-
-        currTime = int(time.time())
-        nextExpected = currTime + flatlinePeriod
-
-        heartbeatJsonDict = {
-            "channel": channel,
-            "currTime": currTime,
-            "nextExpected": nextExpected,
-            "errors": {}
-        }
-        heartbeatJson = json.dumps(heartbeatJsonDict)
-
-        blob = self.bucket.blob("/".join([filename]))
-        blob.cache_control = 'no-store'  # must set before upload
-
-        # heartbeat retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
-
-        try:
-            blob.upload_from_string(heartbeatJson, retry=modified_retry)
-            self.log.debug(f'Uploaded heartbeat to channel {channel} with datetime {currTime}')
-            return True
-        except Exception:
-            return False
-
-    def uploadPerSeqNumPlot(self,
-                            channel,
-                            dayObsInt,
-                            seqNumInt,
-                            filename,
-                            isLiveFile=False,
-                            isLargeFile=False,
-                            ):
-        """Upload a per-dayObs/seqNum plot to the bucket.
-
-        Parameters
-        ----------
-        channel : `str`
-            The RubinTV channel to upload to.
-        dayObsInt : `int`
-            The dayObs of the plot.
-        seqNumInt : `int`
-            The seqNum of the plot.
-        filename : `str`
-            The full path and filename of the file to upload.
-        isLiveFile : `bool`, optional
-            The file is being updated constantly, and so caching should be
-        disabled.
-        isLargeFile : `bool`, optional
-            The file is large, so add a longer timeout to the upload.
-
-        Raises
-        ------
-        ValueError
-            Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS
-        RuntimeError
-            Raised if the Google cloud storage is not installed/importable.
-        """
-        if channel not in CHANNELS:
-            raise ValueError(f"Error: {channel} not in {CHANNELS}")
-
-        dayObsStr = dayObsIntToString(dayObsInt)
-        # TODO: sort out this prefix nonsense as part of the plot organization
-        # fixup in the new year?
-        plotPrefix = channel.replace('_', '-')
-
-        uploadAs = f"{channel}/{plotPrefix}_dayObs_{dayObsStr}_seqNum_{seqNumInt}.png"
-
-        blob = self.bucket.blob(uploadAs)
-        if isLiveFile:
-            blob.cache_control = 'no-store'
-
-        # general retry strategy
-        # still quite gentle as the catchup service will fill in gaps
-        # and we don't want to hold up new images landing
-        timeout = 1000 if isLargeFile else 60  # default is 60s
-        deadline = timeout if isLargeFile else 2.0
-        modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
-        try:
-            blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
-            self.log.info(f'Uploaded {filename} to {uploadAs}')
-        except Exception as e:
-            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
-            return None
-
-        return blob
-
-    def googleUpload(self, channel, sourceFilename,
-                     uploadAsFilename=None,
-                     isLiveFile=False,
-                     isLargeFile=False,
-                     ):
-        """Upload a file to the RubinTV Google cloud storage bucket.
-
-        Parameters
-        ----------
-        channel : `str`
-            The RubinTV channel to upload to.
-        sourceFilename : `str`
-            The full path and filename of the file to upload.
-        uploadAsFilename : `str`, optional
-            Optionally rename the file to this upon upload.
-        isLiveFile : `bool`, optional
-            The file is being updated constantly, and so caching should be
-        disabled.
-        isLargeFile : `bool`, optional
-            The file is large, so add a longer timeout to the upload.
-
-        Raises
-        ------
-        ValueError
-            Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS
-        RuntimeError
-            Raised if the Google cloud storage is not installed/importable.
-        """
-        if channel not in CHANNELS:
-            raise ValueError(f"Error: {channel} not in {CHANNELS}")
-
-        if not uploadAsFilename:
-            uploadAsFilename = os.path.basename(sourceFilename)
-        finalName = "/".join([channel, uploadAsFilename])
-
-        blob = self.bucket.blob(finalName)
-        if isLiveFile:
-            blob.cache_control = 'no-store'
-
-        # general retry strategy
-        # still quite gentle as the catchup service will fill in gaps
-        # and we don't want to hold up new images landing
-        timeout = 1000 if isLargeFile else 60  # default is 60s
-        deadline = timeout if isLargeFile else 2.0
-        modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
-        try:
-            blob.upload_from_filename(sourceFilename, retry=modified_retry, timeout=timeout)
-            self.log.info(f'Uploaded {sourceFilename} to {finalName}')
-        except Exception as e:
-            self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
-            return None
-
-        return blob
-
-
-class Heartbeater():
-    """A class for uploading heartbeats to the GCS bucket.
-
-    Call ``beater.beat()`` as often as you like. Files will only be uploaded
-    once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when calling
-    beat.
-
-    Parameters
-    ----------
-    handle : `str`
-        The name of the channel to which the heartbeat corresponds.
-    bucketName : `str`
-        The name of the bucket to upload the heartbeats to.
-    uploadPeriod : `float`
-        The time, in seconds, which must have passed since the last successful
-        heartbeat for a new upload to be undertaken.
-    flatlinePeriod : `float`
-        If a new heartbeat is not received before the flatlinePeriod elapses,
-        in seconds, the channel will be considered down.
-    """
-    def __init__(self, handle, bucketName, uploadPeriod, flatlinePeriod):
-        self.handle = handle
-        self.uploadPeriod = uploadPeriod
-        self.flatlinePeriod = flatlinePeriod
-
-        self.lastUpload = -1
-        self.uploader = Uploader(bucketName)
-
-    def beat(self, ensure=False, customFlatlinePeriod=None):
-        """Upload the heartbeat if enough time has passed or ensure=True.
-
-        customFlatlinePeriod implies ensure, as long forecasts should always be
-        uploaded.
-
-        Parameters
-        ----------
-        ensure : `str`
-            Ensure that the heartbeat is uploaded, even if one has been sent
-            within the last ``uploadPeriod``.
-        customFlatlinePeriod : `float`
-            Upload with a different flatline period. Use before starting long
-            running jobs.
-        """
-        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
-
-        now = time.time()
-        elapsed = now - self.lastUpload
-        if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
-            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
-                self.lastUpload = now  # only reset this if the upload was successful
-
-
-class CalibrateCcdRunner():
+class CalibrateCcdRunner(BaseButlerChannel):
     """Class for running CharacterizeImageTask and CalibrateTasks on images.
 
     Runs these tasks and writes shards with various measured quantities for
     upload to the table.
     """
-    def __init__(self, location, *, doRaise=False, embargo=False):
-        self.config = LocationConfig(location)
-        self.dataProduct = 'quickLookExp'
-        self.uploader = Uploader(self.config.bucketName)
-        # writeable true is required to define visits
-        self.butler = butlerUtils.makeDefaultLatissButler(embargo=embargo, writeable=True)
-        self.log = _LOG.getChild("calibrateCcdRunner")
-        self.channel = 'auxtel_calibrateCcd'
-        self.watcher = FileWatcher(location, self.dataProduct, self.channel)
-        self.doRaise = doRaise
-        self.shardsDir = self.config.metadataShardPath
+    def __init__(self, locationConfig, *, doRaise=False, embargo=False):
+        super().__init__(locationConfig=locationConfig,
+                         # writeable true is required to define visits
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo, writeable=True),
+                         dataProduct='quickLookExp',
+                         channelName='auxtel_calibrateCcd',
+                         doRaise=doRaise)
+        self.shardsDir = self.config.metadataShardPath  # TODO: remove this as above
         # TODO DM-37272 need to get the collection name from a central place
         self.outputRunName = "LATISS/runs/quickLook/1"
 
@@ -923,7 +583,7 @@ class CalibrateCcdRunner():
             tStart = time.time()
 
             self.log.info(f'Running Image Characterization for {dataId}')
-            exp = _waitForDataProduct(self.butler, self.dataProduct, dataId, self.log)
+            exp = self._waitForDataProduct(dataId)
 
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
@@ -998,10 +658,7 @@ class CalibrateCcdRunner():
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Did not finish calibration of {dataId} because {repr(e)}")
-            return None
+            raiseIf(self.doRaise, e, self.log)
 
     def defineVisit(self, dataId):
         """Define a visit in the registry, given a dataId.
@@ -1078,8 +735,3 @@ class CalibrateCcdRunner():
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)

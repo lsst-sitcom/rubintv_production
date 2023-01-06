@@ -28,8 +28,8 @@ from lsst.eo.pipe.plotting import focal_plane_plotting
 from lsst.ip.isr import AssembleCcdTask
 
 from ..utils import writeDataShard, LocationConfig, getShardedData
-from ..rubinTv import Uploader
-from ..base import FileWatcher, writeDataIdFile
+from ..uploaders import Uploader
+from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
 from .utils import fullAmpDictToPerCcdDicts, getCamera
 
@@ -62,7 +62,7 @@ class RawProcesser():
         self.detector = detector
         name = f'rawProcesser_{instrument}_{detector:03}'
         self.log = _LOG.getChild(name)
-        self.watcher = FileWatcher(location=location,
+        self.watcher = FileWatcher(locationConfig=self.config,
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
@@ -126,7 +126,9 @@ class Plotter():
         self.uploader = Uploader(self.config.bucketName)
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
-        self.watcher = FileWatcher(location, 'binnedImage', doRaise=doRaise)
+        self.watcher = FileWatcher(locationConfig=self.config,
+                                   dataProduct='binnedImage',
+                                   doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
 

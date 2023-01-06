@@ -27,25 +27,27 @@ import json
 import glob
 import time
 
+from lsst.summit.utils.utils import dayObsIntToString
+from .channels import PREFIXES
+
 from lsst.utils import getPackageDir
 from datetime import datetime, timedelta
 from functools import cached_property
 from dataclasses import dataclass
 
-from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
-from lsst.summit.utils.utils import dayObsIntToString, setupLogging
-from .channels import CHANNELS, PREFIXES
 
-
-__all__ = ["checkRubinTvExternalPackages",
-           "getPlotSeqNumsForDayObs",
-           "createChannelByName",
-           "remakePlotByDataId",
-           "remakeDay",
-           "isDayObsContiguous",
-           "pushTestImageToCurrent",
-           "getSiteConfig",
-           "LocationConfig",
+__all__ = ['writeDataIdFile',
+           'getGlobPatternForDataProduct',
+           '_dataIdToFilename',
+           'getSiteConfig',
+           'checkRubinTvExternalPackages',
+           'raiseIf',
+           'isDayObsContiguous',
+           'writeMetadataShard',
+           'writeDataShard',
+           'getShardedData',
+           'isFileWorldWritable',
+           'LocationConfig',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -53,6 +55,53 @@ EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please instal
 
 GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please install with:\n'
                             '    pip install google-cloud-storage')
+
+DATA_ID_TEMPLATE = os.path.join("{path}", "{dataProduct}_{expId}.json")
+
+# this file is for low level tools and should therefore not import
+# anything from elsewhere in the package, this is strictly for importing from
+# only.
+
+
+def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
+    """
+    """
+    expId = expRecord.id
+    dayObs = expRecord.day_obs
+    seqNum = expRecord.seq_num
+    outFile = DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId=expId)
+    with open(outFile, 'w') as f:
+        f.write(json.dumps(expRecord.to_simple().json()))
+    if log:
+        log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
+
+
+def getGlobPatternForDataProduct(dataIdPath, dataProduct):
+    return DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId='*')
+
+
+def _dataIdToFilename(channel, dataId, extension='.png'):
+    """Convert a dataId to a png filename.
+
+    TODO: give this a better name and remove the leading underscore at a
+    minimum. Ideally this would be done as part of the work changing how files
+    are named in the bucket though.
+
+    Parameters
+    ----------
+    channel : `str`
+        The name of the RubinTV channel
+    dataId : `dict`
+        The dataId
+
+    Returns
+    -------
+    filename : `str`
+        The filename
+    """
+    dayObsStr = dayObsIntToString(dataId['day_obs'])
+    filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{dataId['seq_num']}{extension}"
+    return filename
 
 
 @dataclass(frozen=True)
@@ -249,7 +298,7 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
 def raiseIf(doRaise, error, logger):
     """Raises the error if ``doRaise`` otherwise logs it as a warning.
 
-    TODO: get this to print the full traceback when warning.
+    TODO: Take a message that's better than the f-string of the error!
 
     Parameters
     ----------
@@ -270,209 +319,7 @@ def raiseIf(doRaise, error, logger):
         raise RuntimeError(msg) from error
     else:
         # TODO: make this print the full traceback
-        logger.warning(msg)
-
-
-def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
-    """Return the list of seqNums for which the plot exists in the bucket for
-    the specified channel.
-
-    Parameters
-    ----------
-    channel : `str`
-        The channel.
-    dayObs : `int`
-        The dayObs.
-    bucket : `google.cloud.storage.bucket.Bucket`, optional
-        The GCS bucket, created if not supplied.
-
-    Returns
-    -------
-    seqNums : `list` [`int`]
-        Sorted list of ints of the seqNums for which the specified plot exists.
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown.
-    """
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}.")
-
-    if not bucket:
-        from google.cloud import storage
-        client = storage.Client()
-        bucket = client.get_bucket('rubintv_data')
-
-    dayObsStr = dayObsIntToString(dayObs)
-
-    prefix = f'{channel}/{PREFIXES[channel]}_dayObs_{dayObsStr}'
-    blobs = list(bucket.list_blobs(prefix=prefix))
-    existing = [int(b.name.split(f'{prefix}_seqNum_')[1].replace('.png', '')) for b in blobs]
-    return sorted(existing)
-
-
-def createChannelByName(location, channel, doRaise):
-    """Create a RubinTV Channel object using the name of the channel.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    channel : `str`
-        The name of the channel, as found in lsst.rubintv.production.CHANNELS.
-    doRaise : `bool`
-        Have the channel ``raise`` if errors are encountered while it runs.
-
-    Returns
-    -------
-    channel : `lsst.rubintv.production.<Channel>`
-        The lsst.rubintv.production Channel object.
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown, or creating by name is not supported
-        for the channel in question.
-    """
-    from .rubinTv import (ImExaminerChannel,
-                          SpecExaminerChannel,
-                          MountTorqueChannel,
-                          MonitorChannel,
-                          MetadataServer,
-                          )
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}.")
-
-    match channel:
-        case "summit_imexam":
-            return ImExaminerChannel(location=location, doRaise=doRaise)
-        case "summit_specexam":
-            return SpecExaminerChannel(location=location, doRaise=doRaise)
-        case "auxtel_mount_torques":
-            return MountTorqueChannel(location=location, doRaise=doRaise)
-        case "auxtel_monitor":
-            return MonitorChannel(location=location, doRaise=doRaise)
-        case "auxtel_metadata":
-            return MetadataServer(location=location, doRaise=doRaise)
-        case "all_sky_current":
-            raise ValueError(f"{channel} is not a creatable by name.")
-        case "all_sky_movies":
-            raise ValueError(f"{channel} is not a creatable by name.")
-        case _:
-            raise ValueError(f"Unrecognized channel {channel}.")
-
-
-def remakePlotByDataId(location, channel, dataId):
-    """Remake the plot for the given channel for a single dataId.
-    Reproduces the plot regardless of whether it exists. Raises on error.
-
-    This method is very slow and inefficient for bulk processing, as it
-    creates a Channel object for each plot - do *not* use in loops, use
-    remakeDay() or write a custom scripts for bulk remaking.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    channel : `str`
-        The name of the channel.
-    dataId : `dict`
-        The dataId.
-    """
-    tvChannel = createChannelByName(location, channel, doRaise=True)
-    tvChannel.callback(dataId)
-
-
-def remakeDay(location,
-              channel,
-              dayObs,
-              *,
-              remakeExisting=False,
-              notebook=True,
-              logger=None,
-              embargo=False):
-    """Remake all the plots for a given day.
-
-    Currently auxtel_metadata does not pull from the bucket to check what is
-    in there, so remakeExisting is not supported.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    channel : `str`
-        The name of the lsst.rubintv.production channel. The actual channel
-        object is created internally.
-    dayObs : `int`
-        The dayObs.
-    remakeExisting : `bool`, optional
-        Remake all plots, regardless of whether they already exist in the
-        bucket?
-    notebook : `bool`, optional
-        Is the code being run from within a notebook? Needed to correctly nest
-        asyncio event loops in notebook-type environments.
-    embargo : `bool`, optional
-        Use the embargoed repo?
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown.
-        Raised if remakeExisting is False and channel is auxtel_metadata.
-    """
-    if not logger:
-        logger = logging.getLogger(__name__)
-
-    from google.cloud import storage
-
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}")
-
-    if remakeExisting is False and channel in ['auxtel_metadata']:
-        raise ValueError(f"Channel {channel} can currently only remake everything or nothing. "
-                         "If you would like to remake everything, please explicitly pass "
-                         "remakeExisting=True.")
-
-    if notebook:
-        # notebooks have their own eventloops, so this is necessary if the
-        # function is being run from within a notebook type environment
-        import nest_asyncio
-        nest_asyncio.apply()
-        setupLogging()
-
-    client = storage.Client()
-    bucket = client.get_bucket('rubintv_data')
-    butler = makeDefaultLatissButler(embargo=embargo)
-
-    allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
-    logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
-    existing = set()
-    if not remakeExisting:
-        existing = set(getPlotSeqNumsForDayObs(channel, dayObs, bucket=bucket))
-        nToMake = len(allSeqNums) - len(existing)
-        logger.info(f"Found {len(existing)} in the bucket which will be skipped, "
-                    f"leaving {nToMake} to create.")
-
-    toMake = sorted(allSeqNums - existing)
-    if not toMake:
-        logger.info(f"Nothing to do for {channel} on {dayObs}")
-        return
-
-    # doRaise is False because during bulk plot remaking we expect many fails
-    # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(location, channel, doRaise=False, embargo=embargo)
-    if channel in ['auxtel_metadata']:
-        # special case so we only upload once after all the shards are made
-        for seqNum in toMake:
-            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-            tvChannel.writeShardForDataId(dataId)
-        tvChannel.mergeShardsAndUpload()
-
-    else:
-        for seqNum in toMake:
-            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-            tvChannel.callback(dataId)
+        logger.exception(msg)
 
 
 def isDayObsContiguous(dayObs, otherDayObs):
@@ -496,77 +343,6 @@ def isDayObsContiguous(dayObs, otherDayObs):
     d2 = datetime.strptime(str(otherDayObs), '%Y%m%d')
     deltaDays = d2.date() - d1.date()
     return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
-
-
-def pushTestImageToCurrent(channel, bucketName, duration=15):
-    """Push a test image to a channel to see if it shows up automatically.
-
-    Leaves the test image in the bucket for ``duration`` seconds and then
-    removes it. ``duration`` cannot be more than 60s, as test images should not
-    be left in the bucket for long, and a minute should easily be long enough
-    to see if things are working.
-
-    NB: this function is designed for interactive use in notebooks and blocks
-    for ``duration`` and then deletes the file.
-
-    Parameters
-    ----------
-    channel : `str`
-        The name of the lsst.rubintv.production channel. The actual channel
-        object is created internally.
-    bucketName : `str`
-        The name of the GCS bucket to push the test image to.
-    duration : `float`, optional
-        The duration to leave the test image up for, in seconds.
-
-    Raises
-    ------
-    ValueError: Raised when the channel is unknown or the channel does support
-        test images being pushed to it, or is the requested duration for the
-        test image to remain is too long (max of 60s).
-    """
-    from .rubinTv import Uploader, _dataIdToFilename
-
-    logger = logging.getLogger(__name__)
-
-    from google.cloud import storage
-
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}")
-    if channel in ['auxtel_metadata', 'auxtel_isr_runner', 'all_sky_current', 'all_sky_movies',
-                   'auxtel_movies']:
-        raise ValueError(f'Pushing test data not supported for {channel}')
-    if duration > 60:
-        raise ValueError(f'Maximum time to leave test images in buckets is 60s, got {duration}')
-
-    client = storage.Client()
-    bucket = client.get_bucket('rubintv_data')
-    prefix = f'{channel}/{PREFIXES[channel]}'
-    blobs = list(bucket.list_blobs(prefix=prefix))
-
-    logger.info(f'Found {len(blobs)} for channel {channel} in bucket')
-
-    # names are like
-    # 'auxtel_monitor/auxtel-monitor_dayObs_2021-07-06_seqNum_100.png'
-    days = set([b.name.split(f'{prefix}_dayObs_')[1].split('_seqNum')[0] for b in blobs])
-    days = [int(d.replace('-', '')) for d in days]  # days are like 2022-01-02
-    recentDay = max(days)
-
-    seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)
-    newSeqNum = max(seqNums) + 1
-
-    mockDataId = {'day_obs': recentDay, 'seq_num': newSeqNum}
-    testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
-    uploadAs = _dataIdToFilename(channel, mockDataId)
-    uploader = Uploader(bucketName)
-
-    logger.info(f'Uploading test card to {mockDataId} for channel {channel}')
-    blob = uploader.googleUpload(channel, testCardFile, uploadAs, isLiveFile=True)
-
-    logger.info(f'Upload complete, sleeping for {duration} for you to check...')
-    time.sleep(duration)
-    blob.delete()
-    logger.info('Test card removed')
 
 
 def writeMetadataShard(path, dayObs, mdDict):
@@ -729,85 +505,3 @@ def isFileWorldWritable(filename):
     """
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
-
-
-def remakeStarTrackerDay(*, dayObs,
-                         rootDataPath,
-                         outputRoot,
-                         metadataRoot,
-                         astrometryNetRefCatRoot,
-                         wide,
-                         remakeExisting=False,
-                         logger=None,
-                         forceMaxNum=None
-                         ):
-    """Remake all the star tracker plots for a given day.
-
-    Parameters
-    ----------
-    dayObs : `int`
-        The dayObs.
-    rootDataPath : `str`
-        The path at which to find the data, passed through to the channel.
-    outputRoot : str``
-        The path to write the results out to, passed through to the channel.
-    metadataRoot : `str`
-        The path to write metadata to, passed through to the channel.
-    astrometryNetRefCatRoot : `str`
-        The path to the astrometry.net reference catalogs. Do not include
-        the /4100 or /4200, just the base directory.
-    wide : `bool`
-        Do this for the wide or narrow camera?
-    remakeExisting : `bool`, optional
-        Remake all plots, regardless of whether they already exist in the
-        bucket?
-    logger : `logging.Logger`, optional
-        The logger.
-    forceMaxNum : `int`
-        Force the maximum seqNum to be this value. This is useful for remaking
-        days from scratch or in full, rather than running as a catchup.
-    """
-    from .starTracker import StarTrackerChannel, getRawDataDirForDayObs
-
-    if not logger:
-        logger = logging.getLogger('lsst.starTracker.remake')
-
-    # doRaise is False because during bulk plot remaking we expect many fails
-    tvChannel = StarTrackerChannel(wide=wide,
-                                   rootDataPath=rootDataPath,
-                                   metadataRoot=metadataRoot,
-                                   outputRoot=outputRoot,
-                                   astrometryNetRefCatRoot=astrometryNetRefCatRoot,
-                                   doRaise=False,
-                                   )
-
-    _ifWide = '_wide' if wide else ''
-    rawChannel = f"startracker{_ifWide}_raw"
-
-    existing = getPlotSeqNumsForDayObs(rawChannel, dayObs)
-    maxSeqNum = max(existing) if not forceMaxNum else forceMaxNum
-    missing = [_ for _ in range(1, maxSeqNum) if _ not in existing]
-    logger.info(f"Most recent = {maxSeqNum}, found {len(missing)} missing to create plots for: {missing}")
-
-    dayPath = getRawDataDirForDayObs(rootDataPath=rootDataPath,
-                                     wide=wide,
-                                     dayObs=dayObs)
-
-    files = glob.glob(os.path.join(dayPath, '*.fits'))
-    foundFiles = {}
-    for filename in files:
-        # filenames are like GC101_O_20221114_000005.fits
-        _, _, dayObs, seqNumAndSuffix = filename.split('_')
-        seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
-        foundFiles[seqNum] = filename
-
-    toRemake = missing if not remakeExisting else list(range(1, maxSeqNum))
-    toRemake.reverse()  # always do the most recent ones first, burning down the list, not up
-
-    for seqNum in toRemake:
-        if seqNum not in foundFiles.keys():
-            logger.warning(f'Failed to find raw file for {seqNum}, skipping...')
-            continue
-        filename = foundFiles[seqNum]
-        logger.info(f'Processing {seqNum} from {filename}')
-        tvChannel.callback(filename)

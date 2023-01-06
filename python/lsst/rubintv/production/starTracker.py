@@ -44,7 +44,8 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
 
 from .channels import PREFIXES
 from .utils import writeMetadataShard, isFileWorldWritable, LocationConfig
-from .rubinTv import Uploader, Heartbeater
+from .uploaders import Uploader, Heartbeater
+from .baseChannels import BaseChannel
 
 _LOG = logging.getLogger(__name__)
 
@@ -198,7 +199,7 @@ class StarTrackerWatcher():
                 traceback.print_exc()
 
 
-class StarTrackerChannel():
+class StarTrackerChannel(BaseChannel):
     """Class for serving star tracker images to RubinTV.
 
     These channels are somewhat hybrid channels which serve both the raw
@@ -221,24 +222,30 @@ class StarTrackerChannel():
     HEARTBEAT_FLATLINE_PERIOD = 240
 
     def __init__(self,
-                 location,
+                 locationConfig,
                  *,
                  wide,
                  doRaise=False):
-        self.location = location
-        self.config = LocationConfig(location)
-        self.uploader = Uploader(self.config.bucketName)
-        self.log = _LOG.getChild(f"starTracker{'_wide' if wide else ''}")
+
+        name = 'starTracker' + ('_wide' if wide else '')
+        log = logging.getLogger(f'lsst.rubintv.production.{name}')
+        self.rootDataPath = locationConfig.starTrackerDataPath
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
+                                     bucketName=locationConfig.bucketName,
+                                     wide=wide)
+
+        super().__init__(locationConfig=locationConfig,
+                         log=log,
+                         watcher=watcher,
+                         doRaise=doRaise)
+
         self.channelRaw = f"startracker{'_wide' if wide else ''}_raw"
         self.channelAnalysis = f"startracker{'_wide' if wide else ''}_analysis"
         self.wide = wide
-        self.rootDataPath = self.config.starTrackerDataPath
-        self.watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
-                                          bucketName=self.config.bucketName,
-                                          wide=wide)
-        self.outputRoot = self.config.starTrackerOutputPath
-        self.metadataRoot = self.config.starTrackerMetadataPath
-        self.astrometryNetRefCatRoot = self.config.astrometryNetRefCatPath
+
+        self.outputRoot = self.locationConfig.starTrackerOutputPath
+        self.metadataRoot = self.locationConfig.starTrackerMetadataPath
+        self.astrometryNetRefCatRoot = self.locationConfig.astrometryNetRefCatPath
         self.doRaise = doRaise
         self.shardsDir = os.path.join(self.metadataRoot, 'shards')
         for path in (self.outputRoot, self.shardsDir, self.metadataRoot):
@@ -248,16 +255,16 @@ class StarTrackerChannel():
                 raise RuntimeError(f"Failed to find/create {path}") from e
 
         self.heartbeaterAnalysis = Heartbeater(self.channelAnalysis,
-                                               self.config.bucketName,
+                                               self.locationConfig.bucketName,
                                                self.HEARTBEAT_UPLOAD_PERIOD,
                                                self.HEARTBEAT_FLATLINE_PERIOD)
         self.heartbeaterRaw = Heartbeater(self.channelRaw,
-                                          self.config.bucketName,
+                                          self.locationConfig.bucketName,
                                           self.HEARTBEAT_UPLOAD_PERIOD,
                                           self.HEARTBEAT_FLATLINE_PERIOD)
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
-        self.solver = CommandLineSolver(indexFilePath=self.config.astrometryNetRefCatPath,
+        self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
                                         checkInParallel=True)
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
@@ -405,13 +412,9 @@ class StarTrackerChannel():
             self.log.warning(f"Failed to run analysis on {filename}: {repr(e)}")
             traceback.print_exc()
 
-    def run(self):
-        """Run continuously, calling the callback method on the latest filename
-        """
-        self.watcher.run(self.callback)
-
 
 class StarTrackerMetadataServer():
+    # TODO: Change this to use the TimedMetadataServer
     """Class for serving star tracker metadata to RubinTV.
     """
     # upload heartbeat every n seconds
@@ -419,19 +422,19 @@ class StarTrackerMetadataServer():
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, location,
+    def __init__(self,
+                 locationConfig,
                  *,
                  doRaise=False):
-        self.location = location
-        self.config = LocationConfig(location)
-        self.uploader = Uploader(self.config.bucketName)
+        self.locationConfig = locationConfig
+        self.uploader = Uploader(self.locationConfig.bucketName)
         self.heartbeater = Heartbeater('startracker_metadata',
-                                       self.config.bucketName,
+                                       self.locationConfig.bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
         self.channel = 'startracker_metadata'
         self.log = _LOG.getChild(f"{self.channel}")
-        self.metadataRoot = self.config.starTrackerMetadataPath
+        self.metadataRoot = self.locationConfig.starTrackerMetadataPath
         self.shardsDir = os.path.join(self.metadataRoot, 'shards')
         self.doRaise = doRaise
         try:

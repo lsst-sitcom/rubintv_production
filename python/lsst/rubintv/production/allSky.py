@@ -29,9 +29,8 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from lsst.rubintv.production import Uploader, Heartbeater
-from lsst.rubintv.production.rubinTv import _dataIdToFilename
-from .utils import LocationConfig
+from .utils import LocationConfig, _dataIdToFilename
+from .uploaders import Uploader, Heartbeater
 
 try:
     from google.cloud import storage
