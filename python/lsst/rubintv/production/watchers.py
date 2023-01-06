@@ -143,8 +143,8 @@ class ButlerWatcher:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, butler, location, dataProducts, doRaise=False):
-        self.config = LocationConfig(location)
+    def __init__(self, locationConfig, butler, dataProducts, doRaise=False):
+        self.locationConfig = locationConfig
         self.butler = butler
         self.dataProducts = list(ensure_iterable(dataProducts))  # must call list or we get a generator back
         self.doRaise = doRaise

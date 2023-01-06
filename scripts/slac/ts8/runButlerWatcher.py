@@ -29,7 +29,7 @@ setupLogging()
 print('Running butler watcher...')
 
 location = 'slac_testing'
-config = LocationConfig(location)
-butler = dafButler.Butler(config.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
-butlerWatcher = ButlerWatcher(butler, location, 'raw', True)
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+butlerWatcher = ButlerWatcher(butler, locationConfig, 'raw', True)
 butlerWatcher.run()
