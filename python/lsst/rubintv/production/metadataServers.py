@@ -28,7 +28,6 @@ from time import sleep
 from .uploaders import Heartbeater, Uploader
 
 from .utils import (isFileWorldWritable,
-                    LocationConfig,
                     raiseIf,
                     )
 
@@ -37,6 +36,29 @@ _LOG = logging.getLogger(__name__)
 
 class TimedMetadataServer:
     """Class for serving metadata to RubinTV.
+
+    Metadata shards are written to a /shards directory, which are collated on a
+    timer and uploaded if new shards were found. This happens on a timer,
+    defined by ``self.cadence``.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    metadataDirectory : `str`
+        The name of the directory for which the metadata is being served. Note
+    that this directory and the ``shardsDirectory`` are passed in because
+    although the ``LocationConfig`` holds all the location based path info (and
+    the name of the bucket to upload to), many directories containg shards
+    exist, and each one goes to a different page on the web app, so this class
+    must be told which set of files to be collating and uploading to which
+    channel.
+    shardsDirectory : `str` name : `str`
+        The name of the server, used for heartbeating and log messages.
+    channelName : `str`
+        The name of the channel to serve the metadata files to.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
     """
     # The time between searches of the metadata shard directory to merge the
     # shards and upload.
@@ -47,23 +69,26 @@ class TimedMetadataServer:
     HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, *,
-                 location,
-                 name=None,
+                 locationConfig,
+                 metadataDirectory,
+                 shardsDirectory,
+                 channelName,
                  doRaise=False):
-        self.config = LocationConfig(location)
-        self.name = name
+        self.locationConfig = locationConfig
+        self.metadataDirectory = metadataDirectory
+        self.shardsDirectory = shardsDirectory
+        self.channelName = channelName
         self.doRaise = doRaise
-        self.log = _LOG.getChild("timedMetadataServer")
-        self.uploader = Uploader(self.config.bucketName)
-        self.heartbeater = (Heartbeater(self.name,
-                                        self.config.bucketName,
-                                        self.HEARTBEAT_UPLOAD_PERIOD,
-                                        self.HEARTBEAT_FLATLINE_PERIOD)
-                            if self.name is not None else None)
-        try:
-            os.makedirs(self.config.metadataShardPath, exist_ok=True)
-        except Exception as e:
-            raise RuntimeError(f"Failed to find/create {self.config.metadataShardPath}") from e
+        self.log = _LOG.getChild(self.channelName)
+        self.uploader = Uploader(self.locationConfig.bucketName)
+        self.heartbeater = Heartbeater(self.channelName,
+                                       self.locationConfig.bucketName,
+                                       self.HEARTBEAT_UPLOAD_PERIOD,
+                                       self.HEARTBEAT_FLATLINE_PERIOD)
+
+        if not os.path.isdir(self.metadataDirectory):
+            # created by the LocationConfig init so this should be impossible
+            raise RuntimeError(f"Failed to find/create {self.metadataDirectory}")
 
     def mergeShardsAndUpload(self):
         """Merge all the shards in the shard directory into their respective
@@ -74,7 +99,7 @@ class TimedMetadataServer:
         upload it.
         """
         filesTouched = set()
-        shardFiles = sorted(glob(os.path.join(self.config.metadataShardPath, "metadata-*")))
+        shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
         if shardFiles:
             self.log.debug(f'Found {len(shardFiles)} shardFiles')
             sleep(0.1)  # just in case a shard is in the process of being written
@@ -122,12 +147,12 @@ class TimedMetadataServer:
         dayObs : `int`
             The dayObs.
         """
-        return os.path.join(self.config.metadataPath, f'dayObs_{dayObs}.json')
+        return os.path.join(self.metadataDirectory, f'dayObs_{dayObs}.json')
 
     def callback(self):
-        """Method called on each new dataId as it is found in the repo.
+        """Method called on a timer to gather the shards and upload as needed.
 
-        Add the metadata to the sidecar for the dataId and upload.
+        Adds the metadata to the sidecar file for the dataId and uploads it.
         """
         try:
             self.log.info('Getting metadata from shards')

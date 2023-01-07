@@ -217,6 +217,11 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    def starTrackerMetadataShardPath(self):
+        directory = self._config['starTrackerMetadataShardPath']
+        self._checkDir(directory)
+        return directory
+
     def starTrackerOutputPath(self):
         directory = self._config['starTrackerOutputPath']
         self._checkDir(directory)
