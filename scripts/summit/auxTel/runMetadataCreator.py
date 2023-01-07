@@ -19,24 +19,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.rubinTv import MetadataCreator
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running AuxTel metadata server...')
+print('Running AuxTel metadata creator...')
 
 location = 'summit'
 locationConfig = LocationConfig(location)
-
-metadataDirectory = locationConfig.auxTelMetadataPath
 shardsDirectory = locationConfig.auxTelMetadataShardPath
-channelName = 'auxtel_metadata'
 
-auxTelMetadataServer = TimedMetadataServer(locationConfig=locationConfig,
-                                           metadataDirectory=metadataDirectory,
-                                           shardsDirectory=shardsDirectory,
-                                           channelName=channelName,
-                                           doRaise=False)
-auxTelMetadataServer.run()
+mdCreator = MetadataCreator(locationConfig=locationConfig,
+                            doRaise=False)
+mdCreator.run()

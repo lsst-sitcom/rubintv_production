@@ -110,7 +110,7 @@ def createChannelByName(location, channel, doRaise):
                           SpecExaminerChannel,
                           MountTorqueChannel,
                           MonitorChannel,
-                          MetadataServer,
+                          MetadataCreator,
                           )
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}.")
@@ -127,7 +127,7 @@ def createChannelByName(location, channel, doRaise):
         case "auxtel_monitor":
             return MonitorChannel(locationConfig=locationConfig, doRaise=doRaise)
         case "auxtel_metadata":
-            return MetadataServer(locationConfig=locationConfig, doRaise=doRaise)
+            return MetadataCreator(locationConfig=locationConfig, doRaise=doRaise)
         case "all_sky_current":
             raise ValueError(f"{channel} is not a creatable by name.")
         case "all_sky_movies":

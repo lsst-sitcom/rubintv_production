@@ -19,13 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import os
 import time
 import logging
 import tempfile
-from glob import glob
-from time import sleep
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -56,8 +53,7 @@ from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import writeMetadataShard, isFileWorldWritable, LocationConfig, _dataIdToFilename, raiseIf
-from .watchers import FileWatcher
+from .utils import writeMetadataShard, _dataIdToFilename, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 
@@ -67,7 +63,7 @@ __all__ = [
     'SpecExaminerChannel',
     'MonitorChannel',
     'MountTorqueChannel',
-    'MetadataServer',
+    'MetadataCreator',
     'Uploader',
     'Heartbeater',
     'CalibrateCcdRunner',
@@ -326,26 +322,21 @@ class MountTorqueChannel(BaseButlerChannel):
             raiseIf(self.doRaise, e, self.log)
 
 
-class MetadataServer():
-    """Class for serving the metadata to the table on RubinTV.
+class MetadataCreator(BaseButlerChannel):
+    """Class for creating metadata shards for RubinTV. Note the shards are
+    merged and uploaded by a TimedMetadataServer, not this class.
     """
 
-    def __init__(self, location, *, embargo=False, doRaise=False):
-        self.config = LocationConfig(location)
-        self.dataProduct = 'raw'
-        self.uploader = Uploader(self.config.bucketName)
-        self.butler = butlerUtils.makeDefaultLatissButler(embargo=embargo)
-        self.log = _LOG.getChild("metadataServer")
-        self.channelName = 'auxtel_metadata'
-        self.watcher = FileWatcher(self.config, self.dataProduct, self.channelName)
-        self.outputRoot = self.config.metadataPath
-        self.shardsDir = self.config.metadataShardPath
-        self.doRaise = doRaise
-        for path in (self.outputRoot, self.shardsDir):  # should now be unnecessary with LocationConfig
-            try:
-                os.makedirs(path, exist_ok=True)
-            except Exception as e:
-                raise RuntimeError(f"Failed to find/create {path}") from e
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         dataProduct='raw',
+                         channelName='auxtel_metadata_creator',
+                         doRaise=doRaise)
+        self.shardsDir = locationConfig.auxTelMetadataShardPath
+
+        # We inherit an uploader, so be explicit about the fact we don't use it
+        self.uploader = None
 
     @staticmethod
     def dataIdToMetadataDict(butler, dataId, keysToRemove):
@@ -421,82 +412,19 @@ class MetadataServer():
         writeMetadataShard(self.shardsDir, dayObs, md)
         return
 
-    def mergeShardsAndUpload(self):
-        """Merge all the shards in the shard directory into their respective
-        files and upload the updated files.
-
-        For each file found in the shard directory, merge its contents into the
-        main json file for the corresponding dayObs, and for each file updated,
-        upload it.
-        """
-        filesTouched = set()
-        shardFiles = sorted(glob(os.path.join(self.shardsDir, "metadata-*")))
-        if shardFiles:
-            self.log.debug(f'Found {len(shardFiles)} shardFiles')
-            sleep(0.1)  # just in case a shard is in the process of being written
-
-        for shardFile in shardFiles:
-            # filenames look like
-            # metadata-dayObs_20221027_049a5f12-5b96-11ed-80f0-348002f0628.json
-            filename = os.path.basename(shardFile)
-            dayObs = int(filename.split("_", 2)[1])
-            mainFile = self.getSidecarFilename(dayObs)
-            filesTouched.add(mainFile)
-
-            data = {}
-            # json.load() doesn't like empty files so check size is non-zero
-            if os.path.isfile(mainFile) and os.path.getsize(mainFile) > 0:
-                with open(mainFile) as f:
-                    data = json.load(f)
-
-            with open(shardFile) as f:
-                shard = json.load(f)
-            if shard:
-                for row in shard:
-                    if row in data:
-                        data[row].update(shard[row])
-                    else:
-                        data.update({row: shard[row]})
-            os.remove(shardFile)
-
-            with open(mainFile, 'w') as f:
-                json.dump(data, f)
-            if not isFileWorldWritable(mainFile):
-                os.chmod(mainFile, 0o777)  # file may be amended by another process
-
-        if filesTouched:
-            self.log.info(f"Uploading {len(filesTouched)} metadata files")
-            for file in filesTouched:
-                self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
-        return
-
-    def getSidecarFilename(self, dayObs):
-        """Get the name of the metadata sidecar file for the dayObs.
-
-        Returns
-        -------
-        dayObs : `int`
-            The dayObs.
-        """
-        return os.path.join(self.outputRoot, f'dayObs_{dayObs}.json')
-
     def callback(self, dataId):
         """Method called on each new dataId as it is found in the repo.
 
         Add the metadata to the sidecar for the dataId and upload.
         """
         try:
-            self.log.info(f'Getting metadata for {dataId}')
+            self.log.info(f'Writing metadata shard for {dataId}')
             self.writeShardForDataId(dataId)
-            self.mergeShardsAndUpload()  # updates all shards everywhere
+            # Note: we do not upload anythere here, as the TimedMetadataServer
+            # does the collation and upload, and runs as a separate process.
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)
 
 
 class CalibrateCcdRunner(BaseButlerChannel):

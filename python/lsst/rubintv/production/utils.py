@@ -112,29 +112,12 @@ class LocationConfig:
     log: logging.Logger = logging.getLogger('lsst.rubintv.production.utils.LocationConfig')
 
     def __post_init__(self) -> None:
-        # touch all config and all the path-like items to ensure everything is
-        # there/can be created
-
-        # TODO: probably need to only touch the _config so that unessential
-        # things can be allowed to not exist without failing
+        # Touch the _config after init to make sure the config file can be
+        # read.
+        # Any essential items can be touched here, but note they must all
+        # exist in all the different locations, otherwise it will fail in some
+        # locations and not others, so add things with caution.
         self._config
-        # self.ts8ButlerPath
-        # self.botButlerPath
-        self.dataIdScanPath
-        self.metadataPath
-        self.metadataShardPath
-        self.plotPath
-        self.binnedImagePath
-        self.calculatedDataPath
-
-        # summit migration:
-        # self.starTrackerDataPath
-        # self.starTrackerMetadataPath
-        # self.starTrackerOutputPath
-        # self.astrometryNetRefCatPath
-        # self.moviePngPath
-        # self.allSkyRootDataPath
-        # self.allSkyOutputPath
 
     def _checkDir(self, dirName: str, createIfMissing=True) -> None:
         if not os.path.isdir(dirName):
@@ -167,14 +150,14 @@ class LocationConfig:
         return directory
 
     @cached_property
-    def metadataPath(self):
-        directory = self._config['metadataPath']
+    def auxTelMetadataPath(self):
+        directory = self._config['auxTelMetadataPath']
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def metadataShardPath(self):
-        directory = self._config['metadataShardPath']
+    def auxTelMetadataShardPath(self):
+        directory = self._config['auxTelMetadataShardPath']
         self._checkDir(directory)
         return directory
 
@@ -209,7 +192,7 @@ class LocationConfig:
     @cached_property
     def starTrackerDataPath(self):
         directory = self._config['starTrackerDataPath']
-        self._checkDir(directory)
+        self._checkDir(directory, createIfMissing=False)
         return directory
 
     def starTrackerMetadataPath(self):
@@ -229,7 +212,7 @@ class LocationConfig:
 
     def astrometryNetRefCatPath(self):
         directory = self._config['astrometryNetRefCatPath']
-        self._checkDir(directory)
+        self._checkDir(directory, createIfMissing=False)
         return directory
 
     # animation paths
@@ -241,7 +224,7 @@ class LocationConfig:
     # all sky cam paths
     def allSkyRootDataPath(self):
         directory = self._config['allSkyRootDataPath']
-        self._checkDir(directory)
+        self._checkDir(directory, createIfMissing=False)
         return directory
 
     def allSkyOutputPath(self):

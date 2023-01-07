@@ -20,14 +20,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.catchupService import RubinTvBackgroundService
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-
 print('Running RubinTV background catchup service...')
-backgroundService = RubinTvBackgroundService(location='summit',
+
+location = 'summit'
+locationConfig = LocationConfig(location)
+
+backgroundService = RubinTvBackgroundService(locationConfig=locationConfig,
                                              doRaise=False,
                                              )
 backgroundService.run()

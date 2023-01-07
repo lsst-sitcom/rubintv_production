@@ -32,7 +32,7 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
 
-from .rubinTv import MetadataServer  # TODO: change this to use TimedMetadataServer from base.py
+from .rubinTv import MetadataCreator
 from .uploaders import Uploader, Heartbeater
 from .utils import LocationConfig
 from .allSky import cleanupAllSkyIntermediates
@@ -66,7 +66,7 @@ class RubinTvBackgroundService():
 
     Parameters
     ----------
-    location : `str`
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The location, for use with LocationConfig.
     doRaise : `bool`
         Raise on error?
@@ -81,24 +81,24 @@ class RubinTvBackgroundService():
     HEARTBEAT_FLATLINE_PERIOD = 600
 
     def __init__(self,
-                 location,
+                 locationConfig,
                  *,
                  doRaise=False):
-        self.location = location
-        self.config = LocationConfig(location)
-        self.uploader = Uploader(self.config.bucketName)
+        self.locationConfig = locationConfig
+        self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild("backgroundService")
-        self.allSkyPngRoot = self.config.allSkyOutputPath
-        self.moviePngRoot = self.config.moviePngPath
+        self.allSkyPngRoot = self.locationConfig.allSkyOutputPath
+        self.moviePngRoot = self.locationConfig.moviePngPath
         self.doRaise = doRaise
         self.butler = butlerUtils.makeDefaultLatissButler()
         self.bestEffort = BestEffortIsr()
 
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
-                                       self.config.bucketName,
+                                       self.locationConfig.bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
-        self.mdServer = MetadataServer(self.location)  # costly-ish to create, so put in class
+
+        self.mdServer = MetadataCreator(self.locationConfig)  # costly-ish to create, so put in class
 
     def hasDayRolledOver(self):
         """Check if the dayObs has rolled over.
