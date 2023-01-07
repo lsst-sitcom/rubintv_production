@@ -29,6 +29,7 @@ from .uploaders import Heartbeater, Uploader
 
 from .utils import (isFileWorldWritable,
                     LocationConfig,
+                    raiseIf,
                     )
 
 _LOG = logging.getLogger(__name__)
@@ -133,10 +134,7 @@ class TimedMetadataServer:
             self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError("Error when collection metadata") from e
-            self.log.warning(f"Error when collection metadata because {repr(e)}")
-            return None
+            raiseIf(self.doRaise, e, self.log)
 
     def run(self):
         """Run continuously, looking for metadata and uploading.

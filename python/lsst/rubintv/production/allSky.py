@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from .utils import LocationConfig, _dataIdToFilename
+from .utils import LocationConfig, _dataIdToFilename, raiseIf
 from .uploaders import Uploader, Heartbeater
 
 try:
@@ -637,10 +637,8 @@ class AllSkyMovieChannel():
                 elif mostRecentDir > todaysDataDir:
                     raise RuntimeError('Running in the past but mode is not historical')
             except Exception as e:
-                if self.doRaise:
-                    raise RuntimeError from e
-                else:
-                    info = f"mostRecentDir: {mostRecentDir}\n"
-                    info += f"todaysDataDir: {todaysDataDir}\n"
-                    info += f"dayObsInt: {dayObsInt}\n"
-                    self.log.warning(f"Error processing all sky data: caught {repr(e)}. Info: {info}")
+                msg = "Error processing all sky data:\n"
+                msg += f"mostRecentDir: {mostRecentDir}\n"
+                msg += f"todaysDataDir: {todaysDataDir}\n"
+                msg += f"dayObsInt: {dayObsInt}\n"
+                raiseIf(self.doRaise, e, self.log, msg)

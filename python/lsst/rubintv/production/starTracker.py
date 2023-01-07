@@ -41,7 +41,7 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 )
 
 from .channels import PREFIXES
-from .utils import writeMetadataShard, isFileWorldWritable
+from .utils import writeMetadataShard, isFileWorldWritable, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
 
@@ -509,10 +509,7 @@ class StarTrackerMetadataServer():
             self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError("Error when collection metadata") from e
-            self.log.warning(f"Error when collection metadata because {repr(e)}")
-            return None
+            raiseIf(self.doRaise, e, self.log)
 
     def run(self):
         """Run continuously, looking for metadata and uploading.

@@ -295,10 +295,8 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
         exit()
 
 
-def raiseIf(doRaise, error, logger):
+def raiseIf(doRaise, error, logger, msg=''):
     """Raises the error if ``doRaise`` otherwise logs it as a warning.
-
-    TODO: Take a message that's better than the f-string of the error!
 
     Parameters
     ----------
@@ -306,19 +304,21 @@ def raiseIf(doRaise, error, logger):
         Raise the error if True, otherwise logs it as a warning.
     error : `Exception`
         The error that has been raised.
-    logger : `logging.`
+    logger : `logging.Logger`
         The logger to warn with if ``doRaise`` is False.
+    msg : `str`, optional
+        Additional error message to log with the error.
 
     Raises
     ------
     AnyException
         Raised if ``self.doRaise`` is True, otherwise swallows and warns.
     """
-    msg = f'{error}'
+    if not msg:
+        msg = f'{error}'
     if doRaise:
         raise RuntimeError(msg) from error
     else:
-        # TODO: make this print the full traceback
         logger.exception(msg)
 
 
