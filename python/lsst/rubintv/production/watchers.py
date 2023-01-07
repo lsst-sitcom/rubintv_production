@@ -32,7 +32,6 @@ from lsst.summit.utils.butlerUtils import sortRecordsByDayObsThenSeqNum
 from .uploaders import Heartbeater
 
 from .utils import (raiseIf,
-                    LocationConfig,
                     writeDataIdFile,
                     getGlobPatternForDataProduct)
 

@@ -27,7 +27,6 @@ from time import sleep
 import datetime
 import traceback
 
-
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
                                      dayObsIntToString,
@@ -41,9 +40,8 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 getAverageElFromHeader,
                                                 )
 
-
 from .channels import PREFIXES
-from .utils import writeMetadataShard, isFileWorldWritable, LocationConfig
+from .utils import writeMetadataShard, isFileWorldWritable
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
 
