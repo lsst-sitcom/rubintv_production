@@ -440,7 +440,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='auxtel_calibrateCcd',
                          doRaise=doRaise)
-        self.shardsDir = self.config.metadataShardPath  # TODO: remove this as above
+        self.shardsDir = self.locationConfig.metadataShardPath  # TODO: remove this as above
         # TODO DM-37272 need to get the collection name from a central place
         self.outputRunName = "LATISS/runs/quickLook/1"
 

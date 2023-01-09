@@ -559,8 +559,8 @@ class AllSkyMovieChannel():
 
     def __init__(self, location, doRaise=False):
         self.location = location
-        self.config = LocationConfig(location)
-        self.uploader = Uploader(self.config.bucketName)
+        self.locationConfig = LocationConfig(location)
+        self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
         self.doRaise = doRaise
@@ -605,7 +605,7 @@ class AllSkyMovieChannel():
                                outputMovieDir=outputMovieDir,
                                uploader=self.uploader,
                                channel=self.channel,
-                               bucketName=self.config.bucketName,)
+                               bucketName=self.locationConfig.bucketName,)
         animator.run()
 
     def run(self):

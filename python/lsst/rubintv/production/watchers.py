@@ -57,7 +57,7 @@ class FileWatcher:
     HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, *, locationConfig, dataProduct, heartbeatChannelName='', doRaise=False):
-        self.config = locationConfig
+        self.locationConfig = locationConfig
         self.dataProduct = dataProduct
         self.doRaise = doRaise
         self.log = _LOG.getChild("fileWatcher")
@@ -66,7 +66,7 @@ class FileWatcher:
             self.doHeartbeat = True
             self.heartbeatChannelName = heartbeatChannelName  # currently unused
             self.heartbeater = Heartbeater(heartbeatChannelName,
-                                           self.config.bucketName,
+                                           self.locationConfig.bucketName,
                                            self.HEARTBEAT_UPLOAD_PERIOD,
                                            self.HEARTBEAT_FLATLINE_PERIOD)
 
@@ -76,7 +76,7 @@ class FileWatcher:
         If the most recent exposure is the same as the previous one, ``None``
         is returned.
         """
-        pattern = getGlobPatternForDataProduct(self.config.dataIdScanPath, self.dataProduct)
+        pattern = getGlobPatternForDataProduct(self.locationConfig.dataIdScanPath, self.dataProduct)
         files = glob(pattern)
         files = sorted(files, reverse=True)
         if not files:
@@ -187,7 +187,7 @@ class ButlerWatcher:
                     continue
                 else:
                     for product, expRecord in found.items():
-                        writeDataIdFile(self.config.dataIdScanPath, product, expRecord, log=self.log)
+                        writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
                     # beat after the callback so as not to delay processing
                     # and also so it is only called if things are working

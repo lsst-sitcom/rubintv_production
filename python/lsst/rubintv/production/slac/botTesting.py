@@ -56,13 +56,13 @@ class RawProcesser():
     def __init__(self, butler, location, instrument, detector, doRaise=False):
         if instrument not in ['LSST-TS8', 'LSSTCam']:
             raise ValueError(f'Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam')
-        self.config = LocationConfig(location)
+        self.locationConfig = LocationConfig(location)
         self.butler = butler
         self.instrument = instrument
         self.detector = detector
         name = f'rawProcesser_{instrument}_{detector:03}'
         self.log = _LOG.getChild(name)
-        self.watcher = FileWatcher(locationConfig=self.config,
+        self.watcher = FileWatcher(locationConfig=self.locationConfig,
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
@@ -99,14 +99,14 @@ class RawProcesser():
                 entryName = "_".join([detector.getName(), amp.getName()])
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
             # write the data
-            writeDataShard(self.config.calculatedDataPath, dayObs, seqNum, 'rawNoises', ampNoises)
+            writeDataShard(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises', ampNoises)
             self.log.info(f'Wrote metadata shard for detector {detNum}')
             # then signal we're done for downstream
-            writeDataIdFile(self.config.dataIdScanPath, 'rawNoises', expRecord, self.log)
+            writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
 
             assembled = self.assembleTask.assembleCcd(raw)
-            writeBinnedImage(assembled, self.config.binnedImagePath, self.config.binning)
-            writeDataIdFile(self.config.dataIdScanPath, 'binnedImage', expRecord, self.log)
+            writeBinnedImage(assembled, self.locationConfig.binnedImagePath, self.locationConfig.binning)
+            writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
     def run(self):
@@ -119,14 +119,14 @@ class Plotter():
     """Channel for producing the plots for the cleanroom on RubinTv.
     """
     def __init__(self, butler, location, instrument, doRaise=False):
-        self.config = LocationConfig(location)
+        self.locationConfig = LocationConfig(location)
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
         self.instrument = instrument
-        self.uploader = Uploader(self.config.bucketName)
+        self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
-        self.watcher = FileWatcher(locationConfig=self.config,
+        self.watcher = FileWatcher(locationConfig=self.locationConfig,
                                    dataProduct='binnedImage',
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
@@ -136,7 +136,7 @@ class Plotter():
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         nExpected = getNumExpectedItems(self.instrument)
-        noises = getShardedData(self.config.calculatedDataPath, dayObs, seqNum, 'rawNoises',
+        noises = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
                                 nExpected=nExpected,
                                 logger=self.log,
                                 deleteAfterReading=False)
@@ -150,7 +150,7 @@ class Plotter():
         ax = plt.subplot(111)
 
         plotName = f'noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
-        saveFile = os.path.join(self.config.plotPath, plotName)
+        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
         focal_plane_plotting.plot_focal_plane(ax, perCcdNoises, camera=self.camera)
 
         plt.savefig(saveFile)
@@ -164,10 +164,10 @@ class Plotter():
         seqNum = expRecord.seq_num
 
         plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
-        saveFile = os.path.join(self.config.plotPath, plotName)
+        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
-        plotFocalPlaneMosaic(self.butler, expId, self.camera, self.config.binning,
-                             self.config.binnedImagePath, saveFile, timeout=5)
+        plotFocalPlaneMosaic(self.butler, expId, self.camera, self.locationConfig.binning,
+                             self.locationConfig.binnedImagePath, saveFile, timeout=5)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 
