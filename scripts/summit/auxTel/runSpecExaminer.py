@@ -19,12 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from lsst.rubintv.production.rubinTv import SpecExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running spec examiner...')
-specExaminer = SpecExaminerChannel(location='summit')
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running spec examiner at {location}...')
+
+specExaminer = SpecExaminerChannel(locationConfig=locationConfig)
 specExaminer.run()

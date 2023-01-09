@@ -18,13 +18,17 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import sys
 from lsst.rubintv.production.starTracker import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running wide star tracker channel...')
-starTracker = StarTrackerChannel(location='summit',
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running star tracker channel at {location}...')
+starTracker = StarTrackerChannel(locationConfig=locationConfig,
                                  wide=True)
 starTracker.run()

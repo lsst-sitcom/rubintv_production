@@ -34,7 +34,6 @@ from lsst.summit.extras.animation import animateDay
 
 from .rubinTv import MetadataCreator
 from .uploaders import Uploader, Heartbeater
-from .utils import LocationConfig
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
 from .utils import isDayObsContiguous, raiseIf

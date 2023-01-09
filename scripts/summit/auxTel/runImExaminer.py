@@ -19,12 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from lsst.rubintv.production.rubinTv import ImExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running imExaminer...')
-imExaminer = ImExaminerChannel(location='summit')
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running imExaminer at {location}...')
+imExaminer = ImExaminerChannel(locationConfig=locationConfig)
 imExaminer.run()

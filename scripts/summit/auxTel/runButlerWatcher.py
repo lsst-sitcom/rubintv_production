@@ -20,16 +20,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from lsst.rubintv.production import ButlerWatcher
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running butler watcher...')
 
-location = 'slac_testing'
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
+print(f'Running butler watcher at {location}...')
 butler = butlerUtils.makeDefaultLatissButler()
 dataProducts = ['raw', 'quickLookExp']
 butlerWatcher = ButlerWatcher(locationConfig, butler, dataProducts, True)
