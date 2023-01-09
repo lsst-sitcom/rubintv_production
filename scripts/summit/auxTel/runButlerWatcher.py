@@ -28,7 +28,7 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 print('Running butler watcher...')
 
-location = 'summit'
+location = 'slac_testing'
 locationConfig = LocationConfig(location)
 butler = butlerUtils.makeDefaultLatissButler()
 dataProducts = ['raw', 'quickLookExp']

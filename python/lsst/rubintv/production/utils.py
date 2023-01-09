@@ -120,6 +120,11 @@ class LocationConfig:
         self._config
 
     def _checkDir(self, dirName: str, createIfMissing=True) -> None:
+        """
+
+        TODO: Add a check for being world-writable here, and make the dir
+        creation chmod to 777.
+        """
         if not os.path.isdir(dirName):
             if createIfMissing:
                 self.log.warning(f'Directory {dirName} does not exist, creating it.')

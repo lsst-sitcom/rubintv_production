@@ -157,7 +157,7 @@ class ButlerWatcher:
         FileWatcher to pick up.
         """
         expRecordDict = {}
-        where = 'exposure.day_obs>20221201'  # TODO: find a better way of doing this?
+        where = 'exposure.day_obs>20211201'  # TODO: find a better way of doing this?
 
         for product in self.dataProducts:
             # NB if you list multiple products for datasets= then it will only
