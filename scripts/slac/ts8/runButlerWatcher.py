@@ -20,6 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from lsst.rubintv.production import ButlerWatcher
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.utils import LocationConfig
@@ -28,8 +29,11 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 print('Running butler watcher...')
 
-location = 'slac_testing'
+location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
-butlerWatcher = ButlerWatcher(butler, locationConfig, 'raw', True)
+butlerWatcher = ButlerWatcher(butler=butler,
+                              locationConfig=locationConfig,
+                              dataProducts='raw',
+                              doRaise=True)
 butlerWatcher.run()

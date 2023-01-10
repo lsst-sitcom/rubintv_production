@@ -27,8 +27,6 @@ from time import sleep
 import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 
-from lsst.summit.utils.butlerUtils import sortRecordsByDayObsThenSeqNum
-
 from .uploaders import Heartbeater
 
 from .utils import (raiseIf,
@@ -161,17 +159,23 @@ class ButlerWatcher:
             A dict of the most recent exposure records, keyed by dataProduct.
         """
         expRecordDict = {}
-        where = 'exposure.day_obs>20211201'  # TODO: find a better way of doing this?
+
+        # this where clause is no longer necessary for speed now that we are
+        # using order_by and limit, but it now functions to restrict data to
+        # being inside the range where exposures could ever realistically be
+        # taken, as some simulated data is "taken" in the year 3000.
+        where = 'exposure.day_obs>20200101 and exposure.day_obs<21000101'
 
         for product in self.dataProducts:
             # NB if you list multiple products for datasets= then it will only
             # give expRecords for which all those products exist, so these must
             # be done as separate queries
-            records = set(self.butler.registry.queryDimensionRecords("exposure",
-                                                                     datasets=product,
-                                                                     where=where))
-            recentRecord = sortRecordsByDayObsThenSeqNum(records)[-1]
-            expRecordDict[product] = recentRecord
+            records = self.butler.registry.queryDimensionRecords("exposure",
+                                                                 datasets=product,
+                                                                 where=where)
+            records.order_by('-exposure.id')  # the minus means descending ordering
+            records.limit(1)
+            expRecordDict[product] = list(records)[0]
         return expRecordDict
 
     def run(self):

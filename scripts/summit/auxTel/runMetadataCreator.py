@@ -30,7 +30,6 @@ checkRubinTvExternalPackages()
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running AuxTel metadata creator at {location}...')
-shardsDirectory = locationConfig.auxTelMetadataShardPath
 
 mdCreator = MetadataCreator(locationConfig=locationConfig)
 mdCreator.run()

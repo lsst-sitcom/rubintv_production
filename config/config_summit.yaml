@@ -1,3 +1,8 @@
+# Required items:
+dataIdScanPath: '/project/rubintv/dataIds'
+bucketName: 'rubintv_data'
+
+# Summit items:
 dataIdScanPath:     '/project/rubintv/dataIds'
 
 # AuxTel metadata
@@ -26,30 +31,3 @@ starTrackerOutputPath: '/project/rubintv/starTracker/output'
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
 astrometryNetRefCatPath: '/project/shared/ref_cats/astrometry_net'
-
-#######################
-# SLAC paths and config
-#######################
-
-# Butler paths - use full paths not aliases here as path existence is checked
-# ts8ButlerPath: ''
-# botButlerPath: ''
-
-# # data paths
-# scratchPath:        '/project/rubintv'
-dataIdScanPath:     '/project/rubintv/dataIds'
-# plotPath:           '/project/rubintv/plots'
-# binnedImagePath:    '/project/rubintv/binnedImages'
-# calculatedDataPath: '/project/rubintv/calculatedData'
-
-# # paths for serving TS8 metadata at SLAC
-# ts8MetadataPath:       ''
-# ts8MetadataShardPath:  ''
-
-# # paths for serving BOT metadata at SLAC
-# botMetadataPath:       ''
-# botMetadataShardPath:  ''
-
-# configuration
-bucketName: 'rubintv_data'
-binning: 8

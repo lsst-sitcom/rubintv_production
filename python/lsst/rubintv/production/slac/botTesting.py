@@ -27,8 +27,9 @@ from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import AssembleCcdTask
 import lsst.daf.butler as dafButler
+from lsst.utils.iteration import ensure_iterable
 
-from ..utils import writeDataShard, LocationConfig, getShardedData
+from ..utils import writeDataShard, getShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
@@ -54,16 +55,16 @@ def getNumExpectedItems(instrument):
 class RawProcesser():
     """
     """
-    def __init__(self, butler, location, instrument, detector, doRaise=False):
+    def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
         if instrument not in ['LSST-TS8', 'LSSTCam']:
             raise ValueError(f'Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam')
-        self.locationConfig = LocationConfig(location)
+        self.locationConfig = locationConfig
         self.butler = butler
         self.instrument = instrument
-        self.detector = detector
-        name = f'rawProcesser_{instrument}_{detector:03}'
+        self.detectors = list(ensure_iterable(detectors))
+        name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
-        self.watcher = FileWatcher(locationConfig=self.locationConfig,
+        self.watcher = FileWatcher(locationConfig=locationConfig,
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
@@ -85,17 +86,13 @@ class RawProcesser():
 
         # write out to the scratch space with the necessary info in the
         # filename for downstream processing to pick it up.
-        dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
-        self.log.info(f'Processing raw for detector {dataId}')
-
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        for detNum in range(18, 27):  # TODO: Change this to a single detector once we have multiple pods!
-            self.log.info(f'Actually processing raw for detector {detNum}...')
+        for detNum in self.detectors:
+            dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
+            self.log.info(f'Processing raw for {dataId}')
             ampNoises = {}
-            # TODO change the .get() to use the commented line
-            # raw = self.butler.get('raw',dataId)
             raw = self.butler.get('raw', expRecord.dataId, detector=detNum)
             detector = raw.detector
             for amp in detector:
@@ -123,15 +120,15 @@ class RawProcesser():
 class Plotter():
     """Channel for producing the plots for the cleanroom on RubinTv.
     """
-    def __init__(self, butler, location, instrument, doRaise=False):
-        self.locationConfig = LocationConfig(location)
+    def __init__(self, butler, locationConfig, instrument, doRaise=False):
+        self.locationConfig = locationConfig
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
         self.instrument = instrument
         self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
-        self.watcher = FileWatcher(locationConfig=self.locationConfig,
+        self.watcher = FileWatcher(locationConfig=locationConfig,
                                    dataProduct='binnedImage',
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))

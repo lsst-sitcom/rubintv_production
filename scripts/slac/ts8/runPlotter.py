@@ -19,6 +19,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import sys
 from lsst.rubintv.production.slac import Plotter
 from lsst.summit.utils.utils import setupLogging
 from lsst.rubintv.production.utils import LocationConfig
@@ -27,8 +29,11 @@ import lsst.daf.butler as dafButler
 setupLogging()
 print('Running plotter...')
 
-location = 'slac_testing'
-config = LocationConfig(location)
-butler = dafButler.Butler(config.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
-plotter = Plotter(butler, location, 'LSST-TS8', True)
+location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+plotter = Plotter(butler=butler,
+                  locationConfig=locationConfig,
+                  instrument='LSST-TS8',
+                  doRaise=True)
 plotter.run()

@@ -19,20 +19,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.slac import RawProcesser
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
+import sys
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running raw processor for detector 26...')
+checkRubinTvExternalPackages()
 
-location = 'slac'
+location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSST-TS8',
-                            detectors=26,
-                            doRaise=True)
-rawProcessor.run()
+print(f'Running TS8 metadata server at {location}...')
+
+metadataDirectory = locationConfig.ts8MetadataPath
+shardsDirectory = locationConfig.ts8MetadataShardPath
+channelName = 'ts8_metadata'
+
+ts8MetadataServer = TimedMetadataServer(locationConfig=locationConfig,
+                                        metadataDirectory=metadataDirectory,
+                                        shardsDirectory=shardsDirectory,
+                                        channelName=channelName)
+ts8MetadataServer.run()

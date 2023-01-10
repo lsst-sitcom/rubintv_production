@@ -1,9 +1,24 @@
-ts8ButlerPath: '/sdf/group/rubin/repo/ir2'
-botButlerPath: '/repo/main'
-scratchPath: '/scratch/rubinTv'
-dataIdScanPath: '/scratch/rubinTv/dataIds/'
-metadataPath: '/scratch/rubinTv/metadata/'
-metadataShardPath: '/scratch/rubinTv/metadata/shards/'
-plotPath: '/scratch/rubinTv/plots/'
-bucketName: 'rubintv-data-slac'
+# Required items:
+dataIdScanPath: '/scratch/rubintv/dataIds'
+bucketName: 'rubintv_data_slac'
+
+# Butler paths - use full paths not aliases here as path existence is checked
+ts8ButlerPath: '/repo/ir2/butler.yaml'
+botButlerPath: '/sdf/group/rubin/repo/main'
+
+# # data paths
+scratchPath: '/scratch/rubintv'
+plotPath: '/scratch/rubintv/plots'
+binnedImagePath: '/scratch/rubintv/binnedImages'
+calculatedDataPath: '/scratch/rubintv/calculatedData'
+
+# # paths for serving TS8 metadata at SLAC
+ts8MetadataPath: '/scratch/rubintv/ts8/sidecar_metadata'
+ts8MetadataShardPath: '/scratch/rubintv/ts8/sidecar_metadata/shards'
+
+# # paths for serving BOT metadata at SLAC
+# botMetadataPath:       ''
+# botMetadataShardPath:  ''
+
+# configuration
 binning: 8

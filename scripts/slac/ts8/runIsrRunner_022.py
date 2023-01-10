@@ -1,4 +1,3 @@
-
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -21,9 +20,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 print('Running raw processor for detector 22...')
-isrRunner = RawProcesser(detector=22)
-isrRunner.run()
+
+location = 'slac'
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            locationConfig=locationConfig,
+                            instrument='LSST-TS8',
+                            detectors=22,
+                            doRaise=True)
+rawProcessor.run()

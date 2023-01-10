@@ -149,10 +149,19 @@ class LocationConfig:
         """
         if not os.path.isdir(dirName):
             if createIfMissing:
-                self.log.warning(f'Directory {dirName} does not exist, creating it.')
+                self.log.info(f'Directory {dirName} does not exist, creating it.')
                 os.makedirs(dirName, exist_ok=True)  # exist_ok necessary due to potential startup race
         if not os.path.isdir(dirName):
-            raise RuntimeError(f'Could not create directory {dirName}')
+            msg = f"Directory {dirName} does not exist"
+            if createIfMissing:
+                msg += " and could not be created."
+            raise RuntimeError(msg)
+
+    def _checkFile(self, filename):
+        """
+        """
+        if not os.path.isfile(filename):
+            raise RuntimeError(f'Could not find file {filename}')
 
     @cached_property
     def _config(self):
@@ -160,9 +169,9 @@ class LocationConfig:
 
     @cached_property
     def ts8ButlerPath(self):
-        directory = self._config['ts8ButlerPath']
-        self._checkDir(directory, createIfMissing=False)
-        return directory
+        file = self._config['ts8ButlerPath']
+        self._checkFile(file)
+        return file
 
     @cached_property
     def botButlerPath(self):
@@ -185,6 +194,18 @@ class LocationConfig:
     @cached_property
     def auxTelMetadataShardPath(self):
         directory = self._config['auxTelMetadataShardPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def ts8MetadataPath(self):
+        directory = self._config['ts8MetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def ts8MetadataShardPath(self):
+        directory = self._config['ts8MetadataShardPath']
         self._checkDir(directory)
         return directory
 
