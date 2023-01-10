@@ -35,7 +35,6 @@ from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, Characteriz
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
-from lsst.daf.butler import DataCoordinate
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
 
@@ -112,8 +111,8 @@ class IsrRunner(BaseButlerChannel):
 
     Runs isr via BestEffortIsr, and puts the result in the quickLook rerun.
     """
-    def __init__(self, locationConfig, doRaise=False):
-        self.bestEffort = BestEffortIsr()
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+        self.bestEffort = BestEffortIsr(embargo=embargo)
         super().__init__(locationConfig=locationConfig,
                          butler=self.bestEffort.butler,
                          dataProduct='raw',
@@ -135,9 +134,9 @@ class IsrRunner(BaseButlerChannel):
 class ImExaminerChannel(BaseButlerChannel):
     """Class for running the ImExam channel on RubinTV.
     """
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
-                         butler=butlerUtils.makeDefaultLatissButler(),
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='summit_imexam',
                          doRaise=doRaise)
@@ -157,7 +156,7 @@ class ImExaminerChannel(BaseButlerChannel):
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
-            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
+            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f'Running imexam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
             uploadFilename = _expRecordToFilename(self.channelName, expRecord)
@@ -179,9 +178,9 @@ class SpecExaminerChannel(BaseButlerChannel):
     """Class for running the SpecExam channel on RubinTV.
     """
 
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
-                         butler=butlerUtils.makeDefaultLatissButler(),
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='summit_specexam',
                          doRaise=doRaise)
@@ -201,8 +200,9 @@ class SpecExaminerChannel(BaseButlerChannel):
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
-            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
-            if not isDispersedDataId(dataId, self.butler):
+            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
+            oldStyleDataId = {'day_obs': expRecord.day_obs, 'seq_num': expRecord.seq_num}
+            if not isDispersedDataId(oldStyleDataId, self.butler):
                 self.log.info(f'Skipping non dispersed image {dataId}')
                 return
 
@@ -225,9 +225,9 @@ class SpecExaminerChannel(BaseButlerChannel):
 class MonitorChannel(BaseButlerChannel):
     """Class for running the monitor channel on RubinTV.
     """
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
-                         butler=butlerUtils.makeDefaultLatissButler(),
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
@@ -247,14 +247,14 @@ class MonitorChannel(BaseButlerChannel):
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
-            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
+            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f'Generating monitor image for {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
             uploadFilename = _expRecordToFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
-            self._plotImage(exp, dataId, tempFilename)
+            self._plotImage(exp, tempFilename)
 
             self.log.info("Uploading monitor image to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
@@ -267,20 +267,19 @@ class MonitorChannel(BaseButlerChannel):
 class MountTorqueChannel(BaseButlerChannel):
     """Class for running the mount torque channel on RubinTV.
     """
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
 
         super().__init__(locationConfig=locationConfig,
-                         butler=butlerUtils.makeDefaultLatissButler(),
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='raw',
                          channelName='auxtel_mount_torques',
                          doRaise=doRaise)
         self.client = EfdClient('summit_efd')
-        # TODO: move this from the class to the methods
-        self.shardsDir = self.locationConfig.metadataShardPath
         self.fig = plt.figure(figsize=(16, 16))
+        self.detector = 0
 
     def writeMountErrorShard(self, errors, expRecord):
         """Write a metadata shard for the mount error, including the flag
@@ -300,7 +299,7 @@ class MountTorqueChannel(BaseButlerChannel):
             contents.update({flagKey: 'warning'})
 
         md = {seqNum: contents}
-        writeMetadataShard(self.shardsDir, dayObs, md)
+        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
         return
 
     def callback(self, expRecord):
@@ -310,7 +309,7 @@ class MountTorqueChannel(BaseButlerChannel):
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
-            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
+            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tempFilename = tempfile.mktemp(suffix='.png')
             uploadFilename = _expRecordToFilename(self.channelName, expRecord)
 
@@ -342,7 +341,6 @@ class MetadataCreator(BaseButlerChannel):
                          dataProduct='raw',
                          channelName='auxtel_metadata_creator',
                          doRaise=doRaise)
-        self.shardsDir = locationConfig.auxTelMetadataShardPath
         self.detector = 0  # can be removed once we have the requisite summit DBs
 
         # We inherit an uploader, so be explicit about the fact we don't use it
@@ -423,7 +421,7 @@ class MetadataCreator(BaseButlerChannel):
         """
         md = self.expRecordToMetadataDict(expRecord, SIDECAR_KEYS_TO_REMOVE)
         dayObs = butlerUtils.getDayObs(expRecord)
-        writeMetadataShard(self.shardsDir, dayObs, md)
+        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
         return
 
     def callback(self, expRecord):
@@ -447,7 +445,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
     Runs these tasks and writes shards with various measured quantities for
     upload to the table.
     """
-    def __init__(self, locationConfig, *, doRaise=False, embargo=False):
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          # writeable true is required to define visits
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo, writeable=True),
@@ -455,7 +453,6 @@ class CalibrateCcdRunner(BaseButlerChannel):
                          channelName='auxtel_calibrateCcd',
                          doRaise=doRaise)
         self.detector = 0
-        self.shardsDir = self.locationConfig.metadataShardPath  # TODO: remove this as above
         # TODO DM-37272 need to get the collection name from a central place
         self.outputRunName = "LATISS/runs/quickLook/1"
 
@@ -523,7 +520,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         CalibrateTask.
         """
         try:
-            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
+            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tStart = time.time()
 
             self.log.info(f'Running Image Characterization for {dataId}')
@@ -562,7 +559,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             outputDict.update(labels)
 
             mdDict = {seqNum: outputDict}
-            writeMetadataShard(self.shardsDir, dayObs, mdDict)
+            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
 
             calibrateRes = self.calibrate.run(charRes.exposure,
                                               background=charRes.background,
@@ -595,7 +592,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             outputDict.update(labels)
 
             mdDict = {seqNum: outputDict}
-            writeMetadataShard(self.shardsDir, dayObs, mdDict)
+            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
             self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
             self.clobber(calibrateRes.outputExposure, "calexp", dataId)
             tFinal = time.time()
@@ -624,7 +621,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
         task = DefineVisitsTask(config=config, butler=self.butler)
 
-        task.run([expRecord.id], collections=self.butler.collections)
+        task.run([{'exposure': expRecord.id}], collections=self.butler.collections)
 
     def getVisitDataId(self, expRecord):
         """Lookup visitId for an expRecord or dataId containing an exposureId
@@ -640,14 +637,14 @@ class CalibrateCcdRunner(BaseButlerChannel):
         visitDataId : `lsst.daf.butler.DataCoordinate`
             Data Id containing a visitId.
         """
-        expId = expRecord.id
-        visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expId)
+        expIdDict = {'exposure': expRecord.id}
+        visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expIdDict)
         visitDataIds = list(set(visitDataIds))
         if len(visitDataIds) == 1:
             visitDataId = visitDataIds[0]
             return visitDataId
         else:
-            self.log.warning(f"Failed to find visitId for {expId}, got {visitDataIds}. Do you need to run"
+            self.log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
                              " define-visits?")
             return None
 

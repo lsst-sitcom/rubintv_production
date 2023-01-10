@@ -136,7 +136,7 @@ class TimedMetadataServer:
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
             for file in filesTouched:
-                self.uploader.googleUpload(self.channel, file, isLiveFile=True)
+                self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
         return
 
     def getSidecarFilename(self, dayObs):

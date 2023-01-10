@@ -1,3 +1,5 @@
+dataIdScanPath:     '/project/rubintv/dataIds'
+
 # AuxTel metadata
 auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
 auxTelMetadataShardPath: '/project/rubintv/sidecar_metadata/shards'
@@ -35,7 +37,7 @@ astrometryNetRefCatPath: '/project/shared/ref_cats/astrometry_net'
 
 # # data paths
 # scratchPath:        '/project/rubintv'
-# dataIdScanPath:     '/project/rubintv/dataIds'
+dataIdScanPath:     '/project/rubintv/dataIds'
 # plotPath:           '/project/rubintv/plots'
 # binnedImagePath:    '/project/rubintv/binnedImages'
 # calculatedDataPath: '/project/rubintv/calculatedData'

@@ -125,6 +125,10 @@ def _expRecordToFilename(channel, dataCoordinate, extension='.png', zeroPad=Fals
 @dataclass(frozen=True)
 class LocationConfig:
     """A frozen dataclass for holding location-based configurations.
+
+    Note that all items which are used as paths *must* be decorated with
+    @cached_property, otherwise they are will be method-type rather than
+    str-type when they are accessed.
     """
     location: str
     log: logging.Logger = logging.getLogger('lsst.rubintv.production.utils.LocationConfig')
@@ -218,38 +222,45 @@ class LocationConfig:
         self._checkDir(directory, createIfMissing=False)
         return directory
 
+    @cached_property
     def starTrackerMetadataPath(self):
         directory = self._config['starTrackerMetadataPath']
         self._checkDir(directory)
         return directory
 
+    @cached_property
     def starTrackerMetadataShardPath(self):
         directory = self._config['starTrackerMetadataShardPath']
         self._checkDir(directory)
         return directory
 
+    @cached_property
     def starTrackerOutputPath(self):
         directory = self._config['starTrackerOutputPath']
         self._checkDir(directory)
         return directory
 
+    @cached_property
     def astrometryNetRefCatPath(self):
         directory = self._config['astrometryNetRefCatPath']
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     # animation paths
+    @cached_property
     def moviePngPath(self):
         directory = self._config['moviePngPath']
         self._checkDir(directory)
         return directory
 
     # all sky cam paths
+    @cached_property
     def allSkyRootDataPath(self):
         directory = self._config['allSkyRootDataPath']
         self._checkDir(directory, createIfMissing=False)
         return directory
 
+    @cached_property
     def allSkyOutputPath(self):
         directory = self._config['allSkyOutputPath']
         self._checkDir(directory)

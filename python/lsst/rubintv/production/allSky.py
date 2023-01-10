@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from .utils import LocationConfig, _expRecordToFilename, raiseIf, FakeDataCoordinate
+from .utils import _expRecordToFilename, raiseIf, FakeDataCoordinate
 from .uploaders import Uploader, Heartbeater
 
 try:
@@ -556,19 +556,18 @@ class AllSkyMovieChannel():
         Raise on error?
     """
 
-    def __init__(self, location, doRaise=False):
-        self.location = location
-        self.locationConfig = LocationConfig(location)
+    def __init__(self, locationConfig, doRaise=False):
+        self.locationConfig = locationConfig
         self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
         self.doRaise = doRaise
 
-        self.rootDataPath = self.location.allSkyRootDataPath
+        self.rootDataPath = self.locationConfig.allSkyRootDataPath
         if not os.path.exists(self.rootDataPath):
             raise RuntimeError(f"Root data path {self.rootDataPath} not found")
 
-        self.outputRoot = self.location.allSkyOutputPath
+        self.outputRoot = self.locationConfig.allSkyOutputPath
         _createWritableDir(self.outputRoot)
 
     def getCurrentRawDataDir(self):

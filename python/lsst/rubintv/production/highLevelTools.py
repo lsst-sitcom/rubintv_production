@@ -83,7 +83,7 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     return sorted(existing)
 
 
-def createChannelByName(location, channel, doRaise):
+def createChannelByName(location, channel, *, embargo=False, doRaise=False):
     """Create a RubinTV Channel object using the name of the channel.
 
     Parameters
@@ -92,7 +92,9 @@ def createChannelByName(location, channel, doRaise):
         The location, for use with LocationConfig.
     channel : `str`
         The name of the channel, as found in lsst.rubintv.production.CHANNELS.
-    doRaise : `bool`
+    embargo : `bool`, optional
+        If True, use the embargo repo.
+    doRaise : `bool`, optional
         Have the channel ``raise`` if errors are encountered while it runs.
 
     Returns
@@ -119,15 +121,15 @@ def createChannelByName(location, channel, doRaise):
 
     match channel:
         case "summit_imexam":
-            return ImExaminerChannel(locationConfig=locationConfig, doRaise=doRaise)
+            return ImExaminerChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
         case "summit_specexam":
-            return SpecExaminerChannel(locationConfig=locationConfig, doRaise=doRaise)
+            return SpecExaminerChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
         case "auxtel_mount_torques":
-            return MountTorqueChannel(locationConfig=locationConfig, doRaise=doRaise)
+            return MountTorqueChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
         case "auxtel_monitor":
-            return MonitorChannel(locationConfig=locationConfig, doRaise=doRaise)
+            return MonitorChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
         case "auxtel_metadata":
-            return MetadataCreator(locationConfig=locationConfig, doRaise=doRaise)
+            return MetadataCreator(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
         case "all_sky_current":
             raise ValueError(f"{channel} is not a creatable by name.")
         case "all_sky_movies":
@@ -136,7 +138,7 @@ def createChannelByName(location, channel, doRaise):
             raise ValueError(f"Unrecognized channel {channel}.")
 
 
-def remakePlotByDataId(location, channel, dataId):
+def remakePlotByDataId(location, channel, dataId, embargo=False):
     """Remake the plot for the given channel for a single dataId.
     Reproduces the plot regardless of whether it exists. Raises on error.
 
@@ -152,8 +154,10 @@ def remakePlotByDataId(location, channel, dataId):
         The name of the channel.
     dataId : `dict`
         The dataId.
+    embargo : `bool`, optional
+        Use the embargo repo?
     """
-    tvChannel = createChannelByName(location, channel, doRaise=True)
+    tvChannel = createChannelByName(location, channel, embargo=embargo, doRaise=True)
     expRecord = getExpRecordFromDataId(tvChannel.butler, dataId)
     tvChannel.callback(expRecord)
 
@@ -247,7 +251,8 @@ def remakeDay(location,
     else:
         for seqNum in toMake:
             dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-            tvChannel.callback(dataId)
+            expRecord = getExpRecordFromDataId(butler, dataId)
+            tvChannel.callback(expRecord)
 
 
 def pushTestImageToCurrent(channel, bucketName, duration=15):

@@ -37,6 +37,7 @@ from .uploaders import Uploader, Heartbeater
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
 from .utils import isDayObsContiguous, raiseIf
+from .metadataServers import TimedMetadataServer
 
 __all__ = ['RubinTvBackgroundService']
 
@@ -194,19 +195,43 @@ class RubinTvBackgroundService():
         dayObs.
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
-        remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False)
+        remakeDay(self.locationConfig.location,
+                  'auxtel_mount_torques',
+                  self.dayObs,
+                  remakeExisting=False,
+                  notebook=False)
 
     def catchupMonitor(self):
         """Create and upload any missing monitor images for the current dayObs.
         """
         self.log.info(f'Catching up monitor images for {self.dayObs}')
-        remakeDay('auxtel_monitor', self.dayObs, remakeExisting=False, notebook=False)
+        remakeDay(self.locationConfig.location,
+                  'auxtel_monitor',
+                  self.dayObs,
+                  remakeExisting=False,
+                  notebook=False)
 
     def catchupMetadata(self):
         """Create shards for any seqNums missing their metadata. Do not upload.
         """
+        def _getSidecarFilename(dayObs):
+            """Get the sidecar filename for a given dayObs.
+
+            This is a bit of a hack as it makes a whole TimedMetadataServer.
+            There are many better ways of doing this, but this will get things
+            working for now, and because TimedMetadataServers don't have
+            butlers and we're not calling run() on it, it's not really
+            important that it's a little wasteful.
+            """
+            mdServer = TimedMetadataServer(locationConfig=self.locationConfig,
+                                           metadataDirectory=self.locationConfig.auxTelMetadataPath,
+                                           shardsDirectory=self.locationConfig.auxTelMetadataShardPath,
+                                           channelName='auxtel_metadata')
+            filename = mdServer.getSidecarFilename(dayObs)
+            return filename
+
         self.log.info(f'Catching up metadata for {self.dayObs}')
-        mdFilename = self.mdServer.getSidecarFilename(self.dayObs)
+        mdFilename = _getSidecarFilename(self.dayObs)
         if not os.path.isfile(mdFilename):
             # we haven't taken any data yet today
             self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does not exist yet, waiting...")

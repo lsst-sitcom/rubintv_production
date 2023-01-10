@@ -84,6 +84,7 @@ class BaseButlerChannel(BaseChannel):
                          doRaise=doRaise)
         self.butler = butler
         self.dataProduct = dataProduct
+        self.channelName = channelName
 
     @abstractmethod
     def callback(self, expRecord):
