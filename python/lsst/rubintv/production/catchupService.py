@@ -222,8 +222,9 @@ class RubinTvBackgroundService():
 
         for seqNum in missing:
             dataId = {'day_obs': self.dayObs, 'seq_num': seqNum, 'detector': 0}
+            expRecord = butlerUtils.getExpRecordFromDataId(self.butler, dataId)
             try:
-                self.mdServer.writeShardForDataId(dataId)
+                self.mdServer.writeShardForExpRecord(expRecord)
             except Exception as e:
                 self.log.warning(f"Failed to create metadata shard for {dataId}: {e}")
 

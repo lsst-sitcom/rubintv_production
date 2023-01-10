@@ -26,6 +26,7 @@ import numpy as np
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import AssembleCcdTask
+import lsst.daf.butler as dafButler
 
 from ..utils import writeDataShard, LocationConfig, getShardedData
 from ..uploaders import Uploader
@@ -71,7 +72,7 @@ class RawProcesser():
         self.assembleTask = AssembleCcdTask(config=config)
 
     def callback(self, expRecord):
-        """Method called on each new dataId as it is found in the repo.
+        """Method called on each new expRecord as it is found in the repo.
 
         Produce a quickLookExp of the latest image, and butler.put() it to the
         repo so that downstream processes can find and use it.
@@ -84,7 +85,8 @@ class RawProcesser():
 
         # write out to the scratch space with the necessary info in the
         # filename for downstream processing to pick it up.
-        self.log.info(f'Processing raw for detector {self.detector} - {expRecord.dataId}')
+        dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
+        self.log.info(f'Processing raw for detector {dataId}')
 
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
@@ -92,6 +94,8 @@ class RawProcesser():
         for detNum in range(18, 27):  # TODO: Change this to a single detector once we have multiple pods!
             self.log.info(f'Actually processing raw for detector {detNum}...')
             ampNoises = {}
+            # TODO change the .get() to use the commented line
+            # raw = self.butler.get('raw',dataId)
             raw = self.butler.get('raw', expRecord.dataId, detector=detNum)
             detector = raw.detector
             for amp in detector:
@@ -110,7 +114,8 @@ class RawProcesser():
             self.log.info(f'Wrote binned image for detector {detNum}')
 
     def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
+        """Run continuously, calling the callback method with the latest
+        expRecord.
         """
         self.watcher.run(self.callback)
 
@@ -188,6 +193,7 @@ class Plotter():
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
+        """Run continuously, calling the callback method with the latest
+        expRecord.
         """
         self.watcher.run(self.callback)

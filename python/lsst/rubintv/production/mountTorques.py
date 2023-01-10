@@ -61,7 +61,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
 
     Parameters
     ----------
-    dataId : `dict`
+    dataId : `dict` or `lsst.daf.butler.DataCoordinate`
         The dataId for quich to plot the mount torques.
     butler : `lsst.daf.butler.Butler`
         The butler to use to retrieve the image metadata.

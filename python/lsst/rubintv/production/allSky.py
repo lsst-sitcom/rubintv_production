@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from .utils import LocationConfig, _dataIdToFilename, raiseIf
+from .utils import LocationConfig, _expRecordToFilename, raiseIf, FakeDataCoordinate
 from .uploaders import Uploader, Heartbeater
 
 try:
@@ -413,15 +413,15 @@ class DayAnimator():
         """
         files = sorted(_getFilesetFromDir(self.outputImageDir))
         lastfile = files[-1]
+        seqNum = _seqNumFromFilename(lastfile)
         if isFinal:
-            seqNumStr = 'final'
-        else:
-            seqNum = _seqNumFromFilename(lastfile)
-            seqNumStr = f"{seqNum:05}"
+            seqNum = 99999
 
         channel = 'all_sky_movies'
-        fakeDataId = {'day_obs': self.dayObsInt, 'seq_num': seqNumStr}
-        uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.mp4')
+        fakeDataCoord = FakeDataCoordinate(seq_num=seqNum, day_obs=self.dayObsInt)
+        uploadAsFilename = _expRecordToFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
+        if isFinal:
+            uploadAsFilename = uploadAsFilename.replace('99999', 'final')
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
         self.log.info(f"Creating movie from {self.outputImageDir} as {creationFilename}...")
         if not self.DRY_RUN:
@@ -447,9 +447,8 @@ class DayAnimator():
         sourceFilename = sorted(convertedFiles)[-1]
         sourceFilename = self._getConvertedFilename(sourceFilename)
         seqNum = _seqNumFromFilename(sourceFilename)
-        seqNumStr = f"{seqNum:05}"
-        fakeDataId = {'day_obs': self.dayObsInt, 'seq_num': seqNumStr}
-        uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.jpg')
+        fakeDataCoord = FakeDataCoordinate(seq_num=seqNum, day_obs=self.dayObsInt)
+        uploadAsFilename = _expRecordToFilename(channel, fakeDataCoord, extension='.jpg', zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:
             self.uploader.googleUpload(channel=channel,

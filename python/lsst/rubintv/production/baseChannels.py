@@ -56,7 +56,8 @@ class BaseChannel(ABC):
         raise NotImplementedError()
 
     def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
+        """Run continuously, calling the callback method with the latest
+        expRecord.
         """
         self.watcher.run(self.callback)
 
@@ -85,7 +86,7 @@ class BaseButlerChannel(BaseChannel):
         self.dataProduct = dataProduct
 
     @abstractmethod
-    def callback(self, dataId):
+    def callback(self, expRecord):
         raise NotImplementedError()
 
     def _waitForDataProduct(self, dataId, timeout=20):
@@ -93,7 +94,7 @@ class BaseButlerChannel(BaseChannel):
 
         Parameters
         ----------
-        dataId : `dict`
+        dataId : `dict` or `lsst.daf.butler.DataCoordinate`
             The dataId of the product to wait for.
         timeout : `float`
             The timeout, in seconds, to wait before giving up and returning

@@ -38,7 +38,7 @@ from dataclasses import dataclass
 
 __all__ = ['writeDataIdFile',
            'getGlobPatternForDataProduct',
-           '_dataIdToFilename',
+           '_expRecordToFilename',
            'getSiteConfig',
            'checkRubinTvExternalPackages',
            'raiseIf',
@@ -80,8 +80,23 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct):
     return DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId='*')
 
 
-def _dataIdToFilename(channel, dataId, extension='.png'):
-    """Convert a dataId to a png filename.
+@dataclass
+class FakeDataCoordinate:
+    """A minimal dataclass for passing to _expRecordToFilename.
+
+    _expRecordToFilename accesses seq_num and day_obs as properties rather than
+    dict items, so this dataclass exists to allow using the same naming
+    function when we do not have a real dataId.
+    """
+    seq_num: int
+    day_obs: int
+
+    def __repr__(self):
+        return(f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}")
+
+
+def _expRecordToFilename(channel, dataCoordinate, extension='.png', zeroPad=False):
+    """Convert a dataId to a filename, for use when uploading to a channel.
 
     TODO: give this a better name and remove the leading underscore at a
     minimum. Ideally this would be done as part of the work changing how files
@@ -99,8 +114,11 @@ def _dataIdToFilename(channel, dataId, extension='.png'):
     filename : `str`
         The filename
     """
-    dayObsStr = dayObsIntToString(dataId['day_obs'])
-    filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{dataId['seq_num']}{extension}"
+    dayObs = dataCoordinate.day_obs
+    seqNum = dataCoordinate.seq_num
+    dayObsStr = dayObsIntToString(dayObs)
+    seqNumStr = f"{seqNum:05}" if zeroPad else str(seqNum)
+    filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNumStr}{extension}"
     return filename
 
 

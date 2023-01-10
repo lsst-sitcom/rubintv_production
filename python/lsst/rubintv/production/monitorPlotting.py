@@ -26,7 +26,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from lsst.summit.utils import quickSmooth
 
 
-def plotExp(exp, dataId, figure, saveFilename):
+def plotExp(exp, figure, saveFilename):
     data = quickSmooth(exp.image.array, 1)
     vmin = np.percentile(data, 1)
     vmax = np.percentile(data, 99)

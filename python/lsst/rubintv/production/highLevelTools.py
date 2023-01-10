@@ -26,10 +26,10 @@ import time
 
 from lsst.utils import getPackageDir
 
-from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler
+from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler, getExpRecordFromDataId
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from .channels import CHANNELS, PREFIXES
-from .utils import _dataIdToFilename, LocationConfig
+from .utils import _expRecordToFilename, LocationConfig, FakeDataCoordinate
 from .uploaders import Uploader
 
 __all__ = ['getPlotSeqNumsForDayObs',
@@ -154,7 +154,8 @@ def remakePlotByDataId(location, channel, dataId):
         The dataId.
     """
     tvChannel = createChannelByName(location, channel, doRaise=True)
-    tvChannel.callback(dataId)
+    expRecord = getExpRecordFromDataId(tvChannel.butler, dataId)
+    tvChannel.callback(expRecord)
 
 
 def remakeDay(location,
@@ -239,7 +240,8 @@ def remakeDay(location,
         # special case so we only upload once after all the shards are made
         for seqNum in toMake:
             dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-            tvChannel.writeShardForDataId(dataId)
+            expRecord = getExpRecordFromDataId(butler, dataId)
+            tvChannel.writeShardForExpRecord(expRecord)
         tvChannel.mergeShardsAndUpload()
 
     else:
@@ -303,12 +305,12 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
     seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)
     newSeqNum = max(seqNums) + 1
 
-    mockDataId = {'day_obs': recentDay, 'seq_num': newSeqNum}
+    mockDataCoord = FakeDataCoordinate(seq_num=newSeqNum, day_obs=recentDay)
     testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
-    uploadAs = _dataIdToFilename(channel, mockDataId)
+    uploadAs = _expRecordToFilename(channel, mockDataCoord)
     uploader = Uploader(bucketName)
 
-    logger.info(f'Uploading test card to {mockDataId} for channel {channel}')
+    logger.info(f'Uploading test card to {mockDataCoord} for channel {channel}')
     blob = uploader.googleUpload(channel, testCardFile, uploadAs, isLiveFile=True)
 
     logger.info(f'Upload complete, sleeping for {duration} for you to check...')

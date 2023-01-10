@@ -150,11 +150,15 @@ class ButlerWatcher:
         self.log = _LOG.getChild("butlerWatcher")
 
     def _getLatestExpRecords(self):
-        """Get the most recent dataId and expId from the butler.
+        """Get the most recent expRecords from the butler.
 
-        expId is to have an easily comparable value to check if we've found a
-        new image, and the dataId is for use. This is written to a file for the
-        FileWatcher to pick up.
+        Get the most recent expRecord for all the dataset types. These are
+        written to files for the FileWatchers to pick up.
+
+        Returns
+        -------
+        expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord`]
+            A dict of the most recent exposure records, keyed by dataProduct.
         """
         expRecordDict = {}
         where = 'exposure.day_obs>20211201'  # TODO: find a better way of doing this?

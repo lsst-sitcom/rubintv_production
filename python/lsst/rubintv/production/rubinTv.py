@@ -35,6 +35,7 @@ from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, Characteriz
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
+from lsst.daf.butler import DataCoordinate
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
 
@@ -53,7 +54,7 @@ from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import writeMetadataShard, _dataIdToFilename, raiseIf
+from .utils import writeMetadataShard, _expRecordToFilename, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 
@@ -119,13 +120,14 @@ class IsrRunner(BaseButlerChannel):
                          channelName='auxtel_isr_runner',
                          doRaise=doRaise)
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
         Produce a quickLookExp of the latest image, and butler.put() it to the
         repo so that downstream processes can find and use it.
         """
-        quickLookExp = self.bestEffort.getExposure(dataId)  # noqa: F841 - automatically puts
+        dataId = expRecord.dataId
+        quickLookExp = self.bestEffort.getExposure(dataId, detector=0)  # noqa: F841 - automatically puts
         del quickLookExp
         self.log.info(f'Put quickLookExp for {dataId}, awaiting next image...')
 
@@ -139,29 +141,31 @@ class ImExaminerChannel(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='summit_imexam',
                          doRaise=doRaise)
+        self.detector = 0
 
-    def _imExamine(self, exp, dataId, outputFilename):
+    def _imExamine(self, exp, outputFilename):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
             self.log.warning(f"Skipping {outputFilename}")
             return
         imexam = ImageExaminer(exp, savePlots=outputFilename, doTweakCentroid=True)
         imexam.plot()
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
         Plot the quick imExam analysis of the latest image, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
             self.log.info(f'Running imexam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
 
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
-            self._imExamine(exp, dataId, tempFilename)
+            self._imExamine(exp, tempFilename)
 
             self.log.info("Uploading imExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
@@ -181,32 +185,34 @@ class SpecExaminerChannel(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='summit_specexam',
                          doRaise=doRaise)
+        self.detector = 0
 
-    def _specExamine(self, exp, dataId, outputFilename):
+    def _specExamine(self, exp, outputFilename):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile?
             self.log.warning(f"Skipping {outputFilename}")
             return
         summary = SpectrumExaminer(exp, savePlotAs=outputFilename)
         summary.run()
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
         Plot the quick spectral reduction of the latest image, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
             if not isDispersedDataId(dataId, self.butler):
                 self.log.info(f'Skipping non dispersed image {dataId}')
                 return
 
             self.log.info(f'Running specExam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
-            self._specExamine(exp, dataId, tempFilename)
+            self._specExamine(exp, tempFilename)
 
             self.log.info("Uploading specExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
@@ -226,23 +232,25 @@ class MonitorChannel(BaseButlerChannel):
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
+        self.detector = 0
 
-    def _plotImage(self, exp, dataId, outputFilename):
+    def _plotImage(self, exp, outputFilename):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
             self.log.warning(f"Skipping {outputFilename}")
             return
-        plotExp(exp, dataId, self.fig, outputFilename)
+        plotExp(exp, self.fig, outputFilename)
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
         Plot the image for display on the monitor, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
             self.log.info(f'Generating monitor image for {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
@@ -274,12 +282,12 @@ class MountTorqueChannel(BaseButlerChannel):
         self.shardsDir = self.locationConfig.metadataShardPath
         self.fig = plt.figure(figsize=(16, 16))
 
-    def writeMountErrorShard(self, errors, dataId):
+    def writeMountErrorShard(self, errors, expRecord):
         """Write a metadata shard for the mount error, including the flag
         for coloring the cell based on the threshold values.
         """
-        dayObs = butlerUtils.getDayObs(dataId)
-        seqNum = butlerUtils.getSeqNum(dataId)
+        dayObs = butlerUtils.getDayObs(expRecord)
+        seqNum = butlerUtils.getSeqNum(expRecord)
         az_rms, el_rms, _ = errors  # we don't need the rot errors here so assign to _
         imageError = (az_rms ** 2 + el_rms ** 2) ** .5
         key = 'Mount motion image degradation'
@@ -295,15 +303,16 @@ class MountTorqueChannel(BaseButlerChannel):
         writeMetadataShard(self.shardsDir, dayObs, md)
         return
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
         Plot the mount torques, pulling data from the EFD, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
         """
         try:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _dataIdToFilename(self.channelName, dataId)
+            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
 
             # calculateMountErrors() calculates the errors, but also performs
             # the plotting.
@@ -316,7 +325,7 @@ class MountTorqueChannel(BaseButlerChannel):
 
             # write the mount error shard, including the cell coloring flag
             if errors:  # if the mount torque fails or skips it returns False
-                self.writeMountErrorShard(errors, dataId)
+                self.writeMountErrorShard(errors, expRecord)
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -334,36 +343,41 @@ class MetadataCreator(BaseButlerChannel):
                          channelName='auxtel_metadata_creator',
                          doRaise=doRaise)
         self.shardsDir = locationConfig.auxTelMetadataShardPath
+        self.detector = 0  # can be removed once we have the requisite summit DBs
 
         # We inherit an uploader, so be explicit about the fact we don't use it
         self.uploader = None
 
-    @staticmethod
-    def dataIdToMetadataDict(butler, dataId, keysToRemove):
-        """Create a dictionary of metadata for a dataId.
+    def expRecordToMetadataDict(self, expRecord, keysToRemove):
+        """Create a dictionary of metadata for an expRecord.
 
-        Given a dataId, create a dictionary containing all metadata that should
-        be displayed in the table on RubinTV. The table creation is dynamic,
-        so any entries which should not appear as columns in the table should
-        be removed via keysToRemove.
+        Given an expRecord, create a dictionary containing all the metadata
+        that should be displayed in the table on RubinTV. The table creation is
+        dynamic, so any entries which should not appear as columns in the table
+        should be removed via keysToRemove.
+
+        Note that for now, while there is data in the headers which cannot be
+        gleaned from the expRecord, we are getting the raw metadata from the
+        butler. Once there are summit databases with all the info we need, or
+        a schema migration is done meaning everything is in the expRecord, this
+        can be stopped.
 
         Parameters
         ----------
         butler : `lsst.daf.butler.Butler`
             The butler.
-        dataId : `dict`
-            The dataId.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         keysToRemove : `list` [`str`]
             Keys to remove from the exposure record.
 
         Returns
         -------
         metadata : `dict` [`dict`]
-            A dict, with a single key, corresponding to the dataId's seqNum,
-            containing a dict of the dataId's metadata.
+            A dict, with a single key, corresponding to the expRecord's seqNum,
+            containing a dict of the exposure's metadata.
         """
-        seqNum = butlerUtils.getSeqNum(dataId)
-        expRecord = butlerUtils.getExpRecordFromDataId(butler, dataId)
+        seqNum = butlerUtils.getSeqNum(expRecord)
         d = expRecord.toDict()
 
         time_begin_tai = expRecord.timespan.begin.to_datetime().strftime("%H:%M:%S")
@@ -375,7 +389,7 @@ class MetadataCreator(BaseButlerChannel):
         d['filter'] = filt
         d['disperser'] = disperser
 
-        rawmd = butler.get('raw.metadata', dataId)
+        rawmd = self.butler.get('raw.metadata', expRecord.dataId, detector=self.detector)
         obsInfo = ObservationInfo(rawmd)
         d['airmass'] = obsInfo.boresight_airmass
         d['focus_z'] = obsInfo.focus_z.value
@@ -395,31 +409,31 @@ class MetadataCreator(BaseButlerChannel):
 
         return {seqNum: properNames}
 
-    def writeShardForDataId(self, dataId):
-        """Write a standard shard for this dataId from the exposure record.
+    def writeShardForExpRecord(self, expRecord):
+        """Write a standard shard for this expRecord.
 
-        Calls dataIdToMetadataDict to get the normal set of metadata components
-        and then writes it to a shard file in the shards directory ready for
-        upload.
+        Calls expRecordToMetadataDict to get the normal set of metadata
+        components and then writes it to a shard file in the shards directory
+        ready for upload.
 
         Parameters
         ----------
-        dataId : `dict`
-            The dataId.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
-        md = self.dataIdToMetadataDict(self.butler, dataId, SIDECAR_KEYS_TO_REMOVE)
-        dayObs = butlerUtils.getDayObs(dataId)
+        md = self.expRecordToMetadataDict(expRecord, SIDECAR_KEYS_TO_REMOVE)
+        dayObs = butlerUtils.getDayObs(expRecord)
         writeMetadataShard(self.shardsDir, dayObs, md)
         return
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
-        Add the metadata to the sidecar for the dataId and upload.
+        Add the metadata to the sidecar for the expRecord and upload.
         """
         try:
-            self.log.info(f'Writing metadata shard for {dataId}')
-            self.writeShardForDataId(dataId)
+            self.log.info(f'Writing metadata shard for {expRecord.dataId}')
+            self.writeShardForExpRecord(expRecord)
             # Note: we do not upload anythere here, as the TimedMetadataServer
             # does the collation and upload, and runs as a separate process.
 
@@ -440,6 +454,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='auxtel_calibrateCcd',
                          doRaise=doRaise)
+        self.detector = 0
         self.shardsDir = self.locationConfig.metadataShardPath  # TODO: remove this as above
         # TODO DM-37272 need to get the collection name from a central place
         self.outputRunName = "LATISS/runs/quickLook/1"
@@ -473,11 +488,11 @@ class CalibrateCcdRunner(BaseButlerChannel):
         Parameters
         ----------
         refcatName : `str`
-            Name of the reference catalog to load
-        dataId : `dict`
-            DataId to determine bounding box of sources to load
+            Name of the reference catalog to load.
+        dataId : `dict` or `lsst.daf.butler.DataCoordinate`
+            DataId to determine bounding box of sources to load.
         config : `lsst.meas.algorithms.LoadReferenceObjectsConfig`
-            Configuration for the reference object loader
+            Configuration for the reference object loader.
 
         Returns
         -------
@@ -500,14 +515,15 @@ class CalibrateCcdRunner(BaseButlerChannel):
         )
         return loader
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
         Runs on the quickLookExp and writes shards with various measured
         quantities, as calculated by the CharacterizeImageTask and
         CalibrateTask.
         """
         try:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=self.detector)
             tStart = time.time()
 
             self.log.info(f'Running Image Characterization for {dataId}')
@@ -521,10 +537,10 @@ class CalibrateCcdRunner(BaseButlerChannel):
                 self.log.info(f'Skipping dispersed image: {dataId}')
                 return
 
-            visitDataId = self.getVisitDataId(dataId)
+            visitDataId = self.getVisitDataId(expRecord)
             if not visitDataId:
-                self.defineVisit(dataId)
-                visitDataId = self.getVisitDataId(dataId)
+                self.defineVisit(expRecord)
+                visitDataId = self.getVisitDataId(expRecord)
 
             loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId,
                                            config=self.calibrate.config.astromRefObjLoader)
@@ -538,8 +554,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
             self.log.info(f"Ran characterizeImageTask in {tCharacterize-tStart:.2f} seconds")
 
             nSources = len(charRes.sourceCat)
-            dayObs = butlerUtils.getDayObs(dataId)
-            seqNum = butlerUtils.getSeqNum(dataId)
+            dayObs = butlerUtils.getDayObs(expRecord)
+            seqNum = butlerUtils.getSeqNum(expRecord)
             outputDict = {"50-sigma source count": nSources}
             # flag as measured to color the cells in the table
             labels = {"_" + k: "measured" for k in outputDict.keys()}
@@ -588,8 +604,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def defineVisit(self, dataId):
-        """Define a visit in the registry, given a dataId.
+    def defineVisit(self, expRecord):
+        """Define a visit in the registry, given an expRecord.
 
         Note that this takes about 9ms regardless of whether it exists, so it
         is no quicker to check than just run the define call.
@@ -598,8 +614,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
         Parameters
         ----------
-        dataId : `dict`
-            DataId to define a visit for
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to define the visit for.
         """
         instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'],
                                        self.butler.registry)
@@ -608,48 +624,46 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
         task = DefineVisitsTask(config=config, butler=self.butler)
 
-        task.run([butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)],
-                 collections=self.butler.collections)
+        task.run([expRecord.id], collections=self.butler.collections)
 
-    def getVisitDataId(self, dataId):
-        """Lookup visitId for a dataId containing an exposureId or
-
-        other uniquely identifying keys such as dayObs and seqNum.
+    def getVisitDataId(self, expRecord):
+        """Lookup visitId for an expRecord or dataId containing an exposureId
+        or other uniquely identifying keys such as dayObs and seqNum.
 
         Parameters
         ----------
-        dataId : `dict`
-            DataId to look up the visitId
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for which to get the visit id.
 
         Returns
         -------
-        visitDataId : lsst.daf.butler.DataCoordinate
-            Data Id containing a visitId
+        visitDataId : `lsst.daf.butler.DataCoordinate`
+            Data Id containing a visitId.
         """
-        expId = butlerUtils.getExpIdFromDayObsSeqNum(self.butler, dataId)
+        expId = expRecord.id
         visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expId)
         visitDataIds = list(set(visitDataIds))
         if len(visitDataIds) == 1:
             visitDataId = visitDataIds[0]
             return visitDataId
         else:
-            self.log.warning(f"Failed to find visitId for {dataId}, got {visitDataIds}. Do you need to run"
+            self.log.warning(f"Failed to find visitId for {expId}, got {visitDataIds}. Do you need to run"
                              " define-visits?")
             return None
 
     def clobber(self, object, datasetType, dataId):
         """Put object in the butler.
 
-        If there is one already there, remove it beforehand
+        If there is one already there, remove it beforehand.
 
         Parameters
         ----------
         object : `object`
-            Any object to put in the butler
+            Any object to put in the butler.
         datasetType : `str`
-            Dataset type name to put it as
-        dataId : `dict`
-            DataId to put the object at
+            Dataset type name to put it as.
+        dataId : `lsst.daf.butler.DataCoordinate`
+            DataId to put the object at.
         """
         if not (visitDataId := self.getVisitDataId(dataId)):
             self.log.warning(f'Skipped butler.put of {datasetType} for {dataId} due to lack of visitId.'
