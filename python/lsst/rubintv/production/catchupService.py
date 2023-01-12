@@ -20,12 +20,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
-import copy
 import time
 from time import sleep
 import logging
 import shutil
 import json
+
+from lsst.daf.butler.registry import ConflictingDefinitionError
 
 from lsst.summit.utils.bestEffort import BestEffortIsr
 import lsst.summit.utils.butlerUtils as butlerUtils
@@ -172,23 +173,24 @@ class RubinTvBackgroundService():
         self.log.info(f'Catching up quickLook exposures for {self.dayObs}')
         missingQuickLooks = self.getMissingQuickLookIds()
 
-        mostRecent = butlerUtils.getMostRecentDataId(self.butler)
-        # reduce to keys that exactly matches missingQuickLooks
-        mostRecent = self._makeMinimalDataId(mostRecent)
-
-        secondMostRecent = copy.copy(mostRecent)
-        secondMostRecent['seq_num'] -= 1
-
-        for d in [mostRecent, secondMostRecent]:
-            if d in missingQuickLooks:
-                missingQuickLooks.remove(d)
+        # quickLooks could still be being made by other processes, but it's
+        # very fast, so just include a 5s sleep here to make sure that we
+        # don't butler.put() something under where they're expecting to put. If
+        # the inverse happens and they put something under where we're
+        # generating then that isn't a problem, as we catch
+        # ConflictingDefinitionError and ignore.
+        sleep(5)
 
         self.log.info(f'Catchup service found {len(missingQuickLooks)} missing quickLookExps')
 
         for dataId in missingQuickLooks:
             self.log.info(f"Producing quickLookExp for {dataId}")
-            exp = self.bestEffort.getExposure(dataId)
-            del exp
+            try:
+                exp = self.bestEffort.getExposure(dataId)
+            except ConflictingDefinitionError:
+                pass
+            finally:
+                del exp
 
     def catchupMountTorques(self):
         """Create and upload any missing mount torque plots for the current
