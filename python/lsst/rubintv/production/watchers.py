@@ -163,8 +163,11 @@ class ButlerWatcher:
         # this where clause is no longer necessary for speed now that we are
         # using order_by and limit, but it now functions to restrict data to
         # being inside the range where exposures could ever realistically be
-        # taken, as some simulated data is "taken" in the year 3000.
-        where = 'exposure.day_obs>20200101 and exposure.day_obs<21000101'
+        # taken, as some simulated data is "taken" in the year 3000. We must
+        # also restrict the exposure.id specifically, as the day_obs seems to
+        # be set to this millenium, but the expIds are like 3YYYMMDDNNNNN.
+        where = ('exposure.day_obs>20200101 and exposure.day_obs<21000101'
+                 ' and exposure.id<2100010100001')
 
         for product in self.dataProducts:
             # NB if you list multiple products for datasets= then it will only
