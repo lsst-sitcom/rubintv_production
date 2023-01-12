@@ -240,9 +240,9 @@ class RubinTvBackgroundService():
             with open(mdFilename) as f:
                 data = json.load(f)
 
-        seqNums = [int(k) for k in data.keys()]
-        maxVal = max(seqNums)
-        missing = [k for k in range(1, maxVal) if k not in seqNums]
+        seqNumsPresent = [int(k) for k in data.keys()]
+        allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs)
+        missing = [k for k in allSeqNums if k not in seqNumsPresent]
         self.log.info(f'Found {len(missing)} rows missing metadata to create shards for')
 
         for seqNum in missing:
