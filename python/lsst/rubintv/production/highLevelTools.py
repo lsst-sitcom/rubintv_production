@@ -240,19 +240,10 @@ def remakeDay(location,
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
     tvChannel = createChannelByName(location, channel, doRaise=False, embargo=embargo)
-    if channel in ['auxtel_metadata']:
-        # special case so we only upload once after all the shards are made
-        for seqNum in toMake:
-            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-            expRecord = getExpRecordFromDataId(butler, dataId)
-            tvChannel.writeShardForExpRecord(expRecord)
-        tvChannel.mergeShardsAndUpload()
-
-    else:
-        for seqNum in toMake:
-            dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
-            expRecord = getExpRecordFromDataId(butler, dataId)
-            tvChannel.callback(expRecord)
+    for seqNum in toMake:
+        dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
+        expRecord = getExpRecordFromDataId(butler, dataId)
+        tvChannel.callback(expRecord)
 
 
 def pushTestImageToCurrent(channel, bucketName, duration=15):

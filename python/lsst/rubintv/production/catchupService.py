@@ -300,7 +300,6 @@ class RubinTvBackgroundService():
         created when making the all sky movie. Deletes all the intermediate
         movies uploaded during the day for the all sky channel from the bucket.
         """
-        self.mdServer.mergeShardsAndUpload()  # just catch any leftover shards
         try:
             # TODO: this will move to its own channel to be done routinely
             # during the night, but this is super easy for now, so add here
