@@ -29,7 +29,7 @@ from lsst.utils import getPackageDir
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler, getExpRecordFromDataId
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from .channels import CHANNELS, PREFIXES
-from .utils import _expRecordToFilename, LocationConfig, FakeDataCoordinate
+from .utils import expRecordToUploadFilename, LocationConfig, FakeDataCoordinate
 from .uploaders import Uploader
 
 __all__ = ['getPlotSeqNumsForDayObs',
@@ -73,6 +73,8 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     if not bucket:
         from google.cloud import storage
         client = storage.Client()
+        # TODO: either make bucket a mandatory arg or take a locationConfig and
+        # create it from bucketName
         bucket = client.get_bucket('rubintv_data')
 
     dayObsStr = dayObsIntToString(dayObs)
@@ -190,6 +192,8 @@ def remakeDay(location,
     notebook : `bool`, optional
         Is the code being run from within a notebook? Needed to correctly nest
         asyncio event loops in notebook-type environments.
+    logger : `logging.Logger`, optional
+        The logger to use, created if not provided.
     embargo : `bool`, optional
         Use the embargoed repo?
 
@@ -220,7 +224,8 @@ def remakeDay(location,
         setupLogging()
 
     client = storage.Client()
-    bucket = client.get_bucket('rubintv_data')
+    locationConfig = LocationConfig(location)
+    bucket = client.get_bucket(locationConfig.bucketName)
     butler = makeDefaultLatissButler(embargo=embargo)
 
     allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
@@ -303,7 +308,7 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
 
     mockDataCoord = FakeDataCoordinate(seq_num=newSeqNum, day_obs=recentDay)
     testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
-    uploadAs = _expRecordToFilename(channel, mockDataCoord)
+    uploadAs = expRecordToUploadFilename(channel, mockDataCoord)
     uploader = Uploader(bucketName)
 
     logger.info(f'Uploading test card to {mockDataCoord} for channel {channel}')
@@ -326,6 +331,10 @@ def remakeStarTrackerDay(*, dayObs,
                          forceMaxNum=None
                          ):
     """Remake all the star tracker plots for a given day.
+
+    TODO: This needs updating post-refactor, but can wait for another ticket
+    for now, as other work is required on the StarTracker side, and this will
+    fit well with doing that.
 
     Parameters
     ----------
@@ -351,6 +360,7 @@ def remakeStarTrackerDay(*, dayObs,
         Force the maximum seqNum to be this value. This is useful for remaking
         days from scratch or in full, rather than running as a catchup.
     """
+    raise NotImplementedError('This needs updating post-refactor')
     from .starTracker import StarTrackerChannel, getRawDataDirForDayObs
 
     if not logger:

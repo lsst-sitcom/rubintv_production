@@ -53,7 +53,7 @@ from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import writeMetadataShard, _expRecordToFilename, raiseIf
+from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 
@@ -109,7 +109,19 @@ MD_NAMES_MAP = {"id": 'Exposure id',
 class IsrRunner(BaseButlerChannel):
     """Class to run isr for each image that lands in the repo.
 
-    Runs isr via BestEffortIsr, and puts the result in the quickLook rerun.
+    Note: this is currently AuxTel-only.
+
+    Runs isr via BestEffortIsr, and puts the result in the quickLook
+    collection.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         self.bestEffort = BestEffortIsr(embargo=embargo)
@@ -124,6 +136,11 @@ class IsrRunner(BaseButlerChannel):
 
         Produce a quickLookExp of the latest image, and butler.put() it to the
         repo so that downstream processes can find and use it.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         dataId = expRecord.dataId
         quickLookExp = self.bestEffort.getExposure(dataId, detector=0)  # noqa: F841 - automatically puts
@@ -133,6 +150,17 @@ class IsrRunner(BaseButlerChannel):
 
 class ImExaminerChannel(BaseButlerChannel):
     """Class for running the ImExam channel on RubinTV.
+
+    Note: this is currently AuxTel-only.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
@@ -143,6 +171,15 @@ class ImExaminerChannel(BaseButlerChannel):
         self.detector = 0
 
     def _imExamine(self, exp, outputFilename):
+        """Run the imExam analysis on the exposure.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        outputFilename : `str`
+            The filename to save the plot to.
+        """
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
             self.log.warning(f"Skipping {outputFilename}")
             return
@@ -154,12 +191,17 @@ class ImExaminerChannel(BaseButlerChannel):
 
         Plot the quick imExam analysis of the latest image, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f'Running imexam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
+            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
 
             if not exp:
@@ -176,6 +218,15 @@ class ImExaminerChannel(BaseButlerChannel):
 
 class SpecExaminerChannel(BaseButlerChannel):
     """Class for running the SpecExam channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
 
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
@@ -187,6 +238,15 @@ class SpecExaminerChannel(BaseButlerChannel):
         self.detector = 0
 
     def _specExamine(self, exp, outputFilename):
+        """Run the specExam analysis on the exposure.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        outputFilename : `str`
+            The filename to save the plot to.
+        """
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile?
             self.log.warning(f"Skipping {outputFilename}")
             return
@@ -198,6 +258,11 @@ class SpecExaminerChannel(BaseButlerChannel):
 
         Plot the quick spectral reduction of the latest image, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
@@ -208,7 +273,7 @@ class SpecExaminerChannel(BaseButlerChannel):
 
             self.log.info(f'Running specExam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
+            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
@@ -224,6 +289,15 @@ class SpecExaminerChannel(BaseButlerChannel):
 
 class MonitorChannel(BaseButlerChannel):
     """Class for running the monitor channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
@@ -235,6 +309,15 @@ class MonitorChannel(BaseButlerChannel):
         self.detector = 0
 
     def _plotImage(self, exp, outputFilename):
+        """Plot the image.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        outputFilename : `str`
+            The filename to save the plot to.
+        """
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
             self.log.warning(f"Skipping {outputFilename}")
             return
@@ -245,12 +328,17 @@ class MonitorChannel(BaseButlerChannel):
 
         Plot the image for display on the monitor, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f'Generating monitor image for {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
+            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
@@ -266,6 +354,15 @@ class MonitorChannel(BaseButlerChannel):
 
 class MountTorqueChannel(BaseButlerChannel):
     """Class for running the mount torque channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         if not HAS_EFD_CLIENT:
@@ -284,6 +381,13 @@ class MountTorqueChannel(BaseButlerChannel):
     def writeMountErrorShard(self, errors, expRecord):
         """Write a metadata shard for the mount error, including the flag
         for coloring the cell based on the threshold values.
+
+        Parameters
+        ----------
+        errors : `tuple`
+            The mount errors, in the form (az_rms, el_rms, rot_rms).
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         dayObs = butlerUtils.getDayObs(expRecord)
         seqNum = butlerUtils.getSeqNum(expRecord)
@@ -307,11 +411,16 @@ class MountTorqueChannel(BaseButlerChannel):
 
         Plot the mount torques, pulling data from the EFD, writing the plot
         to a temp file, and upload it to Google cloud storage via the uploader.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tempFilename = tempfile.mktemp(suffix='.png')
-            uploadFilename = _expRecordToFilename(self.channelName, expRecord)
+            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
 
             # calculateMountErrors() calculates the errors, but also performs
             # the plotting.
@@ -333,6 +442,15 @@ class MountTorqueChannel(BaseButlerChannel):
 class MetadataCreator(BaseButlerChannel):
     """Class for creating metadata shards for RubinTV. Note the shards are
     merged and uploaded by a TimedMetadataServer, not this class.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
 
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
@@ -362,8 +480,6 @@ class MetadataCreator(BaseButlerChannel):
 
         Parameters
         ----------
-        butler : `lsst.daf.butler.Butler`
-            The butler.
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         keysToRemove : `list` [`str`]
@@ -428,6 +544,11 @@ class MetadataCreator(BaseButlerChannel):
         """Method called on each new expRecord as it is found in the repo.
 
         Add the metadata to the sidecar for the expRecord and upload.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         try:
             self.log.info(f'Writing metadata shard for {expRecord.dataId}')
@@ -444,6 +565,15 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
     Runs these tasks and writes shards with various measured quantities for
     upload to the table.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
@@ -518,6 +648,11 @@ class CalibrateCcdRunner(BaseButlerChannel):
         Runs on the quickLookExp and writes shards with various measured
         quantities, as calculated by the CharacterizeImageTask and
         CalibrateTask.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)

@@ -38,7 +38,7 @@ from dataclasses import dataclass
 
 __all__ = ['writeDataIdFile',
            'getGlobPatternForDataProduct',
-           '_expRecordToFilename',
+           'expRecordToUploadFilename',
            'getSiteConfig',
            'checkRubinTvExternalPackages',
            'raiseIf',
@@ -64,7 +64,22 @@ DATA_ID_TEMPLATE = os.path.join("{path}", "{dataProduct}_{expId}.json")
 
 
 def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
-    """
+    """Write a dataId file for a dataProduct to be consumed by a FileWatcher.
+
+    Note that the dataProduct can be any string, it need not be restricted to
+    dafButler dataProducts.
+
+    Parameters
+    ----------
+    dataIdPath : `str`
+        The path to write the dataId file to.
+    dataProduct : `str`
+        The data product to write the dataId file for.
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to write the dataId file for.
+    log : `logging.Logger`, optional
+        The logger to use. If provided, and info-level message is logged about
+    where what file was written.
     """
     expId = expRecord.id
     dayObs = expRecord.day_obs
@@ -77,15 +92,24 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
 
 
 def getGlobPatternForDataProduct(dataIdPath, dataProduct):
+    """Get a glob-style pattern for finding dataId files for a dataProduct.
+
+    Parameters
+    ----------
+    dataIdPath : `str`
+        The path find the dataIds in.
+    dataProduct : `str`
+        The data product to find the dataIds for.
+    """
     return DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId='*')
 
 
 @dataclass
 class FakeDataCoordinate:
-    """A minimal dataclass for passing to _expRecordToFilename.
+    """A minimal dataclass for passing to expRecordToUploadFilename.
 
-    _expRecordToFilename accesses seq_num and day_obs as properties rather than
-    dict items, so this dataclass exists to allow using the same naming
+    expRecordToUploadFilename accesses seq_num and day_obs as properties rather
+    than dict items, so this dataclass exists to allow using the same naming
     function when we do not have a real dataId.
     """
     seq_num: int
@@ -95,27 +119,27 @@ class FakeDataCoordinate:
         return(f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}")
 
 
-def _expRecordToFilename(channel, dataCoordinate, extension='.png', zeroPad=False):
-    """Convert a dataId to a filename, for use when uploading to a channel.
+def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
+    """Convert an expRecord to a filename, for use when uploading to a channel.
 
-    TODO: give this a better name and remove the leading underscore at a
-    minimum. Ideally this would be done as part of the work changing how files
-    are named in the bucket though.
+    Names the file in way the frontend app expects, zeropadding the seqNum if
+    ``zeroPad`` is set (because the All Sky Cam channel has zero-padded seqNums
+    but others do not).
 
     Parameters
     ----------
     channel : `str`
-        The name of the RubinTV channel
-    dataId : `dict`
-        The dataId
+        The name of the RubinTV channel.
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to convert to a filename.
 
     Returns
     -------
     filename : `str`
-        The filename
+        The filename.
     """
-    dayObs = dataCoordinate.day_obs
-    seqNum = dataCoordinate.seq_num
+    dayObs = expRecord.day_obs
+    seqNum = expRecord.seq_num
     dayObsStr = dayObsIntToString(dayObs)
     seqNumStr = f"{seqNum:05}" if zeroPad else str(seqNum)
     filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNumStr}{extension}"
@@ -301,15 +325,15 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
     Some packages which aren't distributed with any metapackage are required
     to run RubinTV. This function is used to check if they're present so
     that unprotected imports don't cause the package to fail to import. It also
-    allows checking in a singple place, given that all are necessary for
+    allows checking in a single place, given that all are necessary for
     RubinTV's running.
 
     Parameters
     ----------
     exitIfNotFound : `bool`
         Terminate execution if imports are not present? Useful in bin scripts.
-    logger : `logging.Log`
-        The logger used to warn is packages are not present.
+    logger : `logging.Logger`, optional
+        The logger used to warn if packages are not present.
     """
     if not logger:
         logger = logging.getLogger(__name__)
@@ -393,6 +417,8 @@ def writeMetadataShard(path, dayObs, mdDict):
 
     Parameters
     ----------
+    path : `str`
+        The path to write the file to.
     dayObs : `int`
         The dayObs.
     mdDict : `dict` of `dict`
@@ -472,7 +498,12 @@ def getShardedData(path,
                    timeout=5,
                    logger=None,
                    deleteAfterReading=False):
-    """Read back the data from all shards for a given dayObs and seqNum.
+    """Read back the sharded data for a given dayObs, seqNum, and dataset.
+
+    Looks for ``nExpected`` files in the directory ``path``, merges their
+    contents and returns the merged data. If ``nExpected`` files are not found
+    after ``timeout`` seconds, the items which have been found within the time
+    limit are merged and returned.
 
     Parameters
     ----------
@@ -485,7 +516,10 @@ def getShardedData(path,
     dataSetName : `str`
         The name of the data, e.g. 'perAmpNoise'
     nExpected : `int`
-        The number of expected items to wait for.
+        The number of expected items to wait for. Once ``nExpected`` files have
+        been collected, their contents are merged and returned immediately. If
+        ``nExpected`` items are not found after ``timeout`` seconds, the items
+        which have been found within the time limit are merged and returned.
     timeout : `float`, optional
         The timeout period after which to give up waiting for files to land.
     logger : `logging.Logger`, optional
@@ -496,7 +530,7 @@ def getShardedData(path,
     Returns
     -------
     data : `dict` of `dict`
-        The sharded data
+        The merged data.
     nFiles : `int`
         The number of shard files found and merged into ``data``.
 
@@ -521,7 +555,7 @@ def getShardedData(path,
                        f' for {dayObs=}-{seqNum=} but expected {nExpected}')
 
     if not files:
-        return None
+        return None, 0
 
     data = {}
     for dataShard in files:
@@ -530,7 +564,7 @@ def getShardedData(path,
         data.update(shard)
         if deleteAfterReading:
             os.remove(dataShard)
-    return data
+    return data, len(files)
 
 
 def isFileWorldWritable(filename):

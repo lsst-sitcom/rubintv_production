@@ -85,9 +85,10 @@ def writeBinnedImage(exp, outputPath, binSize):
     binSize : `int`
         The binning factor.
 
-    Note:
-        It would be easy to make this take images, it would just require
-        the detector name and expId to be passed in.
+    Notes
+    -----
+    It would be easy to make this take images rather than exposures, if needed,
+    it would just require the detector name and expId to be passed in.
     """
     if not isinstance(exp, afwImage.Exposure):
         raise ValueError(f"exp must be an Exposure, got {type(exp)}")
@@ -101,10 +102,6 @@ def writeBinnedImage(exp, outputPath, binSize):
 
 def readBinnedImage(expId, detectorName, outputPath, binSize):
     """Read a pre-binned image in from disk.
-
-    Sometimes the file is not yet written to disk, so optionally wait a maximum
-    of ``timeout`` seconds for it to arrive. If it doesn't appear in time,
-    return ``None``.
 
     Parameters
     ----------
@@ -127,20 +124,24 @@ def readBinnedImage(expId, detectorName, outputPath, binSize):
 
 
 class PreBinnedImageSource:
-    """A ImageSource for use in afw.cameraGeom.utils.showCamera
+    """An ImageSource for use in afw.cameraGeom.utils.showCamera
 
-    Reads in pre-binned images from disk.
+    Reads in pre-binned images from disk. Obviously, they must have already
+    been created elsewhere, and with the correct binning factor.
+
+    Parameters
+    ----------
+    expId : `int`
+        The exposure id.
+    dataPath : `str`
+        The path to the written files on disk.
+    binSize : `int`
+        The bin size.
     """
     isTrimmed = True  # required attribute camGeom.utils.showCamera(imageSource)
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
     def __init__(self, expId, dataPath, binSize):
-        """
-        dataPath : `str`
-            The path to the written files on disk.
-        binSize : `int`
-            The bin size.
-        """
         self.expId = expId
         self.dataPath = dataPath
         self.binSize = binSize
@@ -156,15 +157,41 @@ class PreBinnedImageSource:
 
 
 def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, logger=None):
-    """
+    """Make a binned mosaic image from a list of deferredDatasetRefs.
 
-    Tricks:
+    The binsize must match the binning used to write the images to disk
+    upstream. This is controlled by ``LocationConfig.binning``.
+
+    Parameters
+    ----------
+    deferredDatasetRefs : `list` of `lsst.daf.butler.DeferredDatasetRef`
+        List of deferredDatasetRefs to make the mosaic from.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera model, used for quick lookup of the detectors.
+    binSize : `int`
+        The binning factor.
+    dataPath : `str`
+        The path on disk to find the binned images.
+    timeout : `float`
+        The maximum time to wait for the images to land.
+    logger : `logging.Logger`, optional
+        The logger, created if not provided.
+
+    Returns
+    -------
+    result : `lsst.pipe.base.Struct`
+        A pipeBase struct containing the ``output_mosaic`` as an
+        `lsst.afw.image.Image`.
+
+    Notes
+    -----
+    Tricks used for speed:
         Pulling the detector names from a butler.get(component='detector')
         takes ~8s for 189 CCDs. Using the dRef.dataId['detector'] and getting
         the name from the camera is ~instant.
 
-        Create an ImageSource which reads the pre-binned image straight
-        from disk.
+        Create an ImageSource which reads the pre-binned image straight from
+        disk.
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -224,6 +251,22 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, logger=N
 def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
     """Check for existing binned image files and return the detector names
     for those with data.
+
+    Parameters
+    ----------
+    expId : `int`
+        The exposure id.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera.
+    dataPath : `str`
+        The path to the binned images.
+    binSize : `int`
+        The binning factor.
+
+    Returns
+    -------
+    existingNames : `list` of `str`
+        The detector names for which binned images exist.
     """
     detNames = [det.getName() for det in camera]
     existingNames = [detName for detName in detNames if
@@ -232,8 +275,37 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
 
 
 def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, timeout=5, logger=None):
+    """Save a full focal plane binned mosaic image for a given expId.
+
+    The binned images must have been created upstream with the correct binning
+    factor, as this uses a PreBinnedImageSource.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler.
+    expId : `int`
+        The exposure id.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera.
+    binSize : `int`
+        The binning factor.
+    dataPath : `str`
+        The path to the binned images.
+    savePlotAs : `str`
+        The filename to save the plot as.
+    timeout : `float`
+        The maximum time to wait for the images to land.
+    logger : `logging.Logger`, optional
+        The logger, created if not provided.
+
+    Returns
+    -------
+    existingNames : `list` of `str`
+        The detector names for which binned images exist.
+    """
     if not logger:
-        logger = logging.getLogger('lsst.rubintv.production.bot.utils.plotFocalPlaneMosaic')
+        logger = logging.getLogger('lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic')
 
     where = 'exposure=expId'
     # we hardcode "raw" here the per-CCD binned images are written out
@@ -256,6 +328,15 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, t
 
 
 def _plotFpMosaic(im, saveAs=''):
+    """Plot the focal plane mosaic, optionally saving as a png.
+
+    Parameters
+    ----------
+    im : `lsst.afw.image.Image`
+        The focal plane mosaiced image to render.
+    saveAs : `str`, optional
+        The filename to save the plot as.
+    """
     data = im.array
     plt.figure(figsize=(16, 16))
     ax = plt.gca()

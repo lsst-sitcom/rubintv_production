@@ -63,7 +63,7 @@ class BaseChannel(ABC):
 
 
 class BaseButlerChannel(BaseChannel):
-    """Base class for all channels."""
+    """Base class for all channels which use a Butler."""
 
     def __init__(self,
                  *,
@@ -91,12 +91,15 @@ class BaseButlerChannel(BaseChannel):
         raise NotImplementedError()
 
     def _waitForDataProduct(self, dataId, timeout=20):
-        """Wait for a dataProduct to land inside a repo, timing out in maxTime.
+        """Wait for a dataProduct to land inside a repo.
+
+        Wait for a maximum of ``timeout`` seconds for a dataProduct to land,
+        and returns the dataProduct if it does, or ``None`` if it doesn't.
 
         Parameters
         ----------
         dataId : `dict` or `lsst.daf.butler.DataCoordinate`
-            The dataId of the product to wait for.
+            The fully-qualified dataId of the product to wait for.
         timeout : `float`
             The timeout, in seconds, to wait before giving up and returning
             ``None``.

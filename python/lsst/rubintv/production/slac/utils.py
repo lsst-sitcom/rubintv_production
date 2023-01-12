@@ -23,8 +23,6 @@ import time
 from time import sleep
 import logging
 
-import lsst.afw.image as afwImage
-
 __all__ = ['fullAmpDictToPerCcdDicts',
            'getCamera',
            ]
@@ -62,6 +60,9 @@ def getCamera(butler, instrument):
 def fullAmpDictToPerCcdDicts(fullDict):
     """Split a single, flat dict of per-amp values by detector.
 
+    This function exists because some eo_pipe plotting utils expect the data
+    in this format.
+
     For example, a single dict like:
     {'R12_S01_C05': 123,
      'R12_S02_C06': 234,
@@ -78,7 +79,7 @@ def fullAmpDictToPerCcdDicts(fullDict):
     Parameters
     ----------
     fullDict : `dict` [`str`, `float`]
-        The flat input dict of per-amp values, keyed like 'R12_S01_C05': 123.
+        The flat input dict of per-amp values, keyed like 'R12_S01_C05': 123.4
 
     Returns
     -------
@@ -92,19 +93,6 @@ def fullAmpDictToPerCcdDicts(fullDict):
         detName, ampName = k.split('_C')
         dicts[detName]["C" + ampName] = v
     return dicts
-
-
-def getImageFromImageLike(obj):
-    """Get the afwImage.Image from an object which contains one.
-
-    TODO: delete this if it's not used by the end of this ticket.
-    """
-    if isinstance(obj, afwImage.Image):
-        return obj
-    elif hasattr(obj, 'image'):
-        return obj.image
-    else:
-        raise TypeError(f"Could not get image from {obj} with type {type(obj)}")
 
 
 def getDetectorsWithData(butler, expRecord, dataset):

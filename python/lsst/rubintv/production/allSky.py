@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from .utils import _expRecordToFilename, raiseIf, FakeDataCoordinate
+from .utils import expRecordToUploadFilename, raiseIf, FakeDataCoordinate
 from .uploaders import Uploader, Heartbeater
 
 try:
@@ -200,7 +200,7 @@ def _getSortedSubDirs(path):
 
 
 def _getFilesetFromDir(path, filetype='jpg'):
-    """Get an alphabetically sorted list of files of a given type from a dir.
+    """Get a set of the files of a given type from a dir.
 
     Parameters
     ----------
@@ -372,14 +372,14 @@ class DayAnimator():
 
     def convertFiles(self, files, forceRegen=False):
         """Convert a list of files using _convertJpgScale(), writing the
-        converted files to self.outputImageDir
+        converted files to self.outputImageDir.
 
         Parameters
         ----------
         files : `Iterable` of `str`
             The set of files to convert
         forceRegen : `bool`
-            Recreate the files even is they exist?
+            Recreate the files even if they exist?
 
         Returns
         -------
@@ -419,7 +419,7 @@ class DayAnimator():
 
         channel = 'all_sky_movies'
         fakeDataCoord = FakeDataCoordinate(seq_num=seqNum, day_obs=self.dayObsInt)
-        uploadAsFilename = _expRecordToFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
+        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
         if isFinal:
             uploadAsFilename = uploadAsFilename.replace('99999', 'final')
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
@@ -448,7 +448,7 @@ class DayAnimator():
         sourceFilename = self._getConvertedFilename(sourceFilename)
         seqNum = _seqNumFromFilename(sourceFilename)
         fakeDataCoord = FakeDataCoordinate(seq_num=seqNum, day_obs=self.dayObsInt)
-        uploadAsFilename = _expRecordToFilename(channel, fakeDataCoord, extension='.jpg', zeroPad=True)
+        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.jpg', zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:
             self.uploader.googleUpload(channel=channel,
@@ -465,7 +465,7 @@ class DayAnimator():
         `animationPeriod` has elapsed, a new movie is created containing all
         stills from that current day and is uploaded to GCS.
 
-        At the end of the day, any remaining images and converted, and a movie
+        At the end of the day, any remaining images are converted, and a movie
         is uploaded with the filename ending seqNum_final, which gets added
         to the historical all sky movies on the frontend.
 
@@ -546,12 +546,12 @@ class AllSkyMovieChannel():
 
     Parameters
     ----------
-    rootDataPath : `str`
-        The path to the all sky camera data directory, containing the
-        utYYMMDD directories.
-    outputRoot : `str`
-        The root path to write all outputs to. It need not exist, but must be
-         creatable with write privileges.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig containing the relevant path items:
+            ``allSkyRootDataPath`` : `str`
+            Where to find the per-day data direcories.
+            ``allSkyOutputPath`` : `str`
+            Where to write the processed images and movies to.
     doRaise `bool`
         Raise on error?
     """
@@ -607,7 +607,7 @@ class AllSkyMovieChannel():
         animator.run()
 
     def run(self):
-        """The main entry point - start running the all sky camera TV channels.
+        """The main entry point - start running the all sky camera TV channel.
         See class init docs for details.
 
         Notes

@@ -44,7 +44,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class Uploader():
-    """Class for handling uploads to the Google cloud storage bucket.
+    """Class for handling uploads to the Google Cloud Storage bucket.
     """
     HEARTBEAT_PREFIX = "heartbeats"
 
@@ -222,9 +222,9 @@ class Uploader():
 class Heartbeater():
     """A class for uploading heartbeats to the GCS bucket.
 
-    Call ``beater.beat()`` as often as you like. Files will only be uploaded
-    once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when calling
-    beat.
+    Call ``heartbeater.beat()`` as often as you like. Files will only be
+    uploaded once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when
+    calling beat.
 
     Parameters
     ----------

@@ -38,9 +38,23 @@ from .utils import fullAmpDictToPerCcdDicts, getCamera
 _LOG = logging.getLogger(__name__)
 
 
-def getNumExpectedItems(instrument):
-    """Very much just a placeholder once we have a way of knowing how many
-    detectors were read out for a given image.
+def getNumExpectedItems(instrument, expRecord):
+    """A placeholder function for getting the number of expected items.
+
+    For a given instrument, get the number of detectors which were read out or
+    for which we otherwise expect to have data for.
+
+    This method will be updated once we have a way of knowing, from the camera,
+    how many detectors were actually read out (the plan is the CCS writes a
+    JSON file with this info).
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument.
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record. This is currently unused, but will be used once
+    we are doing this properly.
     """
     if instrument == "LATISS":
         return 1
@@ -53,7 +67,22 @@ def getNumExpectedItems(instrument):
 
 
 class RawProcesser():
-    """
+    """Class for processing raw cleanroom data for RubinTV.
+
+    Currently, this class loads the raws, assembles them, and writes out a
+    binned image for use in the focal plane mosaic and data shard for the
+    per-amp noises.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    instrument : `str`
+        The instrument.
+    detectors : `int` or `list` [`int`]
+        The detector, or detectors, to process.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
     """
     def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
         if instrument not in ['LSST-TS8', 'LSSTCam']:
@@ -75,8 +104,10 @@ class RawProcesser():
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
-        Produce a quickLookExp of the latest image, and butler.put() it to the
-        repo so that downstream processes can find and use it.
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         # run isr, calculate any numbers you want here with the raw
         # put those into a json or pickle
@@ -119,6 +150,17 @@ class RawProcesser():
 
 class Plotter():
     """Channel for producing the plots for the cleanroom on RubinTv.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    instrument : `str`
+        The instrument.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
     """
     def __init__(self, butler, locationConfig, instrument, doRaise=False):
         self.locationConfig = locationConfig
@@ -135,13 +177,25 @@ class Plotter():
         self.doRaise = doRaise
 
     def plotNoises(self, expRecord):
+        """Create a focal plane heatmap of the per-amplifier noises as a png.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        filename : `str`
+            The filename the plot was saved to.
+        """
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         nExpected = getNumExpectedItems(self.instrument)
-        noises = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
-                                nExpected=nExpected,
-                                logger=self.log,
-                                deleteAfterReading=False)
+        noises, _ = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
+                                   nExpected=nExpected,
+                                   logger=self.log,
+                                   deleteAfterReading=False)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
@@ -161,6 +215,21 @@ class Plotter():
         return saveFile
 
     def plotFocalPlane(self, expRecord):
+        """Create a binned mosaic of the full focal plane as a png.
+
+        The binning factor is controlled via the locationConfig.binning
+        property.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        filename : `str`
+            The filename the plot was saved to.
+        """
         expId = expRecord.id
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
@@ -174,7 +243,12 @@ class Plotter():
         return saveFile
 
     def callback(self, expRecord):
-        """
+        """Method called on each new expRecord as it is found in the repo.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
         """
         self.log.info(f'Making plots for {expRecord.dataId}')
         dayObs = expRecord.day_obs

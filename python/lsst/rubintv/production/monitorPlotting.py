@@ -27,6 +27,17 @@ from lsst.summit.utils import quickSmooth
 
 
 def plotExp(exp, figure, saveFilename):
+    """Render and exposure as a png, saving it to saveFilename.
+
+    Parameters
+    ----------
+    exp : `lsst.afw.image.Exposure`
+        The exposure to plot.
+    figure : `matplotlib.figure.Figure`
+        The figure to use for plotting.
+    saveFilename : `str`
+        The filename to save the image to.
+    """
     data = quickSmooth(exp.image.array, 1)
     vmin = np.percentile(data, 1)
     vmax = np.percentile(data, 99)

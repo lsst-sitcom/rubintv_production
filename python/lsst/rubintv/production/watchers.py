@@ -44,8 +44,12 @@ class FileWatcher:
 
     Many of these can be instantiated per-location.
 
+    It is worth noting that the ``dataProduct`` to watch for need not be an
+    official dafButler dataset type. We can use FileWatchers to signal to any
+    downstream processing that something is finished and ready for consumption.
+
     Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds if
-    heartbeatChannelName is specified.
+    ``heartbeatChannelName`` is specified.
     """
     cadence = 1  # in seconds
 
@@ -73,6 +77,11 @@ class FileWatcher:
 
         If the most recent exposure is the same as the previous one, ``None``
         is returned.
+
+        Parameters
+        ----------
+        previousExpId : `int`, optional
+            The previous exposure id.
         """
         pattern = getGlobPatternForDataProduct(self.locationConfig.dataIdScanPath, self.dataProduct)
         files = glob(pattern)
@@ -94,6 +103,14 @@ class FileWatcher:
         return expRecord
 
     def run(self, callback):
+        """Run forever, calling ``callback`` on each most recent expRecord.
+
+        Parameters
+        ----------
+        callback : `callable`
+            The callback to run, with the most recent expRecord as the
+            argument.
+        """
         lastFound = None
         while True:
             try:
@@ -116,7 +133,7 @@ class FileWatcher:
 class ButlerWatcher:
     """A main watcher, which polls the butler for new data.
 
-    When a new expRecord is found it writes it out to a file so that it
+    When a new expRecord is found, it writes it out to a file so that it
     can be found by a FileWatcher, so that we can poll for new data without
     hammering the main repo with 201x ButlerWatchers.
 
@@ -126,8 +143,8 @@ class ButlerWatcher:
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
-    location : `str`
-        The location.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location config.
     dataProducts : `str` or `list` [`str`]
         The data products to watch for.
     doRaise : `bool`, optional

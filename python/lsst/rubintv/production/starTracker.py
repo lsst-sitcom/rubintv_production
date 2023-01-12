@@ -150,6 +150,18 @@ class StarTrackerWatcher():
 
     def _getLatestImageDataIdAndExpId(self):
         """Get the dataId and expId for the most recent image in the repo.
+
+        Returns
+        -------
+        latestFile : `str`
+            The filename of the most recent file or ``None`` is nothing is
+            found.
+        dayObs : ``
+            The dayObs of the ``latestFile`` or ``None`` is nothing is found.
+        seqNum : ``
+            The seqNum of the ``latestFile`` or ``None`` is nothing is found.
+        expId : ``
+            The expId of the ``latestFile`` or ``None`` is nothing is found.
         """
         currentDir = getCurrentRawDataDir(self.rootDataPath, self.wide)
         files = glob(os.path.join(currentDir, '*.fits'))
@@ -201,15 +213,15 @@ class StarTrackerChannel(BaseChannel):
 
     These channels are somewhat hybrid channels which serve both the raw
     images and their analyses. The metadata is also written as shards from
-    these channels, with the metadata server itself just functioning to collate
-    the shards and upload them.
+    these channels, with a TimedMetadataServer collating and uploading them
+    as a separate service.
 
     Parameters
     ----------
-    location : `str`
-        The location, for use with LocationConfig.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig containing the relevant paths.
     wide : `bool`
-        Do this for the wide or narrow camera?
+        Run the wide or narrow camera?
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
@@ -266,6 +278,13 @@ class StarTrackerChannel(BaseChannel):
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        filename : `str`
+            The filename.
         """
         _ifWide = ' wide' if self.wide else ''
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
@@ -299,6 +318,13 @@ class StarTrackerChannel(BaseChannel):
 
     def _getUploadFilename(self, channel, filename):
         """Calculate the filename to use for uploading.
+
+        Parameters
+        ----------
+        channel : `str`
+            The channel name.
+        filename : `str`
+            The filename.
         """
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         dayObsStr = dayObsIntToString(dayObs)
@@ -307,6 +333,13 @@ class StarTrackerChannel(BaseChannel):
 
     def runAnalysis(self, exp, filename):
         """Run the analysis and upload the results.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        filename : `str`
+            The filename.
         """
         _ifWide = ' wide' if self.wide else ''  # the string to append to md keys
         oldWcs = exp.getWcs()
@@ -382,6 +415,11 @@ class StarTrackerChannel(BaseChannel):
 
     def callback(self, filename):
         """Callback for the watcher, called when a new image lands.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename.
         """
         exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
         self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws

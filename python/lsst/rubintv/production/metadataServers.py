@@ -53,10 +53,12 @@ class TimedMetadataServer:
     exist, and each one goes to a different page on the web app, so this class
     must be told which set of files to be collating and uploading to which
     channel.
-    shardsDirectory : `str` name : `str`
-        The name of the server, used for heartbeating and log messages.
+    shardsDirectory : `str`
+        The directory to find the shards in, usually of the form
+        ``metadataDirectory`` + ``'/shards'``.
     channelName : `str`
-        The name of the channel to serve the metadata files to.
+        The name of the channel to serve the metadata files to, also used for
+        heartbeats.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
