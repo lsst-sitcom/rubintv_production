@@ -184,7 +184,7 @@ class ButlerWatcher:
 
         Returns
         -------
-        expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]
+        expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]  # noqa: W505
             A dict of the most recent exposure records, keyed by dataProduct.
         """
         expRecordDict = {}

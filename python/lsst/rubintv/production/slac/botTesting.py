@@ -191,7 +191,7 @@ class Plotter():
         """
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-        nExpected = getNumExpectedItems(self.instrument)
+        nExpected = getNumExpectedItems(self.instrument, expRecord)  # expRecord currently unused in function
         noises, _ = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
                                    nExpected=nExpected,
                                    logger=self.log,

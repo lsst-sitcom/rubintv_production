@@ -48,11 +48,11 @@ class TimedMetadataServer:
     metadataDirectory : `str`
         The name of the directory for which the metadata is being served. Note
         that this directory and the ``shardsDirectory`` are passed in because
-        although the ``LocationConfig`` holds all the location based path info (and
-        the name of the bucket to upload to), many directories containg shards
-        exist, and each one goes to a different page on the web app, so this class
-        must be told which set of files to be collating and uploading to which
-        channel.
+        although the ``LocationConfig`` holds all the location based path info
+        (and the name of the bucket to upload to), many directories containg
+        shards exist, and each one goes to a different page on the web app, so
+        this class must be told which set of files to be collating and
+        uploading to which channel.
     shardsDirectory : `str`
         The directory to find the shards in, usually of the form
         ``metadataDirectory`` + ``'/shards'``.
