@@ -184,41 +184,41 @@ class ButlerWatcher:
 
         Returns
         -------
-        expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord`]
+        expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]
             A dict of the most recent exposure records, keyed by dataProduct.
         """
         expRecordDict = {}
-
-        # this where clause is no longer necessary for speed now that we are
-        # using order_by and limit, but it now functions to restrict data to
-        # being inside the range where exposures could ever realistically be
-        # taken, as some simulated data is "taken" in the year 3000. We must
-        # also restrict the exposure.id specifically, as the day_obs seems to
-        # be set to this millenium, but the expIds are like 3YYYMMDDNNNNN.
-        where = ('exposure.day_obs>20200101 and exposure.day_obs<21000101'
-                 ' and exposure.id<2100010100001')
 
         for product in self.dataProducts:
             # NB if you list multiple products for datasets= then it will only
             # give expRecords for which all those products exist, so these must
             # be done as separate queries
-            records = self.butler.registry.queryDimensionRecords("exposure",
-                                                                 datasets=product,
-                                                                 where=where)
-            records.order_by('-exposure.id')  # the minus means descending ordering
+            records = self.butler.registry.queryDimensionRecords("exposure", datasets=product)
+
+            # we must sort using the timespan because:
+            # we can't use exposure.id because it is calculated differently
+            # for different instruments, e.g. TS8 is 10x bigger than AuxTel
+            # and also C-controller data has expIds like 3YYYMMDDNNNNN so would
+            # always be the "most recent".
+            records.order_by('-exposure.timespan.end')  # the minus means descending ordering
             records.limit(1)
-            expRecordDict[product] = list(records)[0]
+            records = list(records)
+            if len(records) != 1:
+                self.log.warning(f"Found {len(records)} records for {product}, expected 1")
+                expRecordDict[product] = None
+            else:
+                expRecordDict[product] = list(records)[0]
         return expRecordDict
 
     def run(self):
-        lastWrittenIds = {product: 0 for product in self.dataProducts}
+        lastWrittenIds = {product: None for product in self.dataProducts}
         while True:
             try:
                 # get the new records for all dataproducts
                 newRecords = self._getLatestExpRecords()
                 # work out which ones are actually new and only write those out
                 found = {product: expRecord for product, expRecord in newRecords.items()
-                         if expRecord.id != lastWrittenIds[product]}
+                         if expRecord is not None and expRecord.id != lastWrittenIds[product]}
 
                 if not found:  # only sleep when there's nothing new at all
                     sleep(self.cadence)
