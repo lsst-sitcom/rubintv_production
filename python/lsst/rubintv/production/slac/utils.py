@@ -119,6 +119,11 @@ def getDetectorsWithData(butler, expRecord, dataset):
 def waitForDataProduct(butler, expRecord, dataset, detector, timeout, cadence=1, logger=None):
     """Wait for a data product to appear in the butler.
 
+    TODO: unify this with the _waitForDataProduct() function which the
+    BaseButlerChannel has. This should be done as part of the same work which
+    makes (or doesn't make) these SLAC channels and utils inherit from the base
+    channels etc, once this part of the codebase has matured.
+
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
