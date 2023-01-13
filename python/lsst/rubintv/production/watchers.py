@@ -75,14 +75,14 @@ class FileWatcher:
         self.dataProduct = dataProduct
         self.doRaise = doRaise
         self.log = _LOG.getChild("fileWatcher")
-        self.doHeartbeat = False
+        self.heartbeatChannelName = heartbeatChannelName
         if heartbeatChannelName:
-            self.doHeartbeat = True
-            self.heartbeatChannelName = heartbeatChannelName  # currently unused
             self.heartbeater = Heartbeater(heartbeatChannelName,
                                            self.locationConfig.bucketName,
                                            self.HEARTBEAT_UPLOAD_PERIOD,
                                            self.HEARTBEAT_FLATLINE_PERIOD)
+        else:
+            self.heartbeater = None
 
     def getMostRecentExpRecord(self, previousExpId=None):
         """Get the most recent exposure record from the file system.
@@ -128,14 +128,14 @@ class FileWatcher:
             try:
                 expRecord = self.getMostRecentExpRecord(lastFound)
                 if expRecord is None:  # either there is nothing, or it is the same expId
-                    if self.doHeartbeat:
+                    if self.heartbeater is not None:
                         self.heartbeater.beat()
                     sleep(self.cadence)
                     continue
                 else:
                     lastFound = expRecord.id
                     callback(expRecord)
-                    if self.doHeartbeat:
+                    if self.heartbeater is not None:
                         self.heartbeater.beat()  # call after the callback so as not to delay processing
 
             except Exception as e:
@@ -235,4 +235,5 @@ class ButlerWatcher:
                     # self.heartbeater.beat()
 
             except Exception as e:
+                sleep(1)  # in case we are in a tight loop of raising, don't hammer the butler
                 raiseIf(self.doRaise, e, self.log)
