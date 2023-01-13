@@ -42,6 +42,8 @@ __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAll
 
 _LOG = logging.getLogger(__name__)
 
+SEQNUM_MAX = 99999
+
 
 def _createWritableDir(path):
     """Create a writeable directory with the specified path.
@@ -415,13 +417,13 @@ class DayAnimator():
         lastfile = files[-1]
         seqNum = _seqNumFromFilename(lastfile)
         if isFinal:
-            seqNum = 99999
+            seqNum = SEQNUM_MAX
 
         channel = 'all_sky_movies'
         fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
         uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
         if isFinal:
-            uploadAsFilename = uploadAsFilename.replace('99999', 'final')
+            uploadAsFilename = uploadAsFilename.replace(str(SEQNUM_MAX), 'final')
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
         self.log.info(f"Creating movie from {self.outputImageDir} as {creationFilename}...")
         if not self.DRY_RUN:
