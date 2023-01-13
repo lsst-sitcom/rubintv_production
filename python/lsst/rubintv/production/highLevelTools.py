@@ -29,7 +29,7 @@ from lsst.utils import getPackageDir
 from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler, getExpRecordFromDataId
 from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from .channels import CHANNELS, PREFIXES
-from .utils import expRecordToUploadFilename, LocationConfig, FakeDataCoordinate
+from .utils import expRecordToUploadFilename, LocationConfig, FakeExposureRecord
 from .uploaders import Uploader
 
 __all__ = ['getPlotSeqNumsForDayObs',
@@ -306,7 +306,7 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
     seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)
     newSeqNum = max(seqNums) + 1
 
-    mockDataCoord = FakeDataCoordinate(seq_num=newSeqNum, day_obs=recentDay)
+    mockDataCoord = FakeExposureRecord(seq_num=newSeqNum, day_obs=recentDay)
     testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
     uploadAs = expRecordToUploadFilename(channel, mockDataCoord)
     uploader = Uploader(bucketName)

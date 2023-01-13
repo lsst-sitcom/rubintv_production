@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from .utils import expRecordToUploadFilename, raiseIf, FakeDataCoordinate
+from .utils import expRecordToUploadFilename, raiseIf, FakeExposureRecord
 from .uploaders import Uploader, Heartbeater
 
 try:
@@ -418,7 +418,7 @@ class DayAnimator():
             seqNum = 99999
 
         channel = 'all_sky_movies'
-        fakeDataCoord = FakeDataCoordinate(seq_num=seqNum, day_obs=self.dayObsInt)
+        fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
         uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
         if isFinal:
             uploadAsFilename = uploadAsFilename.replace('99999', 'final')
@@ -447,7 +447,7 @@ class DayAnimator():
         sourceFilename = sorted(convertedFiles)[-1]
         sourceFilename = self._getConvertedFilename(sourceFilename)
         seqNum = _seqNumFromFilename(sourceFilename)
-        fakeDataCoord = FakeDataCoordinate(seq_num=seqNum, day_obs=self.dayObsInt)
+        fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
         uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.jpg', zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:

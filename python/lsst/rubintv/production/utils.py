@@ -105,7 +105,7 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct):
 
 
 @dataclass
-class FakeDataCoordinate:
+class FakeExposureRecord:
     """A minimal dataclass for passing to expRecordToUploadFilename.
 
     expRecordToUploadFilename accesses seq_num and day_obs as properties rather
