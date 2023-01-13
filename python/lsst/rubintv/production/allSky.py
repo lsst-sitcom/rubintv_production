@@ -637,8 +637,8 @@ class AllSkyMovieChannel():
                 elif mostRecentDir > todaysDataDir:
                     raise RuntimeError('Running in the past but mode is not historical')
             except Exception as e:
-                msg = "Error processing all sky data:\n"
-                msg += f"mostRecentDir: {mostRecentDir}\n"
-                msg += f"todaysDataDir: {todaysDataDir}\n"
-                msg += f"dayObsInt: {dayObsInt}\n"
+                msg = ("Error processing all sky data:\n"
+                       f"mostRecentDir: {mostRecentDir}\n"
+                       f"todaysDataDir: {todaysDataDir}\n"
+                       f"dayObsInt: {dayObsInt}\n")
                 raiseIf(self.doRaise, e, self.log, msg)
