@@ -29,3 +29,7 @@ from .catchupService import *
 from .channels import *
 from .watchers import *
 from .metadataServers import *
+from .uploaders import *
+from .allSky import *
+from .baseChannels import *
+from .starTracker import *
