@@ -79,7 +79,7 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
         The exposure record to write the dataId file for.
     log : `logging.Logger`, optional
         The logger to use. If provided, and info-level message is logged about
-    where what file was written.
+        where what file was written.
     """
     expId = expRecord.id
     dayObs = expRecord.day_obs
@@ -166,7 +166,18 @@ class LocationConfig:
         self._config
 
     def _checkDir(self, dirName: str, createIfMissing=True) -> None:
-        """
+        """Check that a directory exists, optionally creating if it does not.
+
+        Parameters
+        ----------
+        dirName : `str`
+            The directory to check.
+        createIfMissing : `bool`, optional
+            If True, create the directory if it does not exist.
+
+        Raises
+            RuntimeError: raised if the directory does not exist and could not
+            be created.
 
         TODO: Add a check for being world-writable here, and make the dir
         creation chmod to 777.
@@ -182,7 +193,15 @@ class LocationConfig:
             raise RuntimeError(msg)
 
     def _checkFile(self, filename):
-        """
+        """Check that a file exists.
+
+        Parameters
+        ----------
+        filename : `str`
+            The file to check.
+
+        Raises
+            RuntimeError: raised if the file does not exist.
         """
         if not os.path.isfile(filename):
             raise RuntimeError(f'Could not find file {filename}')
@@ -313,6 +332,18 @@ class LocationConfig:
 
 
 def getSiteConfig(site='summit'):
+    """Get the site configuration, given a site name.
+
+    Parameters
+    ----------
+    site : `str`, optional
+        The site. If not provided, the default is 'summit'.
+
+    Returns
+    -------
+    config : `dict`
+        The configuration, as a dict.
+    """
     packageDir = getPackageDir('rubintv_production')
     configFile = os.path.join(packageDir, 'config', f'config_{site}.yaml')
     config = yaml.safe_load(open(configFile, "rb"))

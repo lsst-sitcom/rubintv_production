@@ -54,7 +54,7 @@ def getNumExpectedItems(instrument, expRecord):
         The instrument.
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record. This is currently unused, but will be used once
-    we are doing this properly.
+        we are doing this properly.
     """
     if instrument == "LATISS":
         return 1
@@ -104,19 +104,19 @@ class RawProcesser():
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
+        Current behaviour is to:
+            Load the raw
+            Assemble the image
+            Calculate the std dev of each amp
+            Write these std devs out as sharded data
+            Write a binned image out according to locationConfig.binning
+
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
-        # run isr, calculate any numbers you want here with the raw
-        # put those into a json or pickle
-        # maybe create a thumbnail, or actually just the binned raw image
-        # and the scaling of it, so that it can be assembled into a focal
-        # plane thumbnail
 
-        # write out to the scratch space with the necessary info in the
-        # filename for downstream processing to pick it up.
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 

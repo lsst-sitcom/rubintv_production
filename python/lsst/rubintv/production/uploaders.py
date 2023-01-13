@@ -120,7 +120,7 @@ class Uploader():
             The full path and filename of the file to upload.
         isLiveFile : `bool`, optional
             The file is being updated constantly, and so caching should be
-        disabled.
+            disabled.
         isLargeFile : `bool`, optional
             The file is large, so add a longer timeout to the upload.
 
@@ -179,7 +179,7 @@ class Uploader():
             Optionally rename the file to this upon upload.
         isLiveFile : `bool`, optional
             The file is being updated constantly, and so caching should be
-        disabled.
+            disabled.
         isLargeFile : `bool`, optional
             The file is large, so add a longer timeout to the upload.
 

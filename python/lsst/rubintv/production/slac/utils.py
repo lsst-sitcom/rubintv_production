@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import time
-from time import sleep
 import logging
 
 __all__ = ['fullAmpDictToPerCcdDicts',
@@ -154,7 +153,7 @@ def waitForDataProduct(butler, expRecord, dataset, detector, timeout, cadence=1,
             product = butler.get(dataset, expRecord.dataId, detector=detector)
             return product
         except LookupError:
-            sleep(cadence)
+            time.sleep(cadence)
 
     if not logger:
         logger = logging.logger('lsst.rubintv.production.slac.utils.waitForDataProduct')

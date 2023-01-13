@@ -58,7 +58,7 @@ def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
     ----------
     deferredDatasetRefs : `lsst.daf.butler.DeferredDatasetRef` or
                           `list` [`lsst.daf.butler.DeferredDatasetRef`]
-        The dataRef(s)
+        The dataRef(s).
     outputPath : `str`
         The path on disk to write the binned images to.
     binSize : `int`
@@ -100,7 +100,7 @@ def writeBinnedImage(exp, outputPath, binSize):
     binnedImage.writeFits(outFilename)
 
 
-def readBinnedImage(expId, detectorName, outputPath, binSize):
+def readBinnedImage(expId, detectorName, dataPath, binSize):
     """Read a pre-binned image in from disk.
 
     Parameters
@@ -109,7 +109,7 @@ def readBinnedImage(expId, detectorName, outputPath, binSize):
         The exposure id.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
-    outputPath : `str`
+    dataPath : `str`
         The path on disk to find the pre-binned images.
     binSize : `int`
         The binning factor.
@@ -119,7 +119,7 @@ def readBinnedImage(expId, detectorName, outputPath, binSize):
     image : `lsst.afw.image.ImageF`
         The binned image.
     """
-    filename = getBinnedFilename(expId, detectorName, outputPath, binSize)
+    filename = getBinnedFilename(expId, detectorName, dataPath, binSize)
     return afwImage.ImageF(filename)
 
 

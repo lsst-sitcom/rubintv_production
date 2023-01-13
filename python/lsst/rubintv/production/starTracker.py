@@ -153,14 +153,14 @@ class StarTrackerWatcher():
 
         Returns
         -------
-        latestFile : `str`
+        latestFile : `str` or `None`
             The filename of the most recent file or ``None`` is nothing is
             found.
-        dayObs : ``
+        dayObs : `int` or `None`
             The dayObs of the ``latestFile`` or ``None`` is nothing is found.
-        seqNum : ``
+        seqNum : `int` or `None`
             The seqNum of the ``latestFile`` or ``None`` is nothing is found.
-        expId : ``
+        expId : `int` or `None`
             The expId of the ``latestFile`` or ``None`` is nothing is found.
         """
         currentDir = getCurrentRawDataDir(self.rootDataPath, self.wide)

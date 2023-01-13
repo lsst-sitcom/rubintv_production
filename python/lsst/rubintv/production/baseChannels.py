@@ -36,7 +36,19 @@ __all__ = [
 
 
 class BaseChannel(ABC):
-    """Base class for all channels."""
+    """Base class for all channels.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration to use.
+    log : `logging.Logger`
+        The logger to use.
+    watcher : `lsst.rubintv.production.watchers.FileWatcher`
+        The file watcher to use.
+    doRaise : `bool`
+        If ``True``, raise exceptions. If ``False``, log them.
+    """
 
     def __init__(self, *,
                  locationConfig,
@@ -52,7 +64,16 @@ class BaseChannel(ABC):
 
     @abstractmethod
     def callback(self, arg, /):
-        # arg is a position only arg, usually a dataId dict
+        """The callback function, called as each new value of arg is found.
+
+        ``arg`` is usually an exposure record, but can be, for example, a
+        filename.
+
+        Parameters
+        ----------
+        arg : `any`
+            The argument to run the callback with.
+        """
         raise NotImplementedError()
 
     def run(self):
@@ -63,7 +84,21 @@ class BaseChannel(ABC):
 
 
 class BaseButlerChannel(BaseChannel):
-    """Base class for all channels which use a Butler."""
+    """Base class for all channels that use a Butler.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration to use.
+    butler : `lsst.daf.butler.Butler`
+        The Butler to use.
+    dataProduct : `str`
+        The dataProduct to watch for.
+    channelName : `str`
+        The name of the channel, used for uploads and logging.
+    doRaise : `bool`
+        If ``True``, raise exceptions. If ``False``, log them.
+    """
 
     def __init__(self,
                  *,

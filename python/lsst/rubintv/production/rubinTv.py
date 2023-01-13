@@ -624,6 +624,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         Returns
         -------
         loader : `lsst.meas.algorithms.ReferenceObjectLoader`
+            The object loader.
         """
         refs = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
         # generator not guaranteed to yield in the same order every iteration

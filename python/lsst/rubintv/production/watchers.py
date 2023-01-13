@@ -50,6 +50,18 @@ class FileWatcher:
 
     Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds if
     ``heartbeatChannelName`` is specified.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration to use.
+    dataProduct : `str`
+        The data product to watch for.
+    heartbeatChannelName : `str`, optional
+        The name of the channel to use when uploading heartbeats. If one is not
+        provided, no heartbeats are sent.
+    doRaise : `bool`, optional
+        If ``True``, raise exceptions. If ``False``, log them.
     """
     cadence = 1  # in seconds
 
