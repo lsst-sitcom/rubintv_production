@@ -119,7 +119,7 @@ def dayObsSeqNumFromFilename(filename):
     return dayObs, seqNum
 
 
-class StarTrackerWatcher():
+class StarTrackerWatcher:
     """Class for continuously watching for new files landing in the directory.
     Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds.
 

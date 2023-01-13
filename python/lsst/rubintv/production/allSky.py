@@ -274,7 +274,7 @@ def cleanupAllSkyIntermediates(logger=None):
     bucket.delete_blobs(non_final_blobs)
 
 
-class DayAnimator():
+class DayAnimator:
     """A class for creating all sky camera stills and animations for a single
     specified day.
 
@@ -528,7 +528,7 @@ class DayAnimator():
                 return
 
 
-class AllSkyMovieChannel():
+class AllSkyMovieChannel:
     """Class for running the All Sky Camera channels on RubinTV.
 
     Throughout the day/night it monitors the rootDataPath for new directories.

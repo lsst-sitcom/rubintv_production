@@ -54,7 +54,7 @@ _LOG = logging.getLogger(__name__)
 #      quick enough that nothing is ever missed.
 
 
-class RubinTvBackgroundService():
+class RubinTvBackgroundService:
     """Sits in the background, performing catchups, and performs a specific end
     of day action when the day rolls over.
 
@@ -187,10 +187,9 @@ class RubinTvBackgroundService():
             self.log.info(f"Producing quickLookExp for {dataId}")
             try:
                 exp = self.bestEffort.getExposure(dataId)
+                del exp
             except ConflictingDefinitionError:
                 pass
-            finally:
-                del exp
 
     def catchupMountTorques(self):
         """Create and upload any missing mount torque plots for the current

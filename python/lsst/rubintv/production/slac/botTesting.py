@@ -66,7 +66,7 @@ def getNumExpectedItems(instrument, expRecord):
         raise ValueError(f"Unknown instrument {instrument}")
 
 
-class RawProcesser():
+class RawProcesser:
     """Class for processing raw cleanroom data for RubinTV.
 
     Currently, this class loads the raws, assembles them, and writes out a
@@ -148,7 +148,7 @@ class RawProcesser():
         self.watcher.run(self.callback)
 
 
-class Plotter():
+class Plotter:
     """Channel for producing the plots for the cleanroom on RubinTv.
 
     Parameters

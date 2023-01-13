@@ -43,7 +43,7 @@ __all__ = [
 _LOG = logging.getLogger(__name__)
 
 
-class Uploader():
+class Uploader:
     """Class for handling uploads to the Google Cloud Storage bucket.
     """
     HEARTBEAT_PREFIX = "heartbeats"
@@ -219,7 +219,7 @@ class Uploader():
         return blob
 
 
-class Heartbeater():
+class Heartbeater:
     """A class for uploading heartbeats to the GCS bucket.
 
     Call ``heartbeater.beat()`` as often as you like. Files will only be
