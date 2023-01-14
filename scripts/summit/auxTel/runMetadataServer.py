@@ -19,17 +19,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.allSky import AllSkyMovieChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+import sys
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
-
-config = getSiteConfig()
-rootDataPath = config.get('allSkyRootDataPath')
-outputRoot = config.get('allSkyOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
 
-print('Running allSky channel...')
-allSky = AllSkyMovieChannel(rootDataPath, outputRoot)
-allSky.run()
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running AuxTel metadata server at {location}...')
+
+metadataDirectory = locationConfig.auxTelMetadataPath
+shardsDirectory = locationConfig.auxTelMetadataShardPath
+channelName = 'auxtel_metadata'
+
+auxTelMetadataServer = TimedMetadataServer(locationConfig=locationConfig,
+                                           metadataDirectory=metadataDirectory,
+                                           shardsDirectory=shardsDirectory,
+                                           channelName=channelName)
+auxTelMetadataServer.run()

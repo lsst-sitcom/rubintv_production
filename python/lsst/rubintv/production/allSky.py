@@ -29,8 +29,8 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from lsst.rubintv.production import Uploader, Heartbeater
-from lsst.rubintv.production.rubinTv import _dataIdToFilename
+from .utils import expRecordToUploadFilename, raiseIf, FakeExposureRecord
+from .uploaders import Uploader, Heartbeater
 
 try:
     from google.cloud import storage
@@ -41,6 +41,8 @@ except ImportError:
 __all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAllSkyIntermediates']
 
 _LOG = logging.getLogger(__name__)
+
+SEQNUM_MAX = 99999
 
 
 def _createWritableDir(path):
@@ -200,7 +202,7 @@ def _getSortedSubDirs(path):
 
 
 def _getFilesetFromDir(path, filetype='jpg'):
-    """Get an alphabetically sorted list of files of a given type from a dir.
+    """Get a set of the files of a given type from a dir.
 
     Parameters
     ----------
@@ -272,7 +274,7 @@ def cleanupAllSkyIntermediates(logger=None):
     bucket.delete_blobs(non_final_blobs)
 
 
-class DayAnimator():
+class DayAnimator:
     """A class for creating all sky camera stills and animations for a single
     specified day.
 
@@ -300,6 +302,8 @@ class DayAnimator():
         The uploader for sending images and movies to GCS.
     channel : `str`
         The name of the channel. Must match a channel name in rubinTv.py.
+    bucketName : `str`
+        The name of the GCS bucket to upload to.
     historical : `bool`, optional
         Is this historical or live data?
     """
@@ -318,6 +322,7 @@ class DayAnimator():
                  outputMovieDir,
                  uploader,
                  channel,
+                 bucketName,
                  historical=False):
         self.dayObsInt = dayObsInt
         self.todaysDataDir = todaysDataDir
@@ -328,6 +333,7 @@ class DayAnimator():
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
@@ -368,14 +374,14 @@ class DayAnimator():
 
     def convertFiles(self, files, forceRegen=False):
         """Convert a list of files using _convertJpgScale(), writing the
-        converted files to self.outputImageDir
+        converted files to self.outputImageDir.
 
         Parameters
         ----------
         files : `Iterable` of `str`
             The set of files to convert
         forceRegen : `bool`
-            Recreate the files even is they exist?
+            Recreate the files even if they exist?
 
         Returns
         -------
@@ -409,15 +415,15 @@ class DayAnimator():
         """
         files = sorted(_getFilesetFromDir(self.outputImageDir))
         lastfile = files[-1]
+        seqNum = _seqNumFromFilename(lastfile)
         if isFinal:
-            seqNumStr = 'final'
-        else:
-            seqNum = _seqNumFromFilename(lastfile)
-            seqNumStr = f"{seqNum:05}"
+            seqNum = SEQNUM_MAX
 
         channel = 'all_sky_movies'
-        fakeDataId = {'day_obs': self.dayObsInt, 'seq_num': seqNumStr}
-        uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.mp4')
+        fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
+        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
+        if isFinal:
+            uploadAsFilename = uploadAsFilename.replace(str(SEQNUM_MAX), 'final')
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
         self.log.info(f"Creating movie from {self.outputImageDir} as {creationFilename}...")
         if not self.DRY_RUN:
@@ -443,9 +449,8 @@ class DayAnimator():
         sourceFilename = sorted(convertedFiles)[-1]
         sourceFilename = self._getConvertedFilename(sourceFilename)
         seqNum = _seqNumFromFilename(sourceFilename)
-        seqNumStr = f"{seqNum:05}"
-        fakeDataId = {'day_obs': self.dayObsInt, 'seq_num': seqNumStr}
-        uploadAsFilename = _dataIdToFilename(channel, fakeDataId, extension='.jpg')
+        fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
+        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.jpg', zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:
             self.uploader.googleUpload(channel=channel,
@@ -462,7 +467,7 @@ class DayAnimator():
         `animationPeriod` has elapsed, a new movie is created containing all
         stills from that current day and is uploaded to GCS.
 
-        At the end of the day, any remaining images and converted, and a movie
+        At the end of the day, any remaining images are converted, and a movie
         is uploaded with the filename ending seqNum_final, which gets added
         to the historical all sky movies on the frontend.
 
@@ -523,7 +528,7 @@ class DayAnimator():
                 return
 
 
-class AllSkyMovieChannel():
+class AllSkyMovieChannel:
     """Class for running the All Sky Camera channels on RubinTV.
 
     Throughout the day/night it monitors the rootDataPath for new directories.
@@ -543,28 +548,29 @@ class AllSkyMovieChannel():
 
     Parameters
     ----------
-    rootDataPath : `str`
-        The path to the all sky camera data directory, containing the
-        utYYMMDD directories.
-    outputRoot : `str`
-        The root path to write all outputs to. It need not exist, but must be
-         creatable with write privileges.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig containing the relevant path items:
+            ``allSkyRootDataPath`` : `str`
+            Where to find the per-day data direcories.
+            ``allSkyOutputPath`` : `str`
+            Where to write the processed images and movies to.
     doRaise `bool`
         Raise on error?
     """
 
-    def __init__(self, rootDataPath, outputRoot, doRaise=False):
-        self.uploader = Uploader()
+    def __init__(self, locationConfig, doRaise=False):
+        self.locationConfig = locationConfig
+        self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
         self.doRaise = doRaise
 
-        self.rootDataPath = rootDataPath
-        if not os.path.exists(rootDataPath):
-            raise RuntimeError(f"Root data path {rootDataPath} not found")
+        self.rootDataPath = self.locationConfig.allSkyRootDataPath
+        if not os.path.exists(self.rootDataPath):
+            raise RuntimeError(f"Root data path {self.rootDataPath} not found")
 
-        self.outputRoot = outputRoot
-        _createWritableDir(outputRoot)
+        self.outputRoot = self.locationConfig.allSkyOutputPath
+        _createWritableDir(self.outputRoot)
 
     def getCurrentRawDataDir(self):
         """Get the raw data dir corresponding to the current dayObs.
@@ -598,11 +604,12 @@ class AllSkyMovieChannel():
                                outputImageDir=outputJpgDir,
                                outputMovieDir=outputMovieDir,
                                uploader=self.uploader,
-                               channel=self.channel,)
+                               channel=self.channel,
+                               bucketName=self.locationConfig.bucketName,)
         animator.run()
 
     def run(self):
-        """The main entry point - start running the all sky camera TV channels.
+        """The main entry point - start running the all sky camera TV channel.
         See class init docs for details.
 
         Notes
@@ -630,10 +637,8 @@ class AllSkyMovieChannel():
                 elif mostRecentDir > todaysDataDir:
                     raise RuntimeError('Running in the past but mode is not historical')
             except Exception as e:
-                if self.doRaise:
-                    raise RuntimeError from e
-                else:
-                    info = f"mostRecentDir: {mostRecentDir}\n"
-                    info += f"todaysDataDir: {todaysDataDir}\n"
-                    info += f"dayObsInt: {dayObsInt}\n"
-                    self.log.warning(f"Error processing all sky data: caught {repr(e)}. Info: {info}")
+                msg = ("Error processing all sky data:\n"
+                       f"mostRecentDir: {mostRecentDir}\n"
+                       f"todaysDataDir: {todaysDataDir}\n"
+                       f"dayObsInt: {dayObsInt}\n")
+                raiseIf(self.doRaise, e, self.log, msg)

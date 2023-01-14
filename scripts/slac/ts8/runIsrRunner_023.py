@@ -19,12 +19,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.rubinTv import SpecExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-print('Running spec examiner...')
-specExaminer = SpecExaminerChannel()
-specExaminer.run()
+print('Running raw processor for detector 23...')
+
+location = 'slac'
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            locationConfig=locationConfig,
+                            instrument='LSST-TS8',
+                            detectors=23,
+                            doRaise=True)
+rawProcessor.run()

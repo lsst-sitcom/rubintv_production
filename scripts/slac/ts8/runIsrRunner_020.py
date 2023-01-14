@@ -19,23 +19,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.catchupService import RubinTvBackgroundService
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-config = getSiteConfig()
-allSkyPngRoot = config.get('allSkyOutputRoot')
-moviePngRoot = config.get('moviePngRoot')
-metadataOutputRoot = config.get('metadataOutputRoot')
-
 setupLogging()
-checkRubinTvExternalPackages()
+print('Running raw processor for detector 20...')
 
-print('Running RubinTV background catchup service...')
-# TODO: change dryRunForDeletion for deployment, but test like this first
-backgroundService = RubinTvBackgroundService(allSkyPngRoot=allSkyPngRoot,
-                                             moviePngRoot=moviePngRoot,
-                                             metadataOutputRoot=metadataOutputRoot,
-                                             doRaise=False,
-                                             )
-backgroundService.run()
+location = 'slac'
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            locationConfig=locationConfig,
+                            instrument='LSST-TS8',
+                            detectors=20,
+                            doRaise=True)
+rawProcessor.run()

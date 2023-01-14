@@ -18,28 +18,17 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import sys
 from lsst.rubintv.production.starTracker import StarTrackerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
-from lsst.summit.utils.utils import setupLogging, getSite
-
-try:
-    site = getSite()
-except ValueError:  # raised when it can't be found, as is the case for the summit
-    site = 'summit'
-
-config = getSiteConfig(site=site)
-rootDataPath = config.get('starTrackerDataPath')
-metadataRoot = config.get('starTrackerMetadataRoot')
-outputRoot = config.get('starTrackerOutputRoot')
-astrometryNetRefCatRoot = config.get('astrometryNetRefCatRoot')
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running star tracker channel...')
-starTracker = StarTrackerChannel(rootDataPath=rootDataPath,
-                                 outputRoot=outputRoot,
-                                 metadataRoot=metadataRoot,
-                                 astrometryNetRefCatRoot=astrometryNetRefCatRoot,
-                                 wide=False,
-                                 )
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running star tracker channel at {location}...')
+starTracker = StarTrackerChannel(locationConfig=locationConfig,
+                                 wide=True)
 starTracker.run()

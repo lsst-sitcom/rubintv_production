@@ -61,13 +61,13 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
 
     Parameters
     ----------
-    dataId : `dict`
-        The dataId for quich to plot the mount torques.
+    dataId : `dict` or `lsst.daf.butler.DataCoordinate`
+        The dataId for which to plot the mount torques.
     butler : `lsst.daf.butler.Butler`
         The butler to use to retrieve the image metadata.
     client : `lsst_efd_client.Client`
         The EFD client to retrieve the mount torques.
-    figure : `matplotlib.Figure`
+    figure : `matplotlib.figure.Figure`
         A matplotlib figure to re-use. Necessary to pass this in to prevent an
         ever-growing figure count and the ensuing memory leak.
     saveFilename : `str`

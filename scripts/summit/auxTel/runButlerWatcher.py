@@ -1,3 +1,4 @@
+
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -19,20 +20,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.starTracker import StarTrackerMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
-from lsst.summit.utils.utils import setupLogging, getSite
-
-try:
-    site = getSite()
-except ValueError:  # raised when it can't be found, as is the case for the summit
-    site = 'summit'
-
-config = getSiteConfig(site=site)
-metadataRoot = config.get('starTrackerMetadataRoot')
+import sys
+from lsst.rubintv.production import ButlerWatcher
+import lsst.summit.utils.butlerUtils as butlerUtils
+from lsst.rubintv.production.utils import LocationConfig
+from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-print('Running star tracker metadata server...')
-starTrackerMetadata = StarTrackerMetadataServer(metadataRoot=metadataRoot)
-starTrackerMetadata.run()
+
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running butler watcher at {location}...')
+butler = butlerUtils.makeDefaultLatissButler()
+dataProducts = ['raw', 'quickLookExp']
+butlerWatcher = ButlerWatcher(locationConfig, butler, dataProducts, True)
+butlerWatcher.run()

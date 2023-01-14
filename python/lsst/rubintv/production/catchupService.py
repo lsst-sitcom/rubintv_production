@@ -20,20 +20,25 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
-import copy
 import time
 from time import sleep
 import logging
 import shutil
 import json
 
+from lsst.daf.butler.registry import ConflictingDefinitionError
+
 from lsst.summit.utils.bestEffort import BestEffortIsr
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
-from .rubinTv import Uploader, Heartbeater, MetadataServer
-from lsst.rubintv.production.allSky import cleanupAllSkyIntermediates
-from lsst.rubintv.production.utils import remakeDay, isDayObsContiguous
+
+from .rubinTv import MetadataCreator
+from .uploaders import Uploader, Heartbeater
+from .allSky import cleanupAllSkyIntermediates
+from .highLevelTools import remakeDay
+from .utils import isDayObsContiguous, raiseIf
+from .metadataServers import TimedMetadataServer
 
 __all__ = ['RubinTvBackgroundService']
 
@@ -49,7 +54,7 @@ _LOG = logging.getLogger(__name__)
 #      quick enough that nothing is ever missed.
 
 
-class RubinTvBackgroundService():
+class RubinTvBackgroundService:
     """Sits in the background, performing catchups, and performs a specific end
     of day action when the day rolls over.
 
@@ -62,15 +67,10 @@ class RubinTvBackgroundService():
 
     Parameters
     ----------
-    allSkyPngRoot : `str`
-        The path at which the all sky movie channel is writing its images to.
-    moviePngRoot : `str`
-        The root path to write all pngs and movies to. It need not exist,
-        but must be creatable with write privileges.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig containing all the necessary paths.
     doRaise : `bool`
         Raise on error?
-    **kwargs
-        Additional keyword arguments passed to ``BestEffortIsr`` instantiation.
     """
     catchupPeriod = 300  # in seconds, so 5 mins
     loopSleep = 30
@@ -81,44 +81,25 @@ class RubinTvBackgroundService():
     HEARTBEAT_UPLOAD_PERIOD = 30
     HEARTBEAT_FLATLINE_PERIOD = 600
 
-    def __init__(self, *,
-                 allSkyPngRoot=None,  # where to write all sky pngs to
-                 moviePngRoot=None,  # where to write animation pngs to
-                 metadataOutputRoot=None,  # where to metadatafiles (and shards in ./shards) to
-                 doRaise=False,
-                 **kwargs):
-        self.uploader = Uploader()
+    def __init__(self,
+                 locationConfig,
+                 *,
+                 doRaise=False):
+        self.locationConfig = locationConfig
+        self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild("backgroundService")
-        self.allSkyPngRoot = allSkyPngRoot
-        self.moviePngRoot = moviePngRoot
+        self.allSkyPngRoot = self.locationConfig.allSkyOutputPath
+        self.moviePngRoot = self.locationConfig.moviePngPath
         self.doRaise = doRaise
         self.butler = butlerUtils.makeDefaultLatissButler()
-        self.bestEffort = BestEffortIsr(**kwargs)
-        self.uploader = Uploader()
-        self.metadataOutputRoot = metadataOutputRoot
+        self.bestEffort = BestEffortIsr()
+
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       self.locationConfig.bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
-        self.mdServer = MetadataServer(outputRoot=metadataOutputRoot)  # costly-ish to create, so put in class
 
-    def _raiseIf(self, error):
-        """Raises the error if ``self.doRaise`` otherwise logs it as a warning.
-
-        Parameters
-        ----------
-        error : `Exception`
-            The error that has been raised.
-
-        Raises
-        ------
-        AnyException
-            Raised if ``self.doRaise`` is True, otherwise swallows and warns.
-        """
-        msg = f'Background service error: {error}'
-        if self.doRaise:
-            raise RuntimeError(msg) from error
-        else:
-            self.log.warn(msg)
+        self.mdServer = MetadataCreator(self.locationConfig)  # costly-ish to create, so put in class
 
     def hasDayRolledOver(self):
         """Check if the dayObs has rolled over.
@@ -192,43 +173,66 @@ class RubinTvBackgroundService():
         self.log.info(f'Catching up quickLook exposures for {self.dayObs}')
         missingQuickLooks = self.getMissingQuickLookIds()
 
-        mostRecent = butlerUtils.getMostRecentDataId(self.butler)
-        # reduce to keys that exactly matches missingQuickLooks
-        mostRecent = self._makeMinimalDataId(mostRecent)
-
-        secondMostRecent = copy.copy(mostRecent)
-        secondMostRecent['seq_num'] -= 1
-
-        for d in [mostRecent, secondMostRecent]:
-            if d in missingQuickLooks:
-                missingQuickLooks.remove(d)
+        # quickLooks could still be being made by other processes, but it's
+        # very fast, so just include a 5s sleep here to make sure that we
+        # don't butler.put() something under where they're expecting to put. If
+        # the inverse happens and they put something under where we're
+        # generating then that isn't a problem, as we catch
+        # ConflictingDefinitionError and ignore.
+        sleep(5)
 
         self.log.info(f'Catchup service found {len(missingQuickLooks)} missing quickLookExps')
 
         for dataId in missingQuickLooks:
             self.log.info(f"Producing quickLookExp for {dataId}")
-            exp = self.bestEffort.getExposure(dataId)
-            del exp
+            try:
+                exp = self.bestEffort.getExposure(dataId)
+                del exp
+            except ConflictingDefinitionError:
+                pass
 
     def catchupMountTorques(self):
         """Create and upload any missing mount torque plots for the current
         dayObs.
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
-        remakeDay('auxtel_mount_torques', self.dayObs, remakeExisting=False, notebook=False,
-                  outputRoot=self.metadataOutputRoot)  # outputRoot is passed through to createChannelByName
+        remakeDay(self.locationConfig.location,
+                  'auxtel_mount_torques',
+                  self.dayObs,
+                  remakeExisting=False,
+                  notebook=False)
 
     def catchupMonitor(self):
         """Create and upload any missing monitor images for the current dayObs.
         """
         self.log.info(f'Catching up monitor images for {self.dayObs}')
-        remakeDay('auxtel_monitor', self.dayObs, remakeExisting=False, notebook=False)
+        remakeDay(self.locationConfig.location,
+                  'auxtel_monitor',
+                  self.dayObs,
+                  remakeExisting=False,
+                  notebook=False)
 
     def catchupMetadata(self):
         """Create shards for any seqNums missing their metadata. Do not upload.
         """
+        def _getSidecarFilename(dayObs):
+            """Get the sidecar filename for a given dayObs.
+
+            This is a bit of a hack as it makes a whole TimedMetadataServer.
+            There are many better ways of doing this, but this will get things
+            working for now, and because TimedMetadataServers don't have
+            butlers and we're not calling run() on it, it's not really
+            important that it's a little wasteful.
+            """
+            mdServer = TimedMetadataServer(locationConfig=self.locationConfig,
+                                           metadataDirectory=self.locationConfig.auxTelMetadataPath,
+                                           shardsDirectory=self.locationConfig.auxTelMetadataShardPath,
+                                           channelName='auxtel_metadata')
+            filename = mdServer.getSidecarFilename(dayObs)
+            return filename
+
         self.log.info(f'Catching up metadata for {self.dayObs}')
-        mdFilename = self.mdServer.getSidecarFilename(self.dayObs)
+        mdFilename = _getSidecarFilename(self.dayObs)
         if not os.path.isfile(mdFilename):
             # we haven't taken any data yet today
             self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does not exist yet, waiting...")
@@ -237,15 +241,16 @@ class RubinTvBackgroundService():
             with open(mdFilename) as f:
                 data = json.load(f)
 
-        seqNums = [int(k) for k in data.keys()]
-        maxVal = max(seqNums)
-        missing = [k for k in range(1, maxVal) if k not in seqNums]
+        seqNumsPresent = [int(k) for k in data.keys()]
+        allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs)
+        missing = [k for k in allSeqNums if k not in seqNumsPresent]
         self.log.info(f'Found {len(missing)} rows missing metadata to create shards for')
 
         for seqNum in missing:
             dataId = {'day_obs': self.dayObs, 'seq_num': seqNum, 'detector': 0}
+            expRecord = butlerUtils.getExpRecordFromDataId(self.butler, dataId)
             try:
-                self.mdServer.writeShardForDataId(dataId)
+                self.mdServer.writeShardForExpRecord(expRecord)
             except Exception as e:
                 self.log.warning(f"Failed to create metadata shard for {dataId}: {e}")
 
@@ -271,7 +276,7 @@ class RubinTvBackgroundService():
             try:
                 component.__call__()
             except Exception as e:
-                self._raiseIf(e)
+                raiseIf(self.doRaise, e, self.log)
 
         endTime = time.time()
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
@@ -296,7 +301,6 @@ class RubinTvBackgroundService():
         created when making the all sky movie. Deletes all the intermediate
         movies uploaded during the day for the all sky channel from the bucket.
         """
-        self.mdServer.mergeShardsAndUpload()  # just catch any leftover shards
         try:
             # TODO: this will move to its own channel to be done routinely
             # during the night, but this is super easy for now, so add here
@@ -325,7 +329,7 @@ class RubinTvBackgroundService():
             cleanupAllSkyIntermediates()
 
         except Exception as e:
-            self._raiseIf(e)
+            raiseIf(self.doRaise, e, self.log)
 
         finally:
             self.dayObs = getCurrentDayObs_int()
@@ -384,4 +388,4 @@ class RubinTvBackgroundService():
                 self.heartbeater.beat()
 
             except Exception as e:
-                self._raiseIf(e)
+                raiseIf(self.doRaise, e, self.log)

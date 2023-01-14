@@ -19,12 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.rubinTv import ImExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+import sys
+from lsst.rubintv.production.rubinTv import MetadataCreator
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running imExaminer...')
-imExaminer = ImExaminerChannel()
-imExaminer.run()
+
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running AuxTel metadata creator at {location}...')
+
+mdCreator = MetadataCreator(locationConfig=locationConfig)
+mdCreator.run()

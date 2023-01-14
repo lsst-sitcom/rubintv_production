@@ -19,16 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.rubinTv import MetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+import sys
+from lsst.rubintv.production.rubinTv import MountTorqueChannel
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
-
-config = getSiteConfig()
-outputRoot = config.get('metadataOutputRoot')
 
 setupLogging()
 checkRubinTvExternalPackages()
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f'Running mount torque plotter at {location}...')
 
-print('Running metadata server...')
-mdServer = MetadataServer(outputRoot)
-mdServer.run()
+mountTorquePlotter = MountTorqueChannel(locationConfig=locationConfig)
+mountTorquePlotter.run()

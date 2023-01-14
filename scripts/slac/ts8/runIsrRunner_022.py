@@ -19,12 +19,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.rubinTv import MonitorChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages
+from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-print('Running monitor...')
-monitor = MonitorChannel(doRaise=False)
-monitor.run()
+print('Running raw processor for detector 22...')
+
+location = 'slac'
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            locationConfig=locationConfig,
+                            instrument='LSST-TS8',
+                            detectors=22,
+                            doRaise=True)
+rawProcessor.run()

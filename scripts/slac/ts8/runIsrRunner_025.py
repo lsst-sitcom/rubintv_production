@@ -19,16 +19,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.rubinTv import MountTorqueChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
+print('Running raw processor for detector 25...')
 
-config = getSiteConfig()
-outputRoot = config.get('metadataOutputRoot')
-
-print('Running mount torque plotter...')
-mountTorquePlotter = MountTorqueChannel(outputRoot=outputRoot, doRaise=False)
-mountTorquePlotter.run()
+location = 'slac'
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            locationConfig=locationConfig,
+                            instrument='LSST-TS8',
+                            detectors=25,
+                            doRaise=True)
+rawProcessor.run()

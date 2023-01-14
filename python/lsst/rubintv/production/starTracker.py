@@ -19,14 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import os
 import logging
 from glob import glob
 from time import sleep
 import datetime
 import traceback
-
 
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
@@ -41,10 +39,10 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 getAverageElFromHeader,
                                                 )
 
-
 from .channels import PREFIXES
-from .utils import writeMetadataShard, isFileWorldWritable
-from .rubinTv import Uploader, Heartbeater
+from .utils import writeMetadataShard
+from .uploaders import Uploader, Heartbeater
+from .baseChannels import BaseChannel
 
 _LOG = logging.getLogger(__name__)
 
@@ -121,7 +119,7 @@ def dayObsSeqNumFromFilename(filename):
     return dayObs, seqNum
 
 
-class StarTrackerWatcher():
+class StarTrackerWatcher:
     """Class for continuously watching for new files landing in the directory.
     Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds.
 
@@ -131,6 +129,8 @@ class StarTrackerWatcher():
         The root directory to watch for files landing in. Should not include
         the GenericCamera/101/ or GenericCamera/102/ part, just the base
         directory that these are being written to, as visible from k8s.
+    bucketName : `str`
+        The bucket to upload the heartbeats to.
     wide : `bool`
         Whether to watch the wide or narrow camera.
     """
@@ -141,15 +141,27 @@ class StarTrackerWatcher():
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
 
-    def __init__(self, *, rootDataPath, wide):
+    def __init__(self, *, rootDataPath, bucketName, wide):
         self.rootDataPath = rootDataPath
         self.wide = wide
-        self.uploader = Uploader()
+        self.uploader = Uploader(bucketName)
         self.log = _LOG.getChild("watcher")
         self.heartbeater = None
 
     def _getLatestImageDataIdAndExpId(self):
         """Get the dataId and expId for the most recent image in the repo.
+
+        Returns
+        -------
+        latestFile : `str` or `None`
+            The filename of the most recent file or ``None`` is nothing is
+            found.
+        dayObs : `int` or `None`
+            The dayObs of the ``latestFile`` or ``None`` is nothing is found.
+        seqNum : `int` or `None`
+            The seqNum of the ``latestFile`` or ``None`` is nothing is found.
+        expId : `int` or `None`
+            The expId of the ``latestFile`` or ``None`` is nothing is found.
         """
         currentDir = getCurrentRawDataDir(self.rootDataPath, self.wide)
         files = glob(os.path.join(currentDir, '*.fits'))
@@ -196,26 +208,20 @@ class StarTrackerWatcher():
                 traceback.print_exc()
 
 
-class StarTrackerChannel():
+class StarTrackerChannel(BaseChannel):
     """Class for serving star tracker images to RubinTV.
 
     These channels are somewhat hybrid channels which serve both the raw
     images and their analyses. The metadata is also written as shards from
-    these channels, with the metadata server itself just functioning to collate
-    the shards and upload them.
+    these channels, with a TimedMetadataServer collating and uploading them
+    as a separate service.
 
-    rootDataPath : `str`
-        The path at which to find the data on disk. Does not include the
-        GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
-    outputRoot : str``
-        The path to write the fits out to.
-    metadataRoot : `str`
-        The path to write metadata to.
-    astrometryNetRefCatRoot : `str`
-        The path to the astrometry.net reference catalogs. Do not include
-        the /4100 or /4200, just the base directory.
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig containing the relevant paths.
     wide : `bool`
-        Do this for the wide or narrow camera?
+        Run the wide or narrow camera?
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
@@ -224,24 +230,31 @@ class StarTrackerChannel():
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
 
-    def __init__(self, *,
-                 rootDataPath,
-                 outputRoot,
-                 metadataRoot,
-                 astrometryNetRefCatRoot,
+    def __init__(self,
+                 locationConfig,
+                 *,
                  wide,
                  doRaise=False):
-        self.uploader = Uploader()
-        self.log = _LOG.getChild(f"starTracker{'_wide' if wide else ''}")
+
+        name = 'starTracker' + ('_wide' if wide else '')
+        log = logging.getLogger(f'lsst.rubintv.production.{name}')
+        self.rootDataPath = locationConfig.starTrackerDataPath
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
+                                     bucketName=locationConfig.bucketName,
+                                     wide=wide)
+
+        super().__init__(locationConfig=locationConfig,
+                         log=log,
+                         watcher=watcher,
+                         doRaise=doRaise)
+
         self.channelRaw = f"startracker{'_wide' if wide else ''}_raw"
         self.channelAnalysis = f"startracker{'_wide' if wide else ''}_analysis"
         self.wide = wide
-        self.rootDataPath = rootDataPath
-        self.watcher = StarTrackerWatcher(rootDataPath=rootDataPath,
-                                          wide=wide)
-        self.outputRoot = outputRoot
-        self.metadataRoot = metadataRoot
-        self.astrometryNetRefCatRoot = astrometryNetRefCatRoot
+
+        self.outputRoot = self.locationConfig.starTrackerOutputPath
+        self.metadataRoot = self.locationConfig.starTrackerMetadataPath
+        self.astrometryNetRefCatRoot = self.locationConfig.astrometryNetRefCatPath
         self.doRaise = doRaise
         self.shardsDir = os.path.join(self.metadataRoot, 'shards')
         for path in (self.outputRoot, self.shardsDir, self.metadataRoot):
@@ -251,18 +264,27 @@ class StarTrackerChannel():
                 raise RuntimeError(f"Failed to find/create {path}") from e
 
         self.heartbeaterAnalysis = Heartbeater(self.channelAnalysis,
+                                               self.locationConfig.bucketName,
                                                self.HEARTBEAT_UPLOAD_PERIOD,
                                                self.HEARTBEAT_FLATLINE_PERIOD)
         self.heartbeaterRaw = Heartbeater(self.channelRaw,
+                                          self.locationConfig.bucketName,
                                           self.HEARTBEAT_UPLOAD_PERIOD,
                                           self.HEARTBEAT_FLATLINE_PERIOD)
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
-        self.solver = CommandLineSolver(indexFilePath=astrometryNetRefCatRoot,
+        self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
                                         checkInParallel=True)
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        filename : `str`
+            The filename.
         """
         _ifWide = ' wide' if self.wide else ''
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
@@ -296,6 +318,13 @@ class StarTrackerChannel():
 
     def _getUploadFilename(self, channel, filename):
         """Calculate the filename to use for uploading.
+
+        Parameters
+        ----------
+        channel : `str`
+            The channel name.
+        filename : `str`
+            The filename.
         """
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         dayObsStr = dayObsIntToString(dayObs)
@@ -304,6 +333,13 @@ class StarTrackerChannel():
 
     def runAnalysis(self, exp, filename):
         """Run the analysis and upload the results.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure.
+        filename : `str`
+            The filename.
         """
         _ifWide = ' wide' if self.wide else ''  # the string to append to md keys
         oldWcs = exp.getWcs()
@@ -379,6 +415,11 @@ class StarTrackerChannel():
 
     def callback(self, filename):
         """Callback for the watcher, called when a new image lands.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename.
         """
         exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
         self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
@@ -405,116 +446,3 @@ class StarTrackerChannel():
         except Exception as e:
             self.log.warning(f"Failed to run analysis on {filename}: {repr(e)}")
             traceback.print_exc()
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest filename
-        """
-        self.watcher.run(self.callback)
-
-
-class StarTrackerMetadataServer():
-    """Class for serving star tracker metadata to RubinTV.
-    """
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
-
-    def __init__(self, *,
-                 metadataRoot,
-                 doRaise=False):
-        self.uploader = Uploader()
-        self.heartbeater = Heartbeater('startracker_metadata',
-                                       self.HEARTBEAT_UPLOAD_PERIOD,
-                                       self.HEARTBEAT_FLATLINE_PERIOD)
-        self.channel = 'startracker_metadata'
-        self.log = _LOG.getChild(f"{self.channel}")
-        self.metadataRoot = metadataRoot
-        self.doRaise = doRaise
-        self.shardsDir = os.path.join(self.metadataRoot, 'shards')
-        try:
-            os.makedirs(self.shardsDir, exist_ok=True)
-        except Exception as e:
-            raise RuntimeError(f"Failed to find/create {self.shardsDir}") from e
-
-    def mergeShardsAndUpload(self):
-        """Merge all the shards in the shard directory into their respective
-        files and upload the updated files.
-
-        For each file found in the shard directory, merge its contents into the
-        main json file for the corresponding dayObs, and for each file updated,
-        upload it.
-        """
-        filesTouched = set()
-        shardFiles = sorted(glob(os.path.join(self.shardsDir, "metadata-*")))
-        if shardFiles:
-            self.log.debug(f'Found {len(shardFiles)} shardFiles')
-            sleep(0.1)  # just in case a shard is in the process of being written
-
-        for shardFile in shardFiles:
-            # filenames look like
-            # metadata-dayObs_20221027_049a5f12-5b96-11ed-80f0-348002f0628.json
-            filename = os.path.basename(shardFile)
-            dayObs = int(filename.split("_", 2)[1])
-            mainFile = self.getSidecarFilename(dayObs)
-            filesTouched.add(mainFile)
-
-            data = {}
-            # json.load() doesn't like empty files so check size is non-zero
-            if os.path.isfile(mainFile) and os.path.getsize(mainFile) > 0:
-                with open(mainFile) as f:
-                    data = json.load(f)
-
-            with open(shardFile) as f:
-                shard = json.load(f)
-            if shard:
-                for row in shard:
-                    if row in data:
-                        data[row].update(shard[row])
-                    else:
-                        data.update({row: shard[row]})
-            os.remove(shardFile)
-
-            with open(mainFile, 'w') as f:
-                json.dump(data, f)
-            if not isFileWorldWritable(mainFile):
-                os.chmod(mainFile, 0o777)  # file may be amended by another process
-
-        if filesTouched:
-            self.log.info(f"Uploading {len(filesTouched)} metadata files")
-            for file in filesTouched:
-                self.uploader.googleUpload(self.channel, file, isLiveFile=True)
-        return
-
-    def getSidecarFilename(self, dayObs):
-        """Get the name of the metadata sidecar file for the dayObs.
-
-        Returns
-        -------
-        dayObs : `int`
-            The dayObs.
-        """
-        return os.path.join(self.metadataRoot, f'dayObs_{dayObs}.json')
-
-    def callback(self):
-        """Method called on each new dataId as it is found in the repo.
-
-        Add the metadata to the sidecar for the dataId and upload.
-        """
-        try:
-            self.log.info('Getting metadata from shards')
-            self.mergeShardsAndUpload()  # updates all shards everywhere
-
-        except Exception as e:
-            if self.doRaise:
-                raise RuntimeError("Error when collection metadata") from e
-            self.log.warning(f"Error when collection metadata because {repr(e)}")
-            return None
-
-    def run(self):
-        """Run continuously, looking for metadata and uploading.
-        """
-        while True:
-            self.callback()
-            self.heartbeater.beat()
-            sleep(1.5)
