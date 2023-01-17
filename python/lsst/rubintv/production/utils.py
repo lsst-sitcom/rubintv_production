@@ -332,6 +332,12 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    @cached_property
+    def nightReportPath(self):
+        directory = self._config['nightReportPath']
+        self._checkDir(directory)
+        return directory
+
 
 def getSiteConfig(site='summit'):
     """Get the site configuration, given a site name.

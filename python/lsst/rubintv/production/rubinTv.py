@@ -23,6 +23,7 @@ import os
 import time
 import logging
 import tempfile
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -816,12 +817,24 @@ class CalibrateCcdRunner(BaseButlerChannel):
         self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
 
 
-class NightReportChannel():
+class NightReportChannel(BaseButlerChannel):
     """Class for running the AuxTel Night Report channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
     """
-    def __init__(self, location, doRaise=False):
-        self.location = location
-        # self.config = LocationConfig(location)  # XXX reinstante this
+    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         dataProduct='quickLookExp',
+                         channelName='auxtel_night_report',
+                         doRaise=doRaise)
 
         # we update when the quickLookExp lands, but we scrape for everything,
         # updating the CcdVisitSummaryTable in the hope that the
@@ -834,13 +847,7 @@ class NightReportChannel():
         # finalization step to catch everything in the end, and this is
         # easily achieved as we need to reinstantiate a report as each day
         # rolls over anyway.
-        self.dataProduct = 'quickLookExp'
-        self.uploader = Uploader()
-        self.butler = makeDefaultLatissButler()
-        self.log = _LOG.getChild("NightReportChannel")
-        self.channel = 'auxtel_night_report'
-        self.watcher = Watcher(self.dataProduct, self.channel)
-        self.doRaise = doRaise
+
         self.dayObs = getCurrentDayObs_int()
 
         # always attempt to resume on init
@@ -855,15 +862,18 @@ class NightReportChannel():
         raise NotImplementedError
 
     def getSaveFile(self):
-        # return os.path.join(self.config.???, f'report_{self.dayObs}.pickle')
-        return 'XXX'
+        return os.path.join(self.locationConfig.nightReportPath, f'report_{self.dayObs}.pickle')
 
-    def callback(self, dataId):
-        """Method called on each new dataId as it is found in the repo.
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
 
-        Plot the quick imExam analysis of the latest image, writing the plot
-        to a temp file, and upload it to Google cloud storage via the uploader.
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for the latest data.
         """
+        dataId = expRecord.dataId
+        md = {}
         try:
             if hasDayRolledOver(self.dayObs):
                 self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
@@ -876,28 +886,39 @@ class NightReportChannel():
 
             else:
                 self.report.rebuild()
-                self.report.save(self.saveFile)  # save on each
+                self.report.save(self.saveFile)  # save on each call
 
-                # make plots here
-                airMassPlotFile = ''
+                # make plots here, uploading one by one
+                airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmasses.png')
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=airMassPlotFile)
 
-                altAzCoveragePlotFile = ''
+                altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, 'altAzCoverage.png')
                 self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=altAzCoveragePlotFile)
 
-                text = catchPrintOutput(self.report.printObsGaps)
-                # add the text to the md to upload
+                # Add text here
+                obsGaps = catchPrintOutput(self.report.printObsGaps)
+                md['obsGaps'] = obsGaps
 
-                text = catchPrintOutput(self.report.calcShutterTimes)
-                # add the text to the md to upload
+                shutterTimes = catchPrintOutput(self.report.printShutterTimes)
+                md['shutterTimes'] = shutterTimes
 
-                text = catchPrintOutput(self.report.printShutterTimes)
-                # add the text to the md to upload
-
-                # upload text here
+                # Upload the text here
+                # Note this file must be called md.json because this filename
+                # is used for the upload, and that's what the frontend expects
+                jsonFilename = os.path.join(self.locationConfig.nightReportPath, 'md.json')
+                with open(jsonFilename, 'w') as f:
+                    json.dump(md, f)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=jsonFilename)
 
                 # upload plots here
-                self.uploader.googleUpload(XXX)
                 self.log.info(f'Finished updating plots and table for {dataId}')
 
         except Exception as e:
@@ -905,8 +926,3 @@ class NightReportChannel():
                 raise RuntimeError(f"Error processing {dataId}") from e
             self.log.warning(f"Skipped updating the night report for {dataId} because {repr(e)}")
             return None
-
-    def run(self):
-        """Run continuously, calling the callback method on the latest dataId.
-        """
-        self.watcher.run(self.callback)

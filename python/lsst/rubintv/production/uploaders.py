@@ -162,6 +162,55 @@ class Uploader:
 
         return blob
 
+    def uploadNightReportData(self,
+                              channel,
+                              dayObsInt,
+                              filename,
+                              plotGroup='',
+                              ):
+        """Upload night report type plot or json file to a night report channel
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        dayObsInt : `int`
+            The dayObs.
+        filename : `str`
+            The full path and filename of the file to upload.
+        plotGroup : `str`, optional
+
+        Raises
+        ------
+        ValueError
+            Raised if the specified channel is not in the list of existing
+            channels as specified in CHANNELS
+        """
+        if channel not in CHANNELS:
+            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+
+        # dayObsStr = dayObsIntToString(dayObsInt)
+        basename = os.path.basename(filename)  # deals with png vs jpeg
+        uploadAs = f"{channel}/{dayObsInt}/{plotGroup if plotGroup else 'default'}/{basename}"
+
+        blob = self.bucket.blob(uploadAs)
+        blob.cache_control = 'no-store'
+
+        # retry strategy here is also gentle as these plots are routintely
+        # updated, so we'll get a new version soon enough.
+        timeout = 60  # default is 60s
+        deadline = 2.0
+        modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
+        modified_retry = modified_retry.with_delay(initial=.5, multiplier=1.2, maximum=2)
+        try:
+            blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
+            self.log.info(f'Uploaded {filename} to {uploadAs}')
+        except Exception as e:
+            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
+            return None
+
+        return blob
+
     def googleUpload(self, channel, sourceFilename,
                      uploadAsFilename=None,
                      isLiveFile=False,

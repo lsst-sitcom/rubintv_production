@@ -3,7 +3,7 @@ dataIdScanPath: '/project/rubintv/dataIds'
 bucketName: 'rubintv_data'
 
 # Summit items:
-dataIdScanPath:     '/project/rubintv/dataIds'
+nightReportPath:     '/project/rubintv/nightReportData'
 
 # AuxTel metadata
 auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
