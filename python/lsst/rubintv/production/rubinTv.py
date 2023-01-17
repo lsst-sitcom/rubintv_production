@@ -833,7 +833,7 @@ class NightReportChannel(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
-                         channelName='auxtel_night_report',
+                         channelName='auxtel_night_reports',
                          doRaise=doRaise)
 
         # we update when the quickLookExp lands, but we scrape for everything,
