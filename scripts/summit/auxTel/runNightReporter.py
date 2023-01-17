@@ -19,16 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from lsst.rubintv.production.rubinTv import NightReportChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getSiteConfig
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
+location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
 
-config = getSiteConfig()
-
-print('Running mount torque plotter...')
-location = 'summit'
-mountTorquePlotter = NightReportChannel(location)
-mountTorquePlotter.run()
+print(f'Running night reporter at {location}...')
+nightReport = NightReportChannel(locationConfig=locationConfig)
+nightReport.run()
