@@ -922,7 +922,5 @@ class NightReportChannel(BaseButlerChannel):
                 self.log.info(f'Finished updating plots and table for {dataId}')
 
         except Exception as e:
-            if self.doRaise:
-                raise RuntimeError(f"Error processing {dataId}") from e
-            self.log.warning(f"Skipped updating the night report for {dataId} because {repr(e)}")
-            return None
+            msg = f"Skipped updating the night report for {dataId}:"
+            raiseIf(self.doRaise, e, self.log, msg=msg)
