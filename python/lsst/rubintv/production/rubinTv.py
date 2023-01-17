@@ -853,7 +853,11 @@ class NightReportChannel(BaseButlerChannel):
         # always attempt to resume on init
         saveFile = self.getSaveFile()
         if os.path.isfile(saveFile):
+            self.log.info(f'Resuming from {saveFile}')
             self.report = NightReport(self.butler, self.dayObs, saveFile)
+            self.report.rebuild()
+        else:  # otherwise start a new report from scratch
+            self.report = NightReport(self.butler, self.dayObs)
 
     def finalizeDay(self):
         # do the final scrape and upload here. Does this need to be any
@@ -886,7 +890,7 @@ class NightReportChannel(BaseButlerChannel):
 
             else:
                 self.report.rebuild()
-                self.report.save(self.saveFile)  # save on each call
+                self.report.save(self.getSaveFile())  # save on each call, it's quick and allows resuming
 
                 # make plots here, uploading one by one
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmasses.png')
