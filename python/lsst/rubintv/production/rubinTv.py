@@ -130,6 +130,7 @@ class IsrRunner(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         self.bestEffort = BestEffortIsr(embargo=embargo)
         super().__init__(locationConfig=locationConfig,
@@ -169,6 +170,7 @@ class ImExaminerChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
@@ -306,6 +308,7 @@ class MonitorChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
@@ -371,6 +374,7 @@ class MountTorqueChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
@@ -582,6 +586,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          # writeable true is required to define visits
@@ -831,6 +836,7 @@ class NightReportChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
@@ -933,6 +939,61 @@ class NightReportChannel(BaseButlerChannel):
         plt.savefig(saveFile)
         return True
 
+    def plotPsfFwhm(self, saveFile=None):
+        """Plot filter and airmass corrected PSF FWHM and DIMM seeing for the current report.
+
+        Parameters
+        ----------
+        saveFile : `str`, optional
+            Path to save the plot to. If None, plot to screen.
+
+        Returns
+        -------
+        success : `bool`
+            Whether the plot was created or not.
+        """
+        if (mdTable := self.getMetadataTableContents()) is None:
+            self.log.warning('No data to plot for PsfFWhm plot')
+            return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = self.getDatesForSeqNums()
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
+
+        # TODO: need to check the PSF FWHM column exists - it won't always
+        inds = mdTable.index[mdTable['PSF FWHM'] > 0].tolist()  # get the non-nan values
+        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
+        psfFwhm = np.array(mdTable['PSF FWHM'].iloc[inds])
+        seeing = np.array(mdTable['DIMM Seeing'])
+        bandColumn = mdTable['Filter']
+        bands = bandColumn[inds]
+        # TODO: generalise this to all bands and add checks for if empty
+        for i in range(len(bands)):
+            if bands[i] == 'SDSSg':
+                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
+                                      ((477./500.)**(0.2)), decimals=4)
+            if bands[i] == 'SDSSr':
+                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
+                                      ((623./500.)**(0.2)), decimals=4)
+            if bands[i] == 'SDSSi':
+                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
+                                      ((762./500.)**(0.2)), decimals=4)
+        plt.plot_date(rawDates[inds], seeing[inds], '.', color='0.6', linestyle='-', label='DIMM')
+        plt.plot_date(rawDates[inds], psfFwhm[inds], '.',
+                      color='darkturqouise', linestyle='-', label='LATISS')
+        plt.xlabel('TAI Date')
+        plt.ylabel('PSF fwhm (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        plt.legend()
+        plt.savefig(saveFile)
+        return True
+
     def getMetadataTableContents(self):
         """Get the measured data for the current night.
 
@@ -1004,6 +1065,15 @@ class NightReportChannel(BaseButlerChannel):
                     self.uploader.uploadNightReportData(channel=self.channelName,
                                                         dayObsInt=self.dayObs,
                                                         filename=zeroPointPlotFile,
+                                                        plotGroup='Erik')
+
+                # zeropoints per band over time
+                psfFwhmPlotFile = os.path.join(self.locationConfig.nightReportPath, 'psffwhm.png')
+                success = self.plotPsfFwhm(saveFile=psfFwhmPlotFile)
+                if success:  # returns False if metadata table load was empty
+                    self.uploader.uploadNightReportData(channel=self.channelName,
+                                                        dayObsInt=self.dayObs,
+                                                        filename=psfFwhmPlotFile,
                                                         plotGroup='Erik')
 
                 # Add text here
