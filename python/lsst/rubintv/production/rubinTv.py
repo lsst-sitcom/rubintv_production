@@ -26,6 +26,8 @@ import tempfile
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+import matplotlib.dates as md
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -868,6 +870,92 @@ class NightReportChannel(BaseButlerChannel):
     def getSaveFile(self):
         return os.path.join(self.locationConfig.nightReportPath, f'report_{self.dayObs}.pickle')
 
+    def getDatesForSeqNums(self):
+        """Get a dict of {seqNum: date} for the current report.
+
+        Returns
+        -------
+        dates : `dict`
+            Dict of {seqNum: date} for the current report.
+        """
+        return {seqNum: self.report.data[seqNum]['timespan'].begin.to_datetime()
+                for seqNum in sorted(self.report.data.keys())}
+
+    def plotZeropoints(self, saveFile=None):
+        """Plot zeropoints for the current report.
+
+        Parameters
+        ----------
+        saveFile : `str`, optional
+            Path to save the plot to. If None, plot to screen.
+
+        Returns
+        -------
+        success : `bool`
+            Whether the plot was created or not.
+        """
+        if (mdTable := self.getMetadataTableContents()) is None:
+            self.log.warning('No data to plot for zeroPoints plot')
+            return False
+
+        # TODO: get these colours from somewhere else
+        gcolor = 'mediumseagreen'
+        rcolor = 'lightcoral'
+        icolor = 'mediumpurple'
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = self.getDatesForSeqNums()
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
+
+        # TODO: need to check the Zeropoint column exists - it won't always
+        inds = mdTable.index[mdTable['Zeropoint'] > 0].tolist()  # get the non-nan values
+        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
+        bandColumn = mdTable['Filter']
+        bands = bandColumn[inds]
+        # TODO: generalise this to all bands and add checks for if empty
+        rband = np.where(bands == 'SDSSr_65mm')
+        gband = np.where(bands == 'SDSSg_65mm')
+        iband = np.where(bands == 'SDSSi_65mm')
+        zeroPoint = np.array(mdTable['Zeropoint'].iloc[inds])
+        plt.plot(rawDates[inds][gband], zeroPoint[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[inds][rband], zeroPoint[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[inds][iband], zeroPoint[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+        plt.xlabel('TAI Date')
+        plt.ylabel('Photometric Zeropoint (mag)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        plt.legend()
+        plt.savefig(saveFile)
+        return True
+
+    def getMetadataTableContents(self):
+        """Get the measured data for the current night.
+
+        Returns
+        -------
+        mdTable : `pandas.DataFrame`
+            The contents of the metdata table from the front end.
+        """
+        # TODO: need to find a better way of getting this path ideally,
+        # but perhaps is OK?
+        sidecarFilename = os.path.join(self.locationConfig.auxTelMetadataPath, f'dayObs_{self.dayObs}.json')
+
+        try:
+            mdTable = pd.read_json(sidecarFilename).T
+        except Exception as e:
+            self.log.warning(f"Failed to load metadata table from {sidecarFilename}: {e}")
+            return None
+
+        if mdTable.empty:
+            return None
+
+        return mdTable
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -893,24 +981,36 @@ class NightReportChannel(BaseButlerChannel):
                 self.report.save(self.getSaveFile())  # save on each call, it's quick and allows resuming
 
                 # make plots here, uploading one by one
+                # per-object airmass plot
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmasses.png')
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,
                                                     dayObsInt=self.dayObs,
                                                     filename=airMassPlotFile)
 
+                # alt/az coverage polar plot
                 altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, 'altAzCoverage.png')
                 self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,
                                                     dayObsInt=self.dayObs,
                                                     filename=altAzCoveragePlotFile)
 
+                # zeropoints per band over time
+                zeroPointPlotFile = os.path.join(self.locationConfig.nightReportPath, 'zeropoints.png')
+                success = self.plotZeropoints(saveFile=zeroPointPlotFile)
+                if success:  # returns False if metadata table load was empty
+                    self.uploader.uploadNightReportData(channel=self.channelName,
+                                                        dayObsInt=self.dayObs,
+                                                        filename=zeroPointPlotFile,
+                                                        plotGroup='Erik')
+
                 # Add text here
-                obsGaps = catchPrintOutput(self.report.printObsGaps)
-                md['obsGaps'] = obsGaps
 
                 shutterTimes = catchPrintOutput(self.report.printShutterTimes)
-                md['shutterTimes'] = shutterTimes
+                md['text_010'] = shutterTimes
+
+                obsGaps = catchPrintOutput(self.report.printObsGaps)
+                md['text_020'] = obsGaps
 
                 # Upload the text here
                 # Note this file must be called md.json because this filename
