@@ -970,7 +970,7 @@ class NightReportChannel(BaseButlerChannel):
         bandColumn = mdTable['Filter']
         bands = bandColumn[inds]
         # TODO: generalise this to all bands and add checks for if empty
-        for i in range(len(bands)):
+        for i in range(1, len(bands)+1):
             if bands[i] == 'SDSSg':
                 psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
                                       ((477./500.)**(0.2)), decimals=4)
