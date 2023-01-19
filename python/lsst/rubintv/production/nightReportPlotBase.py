@@ -80,6 +80,9 @@ class BasicPlot(ABC):
     def createAndUpload(self, nightReport, metadata):
         """Create the plot defined in ``plot`` and upload it.
 
+        This is the method called by the Night Report channel to create the
+        plot and send it to the bucket.
+
         Parameters
         ----------
         nightReport : `lsst.rubintv.production.nightReport.NightReport`

@@ -953,6 +953,8 @@ class NightReportChannel(BaseButlerChannel):
                 # per-object airmass plot
                 self.createPlotsAndUpload()
 
+                # plots which come from the night report object itself:
+                # the per-object airmass plot
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmass.png')
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,
@@ -960,7 +962,7 @@ class NightReportChannel(BaseButlerChannel):
                                                     filename=airMassPlotFile,
                                                     plotGroup='Coverage')
 
-                # alt/az coverage polar plot
+                # the alt/az coverage polar plot
                 altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, 'alt-az.png')
                 self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,

@@ -25,7 +25,9 @@ import matplotlib.dates as md
 
 from .nightReportPlotBase import BasicPlot
 
-__all__ = ['ZeroPointPlot']
+# any classes added to __all__ will automatically be added to the night
+# report channel, with each being replotted for each image taken.
+__all__ = ['ZeroPointPlot', 'PsfFwhmPlot']
 
 
 class ZeroPointPlot(BasicPlot):
@@ -109,33 +111,29 @@ class PsfFwhmPlot(BasicPlot):
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
         """
-        if (mdTable := self.getMetadataTableContents()) is None:
-            self.log.warning('No data to plot for PsfFWhm plot')
-            return False
-
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
-        datesDict = self.getDatesForSeqNums()
+        datesDict = self.nightReportChannel.getDatesForSeqNums()
         rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         # TODO: need to check the PSF FWHM column exists - it won't always
-        inds = mdTable.index[mdTable['PSF FWHM'] > 0].tolist()  # get the non-nan values
+        inds = metadata.index[metadata['PSF FWHM'] > 0].tolist()  # get the non-nan values
         inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        psfFwhm = np.array(mdTable['PSF FWHM'].iloc[inds])
-        seeing = np.array(mdTable['DIMM Seeing'])
-        bandColumn = mdTable['Filter']
+        psfFwhm = np.array(metadata['PSF FWHM'].iloc[inds])
+        seeing = np.array(metadata['DIMM Seeing'])
+        bandColumn = metadata['Filter']
         bands = bandColumn[inds]
         # TODO: generalise this to all bands and add checks for if empty
         for i in range(1, len(bands)+1):
             if bands[i] == 'SDSSg':
-                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
+                psfFwhm[i] = np.round(psfFwhm[i]*(metadata['Airmass'].iloc[i]**(-0.6)) *
                                       ((477./500.)**(0.2)), decimals=4)
             if bands[i] == 'SDSSr':
-                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
+                psfFwhm[i] = np.round(psfFwhm[i]*(metadata['Airmass'].iloc[i]**(-0.6)) *
                                       ((623./500.)**(0.2)), decimals=4)
             if bands[i] == 'SDSSi':
-                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
+                psfFwhm[i] = np.round(psfFwhm[i]*(metadata['Airmass'].iloc[i]**(-0.6)) *
                                       ((762./500.)**(0.2)), decimals=4)
         plt.plot_date(rawDates[inds], seeing[inds], '.', color='0.6', linestyle='-', label='DIMM')
         plt.plot_date(rawDates[inds], psfFwhm[inds], '.',
