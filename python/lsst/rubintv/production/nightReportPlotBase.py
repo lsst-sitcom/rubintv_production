@@ -31,8 +31,6 @@ class BasicPlot(ABC):
 
     Parameters
     ----------
-    dayObs : `int`
-        The dayObs.
     plotName : `str`
         The name of the plot, used for upload.
     plotGroup : `str`
@@ -53,10 +51,6 @@ class BasicPlot(ABC):
         self.nightReportChannel = nightReportChannel
 
     def upload(self, saveFile):
-        if not hasattr(self, '_PlotName'):
-            raise RuntimeError('Subclasses must define _PlotName')
-        if not hasattr(self, '_PlotGroup'):
-            raise RuntimeError('Subclasses must define _PlotGroup')
 
         if os.path.isfile(saveFile):
             print(f'{saveFile} confirmed to exist')
@@ -84,8 +78,24 @@ class BasicPlot(ABC):
         raise NotImplementedError()
 
     def createAndUpload(self, nightReport, metadata):
+        """Create the plot defined in ``plot`` and upload it.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        """
         self.plot(nightReport, metadata)
         saveFile = self.getSaveFilename()
         plt.savefig(saveFile)
-        self.upload(saveFile)
         plt.close()
+
+        self.nightReportChannel.uploader.uploadNightReportData(channel=self.nightReportChannel.channelName,
+                                                               dayObsInt=self.dayObs,
+                                                               filename=saveFile,
+                                                               plotGroup=self.plotGroup)
+        # if things start failing later you don't want old plots sticking
+        # around and getting uploaded as if they were new
+        os.remove(saveFile)

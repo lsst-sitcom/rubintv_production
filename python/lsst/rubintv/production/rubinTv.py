@@ -27,7 +27,6 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import matplotlib.dates as md
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -888,113 +887,6 @@ class NightReportChannel(BaseButlerChannel):
         return {seqNum: self.report.data[seqNum]['timespan'].begin.to_datetime()
                 for seqNum in sorted(self.report.data.keys())}
 
-    def plotZeropoints(self, saveFile=None):
-        """Plot zeropoints for the current report.
-
-        Parameters
-        ----------
-        saveFile : `str`, optional
-            Path to save the plot to. If None, plot to screen.
-
-        Returns
-        -------
-        success : `bool`
-            Whether the plot was created or not.
-        """
-        if (mdTable := self.getMetadataTableContents()) is None:
-            self.log.warning('No data to plot for zeroPoints plot')
-            return False
-
-        # TODO: get these colours from somewhere else
-        gcolor = 'mediumseagreen'
-        rcolor = 'lightcoral'
-        icolor = 'mediumpurple'
-
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
-        plt.figure(constrained_layout=True)
-
-        datesDict = self.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
-
-        # TODO: need to check the Zeropoint column exists - it won't always
-        inds = mdTable.index[mdTable['Zeropoint'] > 0].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        bandColumn = mdTable['Filter']
-        bands = bandColumn[inds]
-        # TODO: generalise this to all bands and add checks for if empty
-        rband = np.where(bands == 'SDSSr_65mm')
-        gband = np.where(bands == 'SDSSg_65mm')
-        iband = np.where(bands == 'SDSSi_65mm')
-        zeroPoint = np.array(mdTable['Zeropoint'].iloc[inds])
-        plt.plot(rawDates[inds][gband], zeroPoint[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
-        plt.plot(rawDates[inds][rband], zeroPoint[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
-        plt.plot(rawDates[inds][iband], zeroPoint[iband], '.', color=icolor, linestyle='-', label='SDSSi')
-        plt.xlabel('TAI Date')
-        plt.ylabel('Photometric Zeropoint (mag)')
-        plt.xticks(rotation=25, horizontalalignment='right')
-        plt.grid()
-        ax = plt.gca()
-        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
-        ax.xaxis.set_major_formatter(xfmt)
-        plt.legend()
-        plt.savefig(saveFile)
-        return True
-
-    def plotPsfFwhm(self, saveFile=None):
-        """Plot filter and airmass corrected PSF FWHM and DIMM seeing for the current report.
-
-        Parameters
-        ----------
-        saveFile : `str`, optional
-            Path to save the plot to. If None, plot to screen.
-
-        Returns
-        -------
-        success : `bool`
-            Whether the plot was created or not.
-        """
-        if (mdTable := self.getMetadataTableContents()) is None:
-            self.log.warning('No data to plot for PsfFWhm plot')
-            return False
-
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
-        plt.figure(constrained_layout=True)
-
-        datesDict = self.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
-
-        # TODO: need to check the PSF FWHM column exists - it won't always
-        inds = mdTable.index[mdTable['PSF FWHM'] > 0].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        psfFwhm = np.array(mdTable['PSF FWHM'].iloc[inds])
-        seeing = np.array(mdTable['DIMM Seeing'])
-        bandColumn = mdTable['Filter']
-        bands = bandColumn[inds]
-        # TODO: generalise this to all bands and add checks for if empty
-        for i in range(1, len(bands)+1):
-            if bands[i] == 'SDSSg':
-                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
-                                      ((477./500.)**(0.2)), decimals=4)
-            if bands[i] == 'SDSSr':
-                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
-                                      ((623./500.)**(0.2)), decimals=4)
-            if bands[i] == 'SDSSi':
-                psfFwhm[i] = np.round(psfFwhm[i]*(mdTable['Airmass'].iloc[i]**(-0.6)) *
-                                      ((762./500.)**(0.2)), decimals=4)
-        plt.plot_date(rawDates[inds], seeing[inds], '.', color='0.6', linestyle='-', label='DIMM')
-        plt.plot_date(rawDates[inds], psfFwhm[inds], '.',
-                      color='darkturqouise', linestyle='-', label='LATISS')
-        plt.xlabel('TAI Date')
-        plt.ylabel('PSF fwhm (arcsec)')
-        plt.xticks(rotation=25, horizontalalignment='right')
-        plt.grid()
-        ax = plt.gca()
-        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
-        ax.xaxis.set_major_formatter(xfmt)
-        plt.legend()
-        plt.savefig(saveFile)
-        return True
-
     def getMetadataTableContents(self):
         """Get the measured data for the current night.
 
@@ -1018,21 +910,20 @@ class NightReportChannel(BaseButlerChannel):
 
         return mdTable
 
-    def createPlots(self):
-
+    def createPlotsAndUpload(self):
         md = self.getMetadataTableContents()
         report = self.report
 
         for plotClassName in nightReportPlots.__all__:
             try:
+                self.log.info(f'Creating plot {plotClassName}')
                 PlotClass = getattr(nightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
                                  nightReportChannel=self)
                 plot.createAndUpload(report, md)
-            except Exception as e:
-                self.log.warning(f"Failed to create plot {plotClassName}: {e}")
+            except Exception:
+                self.log.exception(f"Failed to create plot {plotClassName}")
                 continue
-
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
@@ -1060,7 +951,7 @@ class NightReportChannel(BaseButlerChannel):
 
                 # make plots here, uploading one by one
                 # per-object airmass plot
-                self.createPlots()
+                self.createPlotsAndUpload()
 
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmass.png')
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
@@ -1077,26 +968,7 @@ class NightReportChannel(BaseButlerChannel):
                                                     filename=altAzCoveragePlotFile,
                                                     plotGroup='Coverage')
 
-                # zeropoints per band over time
-                # zeroPointPlotFile = os.path.join(self.locationConfig.nightReportPath, 'zeropoints.png')
-                # success = self.plotZeropoints(saveFile=zeroPointPlotFile)
-                # if success:  # returns False if metadata table load was empty
-                #     self.uploader.uploadNightReportData(channel=self.channelName,
-                #                                         dayObsInt=self.dayObs,
-                #                                         filename=zeroPointPlotFile,
-                #                                         plotGroup='Erik')
-
-                # zeropoints per band over time
-                psfFwhmPlotFile = os.path.join(self.locationConfig.nightReportPath, 'psffwhm.png')
-                success = self.plotPsfFwhm(saveFile=psfFwhmPlotFile)
-                if success:  # returns False if metadata table load was empty
-                    self.uploader.uploadNightReportData(channel=self.channelName,
-                                                        dayObsInt=self.dayObs,
-                                                        filename=psfFwhmPlotFile,
-                                                        plotGroup='Erik')
-
-                # Add text here
-
+                # Add text items here
                 shutterTimes = catchPrintOutput(self.report.printShutterTimes)
                 md['text_010'] = shutterTimes
 
@@ -1113,7 +985,6 @@ class NightReportChannel(BaseButlerChannel):
                                                     dayObsInt=self.dayObs,
                                                     filename=jsonFilename)
 
-                # upload plots here
                 self.log.info(f'Finished updating plots and table for {dataId}')
 
         except Exception as e:
