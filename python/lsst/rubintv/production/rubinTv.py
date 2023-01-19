@@ -876,17 +876,6 @@ class NightReportChannel(BaseButlerChannel):
     def getSaveFile(self):
         return os.path.join(self.locationConfig.nightReportPath, f'report_{self.dayObs}.pickle')
 
-    def getDatesForSeqNums(self):
-        """Get a dict of {seqNum: date} for the current report.
-
-        Returns
-        -------
-        dates : `dict`
-            Dict of {seqNum: date} for the current report.
-        """
-        return {seqNum: self.report.data[seqNum]['timespan'].begin.to_datetime()
-                for seqNum in sorted(self.report.data.keys())}
-
     def getMetadataTableContents(self):
         """Get the measured data for the current night.
 

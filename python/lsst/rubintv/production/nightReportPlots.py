@@ -61,7 +61,7 @@ class ZeroPointPlot(BasicPlot):
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
-        datesDict = self.nightReportChannel.getDatesForSeqNums()
+        datesDict = nightReport.getDatesForSeqNums()
         rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         # TODO: need to check the Zeropoint column exists - it won't always
@@ -114,7 +114,7 @@ class PsfFwhmPlot(BasicPlot):
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
-        datesDict = self.nightReportChannel.getDatesForSeqNums()
+        datesDict = nightReport.getDatesForSeqNums()
         rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         # TODO: need to check the PSF FWHM column exists - it won't always
