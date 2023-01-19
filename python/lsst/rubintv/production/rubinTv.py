@@ -61,6 +61,7 @@ from lsst.rubintv.production.monitorPlotting import plotExp
 from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDayRolledOver, catchPrintOutput
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
+from lsst.rubintv.production import nightReportPlots
 
 
 __all__ = [
@@ -1017,6 +1018,22 @@ class NightReportChannel(BaseButlerChannel):
 
         return mdTable
 
+    def createPlots(self):
+
+        md = self.getMetadataTableContents()
+        report = self.report
+
+        for plotClassName in nightReportPlots.__all__:
+            try:
+                PlotClass = getattr(nightReportPlots, plotClassName)
+                plot = PlotClass(dayObs=self.dayObs,
+                                 nightReportChannel=self)
+                plot.createAndUpload(report, md)
+            except Exception as e:
+                self.log.warning(f"Failed to create plot {plotClassName}: {e}")
+                continue
+
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -1043,6 +1060,8 @@ class NightReportChannel(BaseButlerChannel):
 
                 # make plots here, uploading one by one
                 # per-object airmass plot
+                self.createPlots()
+
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmass.png')
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,
@@ -1059,13 +1078,13 @@ class NightReportChannel(BaseButlerChannel):
                                                     plotGroup='Coverage')
 
                 # zeropoints per band over time
-                zeroPointPlotFile = os.path.join(self.locationConfig.nightReportPath, 'zeropoints.png')
-                success = self.plotZeropoints(saveFile=zeroPointPlotFile)
-                if success:  # returns False if metadata table load was empty
-                    self.uploader.uploadNightReportData(channel=self.channelName,
-                                                        dayObsInt=self.dayObs,
-                                                        filename=zeroPointPlotFile,
-                                                        plotGroup='Erik')
+                # zeroPointPlotFile = os.path.join(self.locationConfig.nightReportPath, 'zeropoints.png')
+                # success = self.plotZeropoints(saveFile=zeroPointPlotFile)
+                # if success:  # returns False if metadata table load was empty
+                #     self.uploader.uploadNightReportData(channel=self.channelName,
+                #                                         dayObsInt=self.dayObs,
+                #                                         filename=zeroPointPlotFile,
+                #                                         plotGroup='Erik')
 
                 # zeropoints per band over time
                 psfFwhmPlotFile = os.path.join(self.locationConfig.nightReportPath, 'psffwhm.png')
