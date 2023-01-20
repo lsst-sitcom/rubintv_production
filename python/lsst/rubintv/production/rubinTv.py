@@ -195,6 +195,26 @@ class ImExaminerChannel(BaseButlerChannel):
         imexam = ImageExaminer(exp, savePlots=outputFilename, doTweakCentroid=True)
         imexam.plot()
 
+    def doProcessImage(self, expRecord):
+        """Determine if we should skip this image.
+
+        Should take responsibility for logging the reason for skipping.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        doProcess : `bool`
+            True if the image should be processed, False if we should skip it.
+        """
+        if expRecord.observation_type in ['bias', 'dark', 'flat']:
+            self.log.info(f"Skipping calib image: {expRecord.observation_type}")
+            return False
+        return True
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -207,6 +227,8 @@ class ImExaminerChannel(BaseButlerChannel):
             The exposure record.
         """
         try:
+            if not self.doProcessImage(expRecord):
+                return
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f'Running imexam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
@@ -655,6 +677,26 @@ class CalibrateCcdRunner(BaseButlerChannel):
         )
         return loader
 
+    def doProcessImage(self, expRecord):
+        """Determine if we should skip this image.
+
+        Should take responsibility for logging the reason for skipping.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        doProcess : `bool`
+            True if the image should be processed, False if we should skip it.
+        """
+        if expRecord.observation_type != 'science':
+            self.log.info(f"Skipping non-science-type exposure {expRecord.observation_type}")
+            return False
+        return True
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -668,6 +710,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
             The exposure record.
         """
         try:
+            if not self.doProcessImage(expRecord):
+                return
+
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tStart = time.time()
 
