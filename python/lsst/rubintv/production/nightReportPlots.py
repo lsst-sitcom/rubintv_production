@@ -23,6 +23,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as md
 
+from lsst.summit.utils.utils import getAirmassSeeingCorrection, getFilterSeeingCorrection
+
 from .nightReportPlotBase import BasicPlot
 
 # any classes added to __all__ will automatically be added to the night
@@ -51,6 +53,11 @@ class ZeroPointPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
         """
 
         # TODO: get these colours from somewhere else
@@ -110,6 +117,11 @@ class PsfFwhmPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
         """
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
@@ -117,29 +129,38 @@ class PsfFwhmPlot(BasicPlot):
         datesDict = nightReport.getDatesForSeqNums()
         rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
-        # TODO: need to check the PSF FWHM column exists - it won't always
+        for item in ['PSF FWHM', 'Airmass', 'DIMM Seeing', 'Filter']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
         inds = metadata.index[metadata['PSF FWHM'] > 0].tolist()  # get the non-nan values
         inds = [i-1 for i in inds]  # pandas uses 1-based indexing
         psfFwhm = np.array(metadata['PSF FWHM'].iloc[inds])
-        seeing = np.array(metadata['DIMM Seeing'])
+        airmass = np.array(metadata['Airmass'].iloc[inds])
+        rawDates = rawDates[inds]
+        seeing = np.array(metadata['DIMM Seeing'].iloc[inds])
         bandColumn = metadata['Filter']
-        bands = bandColumn[inds]
-        # TODO: generalise this to all bands and add checks for if empty
-        for i in range(1, len(bands)+1):
-            if bands[i] == 'SDSSg':
-                psfFwhm[i] = np.round(psfFwhm[i]*(metadata['Airmass'].iloc[i]**(-0.6)) *
-                                      ((477./500.)**(0.2)), decimals=4)
-            if bands[i] == 'SDSSr':
-                psfFwhm[i] = np.round(psfFwhm[i]*(metadata['Airmass'].iloc[i]**(-0.6)) *
-                                      ((623./500.)**(0.2)), decimals=4)
-            if bands[i] == 'SDSSi':
-                psfFwhm[i] = np.round(psfFwhm[i]*(metadata['Airmass'].iloc[i]**(-0.6)) *
-                                      ((762./500.)**(0.2)), decimals=4)
-        plt.plot_date(rawDates[inds], seeing[inds], '.', color='0.6', linestyle='-', label='DIMM')
-        plt.plot_date(rawDates[inds], psfFwhm[inds], '.',
-                      color='darkturqouise', linestyle='-', label='LATISS')
+        bands = np.array(bandColumn[inds])
+        # TODO: generalise this to all bands
+        for i in range(0, len(bands)):
+            if bands[i] == 'SDSSg_65mm':
+                psfFwhm[i] = (psfFwhm[i]*getFilterSeeingCorrection('SDSSg_65mm')
+                              * getAirmassSeeingCorrection(airmass[i]))
+            if bands[i] == 'SDSSr_65mm':
+                psfFwhm[i] = (psfFwhm[i]*getFilterSeeingCorrection('SDSSr_65mm')
+                              * getAirmassSeeingCorrection(airmass[i]))
+            if bands[i] == 'SDSSi_65mm':
+                psfFwhm[i] = (psfFwhm[i]*getFilterSeeingCorrection('SDSSi_65mm')
+                              * getAirmassSeeingCorrection(airmass[i]))
+            else:
+                self.log.warning(f'Cannot correct unknown filter to 500nm seeing {bands[i]}')
+                psfFwhm[i] = psfFwhm[i]*getAirmassSeeingCorrection(airmass[i])
+        plt.plot(rawDates, seeing, '.', color='0.6', linestyle='-', label='DIMM')
+        plt.plot(rawDates, psfFwhm, '.', color='darkturquoise', linestyle='-', label='LATISS')
         plt.xlabel('TAI Date')
-        plt.ylabel('PSF fwhm (arcsec)')
+        plt.ylabel('PSF FWHM (arcsec)')
         plt.xticks(rotation=25, horizontalalignment='right')
         plt.grid()
         ax = plt.gca()

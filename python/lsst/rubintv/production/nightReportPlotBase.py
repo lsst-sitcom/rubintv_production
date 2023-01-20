@@ -22,6 +22,7 @@
 from abc import ABC, abstractmethod
 import os
 import matplotlib.pyplot as plt
+import logging
 
 __all__ = ['BasicPlot']
 
@@ -49,6 +50,7 @@ class BasicPlot(ABC):
         self.plotName = plotName
         self.plotGroup = plotGroup
         self.nightReportChannel = nightReportChannel
+        self.log = logging.getLogger(f'lsst.rubintv.production.nightReportPlots.{plotName}')
 
     def upload(self, saveFile):
 
@@ -74,6 +76,11 @@ class BasicPlot(ABC):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
         """
         raise NotImplementedError()
 
@@ -90,7 +97,11 @@ class BasicPlot(ABC):
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
         """
-        self.plot(nightReport, metadata)
+        success = self.plot(nightReport, metadata)
+        if not success:
+            self.log.warning(f'Plot {self.plotName} failed to create')
+            return
+
         saveFile = self.getSaveFilename()
         plt.savefig(saveFile)
         plt.close()
@@ -100,5 +111,5 @@ class BasicPlot(ABC):
                                                                filename=saveFile,
                                                                plotGroup=self.plotGroup)
         # if things start failing later you don't want old plots sticking
-        # around and getting uploaded as if they were new
+        # around and getting re-uploaded as if they were new
         os.remove(saveFile)
