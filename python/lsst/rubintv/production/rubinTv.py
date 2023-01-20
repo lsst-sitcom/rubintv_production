@@ -742,7 +742,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
             self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
-            self.clobber(calibrateRes.outputExposure, "calexp", dataId)
+            self.clobber(calibrateRes.outputExposure, "calexp", expRecord)
             tFinal = time.time()
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
 
@@ -796,7 +796,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
                              " define-visits?")
             return None
 
-    def clobber(self, object, datasetType, dataId):
+    def clobber(self, object, datasetType, expRecord):
         """Put object in the butler.
 
         If there is one already there, remove it beforehand.
@@ -807,21 +807,21 @@ class CalibrateCcdRunner(BaseButlerChannel):
             Any object to put in the butler.
         datasetType : `str`
             Dataset type name to put it as.
-        dataId : `lsst.daf.butler.DataCoordinate`
-            DataId to put the object at.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The dimension record of the exposure to put.
         """
-        if not (visitDataId := self.getVisitDataId(dataId)):
-            self.log.warning(f'Skipped butler.put of {datasetType} for {dataId} due to lack of visitId.'
+        if not (visitDataId := self.getVisitDataId(expRecord)):
+            self.log.warning(f'Skipped butler.put of {datasetType} for {expRecord.id} due to lack of visitId.'
                              " Do you need to run define-visits?")
             return
 
         self.butler.registry.registerRun(self.outputRunName)
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f'Overwriting existing {datasetType} for {dataId}')
+            self.log.warning(f'Overwriting existing {datasetType} for {visitDataId}')
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
+        self.log.info(f'Put {datasetType} for {expRecord.id} with visitId: {visitDataId}')
 
 
 class NightReportChannel(BaseButlerChannel):
