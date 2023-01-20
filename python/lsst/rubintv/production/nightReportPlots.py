@@ -59,6 +59,11 @@ class ZeroPointPlot(BasicPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
+        for item in ['Zeropoint', 'Filter']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
 
         # TODO: get these colours from somewhere else
         gcolor = 'mediumseagreen'
