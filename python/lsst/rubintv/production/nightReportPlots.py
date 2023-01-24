@@ -150,18 +150,16 @@ class PsfFwhmPlot(BasicPlot):
         bands = np.array(bandColumn[inds])
         # TODO: generalise this to all bands
         for i in range(0, len(bands)):
+            airMassCorr = getAirmassSeeingCorrection(airmass[i])
             if bands[i] == 'SDSSg_65mm':
-                psfFwhm[i] = (psfFwhm[i]*getFilterSeeingCorrection('SDSSg_65mm')
-                              * getAirmassSeeingCorrection(airmass[i]))
+                psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSg_65mm'))
             if bands[i] == 'SDSSr_65mm':
-                psfFwhm[i] = (psfFwhm[i]*getFilterSeeingCorrection('SDSSr_65mm')
-                              * getAirmassSeeingCorrection(airmass[i]))
+                psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSr_65mm'))
             if bands[i] == 'SDSSi_65mm':
-                psfFwhm[i] = (psfFwhm[i]*getFilterSeeingCorrection('SDSSi_65mm')
-                              * getAirmassSeeingCorrection(airmass[i]))
+                psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSi_65mm'))
             else:
                 self.log.warning(f'Cannot correct unknown filter to 500nm seeing {bands[i]}')
-                psfFwhm[i] = psfFwhm[i]*getAirmassSeeingCorrection(airmass[i])
+                psfFwhm[i] = psfFwhm[i]*airMassCorr
         plt.plot(rawDates, seeing, '.', color='0.6', linestyle='-', label='DIMM')
         plt.plot(rawDates, psfFwhm, '.', color='darkturquoise', linestyle='-', label='LATISS')
         plt.xlabel('TAI Date')
