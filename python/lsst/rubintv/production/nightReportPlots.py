@@ -31,6 +31,10 @@ from .nightReportPlotBase import BasicPlot
 # report channel, with each being replotted for each image taken.
 __all__ = ['ZeroPointPlot', 'PsfFwhmPlot']
 
+# TODO: get these colours from somewhere else
+gcolor = 'mediumseagreen'
+rcolor = 'lightcoral'
+icolor = 'mediumpurple'
 
 class ZeroPointPlot(BasicPlot):
     _PlotName = 'per-band-zeropoints'
@@ -64,11 +68,6 @@ class ZeroPointPlot(BasicPlot):
                 msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
                 self.log.warning(msg)
                 return False
-
-        # TODO: get these colours from somewhere else
-        gcolor = 'mediumseagreen'
-        rcolor = 'lightcoral'
-        icolor = 'mediumpurple'
 
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
@@ -160,8 +159,14 @@ class PsfFwhmPlot(BasicPlot):
             else:
                 self.log.warning(f'Cannot correct unknown filter to 500nm seeing {bands[i]}')
                 psfFwhm[i] = psfFwhm[i]*airMassCorr
-        plt.plot(rawDates, seeing, '.', color='0.6', linestyle='-', label='DIMM')
-        plt.plot(rawDates, psfFwhm, '.', color='darkturquoise', linestyle='-', label='LATISS')
+        
+        rband = np.where(bands=='SDSSr_65mm')
+        gband = np.where(bands=='SDSSg_65mm')
+        iband = np.where(bands=='SDSSi_65mm')
+
+        plt.plot(rawDates[gband],psfFwhm[gband],'.',color=gcolor,linestyle='-',label='SDSSg')
+        plt.plot(rawDates[rband],psfFwhm[rband],'.',color=rcolor,linestyle='-',label='SDSSr')
+        plt.plot(rawDates[iband],psfFwhm[iband],'.',color=icolor,linestyle='-',label='SDSSi')
         plt.xlabel('TAI Date')
         plt.ylabel('PSF FWHM (arcsec)')
         plt.xticks(rotation=25, horizontalalignment='right')
