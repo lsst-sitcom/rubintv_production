@@ -29,12 +29,13 @@ from .nightReportPlotBase import BasicPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['ZeroPointPlot', 'PsfFwhmPlot']
+__all__ = ['ZeroPointPlot', 'PsfFwhmPlot', 'SourceCountsPlot', 'PsfE1Plot', 'PsfE2Plot']
 
 # TODO: get these colours from somewhere else
 gcolor = 'mediumseagreen'
 rcolor = 'lightcoral'
 icolor = 'mediumpurple'
+
 
 class ZeroPointPlot(BasicPlot):
     _PlotName = 'per-band-zeropoints'
@@ -159,16 +160,209 @@ class PsfFwhmPlot(BasicPlot):
             else:
                 self.log.warning(f'Cannot correct unknown filter to 500nm seeing {bands[i]}')
                 psfFwhm[i] = psfFwhm[i]*airMassCorr
-        
-        rband = np.where(bands=='SDSSr_65mm')
-        gband = np.where(bands=='SDSSg_65mm')
-        iband = np.where(bands=='SDSSi_65mm')
 
-        plt.plot(rawDates[gband],psfFwhm[gband],'.',color=gcolor,linestyle='-',label='SDSSg')
-        plt.plot(rawDates[rband],psfFwhm[rband],'.',color=rcolor,linestyle='-',label='SDSSr')
-        plt.plot(rawDates[iband],psfFwhm[iband],'.',color=icolor,linestyle='-',label='SDSSi')
+        rband = np.where(bands == 'SDSSr_65mm')
+        gband = np.where(bands == 'SDSSg_65mm')
+        iband = np.where(bands == 'SDSSi_65mm')
+
+        plt.plot(rawDates[gband], psfFwhm[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[rband], psfFwhm[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[iband], psfFwhm[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+        plt.plot(rawDates, seeing, '.', color='0.6', linestyle='-', label='DIMM')
         plt.xlabel('TAI Date')
         plt.ylabel('PSF FWHM (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        plt.legend()
+        return True
+
+
+class PsfE1Plot(BasicPlot):
+    _PlotName = 'PSF-e1'
+    _PlotGroup = 'Seeing'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata):
+        """Plot the PSF ellipticity e1 values for the current report.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = nightReport.getDatesForSeqNums()
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
+
+        for item in ['PSF e1', 'Filter']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        inds = metadata.index[metadata['PSF e1'] > -100].tolist()  # get the non-nan values
+        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
+        psf_e1 = np.array(metadata['PSF e1'].iloc[inds])
+        rawDates = rawDates[inds]
+        bandColumn = metadata['Filter']
+        bands = np.array(bandColumn[inds])
+
+        # TODO: generalise this to all bands
+        rband = np.where(bands == 'SDSSr_65mm')
+        gband = np.where(bands == 'SDSSg_65mm')
+        iband = np.where(bands == 'SDSSi_65mm')
+
+        plt.plot(rawDates[gband], psf_e1[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[rband], psf_e1[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[iband], psf_e1[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+
+        plt.xlabel('TAI Date')
+        plt.ylabel('PSF Ellipticity e1')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        plt.legend()
+        return True
+
+
+class PsfE2Plot(BasicPlot):
+    _PlotName = 'PSF-e2'
+    _PlotGroup = 'Seeing'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata):
+        """Plot the PSF ellipticity e2 values for the current report.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = nightReport.getDatesForSeqNums()
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
+
+        for item in ['PSF e2', 'Filter']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        inds = metadata.index[metadata['PSF e2'] > -100].tolist()  # get the non-nan values
+        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
+        psf_e2 = np.array(metadata['PSF e2'].iloc[inds])
+        rawDates = rawDates[inds]
+        bandColumn = metadata['Filter']
+        bands = np.array(bandColumn[inds])
+
+        # TODO: generalise this to all bands
+        rband = np.where(bands == 'SDSSr_65mm')
+        gband = np.where(bands == 'SDSSg_65mm')
+        iband = np.where(bands == 'SDSSi_65mm')
+
+        plt.plot(rawDates[gband], psf_e2[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[rband], psf_e2[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[iband], psf_e2[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+
+        plt.xlabel('TAI Date')
+        plt.ylabel('PSF Ellipticity e2')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        plt.legend()
+        return True
+
+
+class SourceCountsPlot(BasicPlot):
+    _PlotName = 'Source-Counts'
+    _PlotGroup = 'Seeing'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata):
+        """Plot source counts for sources detected above 5-sigma and sources
+        used for PSF fitting.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = nightReport.getDatesForSeqNums()
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
+
+        for item in ['5-sigma source count', 'PSF star count']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        inds = metadata.index[metadata['PSF star count'] > 0].tolist()  # get the non-nan values
+        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
+        five_sigma_source_count = np.array(metadata['5-sigma source count'].iloc[inds])
+        psf_star_count = np.array(metadata['PSF star count'].iloc[inds])
+        rawDates = rawDates[inds]
+
+        plt.plot(rawDates, five_sigma_source_count, '.', color='0.8', linestyle='-', label='5-sigma Sources')
+        plt.plot(rawDates, psf_star_count, '.', color='0.0', linestyle='-', label='PSF Star Sources')
+        plt.xlabel('TAI Date')
+        plt.ylabel('Number of Sources')
+        plt.yscale('log')
         plt.xticks(rotation=25, horizontalalignment='right')
         plt.grid()
         ax = plt.gca()
