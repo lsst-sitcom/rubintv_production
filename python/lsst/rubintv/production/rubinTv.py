@@ -39,6 +39,7 @@ from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
+from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask
 
 try:
     from lsst_efd_client import EfdClient
@@ -787,9 +788,13 @@ class CalibrateCcdRunner(BaseButlerChannel):
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
             self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
-            self.clobber(calibrateRes.outputExposure, "calexp", expRecord)
+            self.clobber(calibrateRes.outputExposure, "calexp", visitDataId)
             tFinal = time.time()
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
+
+            tVisitInfoStart = time.time()
+            self.putVisitSummary(visitDataId)
+            self.log.info(f"Put the visit info summary in {time.time()-tVisitInfoStart:.2f} seconds")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -841,7 +846,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
                              " define-visits?")
             return None
 
-    def clobber(self, object, datasetType, expRecord):
+    def clobber(self, object, datasetType, visitDataId):
         """Put object in the butler.
 
         If there is one already there, remove it beforehand.
@@ -852,21 +857,40 @@ class CalibrateCcdRunner(BaseButlerChannel):
             Any object to put in the butler.
         datasetType : `str`
             Dataset type name to put it as.
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The dimension record of the exposure to put.
+        visitDataId : `lsst.daf.butler.DataCoordinate`
+            The data coordinate record of the exposure to put. Must contain the
+            visit id.
         """
-        if not (visitDataId := self.getVisitDataId(expRecord)):
-            self.log.warning(f'Skipped butler.put of {datasetType} for {expRecord.id} due to lack of visitId.'
-                             " Do you need to run define-visits?")
-            return
-
         self.butler.registry.registerRun(self.outputRunName)
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
             self.log.warning(f'Overwriting existing {datasetType} for {visitDataId}')
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f'Put {datasetType} for {expRecord.id} with visitId: {visitDataId}')
+        self.log.info(f'Put {datasetType} for {visitDataId}')
+
+    def putVisitSummary(self, visitId):
+        """Create and butler.put the visitSummary for this visit.
+
+        Note that this only works like this while we have a single detector.
+
+        Parameters
+        ----------
+        visitId : `lsst.daf.butler.DataCoordinate`
+            The visit id to create and put the visitSummary for.
+        """
+        dRefs = list(self.butler.registry.queryDatasets('calexp',
+                                                        dataId=visitId,
+                                                        collections=self.outputRunName).expanded())
+        if len(dRefs) != 1:
+            raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
+
+        ddRef = self.butler.getDirectDeferred(dRefs[0])
+        visit = ddRef.dataId.byName()['visit']  # this is a raw int
+        consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
+        expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
+        self.clobber(expCatalog, 'visitSummary', visitId)
+        return
 
 
 class NightReportChannel(BaseButlerChannel):
