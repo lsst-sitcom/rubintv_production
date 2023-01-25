@@ -39,7 +39,7 @@ from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
-from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask
+from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
 
 try:
     from lsst_efd_client import EfdClient
@@ -874,6 +874,10 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
         Note that this only works like this while we have a single detector.
 
+        Note: the whole method takes ~0.25s so it is probably not worth
+        cluttering the class with the ConsolidateVisitSummaryTask at this
+        point, though it could be done.
+
         Parameters
         ----------
         visitId : `lsst.daf.butler.DataCoordinate`
@@ -968,16 +972,46 @@ class NightReportChannel(BaseButlerChannel):
 
         return mdTable
 
+    def getVisitSummaryTable(self, dayObs):
+        """Get the consolidated visit summary table for the given dayObs.
+
+        Parameters
+        ----------
+        dayObs : `int`
+            The dayObs.
+
+        Returns
+        -------
+        visitSummaryTableOutputCatalog : `pandas.DataFrame` or `None`
+            The visit summary table for the dayObs.
+        """
+        visitSummaries = self.butler.registry.queryDatasets('visitSummary',
+                                                            where='visit.day_obs=dayObs',
+                                                            bind={'dayObs': dayObs},
+                                                            collections=["LATISS/runs/quickLook/1"]
+                                                            ).expanded()
+        visitSummaries = list(visitSummaries)
+        if len(visitSummaries) == 0:
+            self.log.warning(f'Found no visitSummaries for dayObs {dayObs}')
+            return None
+        self.log.info(f'Found {len(visitSummaries)} visitSummaries for dayObs {dayObs}')
+        ddRefs = [self.butler.getDirectDeferred(vs) for vs in visitSummaries]
+        task = MakeCcdVisitTableTask()
+        table = task.run(ddRefs)
+        return table.outputCatalog
+
     def createPlotsAndUpload(self):
         md = self.getMetadataTableContents()
         report = self.report
+        summaryTable = self.getVisitSummaryTable(self.dayObs)
 
         for plotClassName in nightReportPlots.__all__:
             try:
                 self.log.info(f'Creating plot {plotClassName}')
                 PlotClass = getattr(nightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
-                                 nightReportChannel=self)
+                                 nightReportChannel=self,
+                                 visitSummaryTable=summaryTable)
                 plot.createAndUpload(report, md)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotClassName}")
