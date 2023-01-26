@@ -904,13 +904,15 @@ class NightReportChannel(BaseButlerChannel):
     ----------
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The locationConfig containing the path configs.
+    dayObs : `int`, optional
+        TODO: XXX document this!!! XXX
     embargo : `bool`, optional
         Use the embargo repo?
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, *, dayObs=None, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
@@ -929,7 +931,7 @@ class NightReportChannel(BaseButlerChannel):
         # easily achieved as we need to reinstantiate a report as each day
         # rolls over anyway.
 
-        self.dayObs = getCurrentDayObs_int()
+        self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
 
         # always attempt to resume on init
         saveFile = self.getSaveFile()
@@ -941,10 +943,13 @@ class NightReportChannel(BaseButlerChannel):
             self.report = NightReport(self.butler, self.dayObs)
 
     def finalizeDay(self):
-        # do the final scrape and upload here. Does this need to be any
-        # different to the normal code which is run on each dataId though?
-        # Likely not, but let's see how development goes
-        raise NotImplementedError
+        """XXX Docs
+        """
+        self.dayObs = getCurrentDayObs_int()
+        self.saveFile = self.getSaveFile()
+        self.log.info(f'Starting new report for dayObs {self.dayObs}')
+        self.report = NightReport(self.butler, self.dayObs)
+        return
 
     def getSaveFile(self):
         return os.path.join(self.locationConfig.nightReportPath, f'report_{self.dayObs}.pickle')
@@ -1001,6 +1006,9 @@ class NightReportChannel(BaseButlerChannel):
         return table.outputCatalog
 
     def createPlotsAndUpload(self):
+        """XXX Docs
+        """
+
         md = self.getMetadataTableContents()
         report = self.report
         summaryTable = self.getVisitSummaryTable(self.dayObs)
@@ -1017,32 +1025,32 @@ class NightReportChannel(BaseButlerChannel):
                 self.log.exception(f"Failed to create plot {plotClassName}")
                 continue
 
-    def callback(self, expRecord):
+    def callback(self, expRecord, doCheckDay=True):
         """Method called on each new expRecord as it is found in the repo.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record for the latest data.
+        doCheckDay : `bool`, optional
+            Whether to check if the day has rolled over. This should be left as
+            True for normal operation, but set to False when manually running
+            on past exposures to save triggering on the fact it is no longer
+            that day, e.g. during testing or doing catch-up/backfilling.
         """
         dataId = expRecord.dataId
         md = {}
         try:
-            if hasDayRolledOver(self.dayObs):
+            if doCheckDay and hasDayRolledOver(self.dayObs):
                 self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
                 self.finalizeDay()
-
-                self.dayObs = getCurrentDayObs_int()
-                self.saveFile = self.getSaveFile()
-                self.log.info(f'Starting new report for dayObs {self.dayObs}')
-                self.report = NightReport(self.butler, self.dayObs)
 
             else:
                 self.report.rebuild()
                 self.report.save(self.getSaveFile())  # save on each call, it's quick and allows resuming
 
                 # make plots here, uploading one by one
-                # per-object airmass plot
+                # make all the automagic plots from nightReportPlots.py
                 self.createPlotsAndUpload()
 
                 # plots which come from the night report object itself:
