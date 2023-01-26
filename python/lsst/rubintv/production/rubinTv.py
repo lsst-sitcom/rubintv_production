@@ -1018,9 +1018,8 @@ class NightReportChannel(BaseButlerChannel):
                 self.log.info(f'Creating plot {plotClassName}')
                 PlotClass = getattr(nightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
-                                 nightReportChannel=self,
-                                 visitSummaryTable=summaryTable)
-                plot.createAndUpload(report, md)
+                                 nightReportChannel=self)
+                plot.createAndUpload(report, md, summaryTable)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotClassName}")
                 continue
