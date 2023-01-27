@@ -66,7 +66,7 @@ class StarTrackerCamera:
 
 regularCam = StarTrackerCamera('regular', '', '', True, 102, 2.5, 10, 0.95, 100)
 wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 10)
-fastCam = StarTrackerCamera('fast', '_fast', ' fast', False, 103, None, None, None, None)
+fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 100)
 
 
 def getCurrentRawDataDir(rootDataPath, camera):
