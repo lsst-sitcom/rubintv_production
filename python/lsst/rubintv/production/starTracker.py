@@ -25,6 +25,7 @@ from glob import glob
 from time import sleep
 import datetime
 import traceback
+from dataclasses import dataclass
 
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
@@ -45,35 +46,56 @@ from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
 
 _LOG = logging.getLogger(__name__)
+KNOWN_CAMERAS = ("regular", "wide", "fast")
 
 
-def getCurrentRawDataDir(rootDataPath, wide):
+@dataclass(frozen=True)
+class StarTrackerCamera:
+    """A frozen dataclass for StarTracker camera configs
+    """
+    cameraType: str
+    suffix: str
+    suffixWithSpace: str
+    doAstrometry: bool
+    cameraNumber: int
+    snr: float
+    minPix: int
+    brightSourceFraction: float
+    scaleError: float
+
+
+regularCam = StarTrackerCamera('regular', '', '', True, 102, 2.5, 10, 0.95, 100)
+wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 10)
+fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 100)
+
+
+def getCurrentRawDataDir(rootDataPath, camera):
     """Get the raw data dir corresponding to the current dayObs.
 
     Returns
     -------
     path : `str`
         The raw data dir for today.
-    wide : `bool`
-        Is this the wide field camera?
+    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        The camera to get the raw data for.
     """
     todayInt = getCurrentDayObs_int()
-    return getRawDataDirForDayObs(rootDataPath, wide, todayInt)
+    return getRawDataDirForDayObs(rootDataPath, camera, todayInt)
 
 
-def getRawDataDirForDayObs(rootDataPath, wide, dayObs):
+def getRawDataDirForDayObs(rootDataPath, camera, dayObs):
     """Get the raw data dir for a given dayObs.
 
     Parameters
     ----------
     rootDataPath : `str`
         The root data path.
-    wide : `bool`
-        Is this the wide field camera?
+    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        The camera to get the raw data for.
     dayObs : `int`
         The dayObs.
     """
-    camNum = 101 if wide else 102  # TODO move this config to the top somehow?
+    camNum = camera.cameraNumber
     dayObsDateTime = datetime.datetime.strptime(str(dayObs), '%Y%m%d')
     dirSuffix = (f'GenericCamera/{camNum}/{dayObsDateTime.year}/'
                  f'{dayObsDateTime.month:02}/{dayObsDateTime.day:02}/')
@@ -131,8 +153,8 @@ class StarTrackerWatcher:
         directory that these are being written to, as visible from k8s.
     bucketName : `str`
         The bucket to upload the heartbeats to.
-    wide : `bool`
-        Whether to watch the wide or narrow camera.
+    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        The camera to watch for raw data for.
     """
     cadence = 1  # in seconds
 
@@ -141,9 +163,9 @@ class StarTrackerWatcher:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
 
-    def __init__(self, *, rootDataPath, bucketName, wide):
+    def __init__(self, *, rootDataPath, bucketName, camera):
         self.rootDataPath = rootDataPath
-        self.wide = wide
+        self.camera = camera
         self.uploader = Uploader(bucketName)
         self.log = _LOG.getChild("watcher")
         self.heartbeater = None
@@ -163,7 +185,7 @@ class StarTrackerWatcher:
         expId : `int` or `None`
             The expId of the ``latestFile`` or ``None`` is nothing is found.
         """
-        currentDir = getCurrentRawDataDir(self.rootDataPath, self.wide)
+        currentDir = getCurrentRawDataDir(self.rootDataPath, self.camera)
         files = glob(os.path.join(currentDir, '*.fits'))
         files = sorted(files, reverse=True)  # everything is zero-padded so sorts nicely
         if not files:
@@ -211,17 +233,18 @@ class StarTrackerWatcher:
 class StarTrackerChannel(BaseChannel):
     """Class for serving star tracker images to RubinTV.
 
-    These channels are somewhat hybrid channels which serve both the raw
-    images and their analyses. The metadata is also written as shards from
-    these channels, with a TimedMetadataServer collating and uploading them
-    as a separate service.
+    These channels are somewhat hybrid channels which serve both the raw images
+    and their analyses. The metadata is also written as shards from these
+    channels, with a TimedMetadataServer collating and uploading them as a
+    separate service.
 
     Parameters
     ----------
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The LocationConfig containing the relevant paths.
-    wide : `bool`
-        Run the wide or narrow camera?
+    cameraType : `str`
+        Which camera to run the channel for. Allowed values are 'regular',
+        'wide', 'fast'.
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
@@ -233,24 +256,34 @@ class StarTrackerChannel(BaseChannel):
     def __init__(self,
                  locationConfig,
                  *,
-                 wide,
+                 cameraType,
                  doRaise=False):
+        if cameraType not in KNOWN_CAMERAS:
+            raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
-        name = 'starTracker' + ('_wide' if wide else '')
+        if cameraType == 'regular':
+            self.camera = regularCam
+        elif cameraType == 'wide':
+            self.camera = wideCam
+        elif cameraType == 'fast':
+            self.camera = fastCam
+        else:
+            raise RuntimeError('This should be impossible, camera type already checked.')
+
+        name = 'starTracker' + self.camera.suffix
         log = logging.getLogger(f'lsst.rubintv.production.{name}')
         self.rootDataPath = locationConfig.starTrackerDataPath
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
                                      bucketName=locationConfig.bucketName,
-                                     wide=wide)
+                                     camera=self.camera)
 
         super().__init__(locationConfig=locationConfig,
                          log=log,
                          watcher=watcher,
                          doRaise=doRaise)
 
-        self.channelRaw = f"startracker{'_wide' if wide else ''}_raw"
-        self.channelAnalysis = f"startracker{'_wide' if wide else ''}_analysis"
-        self.wide = wide
+        self.channelRaw = f"startracker{self.camera.suffix}_raw"
+        self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"
 
         self.outputRoot = self.locationConfig.starTrackerOutputPath
         self.metadataRoot = self.locationConfig.starTrackerMetadataPath
@@ -286,7 +319,6 @@ class StarTrackerChannel(BaseChannel):
         filename : `str`
             The filename.
         """
-        _ifWide = ' wide' if self.wide else ''
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         expMd = exp.getMetadata().toDict()
         expTime = exp.visitInfo.exposureTime
@@ -307,11 +339,11 @@ class StarTrackerChannel(BaseChannel):
             self.log.warning(f'Failed to get alt from header for {filename}')
 
         contents = {
-            f"Exposure Time{_ifWide}": expTime,
-            f"Ra{_ifWide}": ra,
-            f"Dec{_ifWide}": dec,
-            f"Alt{_ifWide}": alt,
-            f"Az{_ifWide}": az,
+            f"Exposure Time{self.camera.suffixWithSpace}": expTime,
+            f"Ra{self.camera.suffixWithSpace}": ra,
+            f"Dec{self.camera.suffixWithSpace}": dec,
+            f"Alt{self.camera.suffixWithSpace}": alt,
+            f"Az{self.camera.suffixWithSpace}": az,
         }
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
@@ -341,7 +373,6 @@ class StarTrackerChannel(BaseChannel):
         filename : `str`
             The filename.
         """
-        _ifWide = ' wide' if self.wide else ''  # the string to append to md keys
         oldWcs = exp.getWcs()
 
         basename = os.path.basename(filename).removesuffix('.fits')
@@ -349,30 +380,29 @@ class StarTrackerChannel(BaseChannel):
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.heartbeaterAnalysis.beat()  # we're alive and at least trying to solve
 
-        # TODO: Need to pull these wide/non-wide config options into a
-        # centralised place. snr, minPix, scaleError, indexFiles on init
-        snr = 5 if self.wide else 2.5
-        minPix = 25 if self.wide else 10
-        brightSourceFraction = 0.8 if self.wide else 0.95
+        snr = self.camera.snr
+        minPix = self.camera.minPix
+        brightSourceFraction = self.camera.brightSourceFraction
         imCharResult = runCharactierizeImage(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
-        md = {seqNum: {f"nSources{_ifWide}": len(sourceCatalog)}}
+        md = {seqNum: {f"nSources{self.camera.suffixWithSpace}": len(sourceCatalog)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
         if not sourceCatalog:
             raise RuntimeError('Failed to find any sources in image')
 
         filteredSources = filterSourceCatOnBrightest(sourceCatalog, brightSourceFraction)
-        md = {seqNum: {f"nSources filtered{_ifWide}": len(filteredSources)}}
+        md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
         plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename)
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
-        scaleError = 10 if self.wide else 40
+        scaleError = self.camera.scaleError
+        isWide = True if self.camera.cameraType == 'wide' else False
         result = self.solver.run(exp, filteredSources,
-                                 isWideField=self.wide,
+                                 isWideField=isWide,
                                  percentageScaleError=scaleError,
                                  silent=True)
 
@@ -409,7 +439,7 @@ class StarTrackerChannel(BaseChannel):
             'RMS scatter arcsec': result.rmsErrorArsec,
             'RMS scatter pixels': result.rmsErrorPixels,
         }
-        contents = {k + _ifWide: v for k, v in result.items()}
+        contents = {k + self.camera.suffixWithSpace: v for k, v in result.items()}
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
@@ -440,6 +470,9 @@ class StarTrackerChannel(BaseChannel):
 
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
+        if self.camera.doAstrometry is False:
+            return
+
         try:
             # writes shards as it goes
             self.runAnalysis(exp, filename)
