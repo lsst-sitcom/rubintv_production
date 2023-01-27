@@ -46,7 +46,7 @@ from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
 
 _LOG = logging.getLogger(__name__)
-KNOWN_CAMERAS = ('regular', 'wide', 'fast')
+KNOWN_CAMERAS = ("regular", "wide", "fast")
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ def getCurrentRawDataDir(rootDataPath, camera):
     path : `str`
         The raw data dir for today.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
-        Which camera is this?
+        The camera to get the raw data for.
     """
     todayInt = getCurrentDayObs_int()
     return getRawDataDirForDayObs(rootDataPath, camera, todayInt)
@@ -91,7 +91,7 @@ def getRawDataDirForDayObs(rootDataPath, camera, dayObs):
     rootDataPath : `str`
         The root data path.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
-        Which camera is this?
+        The camera to get the raw data for.
     dayObs : `int`
         The dayObs.
     """
@@ -154,7 +154,7 @@ class StarTrackerWatcher:
     bucketName : `str`
         The bucket to upload the heartbeats to.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
-        Which camera to watch for data for.
+        The camera to watch for raw data for.
     """
     cadence = 1  # in seconds
 
@@ -233,17 +233,18 @@ class StarTrackerWatcher:
 class StarTrackerChannel(BaseChannel):
     """Class for serving star tracker images to RubinTV.
 
-    These channels are somewhat hybrid channels which serve both the raw
-    images and their analyses. The metadata is also written as shards from
-    these channels, with a TimedMetadataServer collating and uploading them
-    as a separate service.
+    These channels are somewhat hybrid channels which serve both the raw images
+    and their analyses. The metadata is also written as shards from these
+    channels, with a TimedMetadataServer collating and uploading them as a
+    separate service.
 
     Parameters
     ----------
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The LocationConfig containing the relevant paths.
     cameraType : `str`
-        Which camera is this? Allowed values are 'regular', 'wide', 'fast'.
+        Which camera to run the channel for. Allowed values are 'regular',
+        'wide', 'fast'.
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
