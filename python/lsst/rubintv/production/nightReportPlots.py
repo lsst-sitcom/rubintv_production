@@ -76,21 +76,19 @@ class ZeroPointPlot(BasicPlot):
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         # TODO: need to check the Zeropoint column exists - it won't always
         inds = metadata.index[metadata['Zeropoint'] > 0].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        bandColumn = metadata['Filter']
-        bands = bandColumn[inds]
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        bands = np.asarray(metadata['Filter'][inds])
         # TODO: generalise this to all bands and add checks for if empty
         rband = np.where(bands == 'SDSSr_65mm')
         gband = np.where(bands == 'SDSSg_65mm')
         iband = np.where(bands == 'SDSSi_65mm')
-        zeroPoint = np.array(metadata['Zeropoint'].iloc[inds])
-        plt.plot(rawDates[inds][gband], zeroPoint[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
-        plt.plot(rawDates[inds][rband], zeroPoint[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
-        plt.plot(rawDates[inds][iband], zeroPoint[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+        zeroPoint = np.array(metadata['Zeropoint'][inds])
+        plt.plot(rawDates[gband], zeroPoint[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[rband], zeroPoint[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[iband], zeroPoint[iband], '.', color=icolor, linestyle='-', label='SDSSi')
         plt.xlabel('TAI Date')
         plt.ylabel('Photometric Zeropoint (mag)')
         plt.xticks(rotation=25, horizontalalignment='right')
@@ -136,7 +134,6 @@ class PsfFwhmPlot(BasicPlot):
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         for item in ['PSF FWHM', 'Airmass', 'DIMM Seeing', 'Filter']:
             if item not in metadata.columns:
@@ -145,13 +142,11 @@ class PsfFwhmPlot(BasicPlot):
                 return False
 
         inds = metadata.index[metadata['PSF FWHM'] > 0].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        psfFwhm = np.array(metadata['PSF FWHM'].iloc[inds])
-        airmass = np.array(metadata['Airmass'].iloc[inds])
-        rawDates = rawDates[inds]
-        seeing = np.array(metadata['DIMM Seeing'].iloc[inds])
-        bandColumn = metadata['Filter']
-        bands = np.array(bandColumn[inds])
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        psfFwhm = np.array(metadata['PSF FWHM'][inds])
+        airmass = np.array(metadata['Airmass'][inds])
+        seeing = np.array(metadata['DIMM Seeing'][inds])
+        bands = np.array(metadata['Filter'][inds])
         # TODO: generalise this to all bands
         for i in range(0, len(bands)):
             airMassCorr = getAirmassSeeingCorrection(airmass[i])
@@ -169,10 +164,10 @@ class PsfFwhmPlot(BasicPlot):
         gband = np.where(bands == 'SDSSg_65mm')
         iband = np.where(bands == 'SDSSi_65mm')
 
+        plt.plot(rawDates, seeing, '.', color='0.6', linestyle='-', label='DIMM', alpha=0.5)
         plt.plot(rawDates[gband], psfFwhm[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
         plt.plot(rawDates[rband], psfFwhm[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
         plt.plot(rawDates[iband], psfFwhm[iband], '.', color=icolor, linestyle='-', label='SDSSi')
-        plt.plot(rawDates, seeing, '.', color='0.6', linestyle='-', label='DIMM')
         plt.xlabel('TAI Date')
         plt.ylabel('PSF FWHM (arcsec)')
         plt.xticks(rotation=25, horizontalalignment='right')
@@ -217,7 +212,6 @@ class PsfE1Plot(BasicPlot):
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         for item in ['PSF e1', 'Filter']:
             if item not in metadata.columns:
@@ -226,11 +220,9 @@ class PsfE1Plot(BasicPlot):
                 return False
 
         inds = metadata.index[metadata['PSF e1'] > -100].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        psf_e1 = np.array(metadata['PSF e1'].iloc[inds])
-        rawDates = rawDates[inds]
-        bandColumn = metadata['Filter']
-        bands = np.array(bandColumn[inds])
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        psf_e1 = np.array(metadata['PSF e1'][inds])
+        bands = np.array(metadata['Filter'][inds])
 
         # TODO: generalise this to all bands
         rband = np.where(bands == 'SDSSr_65mm')
@@ -285,7 +277,6 @@ class PsfE2Plot(BasicPlot):
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         for item in ['PSF e2', 'Filter']:
             if item not in metadata.columns:
@@ -294,11 +285,9 @@ class PsfE2Plot(BasicPlot):
                 return False
 
         inds = metadata.index[metadata['PSF e2'] > -100].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        psf_e2 = np.array(metadata['PSF e2'].iloc[inds])
-        rawDates = rawDates[inds]
-        bandColumn = metadata['Filter']
-        bands = np.array(bandColumn[inds])
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        psf_e2 = np.array(metadata['PSF e2'][inds])
+        bands = np.array(metadata['Filter'][inds])
 
         # TODO: generalise this to all bands
         rband = np.where(bands == 'SDSSr_65mm')
@@ -354,7 +343,6 @@ class SourceCountsPlot(BasicPlot):
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in sorted(datesDict.keys())])
 
         for item in ['5-sigma source count', 'PSF star count']:
             if item not in metadata.columns:
@@ -363,10 +351,9 @@ class SourceCountsPlot(BasicPlot):
                 return False
 
         inds = metadata.index[metadata['PSF star count'] > 0].tolist()  # get the non-nan values
-        inds = [i-1 for i in inds]  # pandas uses 1-based indexing
-        five_sigma_source_count = np.array(metadata['5-sigma source count'].iloc[inds])
-        psf_star_count = np.array(metadata['PSF star count'].iloc[inds])
-        rawDates = rawDates[inds]
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        five_sigma_source_count = np.array(metadata['5-sigma source count'][inds])
+        psf_star_count = np.array(metadata['PSF star count'][inds])
 
         plt.plot(rawDates, five_sigma_source_count, '.', color='0.8', linestyle='-', label='5-sigma Sources')
         plt.plot(rawDates, psf_star_count, '.', color='0.0', linestyle='-', label='PSF Star Sources')
