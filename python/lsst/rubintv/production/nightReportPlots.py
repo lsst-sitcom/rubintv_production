@@ -96,6 +96,8 @@ class ZeroPointPlot(BasicPlot):
         ax = plt.gca()
         xfmt = md.DateFormatter('%m-%d %H:%M:%S')
         ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
         plt.legend()
         return True
 
@@ -175,6 +177,8 @@ class PsfFwhmPlot(BasicPlot):
         ax = plt.gca()
         xfmt = md.DateFormatter('%m-%d %H:%M:%S')
         ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
         plt.legend()
         return True
 
@@ -240,6 +244,8 @@ class PsfE1Plot(BasicPlot):
         ax = plt.gca()
         xfmt = md.DateFormatter('%m-%d %H:%M:%S')
         ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
         plt.legend()
         return True
 
@@ -305,6 +311,8 @@ class PsfE2Plot(BasicPlot):
         ax = plt.gca()
         xfmt = md.DateFormatter('%m-%d %H:%M:%S')
         ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
         plt.legend()
         return True
 
@@ -365,5 +373,7 @@ class SourceCountsPlot(BasicPlot):
         ax = plt.gca()
         xfmt = md.DateFormatter('%m-%d %H:%M:%S')
         ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
         plt.legend()
         return True
