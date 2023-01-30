@@ -968,6 +968,7 @@ class NightReportChannel(BaseButlerChannel):
 
         try:
             mdTable = pd.read_json(sidecarFilename).T
+            mdTable = mdTable.sort_index()
         except Exception as e:
             self.log.warning(f"Failed to load metadata table from {sidecarFilename}: {e}")
             return None
