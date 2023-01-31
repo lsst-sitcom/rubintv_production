@@ -67,7 +67,7 @@ class BasicPlot(ABC):
                             f'{self.plotName}.png')
 
     @abstractmethod
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Subclasses must implement this method.
 
         Parameters
@@ -76,7 +76,7 @@ class BasicPlot(ABC):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -86,7 +86,7 @@ class BasicPlot(ABC):
         """
         raise NotImplementedError()
 
-    def createAndUpload(self, nightReport, metadata, visitSummaryTable):
+    def createAndUpload(self, nightReport, metadata, ccdVisitTable):
         """Create the plot defined in ``plot`` and upload it.
 
         This is the method called by the Night Report channel to create the
@@ -98,10 +98,10 @@ class BasicPlot(ABC):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
         """
-        success = self.plot(nightReport, metadata, visitSummaryTable)
+        success = self.plot(nightReport, metadata, ccdVisitTable)
         if not success:
             self.log.warning(f'Plot {self.plotName} failed to create')
             return

@@ -50,7 +50,7 @@ class ZeroPointPlot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the zeropoint plot.
 
         Parameters
@@ -59,7 +59,7 @@ class ZeroPointPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -114,7 +114,7 @@ class SkyMeanPlot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the zeropoint plot.
 
         Parameters
@@ -123,7 +123,7 @@ class SkyMeanPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -179,7 +179,7 @@ class PsfFwhmPlot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot filter and airmass corrected PSF FWHM and DIMM seeing for the
         current report.
 
@@ -189,7 +189,7 @@ class PsfFwhmPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -260,7 +260,7 @@ class PsfE1Plot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the PSF ellipticity e1 values for the current report.
 
         Parameters
@@ -269,7 +269,7 @@ class PsfE1Plot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -327,7 +327,7 @@ class PsfE2Plot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the PSF ellipticity e2 values for the current report.
 
         Parameters
@@ -336,7 +336,7 @@ class PsfE2Plot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -394,7 +394,7 @@ class SourceCountsPlot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot source counts for sources detected above 5-sigma and sources
         used for PSF fitting.
 
@@ -404,7 +404,7 @@ class SourceCountsPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -456,7 +456,7 @@ class TelescopeAzElPlot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot Telescope Azimuth and Elevation with Wind Direction and
         Wind Speed as subplots
 
@@ -466,7 +466,7 @@ class TelescopeAzElPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns
@@ -548,7 +548,7 @@ class MountMotionPlot(BasicPlot):
                          plotGroup=self._PlotGroup,
                          nightReportChannel=nightReportChannel)
 
-    def plot(self, nightReport, metadata, visitSummaryTable):
+    def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the RMS mount motion vs time.
 
         Parameters
@@ -557,7 +557,7 @@ class MountMotionPlot(BasicPlot):
             The night report for the current night.
         metadata : `pandas.DataFrame`
             The front page metadata, as a dataframe.
-        visitSummaryTable : `pandas.DataFrame`
+        ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
 
         Returns

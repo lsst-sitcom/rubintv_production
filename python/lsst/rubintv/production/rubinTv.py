@@ -978,7 +978,7 @@ class NightReportChannel(BaseButlerChannel):
 
         return mdTable
 
-    def getVisitSummaryTable(self, dayObs):
+    def getCcdVisitTable(self, dayObs):
         """Get the consolidated visit summary table for the given dayObs.
 
         Parameters
@@ -1007,12 +1007,19 @@ class NightReportChannel(BaseButlerChannel):
         return table.outputCatalog
 
     def createPlotsAndUpload(self):
-        """XXX Docs
-        """
+        """Create and upload all plots defined in nightReportPlots.
 
+        All plots defined in __all__ in nightReportPlots are discovered,
+        created and uploaded. If any fail, the exception is logged and the next
+        plot is created and uploaded.
+        """
         md = self.getMetadataTableContents()
         report = self.report
-        summaryTable = self.getVisitSummaryTable(self.dayObs)
+        ccdVisitTable = self.getCcdVisitTable(self.dayObs)
+        self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
+                      f'{len(report.data)} items in the night report, '
+                      f'{0 if md is None else len(md)} items in the metadata table, and '
+                      f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
 
         for plotClassName in nightReportPlots.__all__:
             try:
@@ -1020,7 +1027,7 @@ class NightReportChannel(BaseButlerChannel):
                 PlotClass = getattr(nightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
                                  nightReportChannel=self)
-                plot.createAndUpload(report, md, summaryTable)
+                plot.createAndUpload(report, md, ccdVisitTable)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotClassName}")
                 continue
