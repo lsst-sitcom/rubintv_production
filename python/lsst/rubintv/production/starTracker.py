@@ -62,11 +62,12 @@ class StarTrackerCamera:
     minPix: int
     brightSourceFraction: float
     scaleError: float
+    doSmoothPlot: bool
 
 
-regularCam = StarTrackerCamera('regular', '', '', True, 102, 2.5, 10, 0.95, 100)
-wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 10)
-fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 100)
+regularCam = StarTrackerCamera('regular', '', '', True, 102, 2.5, 10, 0.95, 100, True)
+wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 10, True)
+fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 100, False)
 
 
 def getCurrentRawDataDir(rootDataPath, camera):
@@ -395,7 +396,7 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename)
+        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename, doSmooth=self.camera.doSmoothPlot)
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
@@ -457,7 +458,7 @@ class StarTrackerChannel(BaseChannel):
         # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix('.fits')
         rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
-        plot(exp, saveAs=rawPngFilename)
+        plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot)
         uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
         self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
 
