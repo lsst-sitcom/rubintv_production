@@ -29,7 +29,8 @@ from .nightReportPlotBase import BasicPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['ZeroPointPlot', 'PsfFwhmPlot', 'SourceCountsPlot', 'PsfE1Plot', 'PsfE2Plot']
+__all__ = ['ZeroPointPlot', 'SkyMeanPlot', 'PsfFwhmPlot', 'SourceCountsPlot', 'PsfE1Plot',
+           'PsfE2Plot', 'TelescopeAzElPlot', 'MountMotionPlot']
 
 # TODO: get these colours from somewhere else
 gcolor = 'mediumseagreen'
@@ -77,7 +78,6 @@ class ZeroPointPlot(BasicPlot):
 
         datesDict = nightReport.getDatesForSeqNums()
 
-        # TODO: need to check the Zeropoint column exists - it won't always
         inds = metadata.index[metadata['Zeropoint'] > 0].tolist()  # get the non-nan values
         rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
         bands = np.asarray(metadata['Filter'][inds])
@@ -91,6 +91,71 @@ class ZeroPointPlot(BasicPlot):
         plt.plot(rawDates[iband], zeroPoint[iband], '.', color=icolor, linestyle='-', label='SDSSi')
         plt.xlabel('TAI Date')
         plt.ylabel('Photometric Zeropoint (mag)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
+        plt.legend()
+        return True
+
+
+class SkyMeanPlot(BasicPlot):
+    _PlotName = 'Per-Band-Sky-Mean'
+    _PlotGroup = 'photometry'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata, visitSummaryTable):
+        """Create the zeropoint plot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        visitSummaryTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Sky mean', 'Filter']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = nightReport.getDatesForSeqNums()
+
+        inds = metadata.index[metadata['Sky mean'] > 0].tolist()  # get the non-nan values
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        bands = np.asarray(metadata['Filter'][inds])
+        # TODO: generalise this to all bands and add checks for if empty
+        rband = np.where(bands == 'SDSSr_65mm')
+        gband = np.where(bands == 'SDSSg_65mm')
+        iband = np.where(bands == 'SDSSi_65mm')
+        skyMean = np.array(metadata['Sky mean'][inds])
+        plt.plot(rawDates[gband], skyMean[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[rband], skyMean[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[iband], skyMean[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+        plt.xlabel('TAI Date')
+        plt.ylabel('Sky Background (counts per pixel)')
+        plt.yscale('log')
         plt.xticks(rotation=25, horizontalalignment='right')
         plt.grid()
         ax = plt.gca()
@@ -375,5 +440,155 @@ class SourceCountsPlot(BasicPlot):
         ax.xaxis.set_major_formatter(xfmt)
         ax.tick_params(which='both', direction='in')
         ax.minorticks_on()
+        plt.legend()
+        return True
+
+
+class TelescopeAzElPlot(BasicPlot):
+    _PlotName = 'Telescope-AzEl-Plot'
+    _PlotGroup = 'Seeing'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata, visitSummaryTable):
+        """Plot Telescope Azimuth and Elevation with Wind Direction and
+        Wind Speed as subplots
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        visitSummaryTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        datesDict = nightReport.getDatesForSeqNums()
+
+        for item in ['PSF FWHM']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: need to check the Zeropoint column exists - it won't always
+        inds = metadata.index[metadata['PSF FWHM'] > 0].tolist()
+
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        telAz = np.asarray([nightReport.data[seqNum]['_raw_metadata']['AZSTART'] for seqNum in inds])
+        telAz = np.where(telAz > 0, telAz, telAz+360.)
+        telEl = np.asarray([nightReport.data[seqNum]['_raw_metadata']['ELSTART'] for seqNum in inds])
+
+        windSpd = np.asarray([nightReport.data[seqNum]['_raw_metadata']['WINDSPD'] for seqNum in inds])
+        windDir = np.asarray([nightReport.data[seqNum]['_raw_metadata']['WINDDIR'] for seqNum in inds])
+
+        fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, sharex=True, gridspec_kw={
+            'height_ratios': [2, 1, 2]}, figsize=(6.4, 4.8*1.5))
+        ax1.plot(rawDates, windDir, '.', color='royalblue', linestyle='-', label='Wind Az', alpha=0.5)
+        ax1.plot(rawDates, telAz, '.', color='firebrick', linestyle='-', label='Telescope Az')
+        ax1.set_ylim(0, 365)
+        ax1.tick_params(which='both', direction='in')
+        major_ticks = [0, 90, 180, 270, 360]
+        ax1.set_yticks(major_ticks)
+        ax1.yaxis.get_ticklocs(minor=True)
+        ax1.minorticks_on()
+        ax1.set_ylabel('Azimuth (deg)')
+        ax1.grid()
+        ax1.legend(fontsize='medium', loc='lower right')
+
+        ax2.plot(rawDates, windSpd, '.', color='darkturquoise', linestyle='-', label='Wind Speed')
+        ax2.set_ylabel('(m/s)')
+        ax2.tick_params(which='both', direction='in')
+        ax2.yaxis.get_ticklocs(minor=True)
+        ax2.minorticks_on()
+        ax2.grid()
+        ax2.legend(fontsize='medium', loc='lower right')
+
+        ax3.plot(rawDates, telEl, '.', color='darksalmon', linestyle='-', label='Telescope El')
+        ax3.set_ylim(0, 95)
+        ax3.tick_params(which='both', direction='in')
+        major_ticks = [30, 60, 90]
+        ax3.set_yticks(major_ticks)
+        ax3.set_ylabel('Elevation (deg)')
+        ax3.yaxis.get_ticklocs(minor=True)
+        ax3.minorticks_on()
+        ax3.grid()
+        ax3.legend(fontsize='medium', loc='lower right')
+
+        plt.xlabel('TAI Date')
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax3.xaxis.set_major_formatter(xfmt)
+        for label in ax3.get_xticklabels(which='major'):
+            label.set(rotation=30, horizontalalignment='right')
+        plt.tight_layout()
+        return True
+
+
+class MountMotionPlot(BasicPlot):
+    _PlotName = 'Mount-Motion'
+    _PlotGroup = 'Seeing'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata, visitSummaryTable):
+        """Plot the RMS mount motion vs time.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        visitSummaryTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = nightReport.getDatesForSeqNums()
+
+        for item in ['PSF FWHM', 'Mount motion image degradation']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        inds = metadata.index[metadata['PSF FWHM'] > 0].tolist()  # get the non-nan values
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        mountMotion = np.array(metadata['Mount motion image degradation'][inds])
+
+        plt.plot(rawDates, mountMotion, '.', color='0.6', linestyle='-', label='Mount Motion')
+        plt.xlabel('TAI Date')
+        plt.ylabel('RMS Mount Motion (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        ax.minorticks_on()
+        ax.tick_params(which='both', direction='in')
         plt.legend()
         return True
