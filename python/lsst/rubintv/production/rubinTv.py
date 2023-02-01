@@ -694,6 +694,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
             True if the image should be processed, False if we should skip it.
         """
         if expRecord.observation_type != 'science':
+            if expRecord.science_program == 'CWFS' and expRecord.exposure_time == 5:
+                self.log.info('Processing 5s post-CWFS image as a special case')
+                return True
             self.log.info(f"Skipping non-science-type exposure {expRecord.observation_type}")
             return False
         return True
