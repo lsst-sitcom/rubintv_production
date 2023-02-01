@@ -494,7 +494,7 @@ class DayAnimator:
                 self.animateFilesAndUpload(isFinal=False)
                 lastAnimationTime = time.time()
 
-            if hasDayRolledOver(self.dayObs):
+            if hasDayRolledOver(self.dayObsInt):
                 # final sweep for new images
                 allFiles = _getFilesetFromDir(self.todaysDataDir)
                 newFiles = allFiles - convertedFiles
