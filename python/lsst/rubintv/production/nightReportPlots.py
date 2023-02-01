@@ -219,9 +219,9 @@ class PsfFwhmPlot(BasicPlot):
             airMassCorr = getAirmassSeeingCorrection(airmass[i])
             if bands[i] == 'SDSSg_65mm':
                 psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSg_65mm'))
-            if bands[i] == 'SDSSr_65mm':
+            elif bands[i] == 'SDSSr_65mm':
                 psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSr_65mm'))
-            if bands[i] == 'SDSSi_65mm':
+            elif bands[i] == 'SDSSi_65mm':
                 psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSi_65mm'))
             else:
                 self.log.warning(f'Cannot correct unknown filter to 500nm seeing {bands[i]}')
