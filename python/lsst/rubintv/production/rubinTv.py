@@ -418,18 +418,38 @@ class MountTorqueChannel(BaseButlerChannel):
 
         Parameters
         ----------
-        errors : `tuple`
-            The mount errors, in the form (az_rms, el_rms, rot_rms).
+        errors : `dict`
+            The mount errors, as a dict, containing keys:
+            ``az_rms`` - The RMS azimuth error.
+            ``el_rms`` - The RMS elevation error.
+            ``rot_rms`` - The RMS rotator error.
+            ``image_az_rms`` - The RMS azimuth error for the image.
+            ``image_el_rms`` - The RMS elevation error for the image.
+            ``image_rot_rms`` - The RMS rotator error for the image.
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
         dayObs = butlerUtils.getDayObs(expRecord)
         seqNum = butlerUtils.getSeqNum(expRecord)
-        az_rms, el_rms, _ = errors  # we don't need the rot errors here so assign to _
-        imageError = (az_rms ** 2 + el_rms ** 2) ** .5
+
+        # the mount error itself, *not* the image component. No quality flags
+        # on this part.
+        az_rms = errors['az_rms']
+        el_rms = errors['el_rms']
+        mountError = (az_rms ** 2 + el_rms ** 2) ** .5
+        contents = {'Mount jitter RMS': mountError}
+
+        # the contribution to the image error from the mount. This is the part
+        # that matters and gets a quality flag. Note that the rotator error
+        # contibution is zero and the field centre and increases radially, and
+        # is usually very small, so we don't add that here as its contrinution
+        # is not really well definited and including it would be misleading.
+        image_az_rms = errors['image_az_rms']
+        image_el_rms = errors['image_el_rms']
+        imageError = (image_az_rms ** 2 + image_el_rms ** 2) ** .5
         key = 'Mount motion image degradation'
         flagKey = '_' + key  # color coding of cells always done by prepending with an underscore
-        contents = {key: imageError}
+        contents.update({key: imageError})
 
         if imageError > MOUNT_IMAGE_BAD_LEVEL:
             contents.update({flagKey: 'bad'})
