@@ -23,6 +23,8 @@ import os
 import logging
 import glob
 import time
+import pickle
+import pandas as pd
 
 from lsst.utils import getPackageDir
 
@@ -38,10 +40,84 @@ __all__ = ['getPlotSeqNumsForDayObs',
            'remakeDay',
            'pushTestImageToCurrent',
            'remakeStarTrackerDay',
+           'getDaysWithDataForPlotting',
+           'getPlottingArgs'
            ]
 
 # this file is for higher level utilities for use in notebooks, but also
 # can be imported by other scripts and channels, especially the catchup ones.
+
+
+def getDaysWithDataForPlotting(path):
+    """Get a list of the days for which we have data for prototyping plots.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to look for data in.
+
+    Returns
+    -------
+    days : `list` [`int`]
+        The days for which we have data.
+    """
+    reportFiles = glob.glob(os.path.join(path, 'report_*.pickle'))
+    mdTableFiles = glob.glob(os.path.join(path, 'dayObs_*.json'))
+    ccdVisitTableFiles = glob.glob(os.path.join(path, 'ccdVisitTable_*.pickle'))
+
+    reportDays = [int(filename.removeprefix(path + '/report_').removesuffix('.pickle'))
+                  for filename in reportFiles]
+    mdDays = [int(filename.removeprefix(path + '/dayObs_').removesuffix('.json'))
+              for filename in mdTableFiles]
+    ccdVisitDays = [int(filename.removeprefix(path + '/ccdVisitTable_').removesuffix('.pickle'))
+                    for filename in ccdVisitTableFiles]
+
+    days = set.intersection(set(reportDays), set(mdDays), set(ccdVisitDays))
+    return list(days)
+
+
+def getPlottingArgs(butler, path, dayObs):
+    """Get the args which are passed to a night report plot.
+
+    Checks if the data is available for the specified ``dayObs`` at the
+    specified ``path``, and returns the args which are passed to the plot
+    function. The ``butler`` is largely unused, but we must pass one to
+    reinstantiate a NightReport.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler.
+    path : `str`
+        The path to look for data in.
+    dayObs : `int`
+        The dayObs to get the data for.
+
+    Returns
+    -------
+    plottingArgs : `tuple`
+        The args which are passed to the plot function. ``(report, mdTable,
+        ccdVisitTable)`` A NightReport, a metadata table as a pandas dataframe,
+        and a ccdVisit table.
+    """
+    from lsst.summit.utils import NightReport
+
+    if dayObs not in getDaysWithDataForPlotting(path):
+        raise ValueError(f'Data not available for {dayObs=} in {path}')
+
+    reportFilename = os.path.join(path, f'report_{dayObs}.pickle')
+    mdFilename = os.path.join(path, f'dayObs_{dayObs}.json')
+    ccdVisitFilename = os.path.join(path, f'ccdVisitTable_{dayObs}.pickle')
+
+    report = NightReport(butler, dayObs, reportFilename)
+
+    mdTable = pd.read_json(mdFilename).T
+    mdTable = mdTable.sort_index()
+
+    with open(ccdVisitFilename, "rb") as input_file:
+        ccdVisitTable = pickle.load(input_file)
+
+    return report, mdTable, ccdVisitTable
 
 
 def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
