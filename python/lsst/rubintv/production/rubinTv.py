@@ -61,6 +61,7 @@ from lsst.rubintv.production.monitorPlotting import plotExp
 from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDayRolledOver, catchPrintOutput
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
+from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from lsst.rubintv.production import nightReportPlots
 
 
@@ -594,6 +595,47 @@ class MetadataCreator(BaseButlerChannel):
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
         return
 
+    def writeLogMessageShards(self, expRecord):
+        """Write a shard containing all the expLog annotations on the dayObs.
+
+        The expRecord is used to identify the dayObs and nothing else.
+
+        This method is called for each new image, but each time polls the
+        exposureLog for all the logs for the dayObs. This is because it will
+        take time for observers to make annotations, and so this needs
+        constantly updating throughout the night.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record, used only to get the dayObs.
+        """
+        dayObs = expRecord.day_obs
+        logs = getLogsForDayObs(dayObs)
+
+        if not logs:
+            return
+
+        itemsToInclude = ['message_text', 'level', 'urls', 'exposure_flag']
+
+        md = {seqNum: {} for seqNum in logs.keys()}
+
+        for seqNum, log in logs.items():
+            wasAnnotated = False
+            for item in itemsToInclude:
+                if item in log:
+                    itemValue = log[item]
+                    newName = LOG_ITEM_MAPPINGS[item]
+                    if isinstance(itemValue, str):  # string values often have trailing '\r\n'
+                        itemValue = itemValue.rstrip()
+                    md[seqNum].update({newName: itemValue})
+                    wasAnnotated = True
+
+            if wasAnnotated:
+                md[seqNum].update({'Has annotations?': '🚩'})
+
+        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -609,6 +651,9 @@ class MetadataCreator(BaseButlerChannel):
             self.writeShardForExpRecord(expRecord)
             # Note: we do not upload anythere here, as the TimedMetadataServer
             # does the collation and upload, and runs as a separate process.
+
+            self.log.info(f'Getting exposure log messages for {expRecord.day_obs}')
+            self.writeLogMessageShards(expRecord)
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
