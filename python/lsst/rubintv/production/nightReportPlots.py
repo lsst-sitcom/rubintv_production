@@ -631,6 +631,7 @@ class AstrometricOffsetMeanPlot(BasicPlot):
 
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
+        fig, ax1 = plt.subplots(1)
 
         datesDict = nightReport.getDatesForSeqNums()
         inds = metadata.index[metadata['Astrometric bias'] > -10000].tolist()  # get the non-nan values
@@ -641,17 +642,24 @@ class AstrometricOffsetMeanPlot(BasicPlot):
         gband = np.where(bands == 'SDSSg_65mm')
         iband = np.where(bands == 'SDSSi_65mm')
         astromOffsetMean = np.array(metadata['Astrometric bias'][inds])
-        plt.plot(rawDates[gband], astromOffsetMean[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
-        plt.plot(rawDates[rband], astromOffsetMean[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
-        plt.plot(rawDates[iband], astromOffsetMean[iband], '.', color=icolor, linestyle='-', label='SDSSi')
-        plt.xlabel('TAI Date')
-        plt.ylabel('Astrometric Offset Mean (arcsec)')
+        ax1.plot(rawDates[gband], astromOffsetMean[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        ax1.plot(rawDates[rband], astromOffsetMean[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        ax1.plot(rawDates[iband], astromOffsetMean[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+        ax1.set_xlabel('TAI Date')
+        ax1.set_ylabel('Astrometric Offset Mean (arcsec)')
         plt.xticks(rotation=25, horizontalalignment='right')
-        plt.grid()
-        ax = plt.gca()
+        ax1.grid()
         xfmt = md.DateFormatter('%m-%d %H:%M:%S')
-        ax.xaxis.set_major_formatter(xfmt)
-        ax.tick_params(which='both', direction='in')
-        ax.minorticks_on()
-        plt.legend()
+        ax1.xaxis.set_major_formatter(xfmt)
+        ax1.tick_params(which='both', direction='in')
+        ax1.minorticks_on()
+
+        ax2 = ax1.twinx()
+        ax2.plot(rawDates, metadata['Airmass'][inds], 'k--', label='Airmass', alpha=0.5)
+        ax2.set_ylabel('Airmass', color='k')
+
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines1 + lines2, labels1 + labels2, loc=0)
+
         return True
