@@ -40,7 +40,7 @@ icolor = 'mediumpurple'
 
 class ZeroPointPlot(BasicPlot):
     _PlotName = 'per-band-zeropoints'
-    _PlotGroup = 'photometry'
+    _PlotGroup = 'Photometry'
 
     def __init__(self,
                  dayObs,
@@ -104,7 +104,7 @@ class ZeroPointPlot(BasicPlot):
 
 class SkyMeanPlot(BasicPlot):
     _PlotName = 'Per-Band-Sky-Mean'
-    _PlotGroup = 'photometry'
+    _PlotGroup = 'Photometry'
 
     def __init__(self,
                  dayObs,
@@ -590,5 +590,68 @@ class MountMotionPlot(BasicPlot):
         ax.xaxis.set_major_formatter(xfmt)
         ax.minorticks_on()
         ax.tick_params(which='both', direction='in')
+        plt.legend()
+        return True
+
+
+class AstrometricOffsetMeanPlot(BasicPlot):
+    _PlotName = 'Per-Band-Astrometry-Offset-Mean'
+    _PlotGroup = 'Astrometry'
+
+    def __init__(self,
+                 dayObs,
+                 nightReportChannel):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         nightReportChannel=nightReportChannel)
+
+    def plot(self, nightReport, metadata, ccdVisitTable):
+        """Create the astometric offset mean plot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        ccdVisitTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Astrometric bias', 'Filter']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        datesDict = nightReport.getDatesForSeqNums()
+        inds = metadata.index[metadata['Astrometric bias'] > -10000].tolist()  # get the non-nan values
+        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
+        bands = np.asarray(metadata['Filter'][inds])
+        # TODO: generalise this to all bands and add checks for if empty
+        rband = np.where(bands == 'SDSSr_65mm')
+        gband = np.where(bands == 'SDSSg_65mm')
+        iband = np.where(bands == 'SDSSi_65mm')
+        astromOffsetMean = np.array(metadata['Astrometric bias'][inds])
+        plt.plot(rawDates[gband], astromOffsetMean[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
+        plt.plot(rawDates[rband], astromOffsetMean[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
+        plt.plot(rawDates[iband], astromOffsetMean[iband], '.', color=icolor, linestyle='-', label='SDSSi')
+        plt.xlabel('TAI Date')
+        plt.ylabel('Astrometric Offset Mean (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
+        ax.xaxis.set_major_formatter(xfmt)
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
         plt.legend()
         return True
