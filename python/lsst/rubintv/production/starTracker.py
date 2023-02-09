@@ -27,6 +27,8 @@ import datetime
 import traceback
 from dataclasses import dataclass
 
+import lsst.geom as geom
+
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
                                      dayObsIntToString,
@@ -419,7 +421,14 @@ class StarTrackerChannel(BaseChannel):
         deltaRa = calculatedRa - nominalRa
         deltaDec = calculatedDec - nominalDec
 
-        oldAlt, oldAz = getAltAzFromSkyPosition(oldWcs.getSkyOrigin(), exp.visitInfo)
+        # pull the alt/az from the header *not* by calculating from the ra/dec,
+        # mjd and location. We want the difference between where the telescope
+        # thinks it was pointing and where it was actually pointing.
+        oldAz = getAverageAzFromHeader(exp.getMetadata().toDict())
+        oldAlt = getAverageElFromHeader(exp.getMetadata().toDict())
+        oldAz = geom.Angle(oldAz, geom.degrees)
+        oldAlt = geom.Angle(oldAlt, geom.degrees)
+
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(), exp.visitInfo)
 
         deltaAlt = newAlt - oldAlt
