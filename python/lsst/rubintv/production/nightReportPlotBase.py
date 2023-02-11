@@ -52,17 +52,9 @@ class BasicPlot(ABC):
         self.nightReportChannel = nightReportChannel
         self.log = logging.getLogger(f'lsst.rubintv.production.nightReportPlots.{plotName}')
 
-    def upload(self, saveFile):
-
-        if os.path.isfile(saveFile):
-            print(f'{saveFile} confirmed to exist')
-        else:
-            print(f'Failed to find {saveFile}')
-            return
-
-        print(f'uploading {saveFile}')
-
     def getSaveFilename(self):
+        """XXX docs
+        """
         return os.path.join(self.nightReportChannel.locationConfig.nightReportPath,
                             f'{self.plotName}.png')
 

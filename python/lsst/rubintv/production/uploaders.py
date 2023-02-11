@@ -189,7 +189,6 @@ class Uploader:
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        # dayObsStr = dayObsIntToString(dayObsInt)
         basename = os.path.basename(filename)  # deals with png vs jpeg
         uploadAs = f"{channel}/{dayObsInt}/{plotGroup if plotGroup else 'default'}/{basename}"
 
