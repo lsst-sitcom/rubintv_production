@@ -681,3 +681,308 @@ class AstrometricOffsetMeanPlot(LatissPlot):
         ax2.legend(lines1 + lines2, labels1 + labels2, loc=0)
 
         return True
+
+
+class MountMotionVsZenith(LatissPlot):
+    _PlotName = 'MountMotion-zenith'
+    _PlotGroup = 'Elana'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, nightReport, metadata, ccdVisitTable):
+        """Create the Mt Motion vs Zenith angle plot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        ccdVisitTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Zenith angle', 'Filter', 'Mount motion image degradation']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        zenith = np.asarray(metadata['Zenith angle'])
+        mountMotion = np.asarray(metadata['Mount motion image degradation'])
+
+        bands = np.asarray(metadata['Filter'])
+        band_list = set(metadata['Filter'])
+
+        for band in band_list:
+            band_loc = np.where(bands == band)
+            plt.plot(zenith[band_loc], mountMotion[band_loc], '.', linestyle='', label=band)
+
+        plt.xlabel('Zenith Angle (degrees)')
+        plt.ylabel('Mount Motion Image Degradation (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
+        plt.legend()
+        return True
+
+
+class SkyMeanVsSkyRms(LatissPlot):
+    _PlotName = 'SkyMean-SkyRMS'
+    _PlotGroup = 'Elana'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, nightReport, metadata, ccdVisitTable):
+        """Create the Sky mean vs SkyRMS plot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        ccdVisitTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Zenith angle', 'Filter', 'PSF FWHM']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        skyRms = np.asarray(metadata['Sky RMS'])
+        skyMean = np.asarray(metadata['Sky mean'])
+
+        bands = np.asarray(metadata['Filter'])
+        band_list = set(metadata['Filter'])
+
+        for band in band_list:
+            band_loc = np.where(bands == band)
+            plt.plot(skyMean[band_loc], skyRms[band_loc], '.', linestyle='', label=band)
+
+        plt.xlabel('Sky Mean')
+        plt.ylabel('Sky RMS')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
+        plt.legend()
+        return True
+
+
+class PsfVsSkyRms(LatissPlot):
+    _PlotName = 'PSF-SkyRMS'
+    _PlotGroup = 'Elana'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, nightReport, metadata, ccdVisitTable):
+        """Create the PSF vs SkyRMS plot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        ccdVisitTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Zenith angle', 'Filter', 'PSF FWHM']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        skyRms = np.asarray(metadata['Sky RMS'])
+        psf = np.asarray(metadata['PSF FWHM'])
+
+        bands = np.asarray(metadata['Filter'])
+        band_list = set(metadata['Filter'])
+
+        for band in band_list:
+            band_loc = np.where(bands == band)
+            plt.plot(skyRms[band_loc], psf[band_loc], '.', linestyle='', label=band)
+
+        plt.xlabel('Sky RMS')
+        plt.ylabel('PSF FWHM (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
+        plt.legend()
+        return True
+
+
+class PsfVsZenith(LatissPlot):
+    _PlotName = 'PSF-zenith'
+    _PlotGroup = 'Elana'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, nightReport, metadata, ccdVisitTable):
+        """Create the PSF vs Zenith angle plot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        ccdVisitTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Zenith angle', 'Filter', 'PSF FWHM']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        zenith = np.asarray(metadata['Zenith angle'])
+        psf = np.asarray(metadata['PSF FWHM'])
+
+        bands = np.asarray(metadata['Filter'])
+        band_list = set(metadata['Filter'])
+
+        for band in band_list:
+            band_loc = np.where(bands == band)
+            plt.plot(zenith[band_loc], psf[band_loc], '.', linestyle='', label=band)
+
+        plt.xlabel('Zenith Angle (degrees)')
+        plt.ylabel('PSF FWHM (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
+        plt.legend()
+        return True
+
+
+class PsfVsMountMotion(LatissPlot):
+    _PlotName = 'PSF-Mount-motion'
+    _PlotGroup = 'Elana'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, nightReport, metadata, ccdVisitTable):
+        """Create the PSF vs mount motion ploot.
+
+        Parameters
+        ----------
+        nightReport : `lsst.rubintv.production.nightReport.NightReport`
+            The night report for the current night.
+        metadata : `pandas.DataFrame`
+            The front page metadata, as a dataframe.
+        ccdVisitTable : `pandas.DataFrame`
+            The visit summary table for the current day.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        for item in ['Mount motion image degradation', 'Filter', 'PSF FWHM']:
+            if item not in metadata.columns:
+                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
+                self.log.warning(msg)
+                return False
+
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        plt.figure(constrained_layout=True)
+
+        mountMotion = np.asarray(metadata['Mount motion image degradation'])
+        psf = np.asarray(metadata['PSF FWHM'])
+
+        bands = np.asarray(metadata['Filter'])
+        band_list = set(metadata['Filter'])
+
+        for band in band_list:
+            band_loc = np.where(bands == band)
+            plt.plot(mountMotion[band_loc], psf[band_loc], '.', linestyle='', label=band)
+
+        plt.xlabel('Mount Motion Image Degradation (arcsec)')
+        plt.ylabel('PSF FWHM (arcsec)')
+        plt.xticks(rotation=25, horizontalalignment='right')
+        plt.grid()
+        ax = plt.gca()
+        ax.tick_params(which='both', direction='in')
+        ax.minorticks_on()
+        plt.legend()
+        return True
