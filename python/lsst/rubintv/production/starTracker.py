@@ -26,6 +26,8 @@ from time import sleep
 import datetime
 import traceback
 from dataclasses import dataclass
+import pandas as pd
+import json
 
 import lsst.geom as geom
 
@@ -43,9 +45,15 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 )
 
 from .channels import PREFIXES
-from .utils import writeMetadataShard
+from .utils import writeMetadataShard, hasDayRolledOver, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
+from .plotting import starTrackerNightReportPlots
+
+__all__ = ('StarTrackerCamera',
+           'StarTrackerWatcher',
+           'StarTrackerChannel',
+           'StarTrackerNightReportChannel')
 
 _LOG = logging.getLogger(__name__)
 KNOWN_CAMERAS = ("regular", "wide", "fast")
@@ -489,3 +497,130 @@ class StarTrackerChannel(BaseChannel):
         except Exception as e:
             self.log.warning(f"Failed to run analysis on {filename}: {repr(e)}")
             traceback.print_exc()
+
+
+class StarTrackerNightReportChannel(BaseChannel):
+    """Class for running the Star Tracker Night Report channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    dayObs : `int`, optional
+        TODO: XXX document this!!! XXX
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
+    """
+
+    def __init__(self, locationConfig, *, dayObs=None, doRaise=False):
+        name = 'starTrackerNightReport'
+        log = logging.getLogger(f'lsst.rubintv.production.{name}')
+        self.rootDataPath = locationConfig.starTrackerDataPath
+        # XXX deal with the 3x cameras here if needed
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
+                                     bucketName=locationConfig.bucketName,
+                                     camera=self.camera)
+
+        super().__init__(locationConfig=locationConfig,
+                         log=log,
+                         watcher=watcher,
+                         doRaise=doRaise
+                         )
+
+        self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
+
+    def getMetadataTableContents(self):
+        """Get the measured data for the current night.
+
+        Returns
+        -------
+        mdTable : `pandas.DataFrame`
+            The contents of the metdata table from the front end.
+        """
+        # TODO: need to find a better way of getting this path ideally,
+        # but perhaps is OK?
+        sidecarFilename = os.path.join(self.locationConfig.auxTelMetadataPath, f'dayObs_{self.dayObs}.json')
+
+        try:
+            mdTable = pd.read_json(sidecarFilename).T
+            mdTable = mdTable.sort_index()
+        except Exception as e:
+            self.log.warning(f"Failed to load metadata table from {sidecarFilename}: {e}")
+            return None
+
+        if mdTable.empty:
+            return None
+
+        return mdTable
+
+    def createPlotsAndUpload(self):
+        """Create and upload all plots defined in nightReportPlots.
+
+        All plots defined in __all__ in nightReportPlots are discovered,
+        created and uploaded. If any fail, the exception is logged and the next
+        plot is created and uploaded.
+        """
+        md = self.getMetadataTableContents()
+        report = self.report
+        ccdVisitTable = self.getCcdVisitTable(self.dayObs)
+        self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
+                      f'{len(report.data)} items in the night report, '
+                      f'{0 if md is None else len(md)} items in the metadata table, and '
+                      f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
+
+        for plotClassName in starTrackerNightReportPlots.__all__:
+            try:
+                self.log.info(f'Creating plot {plotClassName}')
+                PlotClass = getattr(starTrackerNightReportPlots, plotClassName)
+                plot = PlotClass(dayObs=self.dayObs,
+                                 nightReportChannel=self)
+                plot.createAndUpload(report, md, ccdVisitTable)
+            except Exception:
+                self.log.exception(f"Failed to create plot {plotClassName}")
+                continue
+
+    def callback(self, expRecord, doCheckDay=True):
+        """Method called on each new expRecord as it is found in the repo.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for the latest data.
+        doCheckDay : `bool`, optional
+            Whether to check if the day has rolled over. This should be left as
+            True for normal operation, but set to False when manually running
+            on past exposures to save triggering on the fact it is no longer
+            that day, e.g. during testing or doing catch-up/backfilling.
+        """
+        dataId = expRecord.dataId
+        md = {}
+        try:
+            if doCheckDay and hasDayRolledOver(self.dayObs):
+                self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
+                self.finalizeDay()
+
+            else:
+                # make plots here, uploading one by one
+                # make all the automagic plots from nightReportPlots.py
+                self.createPlotsAndUpload()
+
+                # Add text items here
+                # md['text_010'] = 'something'
+
+                # Upload the text here
+                # Note this file must be called md.json because this filename
+                # is used for the upload, and that's what the frontend expects
+                jsonFilename = os.path.join(self.locationConfig.nightReportPath, 'md.json')
+                with open(jsonFilename, 'w') as f:
+                    json.dump(md, f)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=jsonFilename)
+
+                self.log.info(f'Finished updating plots and table for {dataId}')
+
+        except Exception as e:
+            msg = f"Skipped updating the night report for {dataId}:"
+            raiseIf(self.doRaise, e, self.log, msg=msg)

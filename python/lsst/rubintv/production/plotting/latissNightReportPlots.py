@@ -25,7 +25,7 @@ import matplotlib.dates as md
 
 from lsst.summit.utils.utils import getAirmassSeeingCorrection, getFilterSeeingCorrection
 
-from .nightReportPlotBase import BasicPlot
+from .nightReportPlotBase import LatissPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
@@ -38,17 +38,19 @@ rcolor = 'lightcoral'
 icolor = 'mediumpurple'
 
 
-class ZeroPointPlot(BasicPlot):
+class ZeroPointPlot(LatissPlot):
     _PlotName = 'per-band-zeropoints'
     _PlotGroup = 'Photometry'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the zeropoint plot.
@@ -102,17 +104,19 @@ class ZeroPointPlot(BasicPlot):
         return True
 
 
-class SkyMeanPlot(BasicPlot):
+class SkyMeanPlot(LatissPlot):
     _PlotName = 'Per-Band-Sky-Mean'
     _PlotGroup = 'Photometry'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the zeropoint plot.
@@ -167,17 +171,19 @@ class SkyMeanPlot(BasicPlot):
         return True
 
 
-class PsfFwhmPlot(BasicPlot):
+class PsfFwhmPlot(LatissPlot):
     _PlotName = 'PSF-FWHM'
     _PlotGroup = 'Seeing'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot filter and airmass corrected PSF FWHM and DIMM seeing for the
@@ -248,17 +254,19 @@ class PsfFwhmPlot(BasicPlot):
         return True
 
 
-class PsfE1Plot(BasicPlot):
+class PsfE1Plot(LatissPlot):
     _PlotName = 'PSF-e1'
     _PlotGroup = 'Seeing'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the PSF ellipticity e1 values for the current report.
@@ -315,17 +323,19 @@ class PsfE1Plot(BasicPlot):
         return True
 
 
-class PsfE2Plot(BasicPlot):
+class PsfE2Plot(LatissPlot):
     _PlotName = 'PSF-e2'
     _PlotGroup = 'Seeing'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the PSF ellipticity e2 values for the current report.
@@ -382,17 +392,19 @@ class PsfE2Plot(BasicPlot):
         return True
 
 
-class SourceCountsPlot(BasicPlot):
+class SourceCountsPlot(LatissPlot):
     _PlotName = 'Source-Counts'
     _PlotGroup = 'Seeing'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot source counts for sources detected above 5-sigma and sources
@@ -444,17 +456,19 @@ class SourceCountsPlot(BasicPlot):
         return True
 
 
-class TelescopeAzElPlot(BasicPlot):
+class TelescopeAzElPlot(LatissPlot):
     _PlotName = 'Telescope-AzEl-Plot'
     _PlotGroup = 'Seeing'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot Telescope Azimuth and Elevation with Wind Direction and
@@ -536,17 +550,19 @@ class TelescopeAzElPlot(BasicPlot):
         return True
 
 
-class MountMotionPlot(BasicPlot):
+class MountMotionPlot(LatissPlot):
     _PlotName = 'Mount-Motion'
     _PlotGroup = 'Seeing'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the RMS mount motion vs time.
@@ -594,17 +610,19 @@ class MountMotionPlot(BasicPlot):
         return True
 
 
-class AstrometricOffsetMeanPlot(BasicPlot):
+class AstrometricOffsetMeanPlot(LatissPlot):
     _PlotName = 'Per-Band-Astrometry-Offset-Mean'
     _PlotGroup = 'Astrometry'
 
     def __init__(self,
                  dayObs,
-                 nightReportChannel):
+                 locationConfig=None,
+                 uploader=None):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
-                         nightReportChannel=nightReportChannel)
+                         locationConfig=locationConfig,
+                         uploader=uploader)
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the astometric offset mean plot.

@@ -62,7 +62,7 @@ from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDa
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
-from lsst.rubintv.production import nightReportPlots
+from .plotting import latissNightReportPlots
 
 
 __all__ = [
@@ -1089,10 +1089,10 @@ class NightReportChannel(BaseButlerChannel):
                       f'{0 if md is None else len(md)} items in the metadata table, and '
                       f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
 
-        for plotClassName in nightReportPlots.__all__:
+        for plotClassName in latissNightReportPlots.__all__:
             try:
                 self.log.info(f'Creating plot {plotClassName}')
-                PlotClass = getattr(nightReportPlots, plotClassName)
+                PlotClass = getattr(latissNightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
                                  nightReportChannel=self)
                 plot.createAndUpload(report, md, ccdVisitTable)
