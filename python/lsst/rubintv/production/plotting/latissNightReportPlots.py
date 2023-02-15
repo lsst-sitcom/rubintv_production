@@ -29,8 +29,20 @@ from .nightReportPlotBase import LatissPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['ZeroPointPlot', 'SkyMeanPlot', 'PsfFwhmPlot', 'SourceCountsPlot', 'PsfE1Plot',
-           'PsfE2Plot', 'TelescopeAzElPlot', 'MountMotionPlot']
+__all__ = ['ZeroPointPlot',
+           'SkyMeanPlot',
+           'PsfFwhmPlot',
+           'SourceCountsPlot',
+           'PsfE1Plot',
+           'PsfE2Plot',
+           'TelescopeAzElPlot',
+           'MountMotionPlot',
+           'MountMotionVsZenith',
+           'SkyMeanVsSkyRms',
+           'PsfVsSkyRms',
+           'PsfVsZenith',
+           'PsfVsMountMotion',
+           ]
 
 # TODO: get these colours from somewhere else
 gcolor = 'mediumseagreen'
