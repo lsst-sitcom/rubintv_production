@@ -1094,7 +1094,8 @@ class NightReportChannel(BaseButlerChannel):
                 self.log.info(f'Creating plot {plotClassName}')
                 PlotClass = getattr(latissNightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
-                                 nightReportChannel=self)
+                                 locationConfig=self.locationConfig,
+                                 uploader=self.uploader)
                 plot.createAndUpload(report, md, ccdVisitTable)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotClassName}")
