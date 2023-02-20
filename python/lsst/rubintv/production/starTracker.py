@@ -521,7 +521,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         # XXX deal with the 3x cameras here if needed
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
                                      bucketName=locationConfig.bucketName,
-                                     camera=self.camera)
+                                     camera='wide')
 
         super().__init__(locationConfig=locationConfig,
                          log=log,
