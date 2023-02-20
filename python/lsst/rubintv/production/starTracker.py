@@ -563,20 +563,17 @@ class StarTrackerNightReportChannel(BaseChannel):
         plot is created and uploaded.
         """
         md = self.getMetadataTableContents()
-        report = self.report
-        ccdVisitTable = self.getCcdVisitTable(self.dayObs)
         self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
-                      f'{len(report.data)} items in the night report, '
-                      f'{0 if md is None else len(md)} items in the metadata table, and '
-                      f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
+                      f'{0 if md is None else len(md)} items in the metadata table')
 
         for plotClassName in starTrackerNightReportPlots.__all__:
             try:
                 self.log.info(f'Creating plot {plotClassName}')
                 PlotClass = getattr(starTrackerNightReportPlots, plotClassName)
                 plot = PlotClass(dayObs=self.dayObs,
-                                 nightReportChannel=self)
-                plot.createAndUpload(report, md, ccdVisitTable)
+                                 locationConfig=self.locationConfig,
+                                 uploader=self.uploader)
+                plot.createAndUpload(md)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotClassName}")
                 continue
