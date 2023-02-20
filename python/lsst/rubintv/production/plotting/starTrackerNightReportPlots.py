@@ -21,16 +21,15 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as md
 
 from .nightReportPlotBase import StarTrackerPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['SomePlot']
+__all__ = ['TestPlot']
 
 
-class SomePlot(StarTrackerPlot):
+class TestPlot(StarTrackerPlot):
     _PlotName = 'test-plot'
     _PlotGroup = 'TestGroup'
 
@@ -44,8 +43,8 @@ class SomePlot(StarTrackerPlot):
                          locationConfig=locationConfig,
                          uploader=uploader)
 
-    def plot(self, nightReport, metadata, ccdVisitTable):
-        """Create the zeropoint plot.
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
         ----------
@@ -57,36 +56,30 @@ class SomePlot(StarTrackerPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        for item in ['???', '???']:
+        for item in ['Delta Alt Arcsec wide',
+                     'Delta Alt Arcsec',
+                     'Delta Az Arcsec wide',
+                     'Delta Az Arcsec']:
             if item not in metadata.columns:
                 msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
                 self.log.warning(msg)
                 return False
 
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
-        plt.figure(constrained_layout=True)
+        plt.figure(figsize=(16, 8), constrained_layout=True)
 
-        datesDict = nightReport.getDatesForSeqNums()
+        seqNums = metadata.index
 
-        inds = metadata.index[metadata['Zeropoint'] > 0].tolist()  # get the non-nan values
-        rawDates = np.asarray([datesDict[seqNum] for seqNum in inds])
-        bands = np.asarray(metadata['Filter'][inds])
-        # TODO: generalise this to all bands and add checks for if empty
-        rband = np.where(bands == 'SDSSr_65mm')
-        gband = np.where(bands == 'SDSSg_65mm')
-        iband = np.where(bands == 'SDSSi_65mm')
-        zeroPoint = np.array(metadata['Zeropoint'][inds])
-        plt.plot(rawDates[gband], zeroPoint[gband], '.', color=gcolor, linestyle='-', label='SDSSg')
-        plt.plot(rawDates[rband], zeroPoint[rband], '.', color=rcolor, linestyle='-', label='SDSSr')
-        plt.plot(rawDates[iband], zeroPoint[iband], '.', color=icolor, linestyle='-', label='SDSSi')
-        plt.xlabel('TAI Date')
-        plt.ylabel('Photometric Zeropoint (mag)')
-        plt.xticks(rotation=25, horizontalalignment='right')
-        plt.grid()
-        ax = plt.gca()
-        xfmt = md.DateFormatter('%m-%d %H:%M:%S')
-        ax.xaxis.set_major_formatter(xfmt)
-        ax.tick_params(which='both', direction='in')
-        ax.minorticks_on()
+        for series in ['Delta Alt Arcsec wide',
+                       'Delta Alt Arcsec',
+                       'Delta Az Arcsec wide',
+                       'Delta Az Arcsec']:
+
+            plt.plot(seqNums, metadata[series]%360*60*60, label=series)
+
+        axisLabelSize = 18
+        plt.xlabel('SeqNum', size=axisLabelSize)
+        plt.ylabel('Delta (arcseconds)', size=axisLabelSize)
+
         plt.legend()
         return True
