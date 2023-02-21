@@ -19,19 +19,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
 import matplotlib.pyplot as plt
 
 from .nightReportPlotBase import StarTrackerPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['TestPlot']
+__all__ = ['EverythingPlot']
 
 
-class TestPlot(StarTrackerPlot):
-    _PlotName = 'test-plot'
-    _PlotGroup = 'TestGroup'
+class EverythingPlot(StarTrackerPlot):
+    _PlotName = 'everything-plot'
+    _PlotGroup = 'TemporaryGroup'
 
     def __init__(self,
                  dayObs,
@@ -56,30 +55,43 @@ class TestPlot(StarTrackerPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        for item in ['Delta Alt Arcsec wide',
-                     'Delta Alt Arcsec',
-                     'Delta Az Arcsec wide',
-                     'Delta Az Arcsec']:
-            if item not in metadata.columns:
-                msg = f'Cannot create {self._PlotName} plot as required item {item} is not in the table.'
-                self.log.warning(msg)
-                return False
-
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
-        plt.figure(figsize=(16, 8), constrained_layout=True)
-
-        seqNums = metadata.index
-
-        for series in ['Delta Alt Arcsec wide',
-                       'Delta Alt Arcsec',
-                       'Delta Az Arcsec wide',
-                       'Delta Az Arcsec']:
-
-            plt.plot(seqNums, metadata[series]%360*60*60, label=series)
-
+        nPlots = 18
         axisLabelSize = 18
-        plt.xlabel('SeqNum', size=axisLabelSize)
-        plt.ylabel('Delta (arcseconds)', size=axisLabelSize)
 
-        plt.legend()
+        fig, axes = plt.subplots(figsize=(16, 8*nPlots), nrows=nPlots, ncols=1, sharex=True)
+
+        mjds = metadata['MJD']
+
+        suffixes = ['', ' wide', ' fast']
+
+        for seriesNum, series in enumerate(['Alt',
+                                            'Az',
+                                            'Calculated Alt',
+                                            'Calculated Az',
+                                            'Calculated Dec',
+                                            'Calculated Ra',
+                                            'Dec',
+                                            'Delta Alt Arcsec',
+                                            'Delta Az Arcsec',
+                                            'Delta Dec Arcsec',
+                                            'Delta Ra Arcsec',
+                                            'Delta Rot Arcsec',
+                                            'Exposure Time',
+                                            'RMS scatter arcsec',
+                                            'RMS scatter pixels',
+                                            'Ra',
+                                            'nSources',
+                                            'nSources filtered',
+                                            ]):
+
+            for suffix in suffixes:
+                seriesName = series + suffix
+                if seriesName in metadata.columns:
+                    data = metadata[seriesName]
+                    axes[seriesNum].plot(mjds, data, label=seriesName)
+                    axes[seriesNum].legend()
+                    axes[seriesNum].set_xlabel('MJD', size=axisLabelSize)
+                    axes[seriesNum].set_ylabel(series, size=axisLabelSize)
+
         return True
