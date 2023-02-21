@@ -133,15 +133,16 @@ class AltAzCoverageTopDown(StarTrackerPlot):
         ax = plt.subplot(111, polar=True)
 
         alts = metadata['Alt']
-        zenithAngles = [90-alt for alt in alts]
         azes = metadata['Az']
 
-        ax.plot([az*np.pi/180 for az in azes], zenithAngles, 'or')
-        ax.set_title("Axial coverage - azimuth (theta) vs zenith angle(r)\n Top down view", va='bottom')
+        ax.plot([az*np.pi/180 for az in azes], alts, 'or')
+        ax.set_title("Axial coverage - azimuth (theta) vs altitude(r)"
+                     "\n 'Top down' view with zenith at center", va='bottom')
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.set_rlim(0, 90)
 
+        ax.invert_yaxis()  # puts 90 (the zenith) at the center
         return True
 
 
