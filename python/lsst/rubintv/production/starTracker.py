@@ -551,9 +551,8 @@ class StarTrackerNightReportChannel(BaseChannel):
         mdTable : `pandas.DataFrame`
             The contents of the metdata table from the front end.
         """
-        # TODO: need to find a better way of getting this path ideally,
-        # but perhaps is OK?
-        sidecarFilename = os.path.join(self.locationConfig.auxTelMetadataPath, f'dayObs_{self.dayObs}.json')
+        sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
+                                       f'dayObs_{self.dayObs}.json')
 
         try:
             mdTable = pd.read_json(sidecarFilename).T
