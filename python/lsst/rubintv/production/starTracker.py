@@ -349,8 +349,15 @@ class StarTrackerChannel(BaseChannel):
         except RuntimeError:
             self.log.warning(f'Failed to get alt from header for {filename}')
 
+        # We use MJD as a float because neither astropy.Time nor python
+        # datetime.datetime are natively JSON serializable so just use the
+        # float for now. Once this data is in the butler we can simply get the
+        # datetimes from the exposure records when we need them.
+        mjd = exp.visitInfo.getDate().toAstropy().mjd
+
         contents = {
             f"Exposure Time{self.camera.suffixWithSpace}": expTime,
+            f"MJD{self.camera.suffixWithSpace}": mjd,
             f"Ra{self.camera.suffixWithSpace}": ra,
             f"Dec{self.camera.suffixWithSpace}": dec,
             f"Alt{self.camera.suffixWithSpace}": alt,
