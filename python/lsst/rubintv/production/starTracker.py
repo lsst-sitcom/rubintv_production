@@ -27,7 +27,6 @@ import datetime
 import traceback
 from dataclasses import dataclass
 import pandas as pd
-import json
 
 import lsst.geom as geom
 
@@ -591,21 +590,27 @@ class StarTrackerNightReportChannel(BaseChannel):
                 self.log.exception(f"Failed to create plot {plotClassName}")
                 continue
 
-    def callback(self, expRecord, doCheckDay=True):
+    def finalizeDay(self):
+        """XXX Docs
+        """
+        self.log.info(f'Starting new star tracker night report for dayObs {self.dayObs}')
+        self.dayObs = getCurrentDayObs_int()
+        return
+
+    def callback(self, filename, doCheckDay=True):
         """Method called on each new expRecord as it is found in the repo.
 
         Parameters
         ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record for the latest data.
+        filename : `str`
+            The filename of the most recently taken image on the nominal camera
+            we're using to watch for data for.
         doCheckDay : `bool`, optional
             Whether to check if the day has rolled over. This should be left as
             True for normal operation, but set to False when manually running
             on past exposures to save triggering on the fact it is no longer
             that day, e.g. during testing or doing catch-up/backfilling.
         """
-        dataId = expRecord.dataId
-        md = {}
         try:
             if doCheckDay and hasDayRolledOver(self.dayObs):
                 self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
@@ -615,22 +620,8 @@ class StarTrackerNightReportChannel(BaseChannel):
                 # make plots here, uploading one by one
                 # make all the automagic plots from nightReportPlots.py
                 self.createPlotsAndUpload()
-
-                # Add text items here
-                # md['text_010'] = 'something'
-
-                # Upload the text here
-                # Note this file must be called md.json because this filename
-                # is used for the upload, and that's what the frontend expects
-                jsonFilename = os.path.join(self.locationConfig.nightReportPath, 'md.json')
-                with open(jsonFilename, 'w') as f:
-                    json.dump(md, f)
-                self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObsInt=self.dayObs,
-                                                    filename=jsonFilename)
-
-                self.log.info(f'Finished updating plots and table for {dataId}')
+                self.log.info(f'Finished updating plots and table with most recent file {filename}')
 
         except Exception as e:
-            msg = f"Skipped updating the night report for {dataId}:"
+            msg = f"Skipped updating the night report for {filename}:"
             raiseIf(self.doRaise, e, self.log, msg=msg)
