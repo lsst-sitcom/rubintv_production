@@ -19,13 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import numpy as np
 import matplotlib.pyplot as plt
 
 from .nightReportPlotBase import StarTrackerPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['EverythingPlot']
+__all__ = ['EverythingPlot',
+           'AltAzCoverageTopDown',
+           'AltAzCoverage',
+           ]
 
 
 class EverythingPlot(StarTrackerPlot):
@@ -93,5 +97,93 @@ class EverythingPlot(StarTrackerPlot):
                     axes[seriesNum].legend()
                     axes[seriesNum].set_xlabel('MJD', size=axisLabelSize)
                     axes[seriesNum].set_ylabel(series, size=axisLabelSize)
+
+        return True
+
+
+class AltAzCoverageTopDown(StarTrackerPlot):
+    _PlotName = 'Alt-Az-top-down'
+    _PlotGroup = 'Coverage'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        _ = plt.figure(figsize=(10, 10))
+        ax = plt.subplot(111, polar=True)
+
+        alts = metadata['Alt']
+        zenithAngles = [90-alt for alt in alts]
+        azes = metadata['Az']
+
+        ax.plot([az*np.pi/180 for az in azes], zenithAngles, 'or')
+        ax.set_title("Axial coverage - azimuth (theta) vs zenith angle(r)\n Top down view", va='bottom')
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_rlim(0, 90)
+
+        return True
+
+
+class AltAzCoverage(StarTrackerPlot):
+    _PlotName = 'Alt-Az-coverage'
+    _PlotGroup = 'Coverage'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        _ = plt.figure(figsize=(10, 10))
+        ax = plt.subplot(111, polar=True)
+
+        alts = metadata['Alt']
+        zenithAngles = [alt for alt in alts]
+        azes = metadata['Az']
+
+        ax.plot([az*np.pi/180 for az in azes], zenithAngles, 'o')
+        ax.set_title("Axial coverage - azimuth (theta) vs altitude (r)", va='bottom')
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_rlim(0, 90)
 
         return True
