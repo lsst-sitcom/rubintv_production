@@ -354,6 +354,9 @@ class StarTrackerChannel(BaseChannel):
         # datetimes from the exposure records when we need them.
         mjd = exp.visitInfo.getDate().toAstropy().mjd
 
+        datetime = exp.visitInfo.date.toPython()
+        taiString = datetime.time().isoformat().split('.')[0]
+
         contents = {
             f"Exposure Time{self.camera.suffixWithSpace}": expTime,
             f"MJD{self.camera.suffixWithSpace}": mjd,
@@ -361,6 +364,7 @@ class StarTrackerChannel(BaseChannel):
             f"Dec{self.camera.suffixWithSpace}": dec,
             f"Alt{self.camera.suffixWithSpace}": alt,
             f"Az{self.camera.suffixWithSpace}": az,
+            f"UTC{self.camera.suffixWithSpace}": taiString,
         }
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
