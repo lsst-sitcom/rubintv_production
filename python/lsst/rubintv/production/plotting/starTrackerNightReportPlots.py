@@ -26,15 +26,19 @@ from .nightReportPlotBase import StarTrackerPlot
 
 # any classes added to __all__ will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['EverythingPlot',
+__all__ = ['RaDecAltAzOverTime',
+           'DeltasPlot',
+           'SourcesAndScatters',
            'AltAzCoverageTopDown',
            'AltAzCoverage',
            ]
 
+COLORS = 'bgrcmyk'  # these get use in order to automatically give a series of colors for data series
 
-class EverythingPlot(StarTrackerPlot):
-    _PlotName = 'everything-plot'
-    _PlotGroup = 'TemporaryGroup'
+
+class RaDecAltAzOverTime(StarTrackerPlot):
+    _PlotName = 'ra-dec-alt-az-vs-time'
+    _PlotGroup = 'Time-Series'
 
     def __init__(self,
                  dayObs,
@@ -60,44 +64,154 @@ class EverythingPlot(StarTrackerPlot):
             Did the plotting succeed, and thus upload should be performed?
         """
         # TODO: get a figure you can reuse to avoid matplotlib memory leak
-        nPlots = 18
         axisLabelSize = 18
+        nPlots = 4
 
-        fig, axes = plt.subplots(figsize=(16, 8*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig, axes = plt.subplots(figsize=(16, 4*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig.subplots_adjust(hspace=0)
 
         mjds = metadata['MJD']
 
         suffixes = ['', ' wide', ' fast']
 
-        for seriesNum, series in enumerate(['Alt',
-                                            'Az',
-                                            'Calculated Alt',
-                                            'Calculated Az',
-                                            'Calculated Dec',
-                                            'Calculated Ra',
-                                            'Dec',
-                                            'Delta Alt Arcsec',
-                                            'Delta Az Arcsec',
-                                            'Delta Dec Arcsec',
-                                            'Delta Ra Arcsec',
-                                            'Delta Rot Arcsec',
-                                            'Exposure Time',
-                                            'RMS scatter arcsec',
-                                            'RMS scatter pixels',
-                                            'Ra',
-                                            'nSources',
-                                            'nSources filtered',
-                                            ]):
+        plotPairs = [('Alt', 'Calculated Alt'),
+                     ('Az', 'Calculated Az'),
+                     ('Ra', 'Calculated Ra'),
+                     ('Dec', 'Calculated Dec'),
+                     ]
 
-            for suffix in suffixes:
-                seriesName = series + suffix
+        for plotNum, (quantity, fittedQuantity) in enumerate(plotPairs):
+            for seriesNum, suffix in enumerate(suffixes):
+                seriesName = quantity + suffix  # do the raw data
                 if seriesName in metadata.columns:
                     data = metadata[seriesName]
-                    axes[seriesNum].plot(mjds, data, label=seriesName)
-                    axes[seriesNum].legend()
-                    axes[seriesNum].set_xlabel('MJD', size=axisLabelSize)
-                    axes[seriesNum].set_ylabel(series, size=axisLabelSize)
+                    axes[plotNum].plot(mjds, data, f'-{COLORS[seriesNum]}', label=seriesName)
 
+                seriesName = fittedQuantity + suffix  # then try the fitted data
+                if seriesName in metadata.columns:
+                    data = metadata[seriesName]
+                    axes[plotNum].plot(mjds, data, f'--{COLORS[seriesNum+1]}', label=seriesName)
+
+                axes[plotNum].legend()
+                axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
+                axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
+        return True
+
+
+class DeltasPlot(StarTrackerPlot):
+    _PlotName = 'delta-ra-dec-alt-az-rot-vs-time'
+    _PlotGroup = 'Time-Series'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        axisLabelSize = 18
+        nPlots = 5
+
+        colors = 'bgrcmyk'
+
+        fig, axes = plt.subplots(figsize=(16, 4*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig.subplots_adjust(hspace=0)
+
+        mjds = metadata['MJD']
+
+        suffixes = ['', ' wide', ' fast']
+
+        plots = ['Delta Alt Arcsec',
+                 'Delta Az Arcsec',
+                 'Delta Dec Arcsec',
+                 'Delta Ra Arcsec',
+                 'Delta Rot Arcsec']
+
+        for plotNum, quantity in enumerate(plots):
+            for seriesNum, suffix in enumerate(suffixes):
+                seriesName = quantity + suffix
+                if seriesName in metadata.columns:
+                    data = metadata[seriesName]
+                    axes[plotNum].plot(mjds, data, f'-{colors[seriesNum]}', label=seriesName)
+
+                axes[plotNum].legend()
+                axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
+                axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
+        return True
+
+
+class SourcesAndScatters(StarTrackerPlot):
+    _PlotName = 'sourceCount-and-astrometric-scatter-vs-time'
+    _PlotGroup = 'Time-Series'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        # TODO: get a figure you can reuse to avoid matplotlib memory leak
+        axisLabelSize = 18
+        nPlots = 4
+
+        colors = 'bgrcmyk'
+
+        fig, axes = plt.subplots(figsize=(16, 4*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig.subplots_adjust(hspace=0)
+
+        mjds = metadata['MJD']
+
+        suffixes = ['', ' wide', ' fast']
+
+        plots = ['RMS scatter arcsec',
+                 'RMS scatter pixels',
+                 'nSources',
+                 'nSources filtered']
+
+        for plotNum, quantity in enumerate(plots):
+            for seriesNum, suffix in enumerate(suffixes):
+                seriesName = quantity + suffix
+                if seriesName in metadata.columns:
+                    data = metadata[seriesName]
+                    axes[plotNum].plot(mjds, data, f'-{colors[seriesNum]}', label=seriesName)
+
+                axes[plotNum].legend()
+                axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
+                axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
         return True
 
 
