@@ -249,7 +249,21 @@ class AltAzCoverageTopDown(StarTrackerPlot):
         alts = metadata['Alt']
         azes = metadata['Az']
 
-        ax.plot([az*np.pi/180 for az in azes], alts, 'or')
+        ax.plot([az*np.pi/180 for az in azes], alts, 'or', label='Pointing')
+        if 'Calculated Dec wide' in metadata.columns:
+            hasWideSolve = metadata.dropna(subset=['Calculated Dec wide'])
+            wideAlts = hasWideSolve['Alt']
+            wideAzes = hasWideSolve['Az']
+            ax.scatter([az*np.pi/180 for az in wideAzes], wideAlts, marker='o', s=200,
+                       facecolors='none', edgecolors='b', label='Wide Solve')
+
+        if 'Calculated Dec' in metadata.columns:
+            hasNarrowSolve = metadata.dropna(subset=['Calculated Dec'])
+            narrowAlts = hasNarrowSolve['Alt']
+            narrowAzes = hasNarrowSolve['Az']
+            ax.scatter([az*np.pi/180 for az in narrowAzes], narrowAlts, marker='o', s=400,
+                       facecolors='none', edgecolors='g', label='Narrow Solve')
+        ax.legend()
         ax.set_title("Axial coverage - azimuth (theta) vs altitude(r)"
                      "\n 'Top down' view with zenith at center", va='bottom')
         ax.set_theta_zero_location("N")
