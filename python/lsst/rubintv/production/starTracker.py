@@ -74,8 +74,8 @@ class StarTrackerCamera:
     doSmoothPlot: bool
 
 
-regularCam = StarTrackerCamera('regular', '', '', True, 102, 5, 25, 0.95, 60, True)
-wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 10, True)
+regularCam = StarTrackerCamera('regular', '', '', True, 102, 5, 25, 0.95, 5, True)
+wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 5, True)
 fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 60, False)
 
 
