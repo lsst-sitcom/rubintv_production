@@ -30,7 +30,6 @@ __all__ = ['RaDecAltAzOverTime',
            'DeltasPlot',
            'SourcesAndScatters',
            'AltAzCoverageTopDown',
-           'AltAzCoverage',
            ]
 
 COLORS = 'bgrcmyk'  # these get use in order to automatically give a series of colors for data series
@@ -271,48 +270,4 @@ class AltAzCoverageTopDown(StarTrackerPlot):
         ax.set_rlim(0, 90)
 
         ax.invert_yaxis()  # puts 90 (the zenith) at the center
-        return True
-
-
-class AltAzCoverage(StarTrackerPlot):
-    _PlotName = 'Alt-Az-coverage'
-    _PlotGroup = 'Coverage'
-
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
-
-    def plot(self, metadata):
-        """Create a sample plot using data from the StarTracker page tables.
-
-        Parameters
-        ----------
-        metadata : `pandas.DataFrame`
-            The data from all three StarTracker page tables, as a dataframe.
-
-        Returns
-        -------
-        success : `bool`
-            Did the plotting succeed, and thus upload should be performed?
-        """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
-        _ = plt.figure(figsize=(10, 10))
-        ax = plt.subplot(111, polar=True)
-
-        alts = metadata['Alt']
-        zenithAngles = [alt for alt in alts]
-        azes = metadata['Az']
-
-        ax.plot([az*np.pi/180 for az in azes], zenithAngles, 'o')
-        ax.set_title("Axial coverage - azimuth (theta) vs altitude (r)", va='bottom')
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_rlim(0, 90)
-
         return True
