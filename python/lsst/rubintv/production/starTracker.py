@@ -421,7 +421,10 @@ class StarTrackerChannel(BaseChannel):
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
         scaleError = self.camera.scaleError
-        isWide = True if self.camera.cameraType == 'wide' else False
+        # hard coding to the wide field solver seems to be much faster even for
+        # the regular camera, so try this and revert only if we start seeing
+        # fit failures.
+        isWide = True
         result = self.solver.run(exp, filteredSources,
                                  isWideField=isWide,
                                  percentageScaleError=scaleError,
