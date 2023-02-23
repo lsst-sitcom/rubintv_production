@@ -1013,6 +1013,11 @@ class NightReportChannel(BaseButlerChannel):
     def finalizeDay(self):
         """XXX Docs
         """
+        self.log.info(f'Creating final plots for {self.dayObs}')
+        self.createPlotsAndUpload()
+        # TODO: add final plotting of plots which live in the night reporter
+        # class here somehow, perhaps by moving them to their own plot classes.
+
         self.dayObs = getCurrentDayObs_int()
         self.saveFile = self.getSaveFile()
         self.log.info(f'Starting new report for dayObs {self.dayObs}')

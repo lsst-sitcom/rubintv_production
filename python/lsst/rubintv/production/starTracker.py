@@ -602,6 +602,8 @@ class StarTrackerNightReportChannel(BaseChannel):
     def finalizeDay(self):
         """XXX Docs
         """
+        self.log.info(f'Creating final plots for {self.dayObs}')
+        self.createPlotsAndUpload()
         self.log.info(f'Starting new star tracker night report for dayObs {self.dayObs}')
         self.dayObs = getCurrentDayObs_int()
         return
