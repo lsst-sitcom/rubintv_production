@@ -502,6 +502,7 @@ class StarTrackerChannel(BaseChannel):
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
         if self.camera.doAstrometry is False:
+            del exp
             return
 
         try:
@@ -510,6 +511,8 @@ class StarTrackerChannel(BaseChannel):
         except Exception as e:
             self.log.warning(f"Failed to run analysis on {filename}: {repr(e)}")
             traceback.print_exc()
+        finally:
+            del exp
 
 
 class StarTrackerNightReportChannel(BaseChannel):
