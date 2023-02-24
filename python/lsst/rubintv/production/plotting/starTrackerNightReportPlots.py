@@ -30,6 +30,8 @@ __all__ = ['RaDecAltAzOverTime',
            'DeltasPlot',
            'SourcesAndScatters',
            'AltAzCoverageTopDown',
+           'CameraPointingOffset',
+           'InterCameraOffset',
            ]
 
 COLORS = 'bgrcmyk'  # these get use in order to automatically give a series of colors for data series
@@ -270,4 +272,112 @@ class AltAzCoverageTopDown(StarTrackerPlot):
         ax.set_rlim(0, 90)
 
         ax.invert_yaxis()  # puts 90 (the zenith) at the center
+        return True
+
+
+class CameraPointingOffset(StarTrackerPlot):
+    _PlotName = 'CameraPointingOffset'
+    _PlotGroup = 'Analysis'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        deltaRa = metadata["Delta Ra Arcsec"]
+        deltaDec = metadata["Delta Dec Arcsec"]
+        deltaRaWide = metadata["Delta Ra Arcsec wide"]
+        deltaDecWide = metadata["Delta Dec Arcsec wide"]
+
+        fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        fig.subplots_adjust(hspace=0)
+
+        ax[0].plot(deltaRa, label="$\Delta$Ra")  # noqa: W605
+        ax[0].plot(deltaDec, label="$\Delta$Dec")  # noqa: W605
+        ax[0].legend()
+        ax[0].set_title("Narrow Cam")
+        ax[0].set_ylabel("Arcsec", fontsize=13)
+        ax[1].plot(deltaRaWide, label="$\Delta$Ra")  # noqa: W605
+        ax[1].plot(deltaDecWide, label="$\Delta$Dec")  # noqa: W605
+        ax[1].legend()
+        ax[1].set_title("Wide Cam")
+        ax[1].set_ylabel("Arcsec", fontsize=13)
+        return True
+
+
+class InterCameraOffset(StarTrackerPlot):
+    _PlotName = 'InterCameraOffset'
+    _PlotGroup = 'Analysis'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        deltaRa = metadata["Delta Ra Arcsec"]
+        deltaDec = metadata["Delta Dec Arcsec"]
+        deltaRaWide = metadata["Delta Ra Arcsec wide"]
+        deltaDecWide = metadata["Delta Dec Arcsec wide"]
+        deltaRaDiff = deltaRa - deltaRaWide
+        deltaDecDiff = deltaDec - deltaDecWide
+        deltaAlt = metadata["Delta Alt Arcsec"]
+        deltaAz = metadata["Delta Az Arcsec"]
+        deltaAltWide = metadata["Delta Alt Arcsec wide"]
+        deltaAzWide = metadata["Delta Az Arcsec wide"]
+        deltaAltDiff = deltaAlt - deltaAltWide
+        deltaAzDiff = deltaAz - deltaAzWide
+
+        fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        fig.subplots_adjust(hspace=0)
+
+        ax[0].plot(deltaRaDiff, label="$\Delta$Ra")  # noqa: W605
+        ax[0].plot(deltaDecDiff, label="$\Delta$Dec")  # noqa: W605
+        ax[0].legend()
+        ax[0].set_title(r"Narrow ($\Delta$Ra, $\Delta$Dec) - Wide ($\Delta$Ra, $\Delta$Dec)")  # noqa: W605
+        ax[0].set_ylabel("Arcsec", fontsize=13)
+        ax[1].plot(deltaAltDiff, label="$\Delta$Alt")  # noqa: W605
+        ax[1].plot(deltaAzDiff, label="$\Delta$Az")  # noqa: W605
+        ax[1].set_title("Narrow ($\Delta$Alt, $\Delta$Az) - Wide ($\Delta$Alt, $\Delta$Az)")  # noqa: W605
+        ax[1].set_ylabel("Arcsec", fontsize=13)
+        ax2 = ax[1].twinx()
+        ax2.plot(metadata["Alt"], label="Commanded Alt", alpha=0.3, color='g')
+        lines1, labels1 = ax[1].get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines1 + lines2, labels1 + labels2, loc=0)
         return True
