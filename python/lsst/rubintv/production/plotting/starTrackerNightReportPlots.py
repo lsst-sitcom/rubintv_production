@@ -32,6 +32,7 @@ __all__ = ['RaDecAltAzOverTime',
            'AltAzCoverageTopDown',
            'CameraPointingOffset',
            'InterCameraOffset',
+           'CameraAzAltOffset',
            ]
 
 COLORS = 'bgrcmyk'  # these get use in order to automatically give a series of colors for data series
@@ -380,4 +381,50 @@ class InterCameraOffset(StarTrackerPlot):
         lines1, labels1 = ax[1].get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax2.legend(lines1 + lines2, labels1 + labels2, loc=0)
+        return True
+
+
+class CameraAzAltOffset(StarTrackerPlot):
+    _PlotName = 'CameraAzAltOffset'
+    _PlotGroup = 'Analysis'
+
+    def __init__(self,
+                 dayObs,
+                 locationConfig=None,
+                 uploader=None):
+        super().__init__(dayObs=dayObs,
+                         plotName=self._PlotName,
+                         plotGroup=self._PlotGroup,
+                         locationConfig=locationConfig,
+                         uploader=uploader)
+
+    def plot(self, metadata):
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
+        """
+        deltaAlt = metadata["Delta Alt Arcsec"]
+        deltaAz = metadata["Delta Az Arcsec"]
+        deltaAltWide = metadata["Delta Alt Arcsec wide"]
+        deltaAzWide = metadata["Delta Az Arcsec wide"]
+        fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        fig.subplots_adjust(hspace=0)
+        ax[0].plot(deltaAlt, label="$\Delta$Alt")  # noqa: W605
+        ax[0].plot(deltaAz, label="$\Delta$Az")  # noqa: W605
+        ax[0].legend()
+        ax[0].set_title("Narrow Cam")
+        ax[0].set_ylabel("Arcsec", fontsize=13)
+        ax[1].plot(deltaAltWide, label="$\Delta$Alt")  # noqa: W605
+        ax[1].plot(deltaAzWide, label="$\Delta$Az")  # noqa: W605
+        ax[1].legend()
+        ax[1].set_title("Wide Cam")
+        ax[1].set_ylabel("Arcsec", fontsize=13)
         return True
