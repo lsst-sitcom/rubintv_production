@@ -1094,16 +1094,16 @@ class NightReportChannel(BaseButlerChannel):
                       f'{0 if md is None else len(md)} items in the metadata table, and '
                       f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
 
-        for plotClassName in latissNightReportPlots.__all__:
+        for plotName in latissNightReportPlots.PLOT_FACTORIES:
             try:
-                self.log.info(f'Creating plot {plotClassName}')
-                PlotClass = getattr(latissNightReportPlots, plotClassName)
-                plot = PlotClass(dayObs=self.dayObs,
-                                 locationConfig=self.locationConfig,
-                                 uploader=self.uploader)
+                self.log.info(f'Creating plot {plotName}')
+                plotFactory = getattr(latissNightReportPlots, plotName)
+                plot = plotFactory(dayObs=self.dayObs,
+                                   locationConfig=self.locationConfig,
+                                   uploader=self.uploader)
                 plot.createAndUpload(report, md, ccdVisitTable)
             except Exception:
-                self.log.exception(f"Failed to create plot {plotClassName}")
+                self.log.exception(f"Failed to create plot {plotName}")
                 continue
 
     def callback(self, expRecord, doCheckDay=True):

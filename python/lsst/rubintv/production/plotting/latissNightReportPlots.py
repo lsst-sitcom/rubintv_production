@@ -27,22 +27,24 @@ from lsst.summit.utils.utils import getAirmassSeeingCorrection, getFilterSeeingC
 
 from .nightReportPlotBase import LatissPlot
 
-# any classes added to __all__ will automatically be added to the night
-# report channel, with each being replotted for each image taken.
-__all__ = ['ZeroPointPlot',
-           'SkyMeanPlot',
-           'PsfFwhmPlot',
-           'SourceCountsPlot',
-           'PsfE1Plot',
-           'PsfE2Plot',
-           'TelescopeAzElPlot',
-           'MountMotionPlot',
-           'MountMotionVsZenith',
-           'SkyMeanVsSkyRms',
-           'PsfVsSkyRms',
-           'PsfVsZenith',
-           'PsfVsMountMotion',
-           ]
+# any classes ro functions added to PLOT_FACTORIES will automatically be added
+# to the night report channel, with each being replotted for each image taken.
+PLOT_FACTORIES = ['ZeroPointPlot',
+                  'SkyMeanPlot',
+                  'PsfFwhmPlot',
+                  'SourceCountsPlot',
+                  'PsfE1Plot',
+                  'PsfE2Plot',
+                  'TelescopeAzElPlot',
+                  'MountMotionPlot',
+                  'MountMotionVsZenith',
+                  'SkyMeanVsSkyRms',
+                  'PsfVsSkyRms',
+                  'PsfVsZenith',
+                  'PsfVsMountMotion',
+                  ]
+
+__all__ = PLOT_FACTORIES
 
 # TODO: get these colours from somewhere else
 gcolor = 'mediumseagreen'
