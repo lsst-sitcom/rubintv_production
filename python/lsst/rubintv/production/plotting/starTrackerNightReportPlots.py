@@ -24,16 +24,18 @@ import matplotlib.pyplot as plt
 
 from .nightReportPlotBase import StarTrackerPlot
 
-# any classes added to __all__ will automatically be added to the night
+# any classes added to PLOT_FACTORIES will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-__all__ = ['RaDecAltAzOverTime',
-           'DeltasPlot',
-           'SourcesAndScatters',
-           'AltAzCoverageTopDown',
-           'CameraPointingOffset',
-           'InterCameraOffset',
-           'CameraAzAltOffset',
-           ]
+PLOT_FACTORIES = ['RaDecAltAzOverTime',
+                  'DeltasPlot',
+                  'SourcesAndScatters',
+                  'AltAzCoverageTopDown',
+                  'CameraPointingOffset',
+                  'InterCameraOffset',
+                  'CameraAzAltOffset',
+                  ]
+
+__all__ = PLOT_FACTORIES
 
 COLORS = 'bgrcmyk'  # these get use in order to automatically give a series of colors for data series
 

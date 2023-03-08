@@ -66,7 +66,15 @@ class BasePlot(ABC):
         self.log = logging.getLogger(f'lsst.rubintv.production.nightReportPlots.{plotName}')
 
     def getSaveFilename(self):
-        """XXX docs
+        """Get the filename to save the plot to.
+
+        Calculated from the locationConfig, the channel name and the plot name.
+
+        Returns
+        -------
+        filename : `str`
+            The full path and filename to save the plot to, such that it can be
+            passed to ``plt.savefig()``.
         """
         return os.path.join(self.locationConfig.nightReportPath,
                             f'{self.channelName}-{self.plotName}.png')

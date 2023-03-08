@@ -523,7 +523,10 @@ class StarTrackerNightReportChannel(BaseChannel):
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The locationConfig containing the path configs.
     dayObs : `int`, optional
-        TODO: XXX document this!!! XXX
+        The dayObs. If not provided, will be calculated from the current time.
+        This should be supplied manually if running catchup or similar, but
+        when running live it will be set automatically so that the current day
+        is processed.
     embargo : `bool`, optional
         Use the embargo repo?
     doRaise : `bool`, optional
@@ -579,7 +582,7 @@ class StarTrackerNightReportChannel(BaseChannel):
     def createPlotsAndUpload(self):
         """Create and upload all plots defined in nightReportPlots.
 
-        All plots defined in __all__ in nightReportPlots are discovered,
+        All plots defined in PLOT_FACTORIES in nightReportPlots are discovered,
         created and uploaded. If any fail, the exception is logged and the next
         plot is created and uploaded.
         """
@@ -587,20 +590,23 @@ class StarTrackerNightReportChannel(BaseChannel):
         self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
                       f'{0 if md is None else len(md)} items in the metadata table')
 
-        for plotClassName in starTrackerNightReportPlots.__all__:
+        for plotName in starTrackerNightReportPlots.PLOT_FACTORIES:
             try:
-                self.log.info(f'Creating plot {plotClassName}')
-                PlotClass = getattr(starTrackerNightReportPlots, plotClassName)
-                plot = PlotClass(dayObs=self.dayObs,
-                                 locationConfig=self.locationConfig,
-                                 uploader=self.uploader)
+                self.log.info(f'Creating plot {plotName}')
+                plotFactory = getattr(starTrackerNightReportPlots, plotName)
+                plot = plotFactory(dayObs=self.dayObs,
+                                   locationConfig=self.locationConfig,
+                                   uploader=self.uploader)
                 plot.createAndUpload(md)
             except Exception:
-                self.log.exception(f"Failed to create plot {plotClassName}")
+                self.log.exception(f"Failed to create plot {plotName}")
                 continue
 
     def finalizeDay(self):
-        """XXX Docs
+        """Perform the end of day actions and roll the day over.
+
+        Creates a final version of the plots at the end of the day and rolls
+        ``self.dayObs`` over.
         """
         self.log.info(f'Creating final plots for {self.dayObs}')
         self.createPlotsAndUpload()

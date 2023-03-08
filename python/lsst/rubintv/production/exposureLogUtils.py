@@ -55,7 +55,7 @@ def getSeqNumFromLogMessage(message, logger=None):
 
 
 def getLogsForDayObs(dayObs, logger=None):
-    """Get a dictionary of log messagse for the dayObs, keyed by seqNum.
+    """Get a dictionary of log messages for the dayObs, keyed by seqNum.
 
     Parameters
     ----------

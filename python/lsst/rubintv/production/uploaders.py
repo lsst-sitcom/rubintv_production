@@ -179,6 +179,10 @@ class Uploader:
         filename : `str`
             The full path and filename of the file to upload.
         plotGroup : `str`, optional
+            The group to upload the plot to. The 'default' group is used if
+            this is not specified. However, people are encouraged to supply
+            groups for their plots, so the 'default' value is not put in the
+            function signature to indicate this.
 
         Raises
         ------

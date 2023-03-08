@@ -46,7 +46,7 @@ PLOT_FACTORIES = ['ZeroPointPlot',
 
 __all__ = PLOT_FACTORIES
 
-# TODO: get these colours from somewhere else
+# TODO: DM-38287 centralize these, and make a full list/mapping
 gcolor = 'mediumseagreen'
 rcolor = 'lightcoral'
 icolor = 'mediumpurple'

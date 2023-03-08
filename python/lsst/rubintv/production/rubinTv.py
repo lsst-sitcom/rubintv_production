@@ -973,7 +973,10 @@ class NightReportChannel(BaseButlerChannel):
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The locationConfig containing the path configs.
     dayObs : `int`, optional
-        TODO: XXX document this!!! XXX
+        The dayObs. If not provided, will be calculated from the current time.
+        This should be supplied manually if running catchup or similar, but
+        when running live it will be set automatically so that the current day
+        is processed.
     embargo : `bool`, optional
         Use the embargo repo?
     doRaise : `bool`, optional
@@ -1011,7 +1014,10 @@ class NightReportChannel(BaseButlerChannel):
             self.report = NightReport(self.butler, self.dayObs)
 
     def finalizeDay(self):
-        """XXX Docs
+        """Perform the end of day actions and roll the day over.
+
+        Creates a final version of the plots at the end of the day, starts a
+        new NightReport object, and rolls ``self.dayObs`` over.
         """
         self.log.info(f'Creating final plots for {self.dayObs}')
         self.createPlotsAndUpload()
@@ -1051,8 +1057,8 @@ class NightReportChannel(BaseButlerChannel):
 
         return mdTable
 
-    def getCcdVisitTable(self, dayObs):
-        """Get the consolidated visit summary table for the given dayObs.
+    def createCcdVisitTable(self, dayObs):
+        """Make the consolidated visit summary table for the given dayObs.
 
         Parameters
         ----------
@@ -1088,7 +1094,7 @@ class NightReportChannel(BaseButlerChannel):
         """
         md = self.getMetadataTableContents()
         report = self.report
-        ccdVisitTable = self.getCcdVisitTable(self.dayObs)
+        ccdVisitTable = self.createCcdVisitTable(self.dayObs)
         self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
                       f'{len(report.data)} items in the night report, '
                       f'{0 if md is None else len(md)} items in the metadata table, and '
