@@ -138,28 +138,6 @@ class LatissPlot(BasePlot):
                          uploader=uploader,
                          )
 
-    @abstractmethod
-    def plot(self, nightReport, metadata, ccdVisitTable):
-        """Subclasses must implement this method.
-
-        These are the parameters passed automatically when making LATISS plots.
-
-        Parameters
-        ----------
-        nightReport : `lsst.rubintv.production.nightReport.NightReport`
-            The night report for the current night.
-        metadata : `pandas.DataFrame`
-            The front page metadata, as a dataframe.
-        ccdVisitTable : `pandas.DataFrame`
-            The visit summary table for the current day.
-
-        Returns
-        -------
-        success : `bool`
-            Did the plotting succeed, and thus upload should be performed?
-        """
-        raise NotImplementedError()
-
     def createAndUpload(self, nightReport, metadata, ccdVisitTable):
         """Create the plot defined in ``plot`` and upload it.
 
@@ -229,24 +207,6 @@ class StarTrackerPlot(BasePlot):
                          locationConfig=locationConfig,
                          uploader=uploader,
                          )
-
-    @abstractmethod
-    def plot(self, metadata):
-        """Subclasses must implement this method.
-
-        These are the parameters passed automatically when making LATISS plots.
-
-        Parameters
-        ----------
-        metadata : `pandas.DataFrame`
-            The data from all three StarTracker page tables, as a dataframe.
-
-        Returns
-        -------
-        success : `bool`
-            Did the plotting succeed, and thus upload should be performed?
-        """
-        raise NotImplementedError()
 
     def createAndUpload(self, tableData):
         """Create the plot defined in ``plot`` and upload it.
