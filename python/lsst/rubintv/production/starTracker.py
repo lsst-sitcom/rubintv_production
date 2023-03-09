@@ -587,11 +587,16 @@ class StarTrackerNightReportChannel(BaseChannel):
 
         Returns
         -------
-        mdTable : `pandas.DataFrame`
-            The contents of the metdata table from the front end.
+        mdTable : `pandas.DataFrame` or `None`
+            The contents of the metdata table from the front end, or `None` if
+            the file for ``self.dayObs`` does not exist (yet).
         """
         sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
                                        f'dayObs_{self.dayObs}.json')
+        if not os.path.isfile(sidecarFilename):
+            self.log.info(f"No metadata table found for this night at {sidecarFilename}, "
+                          "so nothing to catch up on (yet)")
+            return None
 
         try:
             mdTable = pd.read_json(sidecarFilename).T
@@ -613,6 +618,9 @@ class StarTrackerNightReportChannel(BaseChannel):
         plot is created and uploaded.
         """
         md = self.getMetadataTableContents()
+        if not md:  # getMetadataTableContents logs about the lack of a file so no need to do it here
+            return
+
         self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
                       f'{0 if md is None else len(md)} items in the metadata table')
 
@@ -715,9 +723,15 @@ class StarTrackerCatchup:
         Parameters
         ----------
         camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+            The camera to get the missing seqNums for.
         """
         sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
                                        f'dayObs_{self.dayObs}.json')
+        if not os.path.isfile(sidecarFilename):
+            self.log.info(f"No metadata table found for this night at {sidecarFilename}, "
+                          "so nothing to catch up on (yet)")
+            return []
+
         mdTable = pd.read_json(sidecarFilename).T
         mdTable = mdTable.sort_index()
 
