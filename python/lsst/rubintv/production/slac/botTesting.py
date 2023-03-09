@@ -29,6 +29,7 @@ from lsst.ip.isr import AssembleCcdTask
 import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 
+from .utils import waitForDataProduct
 from ..utils import writeDataShard, getShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
@@ -124,7 +125,23 @@ class RawProcesser:
             dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
             self.log.info(f'Processing raw for {dataId}')
             ampNoises = {}
-            raw = self.butler.get('raw', expRecord.dataId, detector=detNum)
+            raw = waitForDataProduct(butler=self.butler,
+                                     expRecord=expRecord,
+                                     dataset='raw',
+                                     detector=detNum,
+                                     timeout=5,
+                                     logger=self.log)
+            if not raw:
+                # Note to future: given that if we timeout here, everything
+                # downstream of this will fail, perhaps we should consider
+                # writing some kind of failure shard to signal that other
+                # things shouldn't bother waiting, rather than letting all
+                # downstream things timeout in these situations. I guess it
+                # depends on how often this actually ends up happening.
+                # Perhaps, give we should be striving for always processing
+                # everything, especially so early on (i.e. in isr on lab data)
+                # we actually shouldn't do this.
+                continue  # waitForDataProduct itself warns if it times out
             detector = raw.detector
             for amp in detector:
                 noise = np.std(raw[amp.getBBox()].image.array)
