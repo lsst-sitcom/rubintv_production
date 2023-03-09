@@ -27,6 +27,8 @@ import datetime
 import traceback
 from dataclasses import dataclass
 import pandas as pd
+import numpy as np
+import time
 
 import lsst.geom as geom
 
@@ -149,6 +151,30 @@ def dayObsSeqNumFromFilename(filename):
     dayObs = int(dayObs)
     seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
     return dayObs, seqNum
+
+
+def getFilename(camera, dayObs, seqNum):
+    """Get the filename for a given camera, dayObs and seqNum.
+
+    Parameters
+    -------
+    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        The camera.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The seqNum.
+
+    Returns
+    -------
+    filename : `str`
+        The filename.
+    """
+    rootPath = '/project/GenericCamera/'
+    datePath = dayObsIntToString(dayObs).replace('-', '/')
+    path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
+    filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
+    return os.path.join(path, filename)
 
 
 class StarTrackerWatcher:
@@ -642,3 +668,159 @@ class StarTrackerNightReportChannel(BaseChannel):
         except Exception as e:
             msg = f"Skipped updating the night report for {filename}:"
             raiseIf(self.doRaise, e, self.log, msg=msg)
+
+
+class StarTrackerCatchup:
+    """Class for catchup up skipped images in the StarTrackers.
+
+    For now, one catchup service for two cameras, but in future this could
+    easily be split out if that becomes necessary.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig containing the relevant paths.
+    dayObs : `int`, optional
+        The dayObs to catchup. If not provided, will be calculated from the
+        current time, and this is the default behaviour when running from k8s.
+    doRaise : `bool`, optional
+        Raise on error? Default False, useful for debugging.
+    """
+    loopSleep = 30
+    catchupPeriod = 60
+    endOfDayDelay = 200
+    # upload heartbeat every n seconds
+    HEARTBEAT_UPLOAD_PERIOD = 30
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 240
+    HEARTBEAT_HANDLE = 'starTrackerCatchup'
+
+    def __init__(self,
+                 locationConfig,
+                 doRaise=False):
+        self.locationConfig = locationConfig
+        self.doRaise = doRaise
+
+        self.cameras = [regularCam, wideCam]
+
+        self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
+        self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
+                                       self.locationConfig.bucketName,
+                                       self.HEARTBEAT_UPLOAD_PERIOD,
+                                       self.HEARTBEAT_FLATLINE_PERIOD)
+
+    def getMissingImageSeqNums(self, camera):
+        """Get the seqNums for images which were not processed.
+
+        Parameters
+        ----------
+        camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        """
+        sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
+                                       f'dayObs_{self.dayObs}.json')
+        mdTable = pd.read_json(sidecarFilename).T
+        mdTable = mdTable.sort_index()
+
+        seqNums = list(mdTable.index)
+        successfulFitColumn = 'Calculated Ra' + camera.suffixWithSpace
+        missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is np.nan]
+        return missing
+
+    def catchupCamera(self, camera):
+        """Catch up a single camera.
+
+        TODO: add a way of recording fails and skipping them in future so
+        that we don't keep trying to process them over and over.
+
+        Parameters
+        ----------
+        camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+            The camera to catch up.
+        """
+        seqNums = self.getMissingImageSeqNums(camera)
+        self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
+
+        filenames = [getFilename(camera, self.dayObs, seqNum) for seqNum in seqNums]
+        filenames = [f for f in filenames if os.path.isfile(f)]
+        self.log.info(f'of which {len(filenames)} had corresponding files')
+
+        # send a heartbeat saying we'll be back in a while
+        maxProcessingTimePerFile = 30  # a deliberate massive over-estimate, in seconds
+        forecast = maxProcessingTimePerFile * len(filenames)
+        self.heartbeater.beat(customFlatlinePeriod=forecast)
+
+        starTrackerChannel = StarTrackerChannel(locationConfig=self.locationConfig,
+                                                cameraType=camera.cameraType)
+        for file in filenames:
+            self.log.info(f'Catching up {file}')
+            try:
+                starTrackerChannel.callback(file)
+            except Exception as e:
+                raiseIf(self.doRaise, e, self.log)
+
+    def runEndOfDayManual(self, dayObs):
+        """Manually run the end of day routine for a specific dayObs by hand.
+
+        Useful for if the final catchup and end of day animation/clearup have
+        failed to run and this needs to be redone by manually.
+
+        Parameters
+        ----------
+        dayObs : `int`
+            The dayObs to rerun the end of day routine for.
+        """
+        self.dayObs = dayObs
+        self.runCatchup()
+        return
+
+    def runCatchup(self):
+        """Run the catchup for all cameras.
+        """
+        for camera in self.cameras:
+            self.log.info(f'Starting catchup for the {camera.cameraType} camera')
+            self.catchupCamera(camera)
+
+    def runEndOfDay(self):
+        """Routine to run when the summit dayObs rolls over.
+
+        Sets the new dayObs.
+        """
+        try:
+            self.runCatchup()
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
+        finally:
+            self.dayObs = getCurrentDayObs_int()
+
+    def run(self):
+        """Runs forever, running the catchup services during the night, and
+        rolls the dayObs over at the end of the night.
+
+        Raises
+        ------
+        RuntimeError:
+            Raised from the root error on any error if ``self.doRaise`` is
+            True.
+        """
+        lastRun = time.time()
+        self.dayObs = getCurrentDayObs_int()
+
+        while True:
+            try:
+                timeSince = time.time() - lastRun
+                if timeSince >= self.catchupPeriod:
+                    self.runCatchup()
+                    self.heartbeater.beat()
+                    lastRun = time.time()
+                    if hasDayRolledOver(self.dayObs):
+                        sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
+                        self.runEndOfDay()  # sets new dayObs in a finally block
+                else:
+                    remaining = self.catchupPeriod - timeSince
+                    self.log.info(f'Waiting for catchup period to elapse, {remaining:.2f}s to go...')
+                    sleep(self.loopSleep)
+
+                self.heartbeater.beat()
+
+            except Exception as e:
+                raiseIf(self.doRaise, e, self.log)
