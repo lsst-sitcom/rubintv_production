@@ -22,12 +22,14 @@
 import os
 import uuid
 import yaml
+import io
+from contextlib import redirect_stdout
 import logging
 import json
 import glob
 import time
 
-from lsst.summit.utils.utils import dayObsIntToString
+from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from .channels import PREFIXES
 
 from lsst.utils import getPackageDir
@@ -330,6 +332,12 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    @cached_property
+    def nightReportPath(self):
+        directory = self._config['nightReportPath']
+        self._checkDir(directory)
+        return directory
+
 
 def getSiteConfig(site='summit'):
     """Get the site configuration, given a site name.
@@ -441,6 +449,45 @@ def isDayObsContiguous(dayObs, otherDayObs):
     d2 = datetime.strptime(str(otherDayObs), '%Y%m%d')
     deltaDays = d2.date() - d1.date()
     return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
+
+
+def hasDayRolledOver(dayObs, logger=None):
+    """Check if the dayObs has rolled over when running constantly.
+
+    Checks if supplied dayObs is the current dayObs and returns False
+    if it is.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        The dayObs to check if current
+    logger : `logging.Logger`, optional
+        The logger, created if not supplied
+
+    Returns
+    -------
+    hasDayRolledOver : `bool`
+        Whether the day has rolled over?
+    """
+    if not logger:
+        logger = logging.getLogger(__name__)
+    currentDay = getCurrentDayObs_int()
+    if currentDay == dayObs:
+        return False
+    elif currentDay == dayObs+1:
+        return True
+    else:
+        if not isDayObsContiguous(currentDay, dayObs):
+            logger.warning(f"Encountered non-linear time! dayObs supplied was {dayObs}"
+                           f" and now the current dayObs is {currentDay}!")
+        return True  # the day has still rolled over, just in an unexpected way
+
+
+def catchPrintOutput(functionToCall, *args, **kwargs):
+    f = io.StringIO()
+    with redirect_stdout(f):
+        functionToCall(*args, **kwargs)
+    return f.getvalue()
 
 
 def writeMetadataShard(path, dayObs, mdDict):

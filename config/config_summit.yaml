@@ -3,7 +3,7 @@ dataIdScanPath: '/project/rubintv/dataIds'
 bucketName: 'rubintv_data'
 
 # Summit items:
-dataIdScanPath:     '/project/rubintv/dataIds'
+nightReportPath:     '/project/rubintv/nightReportData'
 
 # AuxTel metadata
 auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
@@ -23,7 +23,7 @@ starTrackerDataPath: '/project'
 
 # for writing the per-day json files and shards to for the star tracker channels
 starTrackerMetadataPath: '/project/rubintv/starTracker/sidecar_metadata'
-starTrackerMetadataShardPath: '/project/rubintv/starTracker/sidecar_metadata'
+starTrackerMetadataShardPath: '/project/rubintv/starTracker/sidecar_metadata/shards'
 
 # for writing the rendered pngs of the a.net fits out to
 starTrackerOutputPath: '/project/rubintv/starTracker/output'

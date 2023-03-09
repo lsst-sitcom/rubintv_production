@@ -26,6 +26,9 @@ from time import sleep
 import datetime
 import traceback
 from dataclasses import dataclass
+import pandas as pd
+
+import lsst.geom as geom
 
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
@@ -41,9 +44,15 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 )
 
 from .channels import PREFIXES
-from .utils import writeMetadataShard
+from .utils import writeMetadataShard, hasDayRolledOver, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
+from .plotting import starTrackerNightReportPlots
+
+__all__ = ('StarTrackerCamera',
+           'StarTrackerWatcher',
+           'StarTrackerChannel',
+           'StarTrackerNightReportChannel')
 
 _LOG = logging.getLogger(__name__)
 KNOWN_CAMERAS = ("regular", "wide", "fast")
@@ -62,11 +71,12 @@ class StarTrackerCamera:
     minPix: int
     brightSourceFraction: float
     scaleError: float
+    doSmoothPlot: bool
 
 
-regularCam = StarTrackerCamera('regular', '', '', True, 102, 2.5, 10, 0.95, 100)
-wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 10)
-fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 100)
+regularCam = StarTrackerCamera('regular', '', '', True, 102, 5, 25, 0.95, 5, True)
+wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 5, True)
+fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 60, False)
 
 
 def getCurrentRawDataDir(rootDataPath, camera):
@@ -338,12 +348,23 @@ class StarTrackerChannel(BaseChannel):
         except RuntimeError:
             self.log.warning(f'Failed to get alt from header for {filename}')
 
+        # We use MJD as a float because neither astropy.Time nor python
+        # datetime.datetime are natively JSON serializable so just use the
+        # float for now. Once this data is in the butler we can simply get the
+        # datetimes from the exposure records when we need them.
+        mjd = exp.visitInfo.getDate().toAstropy().mjd
+
+        datetime = exp.visitInfo.date.toPython()
+        taiString = datetime.time().isoformat().split('.')[0]
+
         contents = {
             f"Exposure Time{self.camera.suffixWithSpace}": expTime,
+            f"MJD{self.camera.suffixWithSpace}": mjd,
             f"Ra{self.camera.suffixWithSpace}": ra,
             f"Dec{self.camera.suffixWithSpace}": dec,
             f"Alt{self.camera.suffixWithSpace}": alt,
             f"Az{self.camera.suffixWithSpace}": az,
+            f"UTC{self.camera.suffixWithSpace}": taiString,
         }
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
@@ -395,12 +416,15 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename)
+        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename, doSmooth=self.camera.doSmoothPlot)
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
         scaleError = self.camera.scaleError
-        isWide = True if self.camera.cameraType == 'wide' else False
+        # hard coding to the wide field solver seems to be much faster even for
+        # the regular camera, so try this and revert only if we start seeing
+        # fit failures.
+        isWide = True
         result = self.solver.run(exp, filteredSources,
                                  isWideField=isWide,
                                  percentageScaleError=scaleError,
@@ -418,7 +442,14 @@ class StarTrackerChannel(BaseChannel):
         deltaRa = calculatedRa - nominalRa
         deltaDec = calculatedDec - nominalDec
 
-        oldAlt, oldAz = getAltAzFromSkyPosition(oldWcs.getSkyOrigin(), exp.visitInfo)
+        # pull the alt/az from the header *not* by calculating from the ra/dec,
+        # mjd and location. We want the difference between where the telescope
+        # thinks it was pointing and where it was actually pointing.
+        oldAz = getAverageAzFromHeader(exp.getMetadata().toDict())
+        oldAlt = getAverageElFromHeader(exp.getMetadata().toDict())
+        oldAz = geom.Angle(oldAz, geom.degrees)
+        oldAlt = geom.Angle(oldAlt, geom.degrees)
+
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(), exp.visitInfo)
 
         deltaAlt = newAlt - oldAlt
@@ -457,7 +488,7 @@ class StarTrackerChannel(BaseChannel):
         # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix('.fits')
         rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
-        plot(exp, saveAs=rawPngFilename)
+        plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot)
         uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
         self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
 
@@ -471,6 +502,7 @@ class StarTrackerChannel(BaseChannel):
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
         if self.camera.doAstrometry is False:
+            del exp
             return
 
         try:
@@ -479,3 +511,134 @@ class StarTrackerChannel(BaseChannel):
         except Exception as e:
             self.log.warning(f"Failed to run analysis on {filename}: {repr(e)}")
             traceback.print_exc()
+        finally:
+            del exp
+
+
+class StarTrackerNightReportChannel(BaseChannel):
+    """Class for running the Star Tracker Night Report channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    dayObs : `int`, optional
+        The dayObs. If not provided, will be calculated from the current time.
+        This should be supplied manually if running catchup or similar, but
+        when running live it will be set automatically so that the current day
+        is processed.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
+    """
+
+    def __init__(self, locationConfig, *, dayObs=None, doRaise=False):
+        name = 'starTrackerNightReport'
+        log = logging.getLogger(f'lsst.rubintv.production.{name}')
+        self.rootDataPath = locationConfig.starTrackerDataPath
+
+        # we have to pick a camera to watch for data on for now, and while we
+        # are always reading all three out together it doesn't matter which we
+        # pick, so pick the regular one for now (but don't choose fast as that
+        # is also a DIMM and so is more likely to be relocated). This won't be
+        # a problem once we move to ingesting data and using the butler, so the
+        # temp/hacky nature of this is fine for now.
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
+                                     bucketName=locationConfig.bucketName,
+                                     camera=regularCam)  # tie the night report to the regular cam for now
+
+        super().__init__(locationConfig=locationConfig,
+                         log=log,
+                         watcher=watcher,
+                         doRaise=doRaise
+                         )
+
+        self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
+
+    def getMetadataTableContents(self):
+        """Get the measured data for the current night.
+
+        Returns
+        -------
+        mdTable : `pandas.DataFrame`
+            The contents of the metdata table from the front end.
+        """
+        sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
+                                       f'dayObs_{self.dayObs}.json')
+
+        try:
+            mdTable = pd.read_json(sidecarFilename).T
+            mdTable = mdTable.sort_index()
+        except Exception as e:
+            self.log.warning(f"Failed to load metadata table from {sidecarFilename}: {e}")
+            return None
+
+        if mdTable.empty:
+            return None
+
+        return mdTable
+
+    def createPlotsAndUpload(self):
+        """Create and upload all plots defined in nightReportPlots.
+
+        All plots defined in PLOT_FACTORIES in nightReportPlots are discovered,
+        created and uploaded. If any fail, the exception is logged and the next
+        plot is created and uploaded.
+        """
+        md = self.getMetadataTableContents()
+        self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
+                      f'{0 if md is None else len(md)} items in the metadata table')
+
+        for plotName in starTrackerNightReportPlots.PLOT_FACTORIES:
+            try:
+                self.log.info(f'Creating plot {plotName}')
+                plotFactory = getattr(starTrackerNightReportPlots, plotName)
+                plot = plotFactory(dayObs=self.dayObs,
+                                   locationConfig=self.locationConfig,
+                                   uploader=self.uploader)
+                plot.createAndUpload(md)
+            except Exception:
+                self.log.exception(f"Failed to create plot {plotName}")
+                continue
+
+    def finalizeDay(self):
+        """Perform the end of day actions and roll the day over.
+
+        Creates a final version of the plots at the end of the day and rolls
+        ``self.dayObs`` over.
+        """
+        self.log.info(f'Creating final plots for {self.dayObs}')
+        self.createPlotsAndUpload()
+        self.log.info(f'Starting new star tracker night report for dayObs {self.dayObs}')
+        self.dayObs = getCurrentDayObs_int()
+        return
+
+    def callback(self, filename, doCheckDay=True):
+        """Method called on each new expRecord as it is found in the repo.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename of the most recently taken image on the nominal camera
+            we're using to watch for data for.
+        doCheckDay : `bool`, optional
+            Whether to check if the day has rolled over. This should be left as
+            True for normal operation, but set to False when manually running
+            on past exposures to save triggering on the fact it is no longer
+            that day, e.g. during testing or doing catch-up/backfilling.
+        """
+        try:
+            if doCheckDay and hasDayRolledOver(self.dayObs):
+                self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
+                self.finalizeDay()
+
+            else:
+                # make plots here, uploading one by one
+                # make all the automagic plots from nightReportPlots.py
+                self.createPlotsAndUpload()
+                self.log.info(f'Finished updating plots and table with most recent file {filename}')
+
+        except Exception as e:
+            msg = f"Skipped updating the night report for {filename}:"
+            raiseIf(self.doRaise, e, self.log, msg=msg)

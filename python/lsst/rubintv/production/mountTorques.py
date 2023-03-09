@@ -59,6 +59,9 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     """Queries EFD for a given exposure and calculates the RMS errors in the
     axes during the exposure, optionally plotting and saving the data.
 
+    Returns ``False`` if the analysis fails or is skipped e.g. due to the
+    expTime being too short.
+
     Parameters
     ----------
     dataId : `dict` or `lsst.daf.butler.DataCoordinate`
@@ -77,11 +80,14 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
 
     Returns
     -------
-    axisErrors : `list` [`numpy.ndarray`], (3, N)
-        The RMS errors in the three axes:
-            `az_rms` : The RMS in azimuth
-            `el_rms` : The RMS in elevation
-            `rot_rms` : The RMS in the rotator
+    axisErrors : `dict` or `False`
+        The RMS errors in the three axes and their image contributions:
+        ``az_rms`` - The RMS azimuth error.
+        ``el_rms`` - The RMS elevation error.
+        ``rot_rms`` - The RMS rotator error.
+        ``image_az_rms`` - The RMS azimuth error for the image.
+        ``image_el_rms`` - The RMS elevation error for the image.
+        ``image_rot_rms`` - The RMS rotator error for the image.
     """
     # lsst-efd-client is not a required import at the top here, but is
     # implicitly required as a client is passed into this function so is not
@@ -249,4 +255,10 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         elapsed = end-start
         logger.debug(f"Elapsed time for plots = {elapsed}")
 
-    return [az_rms, el_rms, rot_rms]
+    return dict(az_rms=az_rms,
+                el_rms=el_rms,
+                rot_rms=rot_rms,
+                image_az_rms=image_az_rms,
+                image_el_rms=image_el_rms,
+                image_rot_rms=image_rot_rms
+                )

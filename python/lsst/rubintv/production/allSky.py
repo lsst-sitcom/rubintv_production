@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
                                      )
-from .utils import expRecordToUploadFilename, raiseIf, FakeExposureRecord
+from .utils import expRecordToUploadFilename, raiseIf, FakeExposureRecord, hasDayRolledOver
 from .uploaders import Uploader, Heartbeater
 
 try:
@@ -337,26 +337,6 @@ class DayAnimator:
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
-    def hasDayRolledOver(self):
-        """Check if the dayObs has rolled over.
-
-        Checks if the current dayObs is the one the class was instantiated with
-        and returns False if it is.
-
-        Returns
-        -------
-        hasDayRolledOver : `bool`
-            Whether the day has rolled over.
-        """
-        currentDay = getCurrentDayObs_int()
-        if currentDay == self.dayObsInt:
-            return False
-        elif currentDay == self.dayObsInt+1:
-            return True
-        else:
-            raise RuntimeError(f"Encountered non-linear time! Day animation was started with {self.dayObsInt}"
-                               f"and now current dayObs is {currentDay}!")
-
     def _getConvertedFilename(self, filename):
         """Get the filename and path to write the converted images to.
 
@@ -514,7 +494,7 @@ class DayAnimator:
                 self.animateFilesAndUpload(isFinal=False)
                 lastAnimationTime = time.time()
 
-            if self.hasDayRolledOver():
+            if hasDayRolledOver(self.dayObsInt):
                 # final sweep for new images
                 allFiles = _getFilesetFromDir(self.todaysDataDir)
                 newFiles = allFiles - convertedFiles

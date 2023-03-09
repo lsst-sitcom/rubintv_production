@@ -23,8 +23,10 @@ import os
 import time
 import logging
 import tempfile
+import json
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -37,6 +39,7 @@ from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
+from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
 
 try:
     from lsst_efd_client import EfdClient
@@ -47,15 +50,20 @@ except ImportError:
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
+from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
+from lsst.summit.utils import NightReport
 
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf
+from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDayRolledOver, catchPrintOutput
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
+from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
+from .plotting import latissNightReportPlots
+
 
 __all__ = [
     'IsrRunner',
@@ -67,6 +75,7 @@ __all__ = [
     'Uploader',
     'Heartbeater',
     'CalibrateCcdRunner',
+    'NightReportChannel',
 ]
 
 
@@ -123,6 +132,7 @@ class IsrRunner(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         self.bestEffort = BestEffortIsr(embargo=embargo)
         super().__init__(locationConfig=locationConfig,
@@ -162,6 +172,7 @@ class ImExaminerChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
@@ -186,6 +197,26 @@ class ImExaminerChannel(BaseButlerChannel):
         imexam = ImageExaminer(exp, savePlots=outputFilename, doTweakCentroid=True)
         imexam.plot()
 
+    def doProcessImage(self, expRecord):
+        """Determine if we should skip this image.
+
+        Should take responsibility for logging the reason for skipping.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        doProcess : `bool`
+            True if the image should be processed, False if we should skip it.
+        """
+        if expRecord.observation_type in ['bias', 'dark', 'flat']:
+            self.log.info(f"Skipping calib image: {expRecord.observation_type}")
+            return False
+        return True
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -198,6 +229,8 @@ class ImExaminerChannel(BaseButlerChannel):
             The exposure record.
         """
         try:
+            if not self.doProcessImage(expRecord):
+                return
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f'Running imexam on {dataId}')
             tempFilename = tempfile.mktemp(suffix='.png')
@@ -299,6 +332,7 @@ class MonitorChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
@@ -364,6 +398,7 @@ class MountTorqueChannel(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
@@ -384,18 +419,38 @@ class MountTorqueChannel(BaseButlerChannel):
 
         Parameters
         ----------
-        errors : `tuple`
-            The mount errors, in the form (az_rms, el_rms, rot_rms).
+        errors : `dict`
+            The mount errors, as a dict, containing keys:
+            ``az_rms`` - The RMS azimuth error.
+            ``el_rms`` - The RMS elevation error.
+            ``rot_rms`` - The RMS rotator error.
+            ``image_az_rms`` - The RMS azimuth error for the image.
+            ``image_el_rms`` - The RMS elevation error for the image.
+            ``image_rot_rms`` - The RMS rotator error for the image.
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
         dayObs = butlerUtils.getDayObs(expRecord)
         seqNum = butlerUtils.getSeqNum(expRecord)
-        az_rms, el_rms, _ = errors  # we don't need the rot errors here so assign to _
-        imageError = (az_rms ** 2 + el_rms ** 2) ** .5
+
+        # the mount error itself, *not* the image component. No quality flags
+        # on this part.
+        az_rms = errors['az_rms']
+        el_rms = errors['el_rms']
+        mountError = (az_rms ** 2 + el_rms ** 2) ** .5
+        contents = {'Mount jitter RMS': mountError}
+
+        # the contribution to the image error from the mount. This is the part
+        # that matters and gets a quality flag. Note that the rotator error
+        # contibution is zero and the field centre and increases radially, and
+        # is usually very small, so we don't add that here as its contrinution
+        # is not really well definited and including it would be misleading.
+        image_az_rms = errors['image_az_rms']
+        image_el_rms = errors['image_el_rms']
+        imageError = (image_az_rms ** 2 + image_el_rms ** 2) ** .5
         key = 'Mount motion image degradation'
         flagKey = '_' + key  # color coding of cells always done by prepending with an underscore
-        contents = {key: imageError}
+        contents.update({key: imageError})
 
         if imageError > MOUNT_IMAGE_BAD_LEVEL:
             contents.update({flagKey: 'bad'})
@@ -540,6 +595,47 @@ class MetadataCreator(BaseButlerChannel):
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
         return
 
+    def writeLogMessageShards(self, expRecord):
+        """Write a shard containing all the expLog annotations on the dayObs.
+
+        The expRecord is used to identify the dayObs and nothing else.
+
+        This method is called for each new image, but each time polls the
+        exposureLog for all the logs for the dayObs. This is because it will
+        take time for observers to make annotations, and so this needs
+        constantly updating throughout the night.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record, used only to get the dayObs.
+        """
+        dayObs = expRecord.day_obs
+        logs = getLogsForDayObs(dayObs)
+
+        if not logs:
+            return
+
+        itemsToInclude = ['message_text', 'level', 'urls', 'exposure_flag']
+
+        md = {seqNum: {} for seqNum in logs.keys()}
+
+        for seqNum, log in logs.items():
+            wasAnnotated = False
+            for item in itemsToInclude:
+                if item in log:
+                    itemValue = log[item]
+                    newName = LOG_ITEM_MAPPINGS[item]
+                    if isinstance(itemValue, str):  # string values often have trailing '\r\n'
+                        itemValue = itemValue.rstrip()
+                    md[seqNum].update({newName: itemValue})
+                    wasAnnotated = True
+
+            if wasAnnotated:
+                md[seqNum].update({'Has annotations?': '🚩'})
+
+        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -555,6 +651,9 @@ class MetadataCreator(BaseButlerChannel):
             self.writeShardForExpRecord(expRecord)
             # Note: we do not upload anythere here, as the TimedMetadataServer
             # does the collation and upload, and runs as a separate process.
+
+            self.log.info(f'Getting exposure log messages for {expRecord.day_obs}')
+            self.writeLogMessageShards(expRecord)
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -575,6 +674,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
+
     def __init__(self, locationConfig, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
                          # writeable true is required to define visits
@@ -643,6 +743,29 @@ class CalibrateCcdRunner(BaseButlerChannel):
         )
         return loader
 
+    def doProcessImage(self, expRecord):
+        """Determine if we should skip this image.
+
+        Should take responsibility for logging the reason for skipping.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        doProcess : `bool`
+            True if the image should be processed, False if we should skip it.
+        """
+        if expRecord.observation_type != 'science':
+            if expRecord.science_program == 'CWFS' and expRecord.exposure_time == 5:
+                self.log.info('Processing 5s post-CWFS image as a special case')
+                return True
+            self.log.info(f"Skipping non-science-type exposure {expRecord.observation_type}")
+            return False
+        return True
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -656,6 +779,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
             The exposure record.
         """
         try:
+            if not self.doProcessImage(expRecord):
+                return
+
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tStart = time.time()
 
@@ -730,9 +856,13 @@ class CalibrateCcdRunner(BaseButlerChannel):
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
             self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
-            self.clobber(calibrateRes.outputExposure, "calexp", dataId)
+            self.clobber(calibrateRes.outputExposure, "calexp", visitDataId)
             tFinal = time.time()
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
+
+            tVisitInfoStart = time.time()
+            self.putVisitSummary(visitDataId)
+            self.log.info(f"Put the visit info summary in {time.time()-tVisitInfoStart:.2f} seconds")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -784,7 +914,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
                              " define-visits?")
             return None
 
-    def clobber(self, object, datasetType, dataId):
+    def clobber(self, object, datasetType, visitDataId):
         """Put object in the butler.
 
         If there is one already there, remove it beforehand.
@@ -795,18 +925,257 @@ class CalibrateCcdRunner(BaseButlerChannel):
             Any object to put in the butler.
         datasetType : `str`
             Dataset type name to put it as.
-        dataId : `lsst.daf.butler.DataCoordinate`
-            DataId to put the object at.
+        visitDataId : `lsst.daf.butler.DataCoordinate`
+            The data coordinate record of the exposure to put. Must contain the
+            visit id.
         """
-        if not (visitDataId := self.getVisitDataId(dataId)):
-            self.log.warning(f'Skipped butler.put of {datasetType} for {dataId} due to lack of visitId.'
-                             " Do you need to run define-visits?")
-            return
-
         self.butler.registry.registerRun(self.outputRunName)
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f'Overwriting existing {datasetType} for {dataId}')
+            self.log.warning(f'Overwriting existing {datasetType} for {visitDataId}')
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f'Put {datasetType} for {dataId} with visitId: {visitDataId}')
+        self.log.info(f'Put {datasetType} for {visitDataId}')
+
+    def putVisitSummary(self, visitId):
+        """Create and butler.put the visitSummary for this visit.
+
+        Note that this only works like this while we have a single detector.
+
+        Note: the whole method takes ~0.25s so it is probably not worth
+        cluttering the class with the ConsolidateVisitSummaryTask at this
+        point, though it could be done.
+
+        Parameters
+        ----------
+        visitId : `lsst.daf.butler.DataCoordinate`
+            The visit id to create and put the visitSummary for.
+        """
+        dRefs = list(self.butler.registry.queryDatasets('calexp',
+                                                        dataId=visitId,
+                                                        collections=self.outputRunName).expanded())
+        if len(dRefs) != 1:
+            raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
+
+        ddRef = self.butler.getDirectDeferred(dRefs[0])
+        visit = ddRef.dataId.byName()['visit']  # this is a raw int
+        consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
+        expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
+        self.clobber(expCatalog, 'visitSummary', visitId)
+        return
+
+
+class NightReportChannel(BaseButlerChannel):
+    """Class for running the AuxTel Night Report channel on RubinTV.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    dayObs : `int`, optional
+        The dayObs. If not provided, will be calculated from the current time.
+        This should be supplied manually if running catchup or similar, but
+        when running live it will be set automatically so that the current day
+        is processed.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
+    """
+
+    def __init__(self, locationConfig, *, dayObs=None, embargo=False, doRaise=False):
+        super().__init__(locationConfig=locationConfig,
+                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         dataProduct='quickLookExp',
+                         channelName='auxtel_night_reports',
+                         doRaise=doRaise)
+
+        # we update when the quickLookExp lands, but we scrape for everything,
+        # updating the CcdVisitSummaryTable in the hope that the
+        # CalibrateCcdRunner is producing. Because that takes longer to run,
+        # this means the summary table is often a visit behind, but the only
+        # alternative is to block on waiting for calexps, which, if images
+        # fail/aren't attempted to be produced, would result in no update at
+        # all.
+        # This solution is fine as long as there is an end-of-night
+        # finalization step to catch everything in the end, and this is
+        # easily achieved as we need to reinstantiate a report as each day
+        # rolls over anyway.
+
+        self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
+
+        # always attempt to resume on init
+        saveFile = self.getSaveFile()
+        if os.path.isfile(saveFile):
+            self.log.info(f'Resuming from {saveFile}')
+            self.report = NightReport(self.butler, self.dayObs, saveFile)
+            self.report.rebuild()
+        else:  # otherwise start a new report from scratch
+            self.report = NightReport(self.butler, self.dayObs)
+
+    def finalizeDay(self):
+        """Perform the end of day actions and roll the day over.
+
+        Creates a final version of the plots at the end of the day, starts a
+        new NightReport object, and rolls ``self.dayObs`` over.
+        """
+        self.log.info(f'Creating final plots for {self.dayObs}')
+        self.createPlotsAndUpload()
+        # TODO: add final plotting of plots which live in the night reporter
+        # class here somehow, perhaps by moving them to their own plot classes.
+
+        self.dayObs = getCurrentDayObs_int()
+        self.saveFile = self.getSaveFile()
+        self.log.info(f'Starting new report for dayObs {self.dayObs}')
+        self.report = NightReport(self.butler, self.dayObs)
+        return
+
+    def getSaveFile(self):
+        return os.path.join(self.locationConfig.nightReportPath, f'report_{self.dayObs}.pickle')
+
+    def getMetadataTableContents(self):
+        """Get the measured data for the current night.
+
+        Returns
+        -------
+        mdTable : `pandas.DataFrame`
+            The contents of the metdata table from the front end.
+        """
+        # TODO: need to find a better way of getting this path ideally,
+        # but perhaps is OK?
+        sidecarFilename = os.path.join(self.locationConfig.auxTelMetadataPath, f'dayObs_{self.dayObs}.json')
+
+        try:
+            mdTable = pd.read_json(sidecarFilename).T
+            mdTable = mdTable.sort_index()
+        except Exception as e:
+            self.log.warning(f"Failed to load metadata table from {sidecarFilename}: {e}")
+            return None
+
+        if mdTable.empty:
+            return None
+
+        return mdTable
+
+    def createCcdVisitTable(self, dayObs):
+        """Make the consolidated visit summary table for the given dayObs.
+
+        Parameters
+        ----------
+        dayObs : `int`
+            The dayObs.
+
+        Returns
+        -------
+        visitSummaryTableOutputCatalog : `pandas.DataFrame` or `None`
+            The visit summary table for the dayObs.
+        """
+        visitSummaries = self.butler.registry.queryDatasets('visitSummary',
+                                                            where='visit.day_obs=dayObs',
+                                                            bind={'dayObs': dayObs},
+                                                            collections=["LATISS/runs/quickLook/1"]
+                                                            ).expanded()
+        visitSummaries = list(visitSummaries)
+        if len(visitSummaries) == 0:
+            self.log.warning(f'Found no visitSummaries for dayObs {dayObs}')
+            return None
+        self.log.info(f'Found {len(visitSummaries)} visitSummaries for dayObs {dayObs}')
+        ddRefs = [self.butler.getDirectDeferred(vs) for vs in visitSummaries]
+        task = MakeCcdVisitTableTask()
+        table = task.run(ddRefs)
+        return table.outputCatalog
+
+    def createPlotsAndUpload(self):
+        """Create and upload all plots defined in nightReportPlots.
+
+        All plots defined in __all__ in nightReportPlots are discovered,
+        created and uploaded. If any fail, the exception is logged and the next
+        plot is created and uploaded.
+        """
+        md = self.getMetadataTableContents()
+        report = self.report
+        ccdVisitTable = self.createCcdVisitTable(self.dayObs)
+        self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
+                      f'{len(report.data)} items in the night report, '
+                      f'{0 if md is None else len(md)} items in the metadata table, and '
+                      f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
+
+        for plotName in latissNightReportPlots.PLOT_FACTORIES:
+            try:
+                self.log.info(f'Creating plot {plotName}')
+                plotFactory = getattr(latissNightReportPlots, plotName)
+                plot = plotFactory(dayObs=self.dayObs,
+                                   locationConfig=self.locationConfig,
+                                   uploader=self.uploader)
+                plot.createAndUpload(report, md, ccdVisitTable)
+            except Exception:
+                self.log.exception(f"Failed to create plot {plotName}")
+                continue
+
+    def callback(self, expRecord, doCheckDay=True):
+        """Method called on each new expRecord as it is found in the repo.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for the latest data.
+        doCheckDay : `bool`, optional
+            Whether to check if the day has rolled over. This should be left as
+            True for normal operation, but set to False when manually running
+            on past exposures to save triggering on the fact it is no longer
+            that day, e.g. during testing or doing catch-up/backfilling.
+        """
+        dataId = expRecord.dataId
+        md = {}
+        try:
+            if doCheckDay and hasDayRolledOver(self.dayObs):
+                self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
+                self.finalizeDay()
+
+            else:
+                self.report.rebuild()
+                self.report.save(self.getSaveFile())  # save on each call, it's quick and allows resuming
+
+                # make plots here, uploading one by one
+                # make all the automagic plots from nightReportPlots.py
+                self.createPlotsAndUpload()
+
+                # plots which come from the night report object itself:
+                # the per-object airmass plot
+                airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmass.png')
+                self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=airMassPlotFile,
+                                                    plotGroup='Coverage')
+
+                # the alt/az coverage polar plot
+                altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, 'alt-az.png')
+                self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=altAzCoveragePlotFile,
+                                                    plotGroup='Coverage')
+
+                # Add text items here
+                shutterTimes = catchPrintOutput(self.report.printShutterTimes)
+                md['text_010'] = shutterTimes
+
+                obsGaps = catchPrintOutput(self.report.printObsGaps)
+                md['text_020'] = obsGaps
+
+                # Upload the text here
+                # Note this file must be called md.json because this filename
+                # is used for the upload, and that's what the frontend expects
+                jsonFilename = os.path.join(self.locationConfig.nightReportPath, 'md.json')
+                with open(jsonFilename, 'w') as f:
+                    json.dump(md, f)
+                self.uploader.uploadNightReportData(channel=self.channelName,
+                                                    dayObsInt=self.dayObs,
+                                                    filename=jsonFilename)
+
+                self.log.info(f'Finished updating plots and table for {dataId}')
+
+        except Exception as e:
+            msg = f"Skipped updating the night report for {dataId}:"
+            raiseIf(self.doRaise, e, self.log, msg=msg)

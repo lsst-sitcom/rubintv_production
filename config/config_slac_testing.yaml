@@ -9,6 +9,9 @@ allSkyOutputPath: '/sdf/home/m/mfl/u/rubintv/allsky'
 # animation
 moviePngPath: '/sdf/home/m/mfl/u/rubintv/auxTel_animation'
 
+nightReportPath: '/sdf/home/m/mfl/u/rubintv/nightReportData'
+
+
 # Star Trackers paths:
 # The path at which to find the data on disk. Does not include the
 # GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
