@@ -194,6 +194,10 @@ class Uploader:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
         basename = os.path.basename(filename)  # deals with png vs jpeg
+
+        # the plot filenames have the channel name saved into them in the form
+        # path/channelName-plotName.png, so remove the channel name and dash
+        basename = basename.replace(channel + '-', '')
         uploadAs = f"{channel}/{dayObsInt}/{plotGroup if plotGroup else 'default'}/{basename}"
 
         blob = self.bucket.blob(uploadAs)

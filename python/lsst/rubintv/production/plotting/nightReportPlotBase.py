@@ -173,12 +173,11 @@ class LatissPlot(BasePlot):
         plt.savefig(saveFile)
         plt.close()
 
-        # XXX need to add a renaming of the plot on upload as it now
-        # starts with the channelName which is no longer correct for upload        line too long to ensure I don't forget about this!
         self.uploader.uploadNightReportData(channel=self.channelName,
                                             dayObsInt=self.dayObs,
                                             filename=saveFile,
                                             plotGroup=self.plotGroup)
+
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
         os.remove(saveFile)
@@ -239,12 +238,11 @@ class StarTrackerPlot(BasePlot):
         plt.savefig(saveFile)
         plt.close()
 
-        # XXX need to add a renaming of the plot on upload as it now
-        # starts with the channelName which is no longer correct for upload        line too long to ensure I don't forget about this!
         self.uploader.uploadNightReportData(channel=self.channelName,
                                             dayObsInt=self.dayObs,
                                             filename=saveFile,
                                             plotGroup=self.plotGroup)
+
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
         os.remove(saveFile)
