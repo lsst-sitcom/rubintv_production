@@ -3,6 +3,6 @@
 # fileToRun = os.path.join(dirName,
 #                          '..',
 #                          'misc',
-#                          'runStarTrackerNightReport.py')
+#                          'runStarTrackerCatchup.py')
 # print(f'Running {fileToRun}...')
 # os.system(f'python {fileToRun}')
