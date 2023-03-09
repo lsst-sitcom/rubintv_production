@@ -125,7 +125,7 @@ def dayObsToDateTime(dayObs):
     datetime : `datetime`
         The datetime.
     """
-    return datetime.datetime.strptime(dayObsIntToString(dayObs), '%Y%m%d')
+    return datetime.datetime.strptime(dayObsIntToString(dayObs), '%Y-%m-%d')
 
 
 def dayObsSeqNumFromFilename(filename):
