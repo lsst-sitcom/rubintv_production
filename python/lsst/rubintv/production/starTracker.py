@@ -588,7 +588,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         Returns
         -------
         mdTable : `pandas.DataFrame` or `None`
-            The contents of the metdata table from the front end, or `None` if
+            The contents of the metadata table from the front end, or `None` if
             the file for ``self.dayObs`` does not exist (yet).
         """
         sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
@@ -679,7 +679,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
 
 class StarTrackerCatchup:
-    """Class for catchup up skipped images in the StarTrackers.
+    """Class for catching up on skipped images in the StarTrackers.
 
     For now, one catchup service for two cameras, but in future this could
     easily be split out if that becomes necessary.
@@ -743,8 +743,8 @@ class StarTrackerCatchup:
     def catchupCamera(self, camera):
         """Catch up a single camera.
 
-        TODO: add a way of recording fails and skipping them in future so
-        that we don't keep trying to process them over and over.
+        TODO: DM-38313 Add a way of recording fails and skipping them in future
+        so that we don't keep trying to process them over and over.
 
         Parameters
         ----------
