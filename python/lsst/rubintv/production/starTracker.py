@@ -737,6 +737,11 @@ class StarTrackerCatchup:
 
         seqNums = list(mdTable.index)
         successfulFitColumn = 'Calculated Ra' + camera.suffixWithSpace
+        if successfulFitColumn not in mdTable.columns:
+            # if the table exists but nothing has fitted yet for a given
+            # camera then the column won't exist and the process thrashes a bit
+            return []
+
         missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is np.nan]
         return missing
 
