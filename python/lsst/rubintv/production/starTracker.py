@@ -606,6 +606,7 @@ class StarTrackerNightReportChannel(BaseChannel):
             return None
 
         if mdTable.empty:
+            self.log.warning(f"Loaded metadata from {sidecarFilename} but it was found to be empty.")
             return None
 
         return mdTable
@@ -618,7 +619,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         plot is created and uploaded.
         """
         md = self.getMetadataTableContents()
-        if not md:  # getMetadataTableContents logs about the lack of a file so no need to do it here
+        if md is None:  # getMetadataTableContents logs about the lack of a file so no need to do it here
             return
 
         self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
