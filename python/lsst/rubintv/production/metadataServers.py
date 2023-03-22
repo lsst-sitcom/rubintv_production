@@ -162,7 +162,7 @@ class TimedMetadataServer:
         Adds the metadata to the sidecar file for the dataId and uploads it.
         """
         try:
-            self.log.info('Getting metadata from shards')
+            self.log.debug('Getting metadata from shards')
             self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
