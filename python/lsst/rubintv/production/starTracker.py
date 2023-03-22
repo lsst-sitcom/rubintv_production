@@ -31,6 +31,7 @@ import numpy as np
 import time
 
 import lsst.geom as geom
+from scipy.ndimage import median_filter
 
 from lsst.summit.utils.utils import (getCurrentDayObs_int,
                                      getAltAzFromSkyPosition,
@@ -76,9 +77,9 @@ class StarTrackerCamera:
     doSmoothPlot: bool
 
 
-regularCam = StarTrackerCamera('regular', '', '', True, 102, 5, 25, 0.95, 5, True)
+regularCam = StarTrackerCamera('regular', '', '', True, 102, 5, 25, 0.5, 5, True)
 wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 5, True)
-fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 60, False)
+fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 10, False)
 
 
 def getCurrentRawDataDir(rootDataPath, camera):
@@ -430,6 +431,7 @@ class StarTrackerChannel(BaseChannel):
         snr = self.camera.snr
         minPix = self.camera.minPix
         brightSourceFraction = self.camera.brightSourceFraction
+        exp.image.array = median_filter(exp.image.array, 2, mode='reflect')
         imCharResult = runCharactierizeImage(exp, snr, minPix)
 
         sourceCatalog = imCharResult.sourceCat
@@ -438,7 +440,7 @@ class StarTrackerChannel(BaseChannel):
         if not sourceCatalog:
             raise RuntimeError('Failed to find any sources in image')
 
-        filteredSources = filterSourceCatOnBrightest(sourceCatalog, brightSourceFraction)
+        filteredSources = filterSourceCatOnBrightest(sourceCatalog, brightSourceFraction, minSources=5)
         md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
@@ -454,6 +456,8 @@ class StarTrackerChannel(BaseChannel):
         result = self.solver.run(exp, filteredSources,
                                  isWideField=isWide,
                                  percentageScaleError=scaleError,
+                                 radius=5,
+                                 useGaia=True,
                                  silent=True)
 
         if not result:
