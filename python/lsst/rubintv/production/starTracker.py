@@ -758,6 +758,8 @@ class StarTrackerCatchup:
         """
         seqNums = self.getMissingImageSeqNums(camera)
         self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
+        if not seqNums:
+            return
 
         filenames = [getFilename(camera, self.dayObs, seqNum) for seqNum in seqNums]
         filenames = [f for f in filenames if os.path.isfile(f)]
