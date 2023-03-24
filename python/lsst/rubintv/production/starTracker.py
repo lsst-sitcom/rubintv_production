@@ -476,7 +476,9 @@ class StarTrackerChannel(BaseChannel):
         oldAz = geom.Angle(oldAz, geom.degrees)
         oldAlt = geom.Angle(oldAlt, geom.degrees)
 
-        newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(), exp.visitInfo)
+        newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
+                                                exp.visitInfo,
+                                                doCorrectRefraction=True)
 
         deltaAlt = newAlt - oldAlt
         deltaAz = newAz - oldAz
