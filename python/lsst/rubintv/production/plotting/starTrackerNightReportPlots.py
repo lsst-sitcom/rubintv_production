@@ -21,6 +21,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from lsst.utils.plotting.limits import calculate_safe_plotting_limits
 
 from .nightReportPlotBase import StarTrackerPlot
 
@@ -158,6 +159,9 @@ class DeltasPlot(StarTrackerPlot):
                 axes[plotNum].legend()
                 axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
                 axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
+
+                ymin, ymax = calculate_safe_plotting_limits(data.to_numpy(dtype=float), percentile=99)
+                axes[plotNum].set_ylim(ymin, ymax)
         return True
 
 
