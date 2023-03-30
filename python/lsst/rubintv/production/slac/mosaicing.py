@@ -30,6 +30,7 @@ from lsst.afw.fits import FitsError
 import os
 import lsst.afw.image as afwImage
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -340,7 +341,13 @@ def _plotFpMosaic(im, saveAs=''):
     data = im.array
     plt.figure(figsize=(16, 16))
     ax = plt.gca()
-    im = plt.imshow(np.arcsinh(data),
+    def _forward(x):
+        return np.arcsinh(x)
+    def _inverse(x):
+        return np.sinh(x)
+
+    im = plt.imshow(data,
+                    norm=colors.FuncNorm((_forward, _inverse)),
                     interpolation='None', cmap='gray', origin='lower')
 
     divider = make_axes_locatable(ax)
