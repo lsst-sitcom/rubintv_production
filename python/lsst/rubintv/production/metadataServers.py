@@ -123,13 +123,10 @@ class TimedMetadataServer:
 
             with open(shardFile) as f:
                 shard = json.load(f)
-            if shard:
-                row = sanitizeNans(row)
-                for row in shard:
-                    if row in data:
-                        data[row].update(shard[row])
-                    else:
-                        data.update({row: shard[row]})
+            if shard:  # each is a dict of dicts, keyed by seqNum
+                for seqNum, seqNumData in shard.items():
+                    seqNumData = sanitizeNans(seqNumData)  # remove NaNs
+                    data.update({seqNum: seqNumData})
             os.remove(shardFile)
 
             with open(mainFile, 'w') as f:
