@@ -28,6 +28,7 @@ import logging
 import json
 import glob
 import time
+import math
 
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from .channels import PREFIXES
@@ -50,6 +51,7 @@ __all__ = ['writeDataIdFile',
            'getShardedData',
            'isFileWorldWritable',
            'LocationConfig',
+           'sanitizeNans',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -488,6 +490,32 @@ def catchPrintOutput(functionToCall, *args, **kwargs):
     with redirect_stdout(f):
         functionToCall(*args, **kwargs)
     return f.getvalue()
+
+
+def sanitizeNans(obj):
+    """Recursively sanitize an object of any NaN-valued items.
+
+    Nans are not JSON de-serializable, so this function replaces them with
+    ``None``.
+
+    Parameters
+    ----------
+    obj : `object`
+        Any object to sanitize.
+
+    Returns
+    -------
+    obj : `object`
+        The object with any NaNs replaced with ``None``.
+    """
+    if isinstance(obj, list):
+        return [sanitizeNans(o) for o in obj]
+    elif isinstance(obj, dict):
+        return {k: sanitizeNans(v) for k, v in obj.items()}
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    else:
+        return obj
 
 
 def writeMetadataShard(path, dayObs, mdDict):

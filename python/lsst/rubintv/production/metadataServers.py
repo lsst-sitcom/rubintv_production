@@ -29,6 +29,7 @@ from .uploaders import Heartbeater, Uploader
 
 from .utils import (isFileWorldWritable,
                     raiseIf,
+                    sanitizeNans,
                     )
 
 _LOG = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ class TimedMetadataServer:
             with open(shardFile) as f:
                 shard = json.load(f)
             if shard:
+                row = sanitizeNans(row)
                 for row in shard:
                     if row in data:
                         data[row].update(shard[row])
