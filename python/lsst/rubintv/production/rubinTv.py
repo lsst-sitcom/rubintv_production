@@ -438,6 +438,8 @@ class MountTorqueChannel(BaseButlerChannel):
         az_rms = errors['az_rms']
         el_rms = errors['el_rms']
         mountError = (az_rms ** 2 + el_rms ** 2) ** .5
+        if np.isnan(mountError):
+            mountError = None
         contents = {'Mount jitter RMS': mountError}
 
         # the contribution to the image error from the mount. This is the part
@@ -448,6 +450,8 @@ class MountTorqueChannel(BaseButlerChannel):
         image_az_rms = errors['image_az_rms']
         image_el_rms = errors['image_el_rms']
         imageError = (image_az_rms ** 2 + image_el_rms ** 2) ** .5
+        if np.isnan(imageError):
+            mountError = None
         key = 'Mount motion image degradation'
         flagKey = '_' + key  # color coding of cells always done by prepending with an underscore
         contents.update({key: imageError})

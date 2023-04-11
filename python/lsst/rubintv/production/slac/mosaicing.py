@@ -341,8 +341,10 @@ def _plotFpMosaic(im, saveAs=''):
     data = im.array
     plt.figure(figsize=(16, 16))
     ax = plt.gca()
+
     def _forward(x):
         return np.arcsinh(x)
+
     def _inverse(x):
         return np.sinh(x)
 
