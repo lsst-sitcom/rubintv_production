@@ -30,13 +30,15 @@ import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 
 from .utils import waitForDataProduct
-from ..utils import writeDataShard, getShardedData
+from ..utils import writeDataShard, getShardedData, writeMetadataShard
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
 from .utils import fullAmpDictToPerCcdDicts, getCamera
 
 _LOG = logging.getLogger(__name__)
+
+METADATA_DETECTOR = 18  # the magic detector which writes the metadata shard
 
 
 def getNumExpectedItems(instrument, expRecord):
@@ -102,6 +104,32 @@ class RawProcesser:
         config.doTrim = True
         self.assembleTask = AssembleCcdTask(config=config)
 
+    def writeExpRecordMetadataShard(self, expRecord):
+        """Write the exposure record metedata to a shard.
+
+        Only fires once, based on the value METADATA_DETECTOR.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        if METADATA_DETECTOR not in self.detectors:
+            return
+
+        md = {}
+        md['Exposure time'] = expRecord.exposure_time
+        md['Dark time'] = expRecord.dark_time
+        md['Image type'] = expRecord.observation_type
+        md['Test type'] = expRecord.observation_reason
+        md['Date'] = expRecord.timespan.begin.isot
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: md}
+
+        writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
+
     def calculateNoise(self, amp, raw, borderSize=0):
         """Calculate the noise, based on the overscans in a raw image.
 
@@ -142,6 +170,12 @@ class RawProcesser:
 
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
+
+        try:  # metadata writing should never bring the processing down
+            # this only fires for a single detector, based on METADATA_DETECTOR
+            self.writeExpRecordMetadataShard(expRecord)
+        except Exception:
+            self.log.exception(f'Failed to write metadata shard for {expRecord.dataId}')
 
         for detNum in self.detectors:
             dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
