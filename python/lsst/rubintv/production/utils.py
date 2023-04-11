@@ -501,7 +501,8 @@ def sanitizeNans(obj):
     Parameters
     ----------
     obj : `object`
-        Any object to sanitize.
+        The object to santitize, expected to be dict-like: either a single
+        ``dict`` or a ``list`` or ``dict`` of ``dict``s.
 
     Returns
     -------
