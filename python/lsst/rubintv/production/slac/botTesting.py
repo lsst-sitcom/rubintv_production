@@ -102,6 +102,28 @@ class RawProcesser:
         config.doTrim = True
         self.assembleTask = AssembleCcdTask(config=config)
 
+    def calculateNoise(self, amp, raw, borderSize=0):
+        """Calculate the noise, based on the overscans in a raw image.
+
+        Parameters
+        ----------
+        amp : `lsst.afw.cameraGeom.Amplifier`
+            The amplifier.
+        raw : `lsst.afw.image.Exposure`
+            The raw exposure.
+        borderSize : `int`
+            The size of the border to ignore.
+
+        Returns
+        -------
+        noise : `float`
+            The noise.
+        """
+        bbox = amp.getRawSerialOverscanBBox()
+        bbox = bbox.dilatedBy(-1*borderSize)
+        noise = np.std(raw[bbox].image.array)
+        return noise
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -144,7 +166,7 @@ class RawProcesser:
                 continue  # waitForDataProduct itself warns if it times out
             detector = raw.detector
             for amp in detector:
-                noise = np.std(raw[amp.getBBox()].image.array)
+                noise = self.calculateNoise(amp, raw)
                 entryName = "_".join([detector.getName(), amp.getName()])
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
             # write the data
