@@ -222,9 +222,9 @@ class LocationConfig:
 
     @cached_property
     def botButlerPath(self):
-        directory = self._config['botButlerPath']
-        self._checkDir(directory, createIfMissing=False)
-        return directory
+        file = self._config['botButlerPath']
+        self._checkFile(file)
+        return file
 
     @cached_property
     def dataIdScanPath(self):
