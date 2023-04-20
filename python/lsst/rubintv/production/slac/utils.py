@@ -21,9 +21,11 @@
 
 import time
 import logging
+import numpy as np
 
 __all__ = ['fullAmpDictToPerCcdDicts',
            'getCamera',
+           'getAmplifierRegions',
            ]
 
 
@@ -164,3 +166,46 @@ def waitForDataProduct(butler, expRecord, dataset, detector, timeout, cadence=1,
         logger = logging.logger('lsst.rubintv.production.slac.utils.waitForDataProduct')
     logger.warning(f"Timed out waiting for {dataset} for {expRecord.dataId} on detector {detector}")
     return None
+
+
+def getAmplifierRegions(raw):
+    """Get a dictionary of the imaging, serial and parallel sections in readout
+    order, i.e. with the readout node in the lower left.
+
+    Parameters
+    ----------
+    raw : `lsst.afw.image.Exposure`
+        The input exposure, unassembled.
+
+    Returns
+    -------
+    regions : `dict` [`str`, `dict` [`str`, `numpy.ndarray`]]
+        The imaging, serial and parallel sections, keyed by amp name.
+    """
+    imaging = {}
+    serial = {}
+    parallel = {}
+
+    for amp in raw.detector:
+        # for raw images, get the imaging section and the serial/parallel overscan regions
+        ampName = amp.getName()
+
+        serialArray = raw[amp.getRawSerialOverscanBBox()].image.array
+        parallelArray = raw[amp.getRawParallelOverscanBBox()].image.array
+        imagingArray = raw[amp.getRawDataBBox()].image.array
+
+        # if need to flip X or Y, do it
+        if amp.getRawFlipX():
+            serialArray = np.fliplr(serialArray)
+            parallelArray = np.fliplr(parallelArray)
+            imagingArray = np.fliplr(imagingArray)
+        if amp.getRawFlipY():
+            serialArray = np.flipud(serialArray)
+            parallelArray = np.flipud(parallelArray)
+            imagingArray = np.flipud(imagingArray)
+
+        imaging[ampName] = imagingArray
+        serial[ampName] = serialArray
+        parallel[ampName] = parallelArray
+
+    return imaging, serial, parallel
