@@ -28,8 +28,10 @@ from lsst.eo.pipe.plotting import focal_plane_plotting
 from lsst.ip.isr import AssembleCcdTask
 import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
+import lsst.afw.math as afwMath
+import lsst.afw.image as afwImage
 
-from .utils import waitForDataProduct
+from .utils import waitForDataProduct, getAmplifierRegions
 from ..utils import writeDataShard, getShardedData, writeMetadataShard
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
@@ -130,27 +132,32 @@ class RawProcesser:
 
         writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
 
-    def calculateNoise(self, amp, raw, borderSize=0):
+    def calculateNoise(self, overscanData, nSkipParallel, nSkipSerial):
         """Calculate the noise, based on the overscans in a raw image.
 
         Parameters
         ----------
-        amp : `lsst.afw.cameraGeom.Amplifier`
-            The amplifier.
-        raw : `lsst.afw.image.Exposure`
-            The raw exposure.
-        borderSize : `int`
-            The size of the border to ignore.
+        overscanData : `numpy.ndarray`
+            The overscan data.
 
         Returns
         -------
         noise : `float`
-            The noise.
+            The sigma-clipped standard deviation of the overscan.
+        overscanMean : `float`
+            The sigma-clipped mean of the overscan.
         """
-        bbox = amp.getRawSerialOverscanBBox()
-        bbox = bbox.dilatedBy(-1*borderSize)
-        noise = np.std(raw[bbox].image.array)
-        return noise
+        data = overscanData[nSkipSerial:, nSkipParallel:]
+
+        sctrl = afwMath.StatisticsControl()
+        sctrl.setNumSigmaClip(3)
+        sctrl.setNumIter(2)
+        statTypes = afwMath.MEANCLIP | afwMath.STDEVCLIP
+        tempImage = afwImage.MaskedImageF(data)
+        stats = afwMath.makeStatistics(tempImage, statTypes, sctrl)
+        std, _ = stats.getResult(afwMath.STDEVCLIP)
+        mean, _ = stats.getResult(afwMath.MEANCLIP)
+        return std, mean
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
@@ -198,11 +205,16 @@ class RawProcesser:
                 # everything, especially so early on (i.e. in isr on lab data)
                 # we actually shouldn't do this.
                 continue  # waitForDataProduct itself warns if it times out
+
             detector = raw.detector
+            imaging, serialOverscan, parallelOverscan = getAmplifierRegions(raw)
             for amp in detector:
-                noise = self.calculateNoise(amp, raw)
+                ampName = amp.getName()
+                overscan = serialOverscan[ampName]
+                noise, _ = self.calculateNoise(overscan)
                 entryName = "_".join([detector.getName(), amp.getName()])
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
+
             # write the data
             writeDataShard(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises', ampNoises)
             self.log.info(f'Wrote metadata shard for detector {detNum}')
