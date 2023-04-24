@@ -25,7 +25,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
-from lsst.ip.isr import AssembleCcdTask
+from lsst.ip.isr import IsrTask
+
 import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
@@ -102,9 +103,23 @@ class RawProcesser:
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
-        config = AssembleCcdTask.ConfigClass()
-        config.doTrim = True
-        self.assembleTask = AssembleCcdTask(config=config)
+        isrConfig = IsrTask.ConfigClass()
+        isrConfig.doLinearize = False
+        isrConfig.doBias = False
+        isrConfig.doFlat = False
+        isrConfig.doDark = False
+        isrConfig.doFringe = False
+        isrConfig.doDefect = False
+        isrConfig.doWrite = False
+        isrConfig.doSaturation = False
+        isrConfig.doNanInterpolation = False
+        isrConfig.doNanMasking = False
+        isrConfig.doSaturation = False
+        isrConfig.doSaturationInterpolation = False
+        isrConfig.doWidenSaturationTrails = False
+        isrConfig.overscan.fitType = 'MEDIAN_PER_ROW'
+        isrConfig.overscan.doParallelOverscan = True  # NB: doParallelOverscan *requires* MEDIAN_PER_ROW too
+        self.isrTask = IsrTask(config=isrConfig)
 
     def writeExpRecordMetadataShard(self, expRecord):
         """Write the exposure record metedata to a shard.
@@ -153,7 +168,7 @@ class RawProcesser:
         sctrl.setNumSigmaClip(3)
         sctrl.setNumIter(2)
         statTypes = afwMath.MEANCLIP | afwMath.STDEVCLIP
-        tempImage = afwImage.MaskedImageF(data)
+        tempImage = afwImage.MaskedImageF(afwImage.ImageF(data))
         stats = afwMath.makeStatistics(tempImage, statTypes, sctrl)
         std, _ = stats.getResult(afwMath.STDEVCLIP)
         mean, _ = stats.getResult(afwMath.MEANCLIP)
@@ -211,7 +226,7 @@ class RawProcesser:
             for amp in detector:
                 ampName = amp.getName()
                 overscan = serialOverscan[ampName]
-                noise, _ = self.calculateNoise(overscan)
+                noise, _ = self.calculateNoise(overscan, 5, 200)
                 entryName = "_".join([detector.getName(), amp.getName()])
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
 
@@ -221,8 +236,8 @@ class RawProcesser:
             # then signal we're done for downstream
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
 
-            assembled = self.assembleTask.assembleCcd(raw)
-            writeBinnedImage(assembled, self.locationConfig.binnedImagePath, self.locationConfig.binning)
+            postIsr = self.isrTask.run(raw).exposure
+            writeBinnedImage(postIsr, self.locationConfig.binnedImagePath, self.locationConfig.binning)
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
