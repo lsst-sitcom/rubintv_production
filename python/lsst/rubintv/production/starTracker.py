@@ -478,7 +478,10 @@ class StarTrackerChannel(BaseChannel):
 
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
                                                 exp.visitInfo,
-                                                doCorrectRefraction=True)
+                                                doCorrectRefraction=True,
+                                                pressureOverride=0.770,
+                                                temperatureOverride=10,
+                                                relativeHumidityOverride=0.1)
 
         deltaAlt = newAlt - oldAlt
         deltaAz = newAz - oldAz
