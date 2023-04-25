@@ -604,7 +604,7 @@ def getShardedData(path,
                    nExpected,
                    timeout=5,
                    logger=None,
-                   deleteAfterReading=False):
+                   deleteAfterReading=True):
     """Read back the sharded data for a given dayObs, seqNum, and dataset.
 
     Looks for ``nExpected`` files in the directory ``path``, merges their
@@ -632,7 +632,11 @@ def getShardedData(path,
     logger : `logging.Logger`, optional
         The logger for logging warnings if files don't appear.
     deleteAfterReading : `bool`, optional
-        If True, delete the files after reading them.
+        If True, delete the files after reading them. False should only be set
+        for debug use or if the files will be needed by other downstream
+        processes. This is because if a given dataId is reprocessed then having
+        files left lying around will cause a RuntimeError to be raised next
+        time the function is called unless the files are manually deleted.
 
     Returns
     -------
@@ -651,6 +655,9 @@ def getShardedData(path,
     start = time.time()
     while time.time() - start < timeout:
         files = glob.glob(pattern)
+        if len(files) > nExpected:
+            # it is ambiguous which to use to form a coherent set, so raise
+            raise RuntimeError(f'Too many data files found for {dataSetName} for {dayObs=}-{seqNum=}')
         if len(files) == nExpected:
             break
         time.sleep(0.2)

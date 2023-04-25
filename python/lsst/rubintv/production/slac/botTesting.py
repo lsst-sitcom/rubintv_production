@@ -22,7 +22,6 @@
 import os
 import logging
 import matplotlib.pyplot as plt
-import numpy as np
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import IsrTask
@@ -263,10 +262,12 @@ class Plotter:
         The location configuration.
     instrument : `str`
         The instrument.
+    doDeleteFiles : `bool`
+        If True, delete files after they have been processed.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
-    def __init__(self, butler, locationConfig, instrument, doRaise=False):
+    def __init__(self, butler, locationConfig, instrument, doDeleteFiles, doRaise=False):
         self.locationConfig = locationConfig
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
@@ -279,6 +280,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
+        self.doDeleteFiles = doDeleteFiles
 
     def plotNoises(self, expRecord):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -299,7 +301,7 @@ class Plotter:
         noises, _ = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
                                    nExpected=nExpected,
                                    logger=self.log,
-                                   deleteAfterReading=False)
+                                   deleteAfterReading=self.doDeleteFiles)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
@@ -348,7 +350,9 @@ class Plotter:
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         plotFocalPlaneMosaic(self.butler, expId, self.camera, self.locationConfig.binning,
-                             self.locationConfig.binnedImagePath, saveFile, timeout=5)
+                             self.locationConfig.binnedImagePath, saveFile,
+                             doDeleteFiles=self.doDeleteFiles,
+                             timeout=5)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 

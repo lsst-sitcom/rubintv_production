@@ -26,11 +26,14 @@ import lsst.afw.math as afwMath
 from lsst.afw.cameraGeom import utils as cgu
 import lsst.pipe.base as pipeBase
 from lsst.afw.fits import FitsError
+from lsst.summit.utils import getQuantiles
 
 import os
 import lsst.afw.image as afwImage
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+from matplotlib import cm
+
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -101,7 +104,7 @@ def writeBinnedImage(exp, outputPath, binSize):
     binnedImage.writeFits(outFilename)
 
 
-def readBinnedImage(expId, detectorName, dataPath, binSize):
+def readBinnedImage(expId, detectorName, dataPath, binSize, deleteAfterReading, logger=None):
     """Read a pre-binned image in from disk.
 
     Parameters
@@ -114,6 +117,10 @@ def readBinnedImage(expId, detectorName, dataPath, binSize):
         The path on disk to find the pre-binned images.
     binSize : `int`
         The binning factor.
+    deleteAfterReading : `bool`
+        Whether to delete the file after reading it.
+    logger : `logging.Logger`, optional
+        The logger to use.
 
     Returns
     -------
@@ -121,7 +128,15 @@ def readBinnedImage(expId, detectorName, dataPath, binSize):
         The binned image.
     """
     filename = getBinnedFilename(expId, detectorName, dataPath, binSize)
-    return afwImage.ImageF(filename)
+    image = afwImage.ImageF(filename)
+    if deleteAfterReading:
+        try:
+            os.remove(filename)
+        except Exception:
+            if logger is None:
+                logger = logging.getLogger(__name__)
+            logger.exception(f"Could not delete {filename}")
+    return image
 
 
 class PreBinnedImageSource:
@@ -142,10 +157,11 @@ class PreBinnedImageSource:
     isTrimmed = True  # required attribute camGeom.utils.showCamera(imageSource)
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
-    def __init__(self, expId, dataPath, binSize):
+    def __init__(self, expId, dataPath, binSize, deleteAfterReading):
         self.expId = expId
         self.dataPath = dataPath
         self.binSize = binSize
+        self.deleteAfterReading = deleteAfterReading
 
     def getCcdImage(self, det, imageFactory, binSize, *args, **kwargs):
         """Call signature is required by camGeom.utils.showCamera(imageSource),
@@ -153,11 +169,12 @@ class PreBinnedImageSource:
         """
         assert binSize == self.binSize
         detName = det.getName()
-        binnedImage = readBinnedImage(self.expId, detName, self.dataPath, binSize)
+        binnedImage = readBinnedImage(self.expId, detName, self.dataPath, binSize,
+                                      deleteAfterReading=self.deleteAfterReading)
         return afwMath.rotateImageBy90(binnedImage, det.getOrientation().getNQuarter()), det
 
 
-def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, logger=None):
+def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAfterReading, logger=None):
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
     The binsize must match the binning used to write the images to disk
@@ -177,6 +194,8 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, logger=N
         The maximum time to wait for the images to land.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
+    deleteAfterReading : `bool`
+        Whether to delete the binned images after reading them.
 
     Returns
     -------
@@ -210,7 +229,8 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, logger=N
         raise ValueError(f"Expected only one exposure, got {expIds}!")
     expId = expIds.pop()
 
-    imageSource = PreBinnedImageSource(expId, dataPath, binSize=binSize)
+    imageSource = PreBinnedImageSource(expId, dataPath, binSize=binSize,
+                                       deleteAfterReading=deleteAfterReading)
 
     success = False
     firstWarn = True
@@ -275,7 +295,8 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
     return existingNames
 
 
-def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, timeout=5, logger=None):
+def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, doDeleteFiles,
+                         timeout=5, logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
     The binned images must have been created upstream with the correct binning
@@ -295,6 +316,8 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, t
         The path to the binned images.
     savePlotAs : `str`
         The filename to save the plot as.
+    doDeleteFiles : `bool`
+        If True, delete the binned images after making the mosaic.
     timeout : `float`
         The maximum time to wait for the images to land.
     logger : `logging.Logger`, optional
@@ -322,13 +345,14 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, t
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
     deferredDrefs = [butler.getDirectDeferred(d) for d in dRefs]
 
-    mosaic = makeMosaic(deferredDrefs, camera, binSize, dataPath, timeout).output_mosaic
+    mosaic = makeMosaic(deferredDrefs, camera, binSize, dataPath, timeout,
+                        deleteAfterReading=doDeleteFiles).output_mosaic
     logger.info(f"Made mosaic image for {expId}")
     _plotFpMosaic(mosaic, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
 
 
-def _plotFpMosaic(im, saveAs=''):
+def _plotFpMosaic(im, scalingOption='CCS', saveAs=''):
     """Plot the focal plane mosaic, optionally saving as a png.
 
     Parameters
@@ -342,15 +366,25 @@ def _plotFpMosaic(im, saveAs=''):
     plt.figure(figsize=(16, 16))
     ax = plt.gca()
 
-    def _forward(x):
-        return np.arcsinh(x)
+    cmap = cm.gray
+    match scalingOption:
+        case "default":
+            def _forward(x):
+                return np.arcsinh(x)
 
-    def _inverse(x):
-        return np.sinh(x)
+            def _inverse(x):
+                return np.sinh(x)
 
-    im = plt.imshow(data,
-                    norm=colors.FuncNorm((_forward, _inverse)),
-                    interpolation='None', cmap='gray', origin='lower')
+            norm = colors.FuncNorm((_forward, _inverse))
+
+        case "CCS":  # The CCS-style scaling
+            quantiles = getQuantiles(im.array, cmap.N)
+            norm = colors.BoundaryNorm(quantiles, cmap.N)
+
+        case _:
+            raise ValueError(f"Unknown plot scaling option {scalingOption}")
+
+    im = plt.imshow(data, norm=norm, interpolation='None', cmap=cmap, origin='lower')
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
