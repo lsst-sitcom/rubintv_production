@@ -42,6 +42,10 @@ from .utils import fullAmpDictToPerCcdDicts, getCamera
 _LOG = logging.getLogger(__name__)
 
 METADATA_DETECTOR = 18  # the magic detector which writes the metadata shard
+TS8_X_RANGE = (-63.2, 63.1)
+TS8_Y_RANGE = (-62.5, 62.6)
+LSSTCAM_X_RANGE = (-325, 325)
+LSSTCAM_Y_RANGE = (-325, 325)
 
 
 def getNumExpectedItems(instrument, expRecord):
@@ -305,9 +309,15 @@ class Plotter:
         plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
+        xRange = TS8_X_RANGE if self.instrument == 'LSST-TS8' else LSSTCAM_X_RANGE
+        yRange = TS8_Y_RANGE if self.instrument == 'LSST-TS8' else LSSTCAM_Y_RANGE
+
         plotName = f'noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
-        focal_plane_plotting.plot_focal_plane(ax, perCcdNoises, camera=self.camera)
+        focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
+                                              x_range=xRange,
+                                              y_range=yRange,
+                                              camera=self.camera)
 
         plt.savefig(saveFile)
         self.log.info(f'Wrote rawNoises plot for {expRecord.dataId} to {saveFile}')
