@@ -120,7 +120,7 @@ class FakeExposureRecord:
     day_obs: int
 
     def __repr__(self):
-        return(f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}")
+        return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
 
 
 def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
