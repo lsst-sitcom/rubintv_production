@@ -20,13 +20,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
+from matplotlib import cm, colors
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from lsst.summit.utils import quickSmooth
+from lsst.summit.utils import quickSmooth, getQuantiles
 
 
-def plotExp(exp, figure, saveFilename):
+def plotExp(exp, figure, saveFilename, scalingOption="default"):
     """Render and exposure as a png, saving it to saveFilename.
 
     Parameters
@@ -37,14 +38,25 @@ def plotExp(exp, figure, saveFilename):
         The figure to use for plotting.
     saveFilename : `str`
         The filename to save the image to.
+    scalingOption : `int`
+        The choice of colormap normalization.
     """
     data = quickSmooth(exp.image.array, 1)
-    vmin = np.percentile(data, 1)
-    vmax = np.percentile(data, 99)
 
+    cmap = cm.gray
     figure.clear()
     ax1 = figure.add_subplot(111)
-    im1 = ax1.imshow(data, cmap='gray', origin='lower', vmin=vmin, vmax=vmax)
+    match scalingOption:
+        case "default":
+            vmin = np.percentile(data, 1)
+            vmax = np.percentile(data, 99)
+            im1 = ax1.imshow(data, cmap=cmap, origin='lower', vmin=vmin, vmax=vmax)
+        case "CCS":  # The CCS-style scaling
+            quantiles = getQuantiles(data, cmap.N)
+            norm = colors.BoundaryNorm(quantiles, cmap.N)
+            im1 = ax1.imshow(data, cmap=cmap, origin='lower', norm=norm)
+        case _:
+            raise ValueError(f"Unknown plot scaling option {scalingOption}")
 
     divider = make_axes_locatable(ax1)
     cax = divider.append_axes("right", size="5%", pad=0.05)
