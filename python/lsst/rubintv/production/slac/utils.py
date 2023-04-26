@@ -22,10 +22,17 @@
 import time
 import logging
 import numpy as np
+import glob
+import os
+from astropy.io import fits
+
+from lsst.utils import getPackageDir
 
 __all__ = ['fullAmpDictToPerCcdDicts',
            'getCamera',
            'getAmplifierRegions',
+           'getTs8Gains',
+           'gainsToPtcDataset',
            ]
 
 
@@ -187,7 +194,8 @@ def getAmplifierRegions(raw):
     parallel = {}
 
     for amp in raw.detector:
-        # for raw images, get the imaging section and the serial/parallel overscan regions
+        # for raw images, get the imaging section and the serial/parallel
+        # overscan regions
         ampName = amp.getName()
 
         serialArray = raw[amp.getRawSerialOverscanBBox()].image.array
@@ -209,3 +217,85 @@ def getAmplifierRegions(raw):
         parallel[ampName] = parallelArray
 
     return imaging, serial, parallel
+
+
+def getTs8Gains():
+    """Get the gains for all the amps in TS8.
+
+    Get the gains for each detector in TS8, and return them in a dict keyed by
+    detector name (in the short S01 form without the leading raft part), with
+    the values being dicts keyed by amp name.
+
+    If camera folk wanted the gains to be more dynamically updateable, these
+    gains could be converted into a real PtcDataset and ingested and the
+    isrTask could get the real data product. For now though, this is a
+    reasonable workaround.
+
+    Returns
+    -------
+    raftGains : `dict` [`str`, `dict` [`str`, `float`]]
+        The gains, keyed by detector's short name (S01 not R22_S01), with the
+        values being dicts keyed by amp name.
+    """
+    DATASET_NAME = '7045D_eotest_results'
+
+    # This is the order they're currently stored in in the fits file Yousuke
+    # supplied. Unsure how stable this would be if were to update the files,
+    # but for the 7045D dataset, this works correctly.
+    ampNameOrder = ['C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16', 'C17',
+                    'C07', 'C06', 'C05', 'C04', 'C03', 'C02', 'C01', 'C00']
+
+    raftGains = {}
+    ts8GainDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'ts8Gains')
+    files = glob.glob(os.path.join(ts8GainDir, f'*_{DATASET_NAME}.fits'))
+
+    for filename in sorted(files):
+        # filenames are like R22_S20_7045D_eotest_results.fits
+        detectorName = os.path.basename(filename).split(f'{DATASET_NAME}')[0]  # the R22_S11 type part
+
+        # We take just the S01 type part because TS8 has only one raft, and
+        # the downstream processing only has the detector names, they don't
+        # know which raft they're on, so we key by just the lone detector name.
+        detectorName = detectorName.split('_')[1]
+
+        with fits.open(filename) as f:
+            gains = f[1].data['GAIN']
+
+        # gains are np.float32 and this raises in isr, so cast to python float
+        gains = {ampName: float(gains[i]) for i, ampName in enumerate(ampNameOrder)}
+
+        raftGains[detectorName] = gains
+
+    return raftGains
+
+
+def gainsToPtcDataset(gains):
+    """Given a dict of dict of gains for a single CCD, make a fake PTC dataset.
+
+    The gains as a single dict, keyed by amplifier name, with the gains as
+    python floats, not numpy floats. This is the format that the isrTask
+    requires.
+
+    This is neeeded in order for there to be a .gain property on the dataset,
+    as this is how the isrTask accesses them.
+
+    Parameters
+    ----------
+    gains : `dict` [`str`, `float`]
+        The gains for each amplifier in the detector.
+
+    Returns
+    -------
+    fakePtcDataset : `FakePtcDataset`
+        The fake PTC dataset, which quacks enough like a real one for the
+        isrTask.
+    """
+    class FakePtcDataset:
+        def __init__(self, gains):
+            self.gains = gains
+
+        @property
+        def gain(self):
+            return self.gains
+
+    return FakePtcDataset(gains)
