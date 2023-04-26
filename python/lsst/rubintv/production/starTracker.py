@@ -476,6 +476,13 @@ class StarTrackerChannel(BaseChannel):
         oldAz = geom.Angle(oldAz, geom.degrees)
         oldAlt = geom.Angle(oldAlt, geom.degrees)
 
+        # TODO: DM-38889: Remove overrides when weather station is publishing
+        # The override values being supplied here are the nominal values that
+        # the pointing component uses when there is no weather data available.
+        # Once the weather station is providing these and the visitInfo is
+        # being populated, these values should be removed, but only once
+        # they're confirmed to also be making it to the pointing component, in
+        # order that things remain consistent.
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
                                                 exp.visitInfo,
                                                 doCorrectRefraction=True,
