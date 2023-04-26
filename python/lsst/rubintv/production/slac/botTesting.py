@@ -36,7 +36,7 @@ from ..utils import writeDataShard, getShardedData, writeMetadataShard
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
-from .utils import fullAmpDictToPerCcdDicts, getCamera
+from .utils import fullAmpDictToPerCcdDicts, getCamera, getTs8Gains, gainsToPtcDataset
 
 _LOG = logging.getLogger(__name__)
 
@@ -106,6 +106,16 @@ class RawProcesser:
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
+        self.isrTask = self.makeIsrTask()
+
+    def makeIsrTask(self):
+        """Make an isrTask with the appropriate configuration.
+
+        Returns
+        -------
+        isrTask : `lsst.ip.isr.IsrTask`
+            The isrTask.
+        """
         isrConfig = IsrTask.ConfigClass()
         isrConfig.doLinearize = False
         isrConfig.doBias = False
@@ -115,14 +125,41 @@ class RawProcesser:
         isrConfig.doDefect = False
         isrConfig.doWrite = False
         isrConfig.doSaturation = False
+        isrConfig.doVariance = False  # we can have negative values which this would mark as BAD
         isrConfig.doNanInterpolation = False
         isrConfig.doNanMasking = False
         isrConfig.doSaturation = False
         isrConfig.doSaturationInterpolation = False
         isrConfig.doWidenSaturationTrails = False
+
         isrConfig.overscan.fitType = 'MEDIAN_PER_ROW'
         isrConfig.overscan.doParallelOverscan = True  # NB: doParallelOverscan *requires* MEDIAN_PER_ROW too
-        self.isrTask = IsrTask(config=isrConfig)
+        isrConfig.doApplyGains = True
+        isrConfig.usePtcGains = True
+
+        return IsrTask(config=isrConfig)
+
+    def runIsr(self, raw):
+        """Run the isrTask to get a post-ISR exposure.
+
+        Parameters
+        ----------
+        raw : `lsst.afw.image.Exposure`
+            The raw exposure.
+
+        Returns
+        -------
+        postIsr : `lsst.afw.image.Exposure`
+            The post-ISR exposure.
+        """
+        ptcDataset = None
+        if self.isrTask.config.doApplyGains:
+            gains = getTs8Gains()
+            detectorShortName = raw.detector.getName().split('_')[1]  # just need the S01 part
+            ptcDataset = gainsToPtcDataset(gains[detectorShortName])
+
+        postIsr = self.isrTask.run(raw, ptc=ptcDataset).exposure
+        return postIsr
 
     def writeExpRecordMetadataShard(self, expRecord):
         """Write the exposure record metedata to a shard.
@@ -239,7 +276,8 @@ class RawProcesser:
             # then signal we're done for downstream
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
 
-            postIsr = self.isrTask.run(raw).exposure
+            postIsr = self.runIsr(raw)
+
             writeBinnedImage(postIsr, self.locationConfig.binnedImagePath, self.locationConfig.binning)
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
