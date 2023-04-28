@@ -32,28 +32,6 @@ LOG_ITEM_MAPPINGS = {
 }
 
 
-def getSeqNumFromLogMessage(message, logger=None):
-    """Get the seqNum for a log message.
-
-    Parameters
-    ----------
-    messageJson : `dict`
-        The message as returned by the exposure log service.
-
-    Returns
-    -------
-    seqNum : `int` or `None`
-        The seqNum if parsed successfully, else ``None``.
-    """
-    obsId = message['obs_id']
-    parts = obsId.split('_')
-    if len(parts) != 4:
-        logger.warning(f'Failed to parse {obsId=}')
-        return None
-    seqNum = int(parts[3])
-    return seqNum
-
-
 def getLogsForDayObs(dayObs, logger=None):
     """Get a dictionary of log messages for the dayObs, keyed by seqNum.
 
@@ -82,9 +60,5 @@ def getLogsForDayObs(dayObs, logger=None):
         return None
 
     logs = response.json()
-
-    messages = {}
-    for log in logs:
-        if seqNum := getSeqNumFromLogMessage(log, logger):
-            messages[seqNum] = log
+    messages = {log["seq_num"]: log for log in logs if log["seq_num"] is not None}
     return messages
