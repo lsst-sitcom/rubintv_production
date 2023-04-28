@@ -696,3 +696,39 @@ def isFileWorldWritable(filename):
     """
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
+
+
+def safeJsonOpen(filename, timeout=.3):
+    """Open a JSON file, waiting for it to be populated if necessary.
+
+    JSON doesn't like opening zero-byte files, so try to open it, and if it's
+    empty, add a series of small waits until it's not empty and reads
+    correctly, or the timeout is reachecd.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to open.
+    timeout : `float`, optional
+        The timeout period after which to give up waiting for the contents to
+        populate.
+
+    Returns
+    -------
+    jsonData : `file`
+        The json data from the file.
+
+    Raises
+    ------
+    RuntimeError: Raised if the file is not populated within the timeout.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with open(filename, 'r') as f:
+                jsonData = json.load(f)
+                return jsonData
+        except (RuntimeError, json.decoder.JSONDecodeError):
+            pass
+        time.sleep(0.1)
+    raise RuntimeError(f'Failed to load data from {filename} after {timeout}s')

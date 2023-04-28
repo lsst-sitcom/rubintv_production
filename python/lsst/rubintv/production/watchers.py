@@ -19,7 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import logging
 from glob import glob
 from time import sleep
@@ -31,7 +30,9 @@ from .uploaders import Heartbeater
 
 from .utils import (raiseIf,
                     writeDataIdFile,
-                    getGlobPatternForDataProduct)
+                    getGlobPatternForDataProduct,
+                    safeJsonOpen,
+                    )
 
 _LOG = logging.getLogger(__name__)
 
@@ -108,10 +109,9 @@ class FileWatcher:
             self.log.debug(f'Found the same exposure again: {expId}')
             return None
 
-        with open(filename, 'r') as f:
-            expRecordJson = json.load(f)
-            expRecord = dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
-                                                                       universe=dafButler.DimensionUniverse())
+        expRecordJson = safeJsonOpen(filename)
+        expRecord = dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
+                                                                   universe=dafButler.DimensionUniverse())
         return expRecord
 
     def run(self, callback):
