@@ -201,7 +201,7 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
     -------
     result : `lsst.pipe.base.Struct`
         A pipeBase struct containing the ``output_mosaic`` as an
-        `lsst.afw.image.Image`.
+        `lsst.afw.image.Image`, or `None` if the mosaic could not be made.
 
     Notes
     -----
@@ -260,6 +260,11 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
         logger.warning(f"Failed to find one or more files for mosaic of {expId},"
                        f" making what is possible, based on the files found after timeout.")
         detectorNameList = _getDetectorNamesWithData(expId, camera, dataPath, binSize)
+
+        if len(detectorNameList) == 0:
+            logger.warning(f"Found {len(detectorNameList)} binned detector images, so no mosaic can be made.")
+            return pipeBase.Struct(output_mosaic=None)
+
         logger.info(f"Making mosiac with {len(detectorNameList)} detectors")
         output_mosaic = cgu.showCamera(camera,
                                        imageSource=imageSource,
@@ -347,6 +352,9 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, d
 
     mosaic = makeMosaic(deferredDrefs, camera, binSize, dataPath, timeout,
                         deleteAfterReading=doDeleteFiles).output_mosaic
+    if mosaic is None:
+        logger.warning(f"Failed to make mosaic for {expId}")
+        return
     logger.info(f"Made mosaic image for {expId}")
     _plotFpMosaic(mosaic, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
