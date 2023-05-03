@@ -126,7 +126,9 @@ class TimedMetadataServer:
             if shard:  # each is a dict of dicts, keyed by seqNum
                 for seqNum, seqNumData in shard.items():
                     seqNumData = sanitizeNans(seqNumData)  # remove NaNs
-                    data.update({seqNum: seqNumData})
+                    if seqNum not in data.keys():
+                        data[seqNum] = {}
+                    data[seqNum].update(seqNumData)
             os.remove(shardFile)
 
             with open(mainFile, 'w') as f:
