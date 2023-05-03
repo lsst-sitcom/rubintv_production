@@ -239,6 +239,10 @@ class RawProcesser:
         except Exception:
             self.log.exception(f'Failed to write metadata shard for {expRecord.dataId}')
 
+        if expRecord.observation_type == 'scan':
+            self.log.info(f'Skipping scan-mode image {expRecord.dataId}')
+            return
+
         for detNum in self.detectors:
             dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
             self.log.info(f'Processing raw for {dataId}')
