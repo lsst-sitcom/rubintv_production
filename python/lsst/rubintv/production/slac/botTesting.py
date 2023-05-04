@@ -214,6 +214,51 @@ class RawProcesser:
         mean, _ = stats.getResult(afwMath.MEANCLIP)
         return std, mean
 
+    def writeImageMetadataShard(self, expRecord, exposureMetadata):
+        """Write the image metadata to a shard.
+
+        Note that all these header values are constant across all detectors,
+        so it is perfectly safe to pull them from one and display once.
+
+        Only fires once, based on the value METADATA_DETECTOR.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        exposureMetadata : `dict`
+            The exposure metadata as a dict.
+        """
+        if METADATA_DETECTOR not in self.detectors:
+            return
+
+        items = {'OBSID': 'Observation Id',
+                 'SEQFILE': 'Sequencer file',
+                 'FILTER': 'Filter',
+                 'FILTER1': 'Secondary filter',
+                 'TEMPLED1': 'CCOB daughter board front temp',
+                 'TEMPLED2': 'CCOB daughter board back temp',
+                 'TEMPBRD': 'CCOB board temp',
+                 'CCOBLED': 'Selected CCOB LED',
+                 'CCOBCURR': 'CCOB LED current',
+                 'CCOBADC': 'CCOB Photodiode value',
+                 'CCOBFLST': 'CCOB flash time (commanded)',
+                 'PROJTIME': 'CCOB flash time (measured)',
+                 'CCOBFLUX': 'CCOB target flux',
+                 }
+
+        md = {}
+        for headerKey, displayValue in items.items():
+            value = exposureMetadata.get(headerKey)
+            if value:
+                md[displayValue] = value
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: md}
+
+        writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -264,6 +309,8 @@ class RawProcesser:
                 # everything, especially so early on (i.e. in isr on lab data)
                 # we actually shouldn't do this.
                 continue  # waitForDataProduct itself warns if it times out
+
+            self.writeImageMetadataShard(expRecord, raw.getMetadata().toDict())
 
             detector = raw.detector
             imaging, serialOverscan, parallelOverscan = getAmplifierRegions(raw)
