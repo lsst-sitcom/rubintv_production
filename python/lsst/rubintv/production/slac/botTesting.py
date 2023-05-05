@@ -40,7 +40,49 @@ from .utils import fullAmpDictToPerCcdDicts, getCamera, getTs8Gains, gainsToPtcD
 
 _LOG = logging.getLogger(__name__)
 
-METADATA_DETECTOR = 18  # the magic detector which writes the metadata shard
+# The header keys which pertain to the REB condition. These have to be listed
+# and pulled from the metadata dict because DM merges all the headers into
+# one dict, so we can't just use the full header from the relevant HDU as that
+# would mean going back to the raw FITS file, which we don't have/can't do.
+REB_HEADERS = ['EXTNAME', 'TEMP1', 'TEMP2', 'TEMP3', 'TEMP4', 'TEMP5', 'TEMP6', 'TEMP7', 'TEMP8', 'TEMP9',
+               'TEMP10', 'ATEMPU', 'ATEMPL', 'CCDTEMP', 'RTDTEMP', 'DIGPS_V', 'DIGPS_I', 'ANAPS_V', 'ANAPS_I',
+               'CLKHPS_V', 'CLKHPS_I', 'CLKLPS_V', 'CLKLPS_I', 'ODPS_V', 'ODPS_I', 'HTRPS_V', 'HTRPS_W',
+               'PCKU_V', 'PCKL_V', 'SCKU_V', 'SCKL_V', 'RGU_V', 'RGL_V', 'ODV', 'OGV', 'RDV', 'GDV', 'GDP',
+               'RDP', 'OGP', 'ODP', 'CSGATEP', 'SCK_LOWP', 'SCK_HIP', 'PCK_LOWP', 'PCK_HIP', 'RG_LOWP',
+               'RG_HIP', 'AP0_RC', 'AP1_RC', 'AP0_GAIN', 'AP1_GAIN', 'AP0_CLMP', 'AP1_CLMP', 'AP0_AF1',
+               'AP1_AF1', 'AP0_TM', 'AP1_TM', 'HVBIAS', 'IDLEFLSH', 'POWER', 'DIGVB', 'DIGIB', 'DIGVA',
+               'DIGIA', 'DIGVS', 'ANAVB', 'ANAIB', 'ANAVA', 'ANAIA', 'ANAIS', 'ODVB', 'ODIB', 'ODVA', 'ODVA2',
+               'ODIA', 'ODVS', 'CKHVB', 'CKHIB', 'CKHVA', 'CKHIA', 'CKHVS', 'CKLVB', 'CKLIB', 'CKLVA',
+               'CKLV2', 'CKLIA', 'CKLVS', 'HTRVB', 'HTRIB', 'HTRVA', 'HTRIA', 'HTRVAS', 'BSSVBS', 'BSSIBS',
+               'DATASUM']
+
+# The mapping of header keys to the human-readable names in the RubinTV table
+# columns. Each of these is necessarily the same for all CCDs in the
+# raft/camera, so these are pulled from a single detector and put in the table.
+PER_IMAGE_HEADERS = {'OBSID': 'Observation Id',
+                     'SEQFILE': 'Sequencer file',
+                     'FILTER': 'Filter',
+                     'FILTER1': 'Secondary filter',
+                     'TEMPLED1': 'CCOB daughter board front temp',
+                     'TEMPLED2': 'CCOB daughter board back temp',
+                     'TEMPBRD': 'CCOB board temp',
+                     'CCOBLED': 'Selected CCOB LED',
+                     'CCOBCURR': 'CCOB LED current',
+                     'CCOBADC': 'CCOB Photodiode value',
+                     'CCOBFLST': 'CCOB flash time (commanded)',
+                     'PROJTIME': 'CCOB flash time (measured)',
+                     'CCOBFLUX': 'CCOB target flux',
+                     }
+
+# The magic detector which writes the per-image metadata shard
+METADATA_DETECTOR = 18
+# The magic detectors which write the REB headers for TS8, selected to land on
+# the three different REBs
+TS8_REB_HEADER_DETECTORS = [18, 21, 24]
+# The magic detectors which write the REB headers for LSSTCam, selected to land
+# on all the different REBs
+LSSTCAM_REB_HEADER_DETECTORS = [999]  # XXX Fake value, replace once known
+
 TS8_X_RANGE = (-63.2, 63.1)
 TS8_Y_RANGE = (-62.5, 62.6)
 LSSTCAM_X_RANGE = (-325, 325)
@@ -232,23 +274,8 @@ class RawProcesser:
         if METADATA_DETECTOR not in self.detectors:
             return
 
-        items = {'OBSID': 'Observation Id',
-                 'SEQFILE': 'Sequencer file',
-                 'FILTER': 'Filter',
-                 'FILTER1': 'Secondary filter',
-                 'TEMPLED1': 'CCOB daughter board front temp',
-                 'TEMPLED2': 'CCOB daughter board back temp',
-                 'TEMPBRD': 'CCOB board temp',
-                 'CCOBLED': 'Selected CCOB LED',
-                 'CCOBCURR': 'CCOB LED current',
-                 'CCOBADC': 'CCOB Photodiode value',
-                 'CCOBFLST': 'CCOB flash time (commanded)',
-                 'PROJTIME': 'CCOB flash time (measured)',
-                 'CCOBFLUX': 'CCOB target flux',
-                 }
-
         md = {}
-        for headerKey, displayValue in items.items():
+        for headerKey, displayValue in PER_IMAGE_HEADERS.items():
             value = exposureMetadata.get(headerKey)
             if value:
                 md[displayValue] = value
@@ -256,6 +283,49 @@ class RawProcesser:
         seqNum = expRecord.seq_num
         dayObs = expRecord.day_obs
         shardData = {seqNum: md}
+
+        writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
+
+    def writeRebHeaderShard(self, expRecord, raw):
+        """Write the REB condition metadata to a shard.
+
+        Note that all these header values are constant across all detectors,
+        so it is perfectly safe to pull them from one and display once.
+
+        Only fires once, based on the value METADATA_DETECTOR.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        raw : `lsst.afw.image.Exposure`
+            The image containing the detector and metadata.
+        """
+        detector = raw.detector
+        exposureMetadata = raw.getMetadata().toDict()
+
+        if self.instrument == 'LSST-TS8':
+            detectorList = TS8_REB_HEADER_DETECTORS
+        else:
+            detectorList = LSSTCAM_REB_HEADER_DETECTORS
+
+        if not any(detNum in detectorList for detNum in self.detectors):
+            return
+
+        rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+        itemName = f'REB{rebNumber} Header'
+
+        md = {}
+        for headerKey in REB_HEADERS:
+            value = exposureMetadata.get(headerKey)
+            if value:
+                md[headerKey] = value
+
+        md['DISPLAY_VALUE'] = "📖"
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: {itemName: md}}  # uploading a dict item here!
 
         writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
 
@@ -311,6 +381,7 @@ class RawProcesser:
                 continue  # waitForDataProduct itself warns if it times out
 
             self.writeImageMetadataShard(expRecord, raw.getMetadata().toDict())
+            self.writeRebHeaderShard(expRecord, raw)
 
             detector = raw.detector
             imaging, serialOverscan, parallelOverscan = getAmplifierRegions(raw)
