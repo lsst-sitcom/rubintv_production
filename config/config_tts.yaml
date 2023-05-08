@@ -1,0 +1,17 @@
+# Required items:
+dataIdScanPath: '/project/rubintv/dataIds'
+bucketName: 'rubintv_data_tts'
+
+# Summit items:
+nightReportPath:     '/project/rubintv/nightReportData'
+
+# AuxTel metadata
+auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
+auxTelMetadataShardPath: '/project/rubintv/sidecar_metadata/shards'
+
+# animation
+moviePngPath: '/project/rubintv/auxTel_animation'
+
+# The path to the astrometry.net reference catalogs. Do not include
+# the /4100 or /4200, just the base directory.
+# astrometryNetRefCatPath: '/project/shared/ref_cats/astrometry_net'
