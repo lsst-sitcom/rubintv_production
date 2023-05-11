@@ -154,6 +154,8 @@ class RawProcesser:
         self.locationConfig = locationConfig
         self.butler = butler
         self.instrument = instrument
+        self.metadataShardPath = (locationConfig.ts8MetadataShardPath if instrument == 'LSST-TS8' else
+                                  locationConfig.comCamMetadataShardPath)
         self.detectors = list(ensure_iterable(detectors))
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
@@ -243,7 +245,7 @@ class RawProcesser:
         dayObs = expRecord.day_obs
         shardData = {seqNum: md}
 
-        writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
     def calculateNoise(self, overscanData, nSkipParallel, nSkipSerial):
         """Calculate the noise, based on the overscans in a raw image.
@@ -303,7 +305,7 @@ class RawProcesser:
         dayObs = expRecord.day_obs
         shardData = {seqNum: md}
 
-        writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
     def writeRebHeaderShard(self, expRecord, raw):
         """Write the REB condition metadata to a shard.
@@ -352,7 +354,7 @@ class RawProcesser:
         dayObs = expRecord.day_obs
         shardData = {seqNum: {itemName: md}}  # uploading a dict item here!
 
-        writeMetadataShard(self.locationConfig.ts8MetadataShardPath, dayObs, shardData)
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
