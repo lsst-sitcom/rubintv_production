@@ -75,10 +75,12 @@ PER_IMAGE_HEADERS = {'OBSID': 'Observation Id',
                      }
 
 # The magic detector which writes the per-image metadata shard
-METADATA_DETECTOR = 18
+TS8_METADATA_DETECTOR = 18
+LSSTCOMCAM_METADATA_DETECTOR = 0
 # The magic detectors which write the REB headers for TS8, selected to land on
 # the three different REBs
 TS8_REB_HEADER_DETECTORS = [18, 21, 24]
+LSSTCOMCAM_REB_HEADER_DETECTORS = [0, 3, 6]
 # The magic detectors which write the REB headers for LSSTCam, selected to land
 # on all the different REBs
 LSSTCAM_REB_HEADER_DETECTORS = [999]  # XXX Fake value, replace once known
@@ -206,14 +208,17 @@ class RawProcesser:
     def writeExpRecordMetadataShard(self, expRecord):
         """Write the exposure record metedata to a shard.
 
-        Only fires once, based on the value METADATA_DETECTOR.
+        Only fires once, based on the value of TS8_METADATA_DETECTOR or
+        LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
-        if METADATA_DETECTOR not in self.detectors:
+        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
+                            else LSSTCOMCAM_METADATA_DETECTOR)
+        if metadataDetector not in self.detectors:
             return
 
         md = {}
@@ -262,7 +267,8 @@ class RawProcesser:
         Note that all these header values are constant across all detectors,
         so it is perfectly safe to pull them from one and display once.
 
-        Only fires once, based on the value METADATA_DETECTOR.
+        Only fires once, based on the value of TS8_METADATA_DETECTOR or
+        LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
 
         Parameters
         ----------
@@ -271,7 +277,9 @@ class RawProcesser:
         exposureMetadata : `dict`
             The exposure metadata as a dict.
         """
-        if METADATA_DETECTOR not in self.detectors:
+        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
+                            else LSSTCOMCAM_METADATA_DETECTOR)
+        if metadataDetector not in self.detectors:
             return
 
         md = {}
@@ -289,10 +297,12 @@ class RawProcesser:
     def writeRebHeaderShard(self, expRecord, raw):
         """Write the REB condition metadata to a shard.
 
-        Note that all these header values are constant across all detectors,
-        so it is perfectly safe to pull them from one and display once.
+        Note that all these header values are constant across all detectors, so
+        it is perfectly safe to pull them from one and display once.
 
-        Only fires once, based on the value METADATA_DETECTOR.
+        Only fires once per REB, based on the value of
+        TS8_REB_HEADER_DETECTORS, LSSTCOMCAM_REB_HEADER_DETECTORS, or
+        LSSTCAM_REB_HEADER_DETECTORS, depending on the instrument.
 
         Parameters
         ----------
@@ -306,8 +316,12 @@ class RawProcesser:
 
         if self.instrument == 'LSST-TS8':
             detectorList = TS8_REB_HEADER_DETECTORS
-        else:
+        elif self.instrument == 'LSSTComCam':
+            detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
+        elif self.instrument == 'LSSTCam':
             detectorList = LSSTCAM_REB_HEADER_DETECTORS
+        else:
+            raise ValueError(f'Unknown instrument {self.instrument}')
 
         if not any(detNum in detectorList for detNum in self.detectors):
             return
