@@ -91,6 +91,17 @@ LSSTCAM_X_RANGE = (-325, 325)
 LSSTCAM_Y_RANGE = (-325, 325)
 
 
+def isOneRaft(instrument):
+    """A convenience function for checking if we are processing a single raft.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument.
+    """
+    return instrument in ['LSST-TS8', 'LSSTComCam']
+
+
 def getNumExpectedItems(instrument, expRecord):
     """A placeholder function for getting the number of expected items.
 
@@ -485,8 +496,8 @@ class Plotter:
         plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
-        xRange = TS8_X_RANGE if self.instrument == 'LSST-TS8' else LSSTCAM_X_RANGE
-        yRange = TS8_Y_RANGE if self.instrument == 'LSST-TS8' else LSSTCAM_Y_RANGE
+        xRange = TS8_X_RANGE if isOneRaft(self.instrument) else LSSTCAM_X_RANGE
+        yRange = TS8_Y_RANGE if isOneRaft(self.instrument) else LSSTCAM_Y_RANGE
 
         plotName = f'noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
