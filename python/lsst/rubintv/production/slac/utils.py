@@ -250,13 +250,11 @@ def getTs8Gains():
     files = glob.glob(os.path.join(ts8GainDir, f'*_{DATASET_NAME}.fits'))
 
     for filename in sorted(files):
-        # filenames are like R22_S20_7045D_eotest_results.fits
-        detectorName = os.path.basename(filename).split(f'{DATASET_NAME}')[0]  # the R22_S11 type part
-
+        # Filenames are like R22_S20_7045D_eotest_results.fits
         # We take just the S01 type part because TS8 has only one raft, and
         # the downstream processing only has the detector names, they don't
         # know which raft they're on, so we key by just the lone detector name.
-        detectorName = detectorName.split('_')[1]
+        detectorName = os.path.basename(filename).split("_")[1]
 
         with fits.open(filename) as f:
             gains = f[1].data['GAIN']
