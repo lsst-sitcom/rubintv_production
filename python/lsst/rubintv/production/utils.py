@@ -715,8 +715,8 @@ def safeJsonOpen(filename, timeout=.3):
 
     Returns
     -------
-    jsonData : `file`
-        The json data from the file.
+    jsonData : `dict`
+        The data from the json file as (potentially very nested) a dict.
 
     Raises
     ------
