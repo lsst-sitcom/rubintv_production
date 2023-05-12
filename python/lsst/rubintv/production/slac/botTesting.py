@@ -261,6 +261,10 @@ class RawProcesser:
             The sigma-clipped standard deviation of the overscan.
         overscanMean : `float`
             The sigma-clipped mean of the overscan.
+        nSkipParallel : `int`
+            The number of parallel overscan rows to skip.
+        nSkipSerial : `int`
+            The number of serial overscan pixels to skip in each row.
         """
         data = overscanData[nSkipSerial:, nSkipParallel:]
 
