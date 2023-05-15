@@ -52,6 +52,7 @@ __all__ = ['writeDataIdFile',
            'isFileWorldWritable',
            'LocationConfig',
            'sanitizeNans',
+           'safeJsonOpen',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
