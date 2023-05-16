@@ -37,7 +37,7 @@ astrometryNetRefCatPath: '/sdf/home/m/mfl/u/astrometry_net'
 
 # Butler paths - use full paths not aliases here as path existence is checked
 ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
-botButlerPath: '/sdf/group/rubin/repo/main/butler.yaml'
+botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
 
 # # data paths
 scratchPath: '/sdf/home/m/mfl/u/rubintv'
@@ -51,8 +51,8 @@ ts8MetadataPath: '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata'
 ts8MetadataShardPath:  '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata/shards'
 
 # # paths for serving BOT metadata at SLAC
-# botMetadataPath:       ''
-# botMetadataShardPath:  ''
+botMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata'
+botMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards'
 
 # configuration
 bucketName: 'rubintv_data'

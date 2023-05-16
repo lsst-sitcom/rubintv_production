@@ -412,6 +412,18 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    @cached_property
+    def botMetadataPath(self):
+        directory = self._config['botMetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def botMetadataShardPath(self):
+        directory = self._config['botMetadataShardPath']
+        self._checkDir(directory)
+        return directory
+
 
 def getSiteConfig(site='summit'):
     """Get the site configuration, given a site name.
