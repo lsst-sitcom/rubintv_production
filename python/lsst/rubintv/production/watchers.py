@@ -75,8 +75,9 @@ class FileWatcher:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, *, locationConfig, dataProduct, heartbeatChannelName='', doRaise=False):
+    def __init__(self, *, locationConfig, instrument, dataProduct, heartbeatChannelName='', doRaise=False):
         self.locationConfig = locationConfig
+        self.instrument = instrument
         self.dataProduct = dataProduct
         self.doRaise = doRaise
         self.log = _LOG.getChild("fileWatcher")
@@ -100,7 +101,9 @@ class FileWatcher:
         previousExpId : `int`, optional
             The previous exposure id.
         """
-        pattern = getGlobPatternForDataProduct(self.locationConfig.dataIdScanPath, self.dataProduct)
+        pattern = getGlobPatternForDataProduct(dataIdPath=self.locationConfig.dataIdScanPath,
+                                               dataProduct=self.dataProduct,
+                                               instrument=self.instrument)
         files = glob(pattern)
         files = sorted(files, reverse=True)
         if not files:
@@ -174,8 +177,9 @@ class ButlerWatcher:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, locationConfig, butler, dataProducts, doRaise=False):
+    def __init__(self, locationConfig, instrument, butler, dataProducts, doRaise=False):
         self.locationConfig = locationConfig
+        self.instrument = instrument
         self.butler = butler
         self.dataProducts = list(ensure_iterable(dataProducts))  # must call list or we get a generator back
         self.doRaise = doRaise
@@ -231,10 +235,11 @@ class ButlerWatcher:
 
         # delete all downstream products associated with this exposureRecord
         for dataset in ALLOWED_DATASET_TYPES:
-            pattern = getGlobPatternForShardedData(self.locationConfig.calculatedDataPath,
-                                                   dataset,
-                                                   dayObs,
-                                                   seqNum)
+            pattern = getGlobPatternForShardedData(path=self.locationConfig.calculatedDataPath,
+                                                   dataSetName=dataset,
+                                                   instrument=expRecord.instrument,
+                                                   dayObs=dayObs,
+                                                   seqNum=seqNum)
             shardFiles = glob(pattern)
             if len(shardFiles) > 0:
                 self.log.info(f'Deleting {len(shardFiles)} pre-existing files for {dataset}')
@@ -250,6 +255,7 @@ class ButlerWatcher:
         # service will rarely be starting from literally scratch
         for product in self.dataProducts:
             fileWatcher = FileWatcher(locationConfig=self.locationConfig,
+                                      instrument=self.instrument,
                                       dataProduct=product,
                                       doRaise=self.doRaise)
             expRecord = fileWatcher.getMostRecentExpRecord()  # returns None if not found

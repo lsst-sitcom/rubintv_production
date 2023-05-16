@@ -30,5 +30,7 @@ checkRubinTvExternalPackages()
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running CalibrateCcd runner at {location}...')
-channel = CalibrateCcdRunner(locationConfig=locationConfig)
+channel = CalibrateCcdRunner(locationConfig=locationConfig,
+                             instrument='LATISS',
+                             )
 channel.run()

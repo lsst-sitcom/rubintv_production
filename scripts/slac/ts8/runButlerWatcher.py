@@ -34,6 +34,7 @@ locationConfig = LocationConfig(location)
 butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/raw/all', 'LSST-TS8/calib'])
 butlerWatcher = ButlerWatcher(butler=butler,
                               locationConfig=locationConfig,
+                              instrument='LSST-TS8',
                               dataProducts='raw',
                               doRaise=True)
 butlerWatcher.run()

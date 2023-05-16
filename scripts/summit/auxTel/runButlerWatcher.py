@@ -33,5 +33,9 @@ locationConfig = LocationConfig(location)
 print(f'Running butler watcher at {location}...')
 butler = butlerUtils.makeDefaultLatissButler()
 dataProducts = ['raw', 'quickLookExp']
-butlerWatcher = ButlerWatcher(locationConfig, butler, dataProducts, True)
+butlerWatcher = ButlerWatcher(locationConfig=locationConfig,
+                              instrument='LATISS',
+                              butler=butler,
+                              dataProducts=dataProducts,
+                              doRaise=True)
 butlerWatcher.run()

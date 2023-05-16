@@ -1,3 +1,4 @@
+
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -20,17 +21,20 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.rubinTv import SpecExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production import ButlerWatcher
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f'Running spec examiner at {location}...')
+print(f'Running ComCam butler watcher at {location}...')
 
-specExaminer = SpecExaminerChannel(locationConfig=locationConfig,
-                                   instrument='LATISS',
-                                   )
-specExaminer.run()
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all'])
+butlerWatcher = ButlerWatcher(butler=butler,
+                              locationConfig=locationConfig,
+                              instrument='LSSTComCam',
+                              dataProducts='raw',
+                              doRaise=True)
+butlerWatcher.run()

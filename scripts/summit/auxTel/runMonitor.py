@@ -30,5 +30,7 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running monitor at {location}...')
 
-monitor = MonitorChannel(locationConfig=locationConfig)
+monitor = MonitorChannel(locationConfig=locationConfig,
+                         instrument='LATISS',
+                         )
 monitor.run()

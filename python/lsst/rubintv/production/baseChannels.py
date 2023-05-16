@@ -103,12 +103,14 @@ class BaseButlerChannel(BaseChannel):
     def __init__(self,
                  *,
                  locationConfig,
+                 instrument,
                  butler,
                  dataProduct,
                  channelName,
                  doRaise,
                  ):
         fileWatcher = FileWatcher(locationConfig=locationConfig,
+                                  instrument=instrument,
                                   dataProduct=dataProduct,
                                   heartbeatChannelName=channelName,
                                   doRaise=doRaise)

@@ -31,5 +31,7 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running AuxTel metadata creator at {location}...')
 
-mdCreator = MetadataCreator(locationConfig=locationConfig)
+mdCreator = MetadataCreator(locationConfig=locationConfig,
+                            instrument='LATISS',
+                            )
 mdCreator.run()

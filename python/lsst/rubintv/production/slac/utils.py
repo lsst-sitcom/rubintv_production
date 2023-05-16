@@ -60,9 +60,11 @@ def getCamera(butler, instrument):
             return butler.get('camera', collections=['LSSTCam/calib/unbounded'], instrument='LSSTCam')
         case 'LSST-TS8':
             return butler.get('camera', collections=['LSST-TS8/calib/unbounded'], instrument='LSST-TS8')
+        case 'LSSTComCam':
+            return butler.get('camera', collections=['LSSTComCam/calib/unbounded'], instrument='LSSTComCam')
         case _:
-            raise ValueError("This utility function is just for getting LSST-TS8 and LSSTCam instruments,"
-                             f" got {instrument}")
+            raise ValueError("This utility function is just for getting LSST-TS8, LSSTCam, and LSSTComCam "
+                             f"instruments, got {instrument}")
 
 
 def fullAmpDictToPerCcdDicts(fullDict):

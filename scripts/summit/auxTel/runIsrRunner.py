@@ -29,5 +29,7 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 
 print(f'Running isr runner at {location}...')
-isrRunner = IsrRunner(locationConfig=locationConfig)
+isrRunner = IsrRunner(locationConfig=locationConfig,
+                      instrument='LATISS',
+                      )
 isrRunner.run()

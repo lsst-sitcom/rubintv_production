@@ -29,5 +29,7 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 
 print(f'Running night reporter at {location}...')
-nightReport = NightReportChannel(locationConfig=locationConfig)
+nightReport = NightReportChannel(locationConfig=locationConfig,
+                                 instrument='LATISS',
+                                 )
 nightReport.run()
