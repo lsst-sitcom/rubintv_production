@@ -20,17 +20,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.rubinTv import SpecExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production.slac import RawProcesser
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f'Running spec examiner at {location}...')
+print(f'Running raw processor for detector 3 at {location}...')
 
-specExaminer = SpecExaminerChannel(locationConfig=locationConfig,
-                                   instrument='LATISS',
-                                   )
-specExaminer.run()
+locationConfig = LocationConfig(location)
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all',
+                                                                        'LSSTComCam/calib'])
+rawProcessor = RawProcesser(butler=butler,
+                            locationConfig=locationConfig,
+                            instrument='LSSTComCam',
+                            detectors=3,
+                            doRaise=True)
+rawProcessor.run()

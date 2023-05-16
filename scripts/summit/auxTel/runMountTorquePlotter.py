@@ -30,5 +30,7 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running mount torque plotter at {location}...')
 
-mountTorquePlotter = MountTorqueChannel(locationConfig=locationConfig)
+mountTorquePlotter = MountTorqueChannel(locationConfig=locationConfig,
+                                        instrument='LATISS',
+                                        )
 mountTorquePlotter.run()

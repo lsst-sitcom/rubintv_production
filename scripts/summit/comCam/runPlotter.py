@@ -1,3 +1,4 @@
+
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -20,17 +21,20 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.rubinTv import SpecExaminerChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production.slac import Plotter
 from lsst.summit.utils.utils import setupLogging
+from lsst.rubintv.production.utils import LocationConfig
+import lsst.daf.butler as dafButler
 
 setupLogging()
-checkRubinTvExternalPackages()
+print('Running ComCam plotter...')
+
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running spec examiner at {location}...')
-
-specExaminer = SpecExaminerChannel(locationConfig=locationConfig,
-                                   instrument='LATISS',
-                                   )
-specExaminer.run()
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all'])
+plotter = Plotter(butler=butler,
+                  locationConfig=locationConfig,
+                  instrument='LSSTComCam',
+                  doDeleteFiles=True,
+                  doRaise=True)
+plotter.run()

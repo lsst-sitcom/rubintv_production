@@ -20,17 +20,23 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.rubinTv import SpecExaminerChannel
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
 from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
+
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running spec examiner at {location}...')
+print(f'Running ComCam metadata server at {location}...')
 
-specExaminer = SpecExaminerChannel(locationConfig=locationConfig,
-                                   instrument='LATISS',
-                                   )
-specExaminer.run()
+metadataDirectory = locationConfig.comCamMetadataPath
+shardsDirectory = locationConfig.comCamMetadataShardPath
+channelName = 'comcam_metadata'
+
+ts8MetadataServer = TimedMetadataServer(locationConfig=locationConfig,
+                                        metadataDirectory=metadataDirectory,
+                                        shardsDirectory=shardsDirectory,
+                                        channelName=channelName)
+ts8MetadataServer.run()

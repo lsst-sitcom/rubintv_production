@@ -29,5 +29,7 @@ checkRubinTvExternalPackages()
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running imExaminer at {location}...')
-imExaminer = ImExaminerChannel(locationConfig=locationConfig)
+imExaminer = ImExaminerChannel(locationConfig=locationConfig,
+                               instrument='LATISS',
+                               )
 imExaminer.run()

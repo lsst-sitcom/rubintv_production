@@ -32,6 +32,7 @@ locationConfig = LocationConfig(location)
 print(f'Running RubinTV background catchup service at {location}...')
 
 backgroundService = RubinTvBackgroundService(locationConfig=locationConfig,
+                                             instrument='LATISS',
                                              doRaise=False,
                                              )
 backgroundService.run()
