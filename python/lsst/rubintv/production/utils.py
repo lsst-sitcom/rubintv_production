@@ -52,6 +52,8 @@ __all__ = ['writeDataIdFile',
            'isFileWorldWritable',
            'LocationConfig',
            'sanitizeNans',
+           'safeJsonOpen',
+           'ALLOWED_DATASET_TYPES',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -61,6 +63,18 @@ GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please
                             '    pip install google-cloud-storage')
 
 DATA_ID_TEMPLATE = os.path.join("{path}", "{dataProduct}_{expId}.json")
+
+# ALLOWED_DATASET_TYPES is the types of data that can be written as sharded
+# data. In principle, there is no reason this can't be or shouldn't be totally
+# free-form, but because we need to delete any pre-existing data before
+# processing starts, we maintain a list of allowed types so that we can loop
+# over them and delete them. Having this list here and checking before writing
+# ensures that the list is maintained, as new products can't be written without
+# being added here first.
+ALLOWED_DATASET_TYPES = ['rawNoises', 'binnedImage']
+SHARDED_DATA_TEMPLATE = os.path.join("{path}",
+                                     "dataShard-{dataSetName}-dayObs_{dayObs}"
+                                     "_seqNum_{seqNum:06}_{suffix}.json")
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -98,6 +112,9 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
 def getGlobPatternForDataProduct(dataIdPath, dataProduct):
     """Get a glob-style pattern for finding dataId files for a dataProduct.
 
+    These are the dataId files used to signal that a given dataId or
+    dataProduct is ready for use.
+
     Parameters
     ----------
     dataIdPath : `str`
@@ -106,6 +123,30 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct):
         The data product to find the dataIds for.
     """
     return DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId='*')
+
+
+def getGlobPatternForShardedData(path, dataSetName, dayObs, seqNum):
+    """Get a glob-style pattern for finding sharded data.
+
+    These are the sharded data files used to store parts of the output data
+    from the scatter part of the processing, ready to be gathered.
+
+    Parameters
+    ----------
+    path : `str`
+        The path find the sharded data.
+    dataSetName : `str`
+        The dataSetName to find the dataIds for, e.g. binnedImage.
+    dayObs : `int`
+        The dayObs to find the sharded data for.
+    seqNum : `int`
+        The seqNum to find the sharded data for.
+    """
+    return SHARDED_DATA_TEMPLATE.format(path=path,
+                                        dataSetName=dataSetName,
+                                        dayObs=dayObs,
+                                        seqNum=seqNum,
+                                        suffix='*')
 
 
 @dataclass
@@ -120,7 +161,7 @@ class FakeExposureRecord:
     day_obs: int
 
     def __repr__(self):
-        return(f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}")
+        return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
 
 
 def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
@@ -259,12 +300,6 @@ class LocationConfig:
     @cached_property
     def plotPath(self):
         directory = self._config['plotPath']
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def binnedImagePath(self):
-        directory = self._config['binnedImagePath']
         self._checkDir(directory)
         return directory
 
@@ -578,16 +613,17 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
     TypeError
         Raised if dataDict is not a dictionary.
     """
+    if dataSetName not in ALLOWED_DATASET_TYPES:
+        raise ValueError(f'dataSetName must be one of {ALLOWED_DATASET_TYPES}, not {dataSetName}. If you are'
+                         ' trying to add a new one, simply add it to the list.')
+
     if not isinstance(dataDict, dict):
         raise TypeError(f'dataDict must be a dict, not {type(dataDict)}')
 
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
-    suffix = uuid.uuid1()
-    # this pattern is relied up elsewhere, so don't change it without updating
-    # in at least the following places: mergeShardsAndUpload
-    filename = os.path.join(path, f'dataShard-{dataSetName}-dayObs_{dayObs}_seqNum_{seqNum:06}_{suffix}.json')
+    filename = createFilenameForDataShard(path=path, dataSetName=dataSetName, dayObs=dayObs, seqNum=seqNum)
 
     with open(filename, 'w') as f:
         json.dump(dataDict, f)
@@ -597,6 +633,37 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
     return
 
 
+def createFilenameForDataShard(path, dataSetName, dayObs, seqNum):
+    """Get a filename to use for writing sharded data to.
+
+    A filename is built from the SHARDED_DATA_TEMPLATE, with a random suffix
+    added for sharding.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to write to.
+    dataSetName : `str`
+        The name of the dataset, e.g. 'rawNoises'.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The seqNum.
+
+    Returns
+    -------
+    filename : `str`
+        The filename to write the data to.
+    """
+    suffix = uuid.uuid1()
+    filename = SHARDED_DATA_TEMPLATE.format(path=path,
+                                            dataSetName=dataSetName,
+                                            dayObs=dayObs,
+                                            seqNum=seqNum,
+                                            suffix=suffix)
+    return filename
+
+
 def getShardedData(path,
                    dayObs,
                    seqNum,
@@ -604,7 +671,7 @@ def getShardedData(path,
                    nExpected,
                    timeout=5,
                    logger=None,
-                   deleteAfterReading=False):
+                   deleteAfterReading=True):
     """Read back the sharded data for a given dayObs, seqNum, and dataset.
 
     Looks for ``nExpected`` files in the directory ``path``, merges their
@@ -632,7 +699,11 @@ def getShardedData(path,
     logger : `logging.Logger`, optional
         The logger for logging warnings if files don't appear.
     deleteAfterReading : `bool`, optional
-        If True, delete the files after reading them.
+        If True, delete the files after reading them. False should only be set
+        for debug use or if the files will be needed by other downstream
+        processes. This is because if a given dataId is reprocessed then having
+        files left lying around will cause a RuntimeError to be raised next
+        time the function is called unless the files are manually deleted.
 
     Returns
     -------
@@ -646,11 +717,17 @@ def getShardedData(path,
     TypeError
         Raised if dataDict is not a dictionary.
     """
-    pattern = os.path.join(path, f'dataShard-{dataSetName}-dayObs_{dayObs}_seqNum_{seqNum:06}_*.json')
+    pattern = getGlobPatternForShardedData(path=path,
+                                           dataSetName=dataSetName,
+                                           dayObs=dayObs,
+                                           seqNum=seqNum)
 
     start = time.time()
     while time.time() - start < timeout:
         files = glob.glob(pattern)
+        if len(files) > nExpected:
+            # it is ambiguous which to use to form a coherent set, so raise
+            raise RuntimeError(f'Too many data files found for {dataSetName} for {dayObs=}-{seqNum=}')
         if len(files) == nExpected:
             break
         time.sleep(0.2)
@@ -689,3 +766,39 @@ def isFileWorldWritable(filename):
     """
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
+
+
+def safeJsonOpen(filename, timeout=.3):
+    """Open a JSON file, waiting for it to be populated if necessary.
+
+    JSON doesn't like opening zero-byte files, so try to open it, and if it's
+    empty, add a series of small waits until it's not empty and reads
+    correctly, or the timeout is reachecd.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to open.
+    timeout : `float`, optional
+        The timeout period after which to give up waiting for the contents to
+        populate.
+
+    Returns
+    -------
+    jsonData : `dict`
+        The data from the json file as (potentially very nested) a dict.
+
+    Raises
+    ------
+    RuntimeError: Raised if the file is not populated within the timeout.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with open(filename, 'r') as f:
+                jsonData = json.load(f)
+                return jsonData
+        except (RuntimeError, json.decoder.JSONDecodeError):
+            pass
+        time.sleep(0.1)
+    raise RuntimeError(f'Failed to load data from {filename} after {timeout}s')

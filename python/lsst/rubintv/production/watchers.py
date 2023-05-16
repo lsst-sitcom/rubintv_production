@@ -19,8 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import logging
+import os
 from glob import glob
 from time import sleep
 
@@ -31,7 +31,11 @@ from .uploaders import Heartbeater
 
 from .utils import (raiseIf,
                     writeDataIdFile,
-                    getGlobPatternForDataProduct)
+                    getGlobPatternForDataProduct,
+                    getGlobPatternForShardedData,
+                    safeJsonOpen,
+                    ALLOWED_DATASET_TYPES,
+                    )
 
 _LOG = logging.getLogger(__name__)
 
@@ -44,6 +48,7 @@ class FileWatcher:
 
     Many of these can be instantiated per-location.
 
+    # TODO: DM-39225 pretty sure this is no longer true:
     It is worth noting that the ``dataProduct`` to watch for need not be an
     official dafButler dataset type. We can use FileWatchers to signal to any
     downstream processing that something is finished and ready for consumption.
@@ -108,10 +113,10 @@ class FileWatcher:
             self.log.debug(f'Found the same exposure again: {expId}')
             return None
 
-        with open(filename, 'r') as f:
-            expRecordJson = json.load(f)
-            expRecord = dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
-                                                                       universe=dafButler.DimensionUniverse())
+        expRecordJson = safeJsonOpen(filename)
+        # TODO: DM-39225 pretty sure this line breaks the old behavior
+        expRecord = dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
+                                                                   universe=dafButler.DimensionUniverse())
         return expRecord
 
     def run(self, callback):
@@ -210,8 +215,47 @@ class ButlerWatcher:
                 expRecordDict[product] = list(records)[0]
         return expRecordDict
 
+    def _deleteExistingData(self, expRecord):
+        """Delete existing data for this exposure.
+
+        Given an exposure record, delete all sharded/binned data for this
+        image.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+
+        # delete all downstream products associated with this exposureRecord
+        for dataset in ALLOWED_DATASET_TYPES:
+            pattern = getGlobPatternForShardedData(self.locationConfig.calculatedDataPath,
+                                                   dataset,
+                                                   dayObs,
+                                                   seqNum)
+            shardFiles = glob(pattern)
+            if len(shardFiles) > 0:
+                self.log.info(f'Deleting {len(shardFiles)} pre-existing files for {dataset}')
+                for filename in shardFiles:
+                    # deliberately not checking for permission errors here,
+                    # if they're raised we want to fail at this point.
+                    os.remove(filename)
+
     def run(self):
         lastWrittenIds = {product: None for product in self.dataProducts}
+
+        # check for what we actually already have on disk, given that the
+        # service will rarely be starting from literally scratch
+        for product in self.dataProducts:
+            fileWatcher = FileWatcher(locationConfig=self.locationConfig,
+                                      dataProduct=product,
+                                      doRaise=self.doRaise)
+            expRecord = fileWatcher.getMostRecentExpRecord()  # returns None if not found
+            lastWrittenIds[product] = expRecord
+            del fileWatcher
+
         while True:
             try:
                 # get the new records for all dataproducts
@@ -226,6 +270,11 @@ class ButlerWatcher:
                     # self.heartbeater.beat()
                     continue
                 else:
+                    # all processing starts with triggering on a raw, so we
+                    # only perform that deletion at the very start, and
+                    # therefore hard-code raw
+                    self._deleteExistingData(found['raw'])
+
                     for product, expRecord in found.items():
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id

@@ -9,7 +9,6 @@ botButlerPath: '/repo/ir2/butler.yaml'
 # # data paths
 scratchPath: '/scratch/rubintv'
 plotPath: '/scratch/rubintv/plots'
-binnedImagePath: '/scratch/rubintv/binnedImages'
 calculatedDataPath: '/scratch/rubintv/calculatedData'
 
 # # paths for serving TS8 metadata at SLAC

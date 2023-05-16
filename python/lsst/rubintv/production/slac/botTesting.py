@@ -22,21 +22,84 @@
 import os
 import logging
 import matplotlib.pyplot as plt
-import numpy as np
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
-from lsst.ip.isr import AssembleCcdTask
+from lsst.ip.isr import IsrTask
+
 import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
+import lsst.afw.math as afwMath
+import lsst.afw.image as afwImage
 
-from .utils import waitForDataProduct
-from ..utils import writeDataShard, getShardedData
+from .utils import waitForDataProduct, getAmplifierRegions
+from ..utils import writeDataShard, getShardedData, writeMetadataShard
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
-from .utils import fullAmpDictToPerCcdDicts, getCamera
+from .utils import fullAmpDictToPerCcdDicts, getCamera, getTs8Gains, gainsToPtcDataset
 
 _LOG = logging.getLogger(__name__)
+
+# The header keys which pertain to the REB condition. These have to be listed
+# and pulled from the metadata dict because DM merges all the headers into
+# one dict, so we can't just use the full header from the relevant HDU as that
+# would mean going back to the raw FITS file, which we don't have/can't do.
+REB_HEADERS = ['EXTNAME', 'TEMP1', 'TEMP2', 'TEMP3', 'TEMP4', 'TEMP5', 'TEMP6', 'TEMP7', 'TEMP8', 'TEMP9',
+               'TEMP10', 'ATEMPU', 'ATEMPL', 'CCDTEMP', 'RTDTEMP', 'DIGPS_V', 'DIGPS_I', 'ANAPS_V', 'ANAPS_I',
+               'CLKHPS_V', 'CLKHPS_I', 'CLKLPS_V', 'CLKLPS_I', 'ODPS_V', 'ODPS_I', 'HTRPS_V', 'HTRPS_W',
+               'PCKU_V', 'PCKL_V', 'SCKU_V', 'SCKL_V', 'RGU_V', 'RGL_V', 'ODV', 'OGV', 'RDV', 'GDV', 'GDP',
+               'RDP', 'OGP', 'ODP', 'CSGATEP', 'SCK_LOWP', 'SCK_HIP', 'PCK_LOWP', 'PCK_HIP', 'RG_LOWP',
+               'RG_HIP', 'AP0_RC', 'AP1_RC', 'AP0_GAIN', 'AP1_GAIN', 'AP0_CLMP', 'AP1_CLMP', 'AP0_AF1',
+               'AP1_AF1', 'AP0_TM', 'AP1_TM', 'HVBIAS', 'IDLEFLSH', 'POWER', 'DIGVB', 'DIGIB', 'DIGVA',
+               'DIGIA', 'DIGVS', 'ANAVB', 'ANAIB', 'ANAVA', 'ANAIA', 'ANAIS', 'ODVB', 'ODIB', 'ODVA', 'ODVA2',
+               'ODIA', 'ODVS', 'CKHVB', 'CKHIB', 'CKHVA', 'CKHIA', 'CKHVS', 'CKLVB', 'CKLIB', 'CKLVA',
+               'CKLV2', 'CKLIA', 'CKLVS', 'HTRVB', 'HTRIB', 'HTRVA', 'HTRIA', 'HTRVAS', 'BSSVBS', 'BSSIBS',
+               'DATASUM']
+
+# The mapping of header keys to the human-readable names in the RubinTV table
+# columns. Each of these is necessarily the same for all CCDs in the
+# raft/camera, so these are pulled from a single detector and put in the table.
+PER_IMAGE_HEADERS = {'OBSID': 'Observation Id',
+                     'SEQFILE': 'Sequencer file',
+                     'FILTER': 'Filter',
+                     'FILTER1': 'Secondary filter',
+                     'TEMPLED1': 'CCOB daughter board front temp',
+                     'TEMPLED2': 'CCOB daughter board back temp',
+                     'TEMPBRD': 'CCOB board temp',
+                     'CCOBLED': 'Selected CCOB LED',
+                     'CCOBCURR': 'CCOB LED current',
+                     'CCOBADC': 'CCOB Photodiode value',
+                     'CCOBFLST': 'CCOB flash time (commanded)',
+                     'PROJTIME': 'CCOB flash time (measured)',
+                     'CCOBFLUX': 'CCOB target flux',
+                     }
+
+# The magic detector which writes the per-image metadata shard
+TS8_METADATA_DETECTOR = 18
+LSSTCOMCAM_METADATA_DETECTOR = 0
+# The magic detectors which write the REB headers for TS8, selected to land on
+# the three different REBs
+TS8_REB_HEADER_DETECTORS = [18, 21, 24]
+LSSTCOMCAM_REB_HEADER_DETECTORS = [0, 3, 6]
+# The magic detectors which write the REB headers for LSSTCam, selected to land
+# on all the different REBs
+LSSTCAM_REB_HEADER_DETECTORS = [999]  # XXX Fake value, replace once known
+
+TS8_X_RANGE = (-63.2, 63.1)
+TS8_Y_RANGE = (-62.5, 62.6)
+LSSTCAM_X_RANGE = (-325, 325)
+LSSTCAM_Y_RANGE = (-325, 325)
+
+
+def isOneRaft(instrument):
+    """A convenience function for checking if we are processing a single raft.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument.
+    """
+    return instrument in ['LSST-TS8', 'LSSTComCam']
 
 
 def getNumExpectedItems(instrument, expRecord):
@@ -91,6 +154,8 @@ class RawProcesser:
         self.locationConfig = locationConfig
         self.butler = butler
         self.instrument = instrument
+        self.metadataShardPath = (locationConfig.ts8MetadataShardPath if instrument == 'LSST-TS8' else
+                                  locationConfig.comCamMetadataShardPath)
         self.detectors = list(ensure_iterable(detectors))
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
@@ -98,9 +163,202 @@ class RawProcesser:
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
-        config = AssembleCcdTask.ConfigClass()
-        config.doTrim = True
-        self.assembleTask = AssembleCcdTask(config=config)
+        self.isrTask = self.makeIsrTask()
+
+    def makeIsrTask(self):
+        """Make an isrTask with the appropriate configuration.
+
+        Returns
+        -------
+        isrTask : `lsst.ip.isr.IsrTask`
+            The isrTask.
+        """
+        isrConfig = IsrTask.ConfigClass()
+        isrConfig.doLinearize = False
+        isrConfig.doBias = False
+        isrConfig.doFlat = False
+        isrConfig.doDark = False
+        isrConfig.doFringe = False
+        isrConfig.doDefect = False
+        isrConfig.doWrite = False
+        isrConfig.doSaturation = False
+        isrConfig.doVariance = False  # we can have negative values which this would mark as BAD
+        isrConfig.doNanInterpolation = False
+        isrConfig.doNanMasking = False
+        isrConfig.doSaturation = False
+        isrConfig.doSaturationInterpolation = False
+        isrConfig.doWidenSaturationTrails = False
+
+        isrConfig.overscan.fitType = 'MEDIAN_PER_ROW'
+        isrConfig.overscan.doParallelOverscan = True  # NB: doParallelOverscan *requires* MEDIAN_PER_ROW too
+        isrConfig.doApplyGains = True
+        isrConfig.usePtcGains = True
+
+        return IsrTask(config=isrConfig)
+
+    def runIsr(self, raw):
+        """Run the isrTask to get a post-ISR exposure.
+
+        Parameters
+        ----------
+        raw : `lsst.afw.image.Exposure`
+            The raw exposure.
+
+        Returns
+        -------
+        postIsr : `lsst.afw.image.Exposure`
+            The post-ISR exposure.
+        """
+        ptcDataset = None
+        if self.isrTask.config.doApplyGains:
+            gains = getTs8Gains()
+            detectorShortName = raw.detector.getName().split('_')[1]  # just need the S01 part
+            ptcDataset = gainsToPtcDataset(gains[detectorShortName])
+
+        postIsr = self.isrTask.run(raw, ptc=ptcDataset).exposure
+        return postIsr
+
+    def writeExpRecordMetadataShard(self, expRecord):
+        """Write the exposure record metedata to a shard.
+
+        Only fires once, based on the value of TS8_METADATA_DETECTOR or
+        LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
+                            else LSSTCOMCAM_METADATA_DETECTOR)
+        if metadataDetector not in self.detectors:
+            return
+
+        md = {}
+        md['Exposure time'] = expRecord.exposure_time
+        md['Dark time'] = expRecord.dark_time
+        md['Image type'] = expRecord.observation_type
+        md['Test type'] = expRecord.observation_reason
+        md['Date'] = expRecord.timespan.begin.isot
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: md}
+
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+
+    def calculateNoise(self, overscanData, nSkipParallel, nSkipSerial):
+        """Calculate the noise, based on the overscans in a raw image.
+
+        Parameters
+        ----------
+        overscanData : `numpy.ndarray`
+            The overscan data.
+
+        Returns
+        -------
+        noise : `float`
+            The sigma-clipped standard deviation of the overscan.
+        overscanMean : `float`
+            The sigma-clipped mean of the overscan.
+        nSkipParallel : `int`
+            The number of parallel overscan rows to skip.
+        nSkipSerial : `int`
+            The number of serial overscan pixels to skip in each row.
+        """
+        data = overscanData[nSkipSerial:, nSkipParallel:]
+
+        sctrl = afwMath.StatisticsControl()
+        sctrl.setNumSigmaClip(3)
+        sctrl.setNumIter(2)
+        statTypes = afwMath.MEANCLIP | afwMath.STDEVCLIP
+        tempImage = afwImage.MaskedImageF(afwImage.ImageF(data))
+        stats = afwMath.makeStatistics(tempImage, statTypes, sctrl)
+        std, _ = stats.getResult(afwMath.STDEVCLIP)
+        mean, _ = stats.getResult(afwMath.MEANCLIP)
+        return std, mean
+
+    def writeImageMetadataShard(self, expRecord, exposureMetadata):
+        """Write the image metadata to a shard.
+
+        Note that all these header values are constant across all detectors,
+        so it is perfectly safe to pull them from one and display once.
+
+        Only fires once, based on the value of TS8_METADATA_DETECTOR or
+        LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        exposureMetadata : `dict`
+            The exposure metadata as a dict.
+        """
+        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
+                            else LSSTCOMCAM_METADATA_DETECTOR)
+        if metadataDetector not in self.detectors:
+            return
+
+        md = {}
+        for headerKey, displayValue in PER_IMAGE_HEADERS.items():
+            value = exposureMetadata.get(headerKey)
+            if value:
+                md[displayValue] = value
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: md}
+
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+
+    def writeRebHeaderShard(self, expRecord, raw):
+        """Write the REB condition metadata to a shard.
+
+        Note that all these header values are constant across all detectors, so
+        it is perfectly safe to pull them from one and display once.
+
+        Only fires once per REB, based on the value of
+        TS8_REB_HEADER_DETECTORS, LSSTCOMCAM_REB_HEADER_DETECTORS, or
+        LSSTCAM_REB_HEADER_DETECTORS, depending on the instrument.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        raw : `lsst.afw.image.Exposure`
+            The image containing the detector and metadata.
+        """
+        detector = raw.detector
+        exposureMetadata = raw.getMetadata().toDict()
+
+        if self.instrument == 'LSST-TS8':
+            detectorList = TS8_REB_HEADER_DETECTORS
+        elif self.instrument == 'LSSTComCam':
+            detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
+        elif self.instrument == 'LSSTCam':
+            detectorList = LSSTCAM_REB_HEADER_DETECTORS
+        else:
+            raise ValueError(f'Unknown instrument {self.instrument}')
+
+        if not any(detNum in detectorList for detNum in self.detectors):
+            return
+
+        rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+        itemName = f'REB{rebNumber} Header'
+
+        md = {}
+        for headerKey in REB_HEADERS:
+            value = exposureMetadata.get(headerKey)
+            if value:
+                md[headerKey] = value
+
+        md['DISPLAY_VALUE'] = "📖"
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: {itemName: md}}  # uploading a dict item here!
+
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
@@ -120,6 +378,16 @@ class RawProcesser:
 
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
+
+        try:  # metadata writing should never bring the processing down
+            # this only fires for a single detector, based on METADATA_DETECTOR
+            self.writeExpRecordMetadataShard(expRecord)
+        except Exception:
+            self.log.exception(f'Failed to write metadata shard for {expRecord.dataId}')
+
+        if expRecord.observation_type == 'scan':
+            self.log.info(f'Skipping scan-mode image {expRecord.dataId}')
+            return
 
         for detNum in self.detectors:
             dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
@@ -142,19 +410,28 @@ class RawProcesser:
                 # everything, especially so early on (i.e. in isr on lab data)
                 # we actually shouldn't do this.
                 continue  # waitForDataProduct itself warns if it times out
+
+            self.writeImageMetadataShard(expRecord, raw.getMetadata().toDict())
+            self.writeRebHeaderShard(expRecord, raw)
+
             detector = raw.detector
+            imaging, serialOverscan, parallelOverscan = getAmplifierRegions(raw)
             for amp in detector:
-                noise = np.std(raw[amp.getBBox()].image.array)
+                ampName = amp.getName()
+                overscan = serialOverscan[ampName]
+                noise, _ = self.calculateNoise(overscan, 5, 200)
                 entryName = "_".join([detector.getName(), amp.getName()])
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
+
             # write the data
             writeDataShard(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises', ampNoises)
             self.log.info(f'Wrote metadata shard for detector {detNum}')
             # then signal we're done for downstream
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
 
-            assembled = self.assembleTask.assembleCcd(raw)
-            writeBinnedImage(assembled, self.locationConfig.binnedImagePath, self.locationConfig.binning)
+            postIsr = self.runIsr(raw)
+
+            writeBinnedImage(postIsr, self.locationConfig.calculatedDataPath, self.locationConfig.binning)
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
@@ -176,10 +453,12 @@ class Plotter:
         The location configuration.
     instrument : `str`
         The instrument.
+    doDeleteFiles : `bool`
+        If True, delete files after they have been processed.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
-    def __init__(self, butler, locationConfig, instrument, doRaise=False):
+    def __init__(self, butler, locationConfig, instrument, doDeleteFiles, doRaise=False):
         self.locationConfig = locationConfig
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
@@ -192,6 +471,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
+        self.doDeleteFiles = doDeleteFiles
 
     def plotNoises(self, expRecord):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -212,7 +492,7 @@ class Plotter:
         noises, _ = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
                                    nExpected=nExpected,
                                    logger=self.log,
-                                   deleteAfterReading=False)
+                                   deleteAfterReading=self.doDeleteFiles)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
@@ -222,9 +502,15 @@ class Plotter:
         plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
+        xRange = TS8_X_RANGE if isOneRaft(self.instrument) else LSSTCAM_X_RANGE
+        yRange = TS8_Y_RANGE if isOneRaft(self.instrument) else LSSTCAM_Y_RANGE
+
         plotName = f'noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
-        focal_plane_plotting.plot_focal_plane(ax, perCcdNoises, camera=self.camera)
+        focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
+                                              x_range=xRange,
+                                              y_range=yRange,
+                                              camera=self.camera)
 
         plt.savefig(saveFile)
         self.log.info(f'Wrote rawNoises plot for {expRecord.dataId} to {saveFile}')
@@ -255,7 +541,9 @@ class Plotter:
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         plotFocalPlaneMosaic(self.butler, expId, self.camera, self.locationConfig.binning,
-                             self.locationConfig.binnedImagePath, saveFile, timeout=5)
+                             self.locationConfig.calculatedDataPath, saveFile,
+                             doDeleteFiles=self.doDeleteFiles,
+                             timeout=5)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 

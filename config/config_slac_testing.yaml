@@ -43,13 +43,12 @@ botButlerPath: '/sdf/group/rubin/repo/main/butler.yaml'
 scratchPath: '/sdf/home/m/mfl/u/rubintv'
 dataIdScanPath: '/sdf/home/m/mfl/u/rubintv/dataIds'
 plotPath: '/sdf/home/m/mfl/u/rubintv/plots'
-binnedImagePath: '/sdf/home/m/mfl/u/rubintv/binnedImages'
 # calculatedDataPath: '/sdf/home/m/mfl/u/rubintv/calculatedData'
 calculatedDataPath: '/sdf/home/m/mfl/u/rubintv/calculatedData'
 
 # # paths for serving TS8 metadata at SLAC
-# ts8MetadataPath:       ''
-# ts8MetadataShardPath:  ''
+ts8MetadataPath: '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata'
+ts8MetadataShardPath:  '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata/shards'
 
 # # paths for serving BOT metadata at SLAC
 # botMetadataPath:       ''

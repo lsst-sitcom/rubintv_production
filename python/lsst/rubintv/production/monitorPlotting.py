@@ -27,7 +27,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from lsst.summit.utils import quickSmooth, getQuantiles
 
 
-def plotExp(exp, figure, saveFilename, scalingOption="default"):
+def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="default"):
     """Render and exposure as a png, saving it to saveFilename.
 
     Parameters
@@ -41,7 +41,10 @@ def plotExp(exp, figure, saveFilename, scalingOption="default"):
     scalingOption : `int`
         The choice of colormap normalization.
     """
-    data = quickSmooth(exp.image.array, 1)
+    if doSmooth:
+        data = quickSmooth(exp.image.array, 1)
+    else:
+        data = exp.image.array
 
     cmap = cm.gray
     figure.clear()
@@ -62,4 +65,5 @@ def plotExp(exp, figure, saveFilename, scalingOption="default"):
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im1, cax=cax)
     plt.tight_layout()
-    plt.savefig(saveFilename)
+    if saveFilename:
+        plt.savefig(saveFilename)
