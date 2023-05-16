@@ -60,5 +60,5 @@ def getLogsForDayObs(dayObs, logger=None):
         return None
 
     logs = response.json()
-    messages = {log["seq_num"]: log for log in logs if log["seq_num"] is not None}
+    messages = {log["seq_num"]: log for log in logs}
     return messages

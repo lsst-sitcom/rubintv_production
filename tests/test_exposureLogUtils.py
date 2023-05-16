@@ -40,8 +40,8 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
             },
             {
                 "id": "9999",
-                "obs_id": "AT_O_20230316_000000",
-                "seq_num": None,
+                "obs_id": "AT_O_20230316_000521",
+                "seq_num": 521,
             },
         ]
         responses.add(
@@ -50,7 +50,7 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
             json=mock_logs,
         )
         logs = getLogsForDayObs(20230316)
-        self.assertEqual(logs, {520: mock_logs[0]})
+        self.assertEqual(logs, {520: mock_logs[0], 521: mock_logs[1]})
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
