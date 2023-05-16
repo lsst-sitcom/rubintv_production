@@ -53,6 +53,7 @@ __all__ = ['writeDataIdFile',
            'LocationConfig',
            'sanitizeNans',
            'safeJsonOpen',
+           'ALLOWED_DATASET_TYPES',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -62,6 +63,18 @@ GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please
                             '    pip install google-cloud-storage')
 
 DATA_ID_TEMPLATE = os.path.join("{path}", "{dataProduct}_{expId}.json")
+
+# ALLOWED_DATASET_TYPES is the types of data that can be written as sharded
+# data. In principle, there is no reason this can't be or shouldn't be totally
+# free-form, but because we need to delete any pre-existing data before
+# processing starts, we maintain a list of allowed types so that we can loop
+# over them and delete them. Having this list here and checking before writing
+# ensures that the list is maintained, as new products can't be written without
+# being added here first.
+ALLOWED_DATASET_TYPES = ['rawNoises', 'binnedImage']
+SHARDED_DATA_TEMPLATE = os.path.join("{path}",
+                                     "dataShard-{dataSetName}-dayObs_{dayObs}"
+                                     "_seqNum_{seqNum:06}_{suffix}.json")
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -99,6 +112,9 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
 def getGlobPatternForDataProduct(dataIdPath, dataProduct):
     """Get a glob-style pattern for finding dataId files for a dataProduct.
 
+    These are the dataId files used to signal that a given dataId or
+    dataProduct is ready for use.
+
     Parameters
     ----------
     dataIdPath : `str`
@@ -107,6 +123,30 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct):
         The data product to find the dataIds for.
     """
     return DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId='*')
+
+
+def getGlobPatternForShardedData(path, dataSetName, dayObs, seqNum):
+    """Get a glob-style pattern for finding sharded data.
+
+    These are the sharded data files used to store parts of the output data
+    from the scatter part of the processing, ready to be gathered.
+
+    Parameters
+    ----------
+    path : `str`
+        The path find the sharded data.
+    dataSetName : `str`
+        The dataSetName to find the dataIds for, e.g. binnedImage.
+    dayObs : `int`
+        The dayObs to find the sharded data for.
+    seqNum : `int`
+        The seqNum to find the sharded data for.
+    """
+    return SHARDED_DATA_TEMPLATE.format(path=path,
+                                        dataSetName=dataSetName,
+                                        dayObs=dayObs,
+                                        seqNum=seqNum,
+                                        suffix='*')
 
 
 @dataclass
@@ -260,12 +300,6 @@ class LocationConfig:
     @cached_property
     def plotPath(self):
         directory = self._config['plotPath']
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def binnedImagePath(self):
-        directory = self._config['binnedImagePath']
         self._checkDir(directory)
         return directory
 
@@ -579,6 +613,10 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
     TypeError
         Raised if dataDict is not a dictionary.
     """
+    if dataSetName not in ALLOWED_DATASET_TYPES:
+        raise ValueError(f'dataSetName must be one of {ALLOWED_DATASET_TYPES}, not {dataSetName}. If you are'
+                         ' trying to add a new one, simply add it to the list.')
+
     if not isinstance(dataDict, dict):
         raise TypeError(f'dataDict must be a dict, not {type(dataDict)}')
 
@@ -586,9 +624,11 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
     suffix = uuid.uuid1()
-    # this pattern is relied up elsewhere, so don't change it without updating
-    # in at least the following places: mergeShardsAndUpload
-    filename = os.path.join(path, f'dataShard-{dataSetName}-dayObs_{dayObs}_seqNum_{seqNum:06}_{suffix}.json')
+    filename = SHARDED_DATA_TEMPLATE.format(path=path,
+                                            dataSetName=dataSetName,
+                                            dayObs=dayObs,
+                                            seqNum=seqNum,
+                                            suffix=suffix)
 
     with open(filename, 'w') as f:
         json.dump(dataDict, f)
@@ -651,7 +691,10 @@ def getShardedData(path,
     TypeError
         Raised if dataDict is not a dictionary.
     """
-    pattern = os.path.join(path, f'dataShard-{dataSetName}-dayObs_{dayObs}_seqNum_{seqNum:06}_*.json')
+    pattern = getGlobPatternForShardedData(path=path,
+                                           dataSetName=dataSetName,
+                                           dayObs=dayObs,
+                                           seqNum=seqNum)
 
     start = time.time()
     while time.time() - start < timeout:

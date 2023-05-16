@@ -431,7 +431,7 @@ class RawProcesser:
 
             postIsr = self.runIsr(raw)
 
-            writeBinnedImage(postIsr, self.locationConfig.binnedImagePath, self.locationConfig.binning)
+            writeBinnedImage(postIsr, self.locationConfig.calculatedDataPath, self.locationConfig.binning)
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
@@ -541,7 +541,7 @@ class Plotter:
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         plotFocalPlaneMosaic(self.butler, expId, self.camera, self.locationConfig.binning,
-                             self.locationConfig.binnedImagePath, saveFile,
+                             self.locationConfig.calculatedDataPath, saveFile,
                              doDeleteFiles=self.doDeleteFiles,
                              timeout=5)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')

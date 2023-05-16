@@ -36,6 +36,7 @@ from matplotlib import cm
 
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from ..utils import isFileWorldWritable
 
 
 def getBinnedFilename(expId, detectorName, dataPath, binSize):
@@ -102,6 +103,9 @@ def writeBinnedImage(exp, outputPath, binSize):
     detName = exp.detector.getName()
     outFilename = getBinnedFilename(expId, detName, outputPath, binSize)
     binnedImage.writeFits(outFilename)
+
+    if not isFileWorldWritable(outFilename):
+        os.chmod(outFilename, 0o777)
 
 
 def readBinnedImage(expId, detectorName, dataPath, binSize, deleteAfterReading, logger=None):
