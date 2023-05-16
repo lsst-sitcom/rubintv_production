@@ -516,7 +516,9 @@ class Plotter:
         xRange = TS8_X_RANGE if isOneRaft(self.instrument) else LSSTCAM_X_RANGE
         yRange = TS8_Y_RANGE if isOneRaft(self.instrument) else LSSTCAM_Y_RANGE
 
-        plotName = f'noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        instPrefix = self.getInstrumentChannelName(self.instrument)
+
+        plotName = f'{instPrefix}-noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
         focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
                                               x_range=xRange,
@@ -558,6 +560,32 @@ class Plotter:
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 
+    @staticmethod
+    def getInstrumentChannelName(instrument):
+        """Get the instrument channel name for the current instrument.
+
+        This is the plot prefix to use for upload.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name, e.g. 'LSSTCam'.
+
+        Returns
+        -------
+        channel : `str`
+            The channel prefix name.
+        """
+        match instrument:
+            case 'LSST-TS8':
+                return 'ts8'
+            case 'LSSTComCam':
+                return 'comcam'
+            case 'LSSTCam':
+                return 'ir2'
+            case _:
+                raise ValueError(f'Unknown instrument {instrument}')
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -570,13 +598,14 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
+        instPrefix = self.getInstrumentChannelName(self.instrument)
         # TODO: Need some kind of wait mechanism for each of these
         noiseMapFile = self.plotNoises(expRecord)
-        channel = 'ts8_noise_map' if self.instrument == 'LSST-TS8' else 'comcam_noise_map'
+        channel = f'{instPrefix}_noise_map'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         focalPlaneFile = self.plotFocalPlane(expRecord)
-        channel = 'ts8_focal_plane_mosiac' if self.instrument == 'LSST-TS8' else 'comcam_focal_plane_mosiac'
+        channel = f'{instPrefix}_focal_plane_mosiac'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):
