@@ -84,9 +84,11 @@ class RubinTvBackgroundService:
 
     def __init__(self,
                  locationConfig,
+                 instrument,
                  *,
                  doRaise=False):
         self.locationConfig = locationConfig
+        self.instrument = instrument
         self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild("backgroundService")
         self.allSkyPngRoot = self.locationConfig.allSkyOutputPath
@@ -100,7 +102,8 @@ class RubinTvBackgroundService:
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
-        self.mdServer = MetadataCreator(self.locationConfig)  # costly-ish to create, so put in class
+        self.mdServer = MetadataCreator(self.locationConfig,
+                                        instrument=instrument)  # costly-ish to create, so put in class
 
     def getMissingQuickLookIds(self):
         """Get a list of the dataIds for the current dayObs for which
@@ -176,6 +179,7 @@ class RubinTvBackgroundService:
         """
         self.log.info(f'Catching up mount torques for {self.dayObs}')
         remakeDay(self.locationConfig.location,
+                  self.instrument,
                   'auxtel_mount_torques',
                   self.dayObs,
                   remakeExisting=False,
@@ -186,6 +190,7 @@ class RubinTvBackgroundService:
         """
         self.log.info(f'Catching up monitor images for {self.dayObs}')
         remakeDay(self.locationConfig.location,
+                  self.instrument,
                   'auxtel_monitor',
                   self.dayObs,
                   remakeExisting=False,

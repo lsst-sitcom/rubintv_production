@@ -62,7 +62,7 @@ EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please instal
 GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please install with:\n'
                             '    pip install google-cloud-storage')
 
-DATA_ID_TEMPLATE = os.path.join("{path}", "{dataProduct}_{expId}.json")
+DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.json")
 
 # ALLOWED_DATASET_TYPES is the types of data that can be written as sharded
 # data. In principle, there is no reason this can't be or shouldn't be totally
@@ -73,7 +73,7 @@ DATA_ID_TEMPLATE = os.path.join("{path}", "{dataProduct}_{expId}.json")
 # being added here first.
 ALLOWED_DATASET_TYPES = ['rawNoises', 'binnedImage']
 SHARDED_DATA_TEMPLATE = os.path.join("{path}",
-                                     "dataShard-{dataSetName}-dayObs_{dayObs}"
+                                     "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}"
                                      "_seqNum_{seqNum:06}_{suffix}.json")
 
 # this file is for low level tools and should therefore not import
@@ -102,14 +102,17 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
     expId = expRecord.id
     dayObs = expRecord.day_obs
     seqNum = expRecord.seq_num
-    outFile = DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId=expId)
+    outFile = DATA_ID_TEMPLATE.format(path=dataIdPath,
+                                      instrument=expRecord.instrument,
+                                      dataProduct=dataProduct,
+                                      expId=expId)
     with open(outFile, 'w') as f:
         f.write(json.dumps(expRecord.to_simple().json()))
     if log:
         log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
 
 
-def getGlobPatternForDataProduct(dataIdPath, dataProduct):
+def getGlobPatternForDataProduct(dataIdPath, dataProduct, instrument):
     """Get a glob-style pattern for finding dataId files for a dataProduct.
 
     These are the dataId files used to signal that a given dataId or
@@ -122,10 +125,13 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct):
     dataProduct : `str`
         The data product to find the dataIds for.
     """
-    return DATA_ID_TEMPLATE.format(path=dataIdPath, dataProduct=dataProduct, expId='*')
+    return DATA_ID_TEMPLATE.format(path=dataIdPath,
+                                   instrument=instrument,
+                                   dataProduct=dataProduct,
+                                   expId='*')
 
 
-def getGlobPatternForShardedData(path, dataSetName, dayObs, seqNum):
+def getGlobPatternForShardedData(path, dataSetName, instrument, dayObs, seqNum):
     """Get a glob-style pattern for finding sharded data.
 
     These are the sharded data files used to store parts of the output data
@@ -137,6 +143,8 @@ def getGlobPatternForShardedData(path, dataSetName, dayObs, seqNum):
         The path find the sharded data.
     dataSetName : `str`
         The dataSetName to find the dataIds for, e.g. binnedImage.
+    instrument : `str`
+        The instrument to find the sharded data for.
     dayObs : `int`
         The dayObs to find the sharded data for.
     seqNum : `int`
@@ -144,6 +152,7 @@ def getGlobPatternForShardedData(path, dataSetName, dayObs, seqNum):
     """
     return SHARDED_DATA_TEMPLATE.format(path=path,
                                         dataSetName=dataSetName,
+                                        instrument=instrument,
                                         dayObs=dayObs,
                                         seqNum=seqNum,
                                         suffix='*')
@@ -231,6 +240,15 @@ class LocationConfig:
             if createIfMissing:
                 self.log.info(f'Directory {dirName} does not exist, creating it.')
                 os.makedirs(dirName, exist_ok=True)  # exist_ok necessary due to potential startup race
+
+                if not os.access(dirName, os.W_OK):  # check if dir is 777 but only when creating
+                    try:  # attempt to chmod to 777
+                        os.chmod(dirName, 0o777)
+                    except PermissionError:
+                        raise RuntimeError(f"Directory {dirName} is not world-writable "
+                                           "and could not be made so.")
+
+        # check whether we succeeded
         if not os.path.isdir(dirName):
             msg = f"Directory {dirName} does not exist"
             if createIfMissing:
@@ -372,6 +390,25 @@ class LocationConfig:
     @cached_property
     def nightReportPath(self):
         directory = self._config['nightReportPath']
+        self._checkDir(directory)
+        return directory
+
+    # ComCam stuff:
+    @cached_property
+    def comCamButlerPath(self):
+        file = self._config['comCamButlerPath']
+        self._checkFile(file)
+        return file
+
+    @cached_property
+    def comCamMetadataPath(self):
+        directory = self._config['comCamMetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamMetadataShardPath(self):
+        directory = self._config['comCamMetadataShardPath']
         self._checkDir(directory)
         return directory
 
@@ -592,13 +629,15 @@ def writeMetadataShard(path, dayObs, mdDict):
     return
 
 
-def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
+def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
     """Write some per-image data for merging later.
 
     Parameters
     ----------
     path : `str`
         The path to write to.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
     dayObs : `int`
         The dayObs.
     seqNum : `int`
@@ -623,7 +662,12 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
-    filename = createFilenameForDataShard(path=path, dataSetName=dataSetName, dayObs=dayObs, seqNum=seqNum)
+    filename = createFilenameForDataShard(path=path,
+                                          instrument=instrument,
+                                          dataSetName=dataSetName,
+                                          dayObs=dayObs,
+                                          seqNum=seqNum,
+                                          )
 
     with open(filename, 'w') as f:
         json.dump(dataDict, f)
@@ -633,7 +677,7 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
     return
 
 
-def createFilenameForDataShard(path, dataSetName, dayObs, seqNum):
+def createFilenameForDataShard(path, dataSetName, instrument, dayObs, seqNum):
     """Get a filename to use for writing sharded data to.
 
     A filename is built from the SHARDED_DATA_TEMPLATE, with a random suffix
@@ -645,6 +689,8 @@ def createFilenameForDataShard(path, dataSetName, dayObs, seqNum):
         The path to write to.
     dataSetName : `str`
         The name of the dataset, e.g. 'rawNoises'.
+    instrument : `str`
+        The name of the instrument, e.g. 'LSSTCam'.
     dayObs : `int`
         The dayObs.
     seqNum : `int`
@@ -658,6 +704,7 @@ def createFilenameForDataShard(path, dataSetName, dayObs, seqNum):
     suffix = uuid.uuid1()
     filename = SHARDED_DATA_TEMPLATE.format(path=path,
                                             dataSetName=dataSetName,
+                                            instrument=instrument,
                                             dayObs=dayObs,
                                             seqNum=seqNum,
                                             suffix=suffix)
@@ -665,6 +712,7 @@ def createFilenameForDataShard(path, dataSetName, dayObs, seqNum):
 
 
 def getShardedData(path,
+                   instrument,
                    dayObs,
                    seqNum,
                    dataSetName,
@@ -683,6 +731,8 @@ def getShardedData(path,
     ----------
     path : `str`
         The path to write to.
+    instrument : `str`
+        The name of the instrument, e.g. 'LSSTCam'.
     dayObs : `int`
         The dayObs.
     seqNum : `int`
@@ -718,6 +768,7 @@ def getShardedData(path,
         Raised if dataDict is not a dictionary.
     """
     pattern = getGlobPatternForShardedData(path=path,
+                                           instrument=instrument,
                                            dataSetName=dataSetName,
                                            dayObs=dayObs,
                                            seqNum=seqNum)

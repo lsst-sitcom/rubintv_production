@@ -161,13 +161,15 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     return sorted(existing)
 
 
-def createChannelByName(location, channel, *, embargo=False, doRaise=False):
+def createChannelByName(location, instrument, channel, *, embargo=False, doRaise=False):
     """Create a RubinTV Channel object using the name of the channel.
 
     Parameters
     ----------
     location : `str`
         The location, for use with LocationConfig.
+    instrument : `str`
+        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
     channel : `str`
         The name of the channel, as found in lsst.rubintv.production.CHANNELS.
     embargo : `bool`, optional
@@ -199,15 +201,30 @@ def createChannelByName(location, channel, *, embargo=False, doRaise=False):
 
     match channel:
         case "summit_imexam":
-            return ImExaminerChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
+            return ImExaminerChannel(locationConfig=locationConfig,
+                                     instrument=instrument,
+                                     embargo=embargo,
+                                     doRaise=doRaise)
         case "summit_specexam":
-            return SpecExaminerChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
+            return SpecExaminerChannel(locationConfig=locationConfig,
+                                       instrument=instrument,
+                                       embargo=embargo,
+                                       doRaise=doRaise)
         case "auxtel_mount_torques":
-            return MountTorqueChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
+            return MountTorqueChannel(locationConfig=locationConfig,
+                                      instrument=instrument,
+                                      embargo=embargo,
+                                      doRaise=doRaise)
         case "auxtel_monitor":
-            return MonitorChannel(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
+            return MonitorChannel(locationConfig=locationConfig,
+                                  instrument=instrument,
+                                  embargo=embargo,
+                                  doRaise=doRaise)
         case "auxtel_metadata":
-            return MetadataCreator(locationConfig=locationConfig, embargo=embargo, doRaise=doRaise)
+            return MetadataCreator(locationConfig=locationConfig,
+                                   instrument=instrument,
+                                   embargo=embargo,
+                                   doRaise=doRaise)
         case "all_sky_current":
             raise ValueError(f"{channel} is not a creatable by name.")
         case "all_sky_movies":
@@ -216,7 +233,7 @@ def createChannelByName(location, channel, *, embargo=False, doRaise=False):
             raise ValueError(f"Unrecognized channel {channel}.")
 
 
-def remakePlotByDataId(location, channel, dataId, embargo=False):
+def remakePlotByDataId(location, instrument, channel, dataId, embargo=False):
     """Remake the plot for the given channel for a single dataId.
     Reproduces the plot regardless of whether it exists. Raises on error.
 
@@ -228,6 +245,8 @@ def remakePlotByDataId(location, channel, dataId, embargo=False):
     ----------
     location : `str`
         The location, for use with LocationConfig.
+    instrument : `str`
+        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
     channel : `str`
         The name of the channel.
     dataId : `dict`
@@ -235,12 +254,13 @@ def remakePlotByDataId(location, channel, dataId, embargo=False):
     embargo : `bool`, optional
         Use the embargo repo?
     """
-    tvChannel = createChannelByName(location, channel, embargo=embargo, doRaise=True)
+    tvChannel = createChannelByName(location, instrument, channel, embargo=embargo, doRaise=True)
     expRecord = getExpRecordFromDataId(tvChannel.butler, dataId)
     tvChannel.callback(expRecord)
 
 
 def remakeDay(location,
+              instrument,
               channel,
               dayObs,
               *,
@@ -257,6 +277,8 @@ def remakeDay(location,
     ----------
     location : `str`
         The location, for use with LocationConfig.
+    instrument : `str`
+        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
     channel : `str`
         The name of the lsst.rubintv.production channel. The actual channel
         object is created internally.
@@ -320,7 +342,7 @@ def remakeDay(location,
 
     # doRaise is False because during bulk plot remaking we expect many fails
     # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(location, channel, doRaise=False, embargo=embargo)
+    tvChannel = createChannelByName(location, instrument, channel, doRaise=False, embargo=embargo)
     for seqNum in toMake:
         dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
         expRecord = getExpRecordFromDataId(butler, dataId)

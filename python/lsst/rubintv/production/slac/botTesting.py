@@ -124,7 +124,7 @@ def getNumExpectedItems(instrument, expRecord):
         return 1
     elif instrument == "LSSTCam":
         return 201
-    elif instrument == "LSST-TS8":
+    elif instrument in ["LSST-TS8", "LSSTComCam"]:
         return 9
     else:
         raise ValueError(f"Unknown instrument {instrument}")
@@ -149,7 +149,7 @@ class RawProcesser:
         If True, raise exceptions instead of logging them.
     """
     def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
-        if instrument not in ['LSST-TS8', 'LSSTCam']:
+        if instrument not in ['LSST-TS8', 'LSSTCam', 'LSSTComCam']:
             raise ValueError(f'Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam')
         self.locationConfig = locationConfig
         self.butler = butler
@@ -160,6 +160,7 @@ class RawProcesser:
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
         self.watcher = FileWatcher(locationConfig=locationConfig,
+                                   instrument=self.instrument,
                                    dataProduct='raw',
                                    doRaise=doRaise)
 
@@ -424,7 +425,12 @@ class RawProcesser:
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
 
             # write the data
-            writeDataShard(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises', ampNoises)
+            writeDataShard(path=self.locationConfig.calculatedDataPath,
+                           instrument=self.instrument,
+                           dayObs=dayObs,
+                           seqNum=seqNum,
+                           dataSetName='rawNoises',
+                           dataDict=ampNoises)
             self.log.info(f'Wrote metadata shard for detector {detNum}')
             # then signal we're done for downstream
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
@@ -467,6 +473,7 @@ class Plotter:
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
         self.watcher = FileWatcher(locationConfig=locationConfig,
+                                   instrument=self.instrument,
                                    dataProduct='binnedImage',
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
@@ -489,7 +496,11 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         nExpected = getNumExpectedItems(self.instrument, expRecord)  # expRecord currently unused in function
-        noises, _ = getShardedData(self.locationConfig.calculatedDataPath, dayObs, seqNum, 'rawNoises',
+        noises, _ = getShardedData(path=self.locationConfig.calculatedDataPath,
+                                   instrument=self.instrument,
+                                   dayObs=dayObs,
+                                   seqNum=seqNum,
+                                   dataSetName='rawNoises',
                                    nExpected=nExpected,
                                    logger=self.log,
                                    deleteAfterReading=self.doDeleteFiles)
@@ -561,11 +572,11 @@ class Plotter:
 
         # TODO: Need some kind of wait mechanism for each of these
         noiseMapFile = self.plotNoises(expRecord)
-        channel = 'ts8_noise_map'
+        channel = 'ts8_noise_map' if self.instrument == 'LSST-TS8' else 'comcam_noise_map'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         focalPlaneFile = self.plotFocalPlane(expRecord)
-        channel = 'ts8_focal_plane_mosiac'
+        channel = 'ts8_focal_plane_mosiac' if self.instrument == 'LSST-TS8' else 'comcam_focal_plane_mosiac'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):

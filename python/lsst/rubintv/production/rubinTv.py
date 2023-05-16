@@ -133,9 +133,10 @@ class IsrRunner(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         self.bestEffort = BestEffortIsr(embargo=embargo)
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=self.bestEffort.butler,
                          dataProduct='raw',
                          channelName='auxtel_isr_runner',
@@ -173,8 +174,9 @@ class ImExaminerChannel(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='summit_imexam',
@@ -262,8 +264,9 @@ class SpecExaminerChannel(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='summit_specexam',
@@ -333,8 +336,9 @@ class MonitorChannel(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
@@ -399,12 +403,13 @@ class MountTorqueChannel(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
 
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='raw',
                          channelName='auxtel_mount_torques',
@@ -512,8 +517,9 @@ class MetadataCreator(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='raw',
                          channelName='auxtel_metadata_creator',
@@ -679,8 +685,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          # writeable true is required to define visits
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo, writeable=True),
                          dataProduct='quickLookExp',
@@ -987,8 +994,9 @@ class NightReportChannel(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, dayObs=None, embargo=False, doRaise=False):
+    def __init__(self, locationConfig, instrument, *, dayObs=None, embargo=False, doRaise=False):
         super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
                          dataProduct='quickLookExp',
                          channelName='auxtel_night_reports',
