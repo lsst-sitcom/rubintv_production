@@ -45,6 +45,7 @@ class FileWatcher:
 
     Many of these can be instantiated per-location.
 
+    # TODO: DM-39225 pretty sure this is no longer true:
     It is worth noting that the ``dataProduct`` to watch for need not be an
     official dafButler dataset type. We can use FileWatchers to signal to any
     downstream processing that something is finished and ready for consumption.
@@ -110,6 +111,7 @@ class FileWatcher:
             return None
 
         expRecordJson = safeJsonOpen(filename)
+        # TODO: DM-39225 pretty sure this line breaks the old behavior
         expRecord = dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
                                                                    universe=dafButler.DimensionUniverse())
         return expRecord
