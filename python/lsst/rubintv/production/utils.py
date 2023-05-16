@@ -623,12 +623,7 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
-    suffix = uuid.uuid1()
-    filename = SHARDED_DATA_TEMPLATE.format(path=path,
-                                            dataSetName=dataSetName,
-                                            dayObs=dayObs,
-                                            seqNum=seqNum,
-                                            suffix=suffix)
+    filename = createFilenameForDataShard(path=path, dataSetName=dataSetName, dayObs=dayObs, seqNum=seqNum)
 
     with open(filename, 'w') as f:
         json.dump(dataDict, f)
@@ -636,6 +631,37 @@ def writeDataShard(path, dayObs, seqNum, dataSetName, dataDict):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
     return
+
+
+def createFilenameForDataShard(path, dataSetName, dayObs, seqNum):
+    """Get a filename to use for writing sharded data to.
+
+    A filename is built from the SHARDED_DATA_TEMPLATE, with a random suffix
+    added for sharding.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to write to.
+    dataSetName : `str`
+        The name of the dataset, e.g. 'rawNoises'.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The seqNum.
+
+    Returns
+    -------
+    filename : `str`
+        The filename to write the data to.
+    """
+    suffix = uuid.uuid1()
+    filename = SHARDED_DATA_TEMPLATE.format(path=path,
+                                            dataSetName=dataSetName,
+                                            dayObs=dayObs,
+                                            seqNum=seqNum,
+                                            suffix=suffix)
+    return filename
 
 
 def getShardedData(path,
