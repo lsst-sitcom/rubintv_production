@@ -431,7 +431,7 @@ class RawProcesser:
                            seqNum=seqNum,
                            dataSetName='rawNoises',
                            dataDict=ampNoises)
-            self.log.info(f'Wrote metadata shard for detector {detNum}')
+            self.log.info(f'Wrote rawNoises data shard for detector {detNum}')
             # then signal we're done for downstream
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
 
