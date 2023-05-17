@@ -614,7 +614,7 @@ class Plotter:
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         focalPlaneFile = self.plotFocalPlane(expRecord)
-        channel = f'{instPrefix}_focal_plane_mosiac'
+        channel = f'{instPrefix}_focal_plane_mosaic'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):
