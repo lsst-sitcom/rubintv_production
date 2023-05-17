@@ -154,8 +154,17 @@ class RawProcesser:
         self.locationConfig = locationConfig
         self.butler = butler
         self.instrument = instrument
-        self.metadataShardPath = (locationConfig.ts8MetadataShardPath if instrument == 'LSST-TS8' else
-                                  locationConfig.comCamMetadataShardPath)
+        match instrument:
+            case 'LSST-TS8':
+                metadataShardPath = locationConfig.ts8MetadataShardPath
+            case 'LSSTComCam':
+                metadataShardPath = locationConfig.comCamMetadataShardPath
+            case 'LSSTCam':
+                metadataShardPath = locationConfig.botMetadataShardPath
+            case _:
+                raise ValueError(f'Instrument {instrument} not supported.')
+        self.metadataShardPath = metadataShardPath
+
         self.detectors = list(ensure_iterable(detectors))
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
