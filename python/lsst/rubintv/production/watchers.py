@@ -279,7 +279,8 @@ class ButlerWatcher:
                     # all processing starts with triggering on a raw, so we
                     # only perform that deletion at the very start, and
                     # therefore hard-code raw
-                    self._deleteExistingData(found['raw'])
+                    if 'raw' in found:
+                        self._deleteExistingData(found['raw'])
 
                     for product, expRecord in found.items():
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
