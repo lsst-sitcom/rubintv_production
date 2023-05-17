@@ -23,6 +23,9 @@ CHANNELS = ["summit_imexam",
             "comcam_noise_map",
             "comcam_focal_plane_mosiac",
             "comcam_metadata",
+            "ir2_noise_map",
+            "ir2_focal_plane_mosiac",
+            "ir2_metadata",
             ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
