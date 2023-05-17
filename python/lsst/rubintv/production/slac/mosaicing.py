@@ -269,7 +269,7 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
             logger.warning(f"Found {len(detectorNameList)} binned detector images, so no mosaic can be made.")
             return pipeBase.Struct(output_mosaic=None)
 
-        logger.info(f"Making mosiac with {len(detectorNameList)} detectors")
+        logger.info(f"Making mosaic with {len(detectorNameList)} detectors")
         output_mosaic = cgu.showCamera(camera,
                                        imageSource=imageSource,
                                        detectorNameList=detectorNameList,

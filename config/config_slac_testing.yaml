@@ -37,7 +37,7 @@ astrometryNetRefCatPath: '/sdf/home/m/mfl/u/astrometry_net'
 
 # Butler paths - use full paths not aliases here as path existence is checked
 ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
-botButlerPath: '/sdf/group/rubin/repo/main/butler.yaml'
+botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
 
 # # data paths
 scratchPath: '/sdf/home/m/mfl/u/rubintv'
@@ -51,11 +51,12 @@ ts8MetadataPath: '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata'
 ts8MetadataShardPath:  '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata/shards'
 
 # # paths for serving BOT metadata at SLAC
-# botMetadataPath:       ''
-# botMetadataShardPath:  ''
+botMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata'
+botMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards'
 
-# configuration
-bucketName: 'rubintv_data'
+# bucketName needs to be set by the user doing the testing,
+# depending on whether they want to upload to the summit or slac bucket
+bucketName: ''
 binning: 8
 
 
@@ -65,7 +66,7 @@ comCamBinning: 8
 # # paths for serving TS8 metadata at SLAC
 comCamMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards'
-comCamScratchPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam'
-comCamPlotPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/plots'
-comCamBinnedImagePath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/binnedImages'
-comCamCalculatedDataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/calculatedData'
+scratchPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam'
+plotPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/plots'
+binnedImagePath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/binnedImages'
+calculatedDataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/calculatedData'

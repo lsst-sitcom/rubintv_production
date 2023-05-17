@@ -154,8 +154,17 @@ class RawProcesser:
         self.locationConfig = locationConfig
         self.butler = butler
         self.instrument = instrument
-        self.metadataShardPath = (locationConfig.ts8MetadataShardPath if instrument == 'LSST-TS8' else
-                                  locationConfig.comCamMetadataShardPath)
+        match instrument:
+            case 'LSST-TS8':
+                metadataShardPath = locationConfig.ts8MetadataShardPath
+            case 'LSSTComCam':
+                metadataShardPath = locationConfig.comCamMetadataShardPath
+            case 'LSSTCam':
+                metadataShardPath = locationConfig.botMetadataShardPath
+            case _:
+                raise ValueError(f'Instrument {instrument} not supported.')
+        self.metadataShardPath = metadataShardPath
+
         self.detectors = list(ensure_iterable(detectors))
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
@@ -431,7 +440,7 @@ class RawProcesser:
                            seqNum=seqNum,
                            dataSetName='rawNoises',
                            dataDict=ampNoises)
-            self.log.info(f'Wrote metadata shard for detector {detNum}')
+            self.log.info(f'Wrote rawNoises data shard for detector {detNum}')
             # then signal we're done for downstream
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
 
@@ -516,7 +525,9 @@ class Plotter:
         xRange = TS8_X_RANGE if isOneRaft(self.instrument) else LSSTCAM_X_RANGE
         yRange = TS8_Y_RANGE if isOneRaft(self.instrument) else LSSTCAM_Y_RANGE
 
-        plotName = f'noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        instPrefix = self.getInstrumentChannelName(self.instrument)
+
+        plotName = f'{instPrefix}-noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
         focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
                                               x_range=xRange,
@@ -558,6 +569,32 @@ class Plotter:
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 
+    @staticmethod
+    def getInstrumentChannelName(instrument):
+        """Get the instrument channel name for the current instrument.
+
+        This is the plot prefix to use for upload.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name, e.g. 'LSSTCam'.
+
+        Returns
+        -------
+        channel : `str`
+            The channel prefix name.
+        """
+        match instrument:
+            case 'LSST-TS8':
+                return 'ts8'
+            case 'LSSTComCam':
+                return 'comcam'
+            case 'LSSTCam':
+                return 'slac_lsstcam'
+            case _:
+                raise ValueError(f'Unknown instrument {instrument}')
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -570,13 +607,14 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
+        instPrefix = self.getInstrumentChannelName(self.instrument)
         # TODO: Need some kind of wait mechanism for each of these
         noiseMapFile = self.plotNoises(expRecord)
-        channel = 'ts8_noise_map' if self.instrument == 'LSST-TS8' else 'comcam_noise_map'
+        channel = f'{instPrefix}_noise_map'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         focalPlaneFile = self.plotFocalPlane(expRecord)
-        channel = 'ts8_focal_plane_mosiac' if self.instrument == 'LSST-TS8' else 'comcam_focal_plane_mosiac'
+        channel = f'{instPrefix}_focal_plane_mosaic'
         self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):

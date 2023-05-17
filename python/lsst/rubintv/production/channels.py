@@ -18,11 +18,14 @@ CHANNELS = ["summit_imexam",
             "startracker_fast_analysis",
             "startracker_metadata",
             "ts8_noise_map",
-            "ts8_focal_plane_mosiac",
+            "ts8_focal_plane_mosaic",
             "ts8_metadata",
             "comcam_noise_map",
-            "comcam_focal_plane_mosiac",
+            "comcam_focal_plane_mosaic",
             "comcam_metadata",
+            "slac_lsstcam_noise_map",
+            "slac_lsstcam_focal_plane_mosaic",
+            "slac_lsstcam_metadata",
             ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}

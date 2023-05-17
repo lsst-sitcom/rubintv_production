@@ -16,8 +16,8 @@ ts8MetadataPath: '/scratch/rubintv/ts8/sidecar_metadata'
 ts8MetadataShardPath: '/scratch/rubintv/ts8/sidecar_metadata/shards'
 
 # # paths for serving BOT metadata at SLAC
-# botMetadataPath:       ''
-# botMetadataShardPath:  ''
+botMetadataPath: '/scratch/rubintv/LSSTCam/sidecar_metadata'
+botMetadataShardPath: '/scratch/rubintv/LSSTCam/sidecar_metadata'
 
 # configuration
 binning: 8
