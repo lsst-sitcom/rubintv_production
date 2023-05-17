@@ -29,11 +29,11 @@ checkRubinTvExternalPackages()
 
 location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running TS8 metadata server at {location}...')
+print(f'Running BOT metadata server at {location}...')
 
 metadataDirectory = locationConfig.botMetadataPath
 shardsDirectory = locationConfig.botMetadataShardPath
-channelName = 'ir2_metadata'
+channelName = 'slac_lsstcam_metadata'
 
 ts8MetadataServer = TimedMetadataServer(locationConfig=locationConfig,
                                         metadataDirectory=metadataDirectory,
