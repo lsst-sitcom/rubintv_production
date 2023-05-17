@@ -54,8 +54,9 @@ ts8MetadataShardPath:  '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata/shards'
 botMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata'
 botMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards'
 
-# configuration
-bucketName: 'rubintv_data'
+# bucketName needs to be set by the user doing the testing,
+# depending on whether they want to upload to the summit or slac bucket
+bucketName: ''
 binning: 8
 
 
