@@ -329,6 +329,8 @@ class LocationConfig:
 
     @cached_property
     def bucketName(self):
+        if self._config['bucketName'] == '':
+            raise RuntimeError('Bucket name not set in config file')
         return self._config['bucketName']
 
     @cached_property
