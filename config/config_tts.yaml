@@ -9,9 +9,25 @@ nightReportPath:     '/project/rubintv/nightReportData'
 auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
 auxTelMetadataShardPath: '/project/rubintv/sidecar_metadata/shards'
 
+# all sky
+allSkyRootDataPath: '/project/rubintv/allsky/raw'
+allSkyOutputPath: '/project/rubintv/allsky'
+
 # animation
 moviePngPath: '/project/rubintv/auxTel_animation'
 
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
 # astrometryNetRefCatPath: '/project/shared/ref_cats/astrometry_net'
+
+# ComCam configuration:
+comCamButlerPath: '/repo/LSSTComCam/butler.yaml'
+binning: 8
+# # paths for serving TS8 metadata at SLAC
+comCamMetadataPath: '/project/rubintv/LSSTComCam/sidecar_metadata'
+comCamMetadataShardPath: '/project/rubintv/LSSTComCam/sidecar_metadata/shards'
+# Not prefixed with ComCam because we're currently just pretending that ComCam is TS8
+scratchPath: '/project/rubintv/LSSTComCam'
+plotPath: '/project/rubintv/LSSTComCam/plots'
+binnedImagePath: '/project/rubintv/LSSTComCam/binnedImages'
+calculatedDataPath: '/project/rubintv/LSSTComCam/calculatedData'
