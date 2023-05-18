@@ -222,8 +222,20 @@ class RawProcesser:
         ptcDataset = None
         if self.isrTask.config.doApplyGains:
             gains = getGains(self.instrument)
-            detectorShortName = raw.detector.getName().split('_')[1]  # just need the S01 part
-            ptcDataset = gainsToPtcDataset(gains[detectorShortName])
+
+            match self.instrument:
+                case 'LSST-TS8':
+                    # The TS8 dict keys are just like S01 part as there is no
+                    # raft
+                    detNameForGains = raw.detector.getName().split('_')[1]
+                case 'LSSTComCam':
+                    # the dict is keyed by the detector's short name like TS8
+                    detNameForGains = raw.detector.getName().split('_')[1]
+                case 'LSSTCam':
+                    # the dict is keyed by the detector's full name e.g R01_S21
+                    detNameForGains = raw.detector.getName()
+
+            ptcDataset = gainsToPtcDataset(gains[detNameForGains])
 
         postIsr = self.isrTask.run(raw, ptc=ptcDataset).exposure
         return postIsr
