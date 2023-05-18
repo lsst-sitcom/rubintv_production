@@ -36,7 +36,7 @@ from ..utils import writeDataShard, getShardedData, writeMetadataShard
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
-from .utils import fullAmpDictToPerCcdDicts, getCamera, getTs8Gains, gainsToPtcDataset
+from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
 
 _LOG = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ class RawProcesser:
         """
         ptcDataset = None
         if self.isrTask.config.doApplyGains:
-            gains = getTs8Gains()
+            gains = getGains(self.instrument)
             detectorShortName = raw.detector.getName().split('_')[1]  # just need the S01 part
             ptcDataset = gainsToPtcDataset(gains[detectorShortName])
 

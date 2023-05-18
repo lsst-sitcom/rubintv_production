@@ -24,6 +24,7 @@ import logging
 import numpy as np
 import glob
 import os
+import json
 from astropy.io import fits
 
 from lsst.utils import getPackageDir
@@ -31,7 +32,7 @@ from lsst.utils import getPackageDir
 __all__ = ['fullAmpDictToPerCcdDicts',
            'getCamera',
            'getAmplifierRegions',
-           'getTs8Gains',
+           'getGains',
            'gainsToPtcDataset',
            ]
 
@@ -221,7 +222,75 @@ def getAmplifierRegions(raw):
     return imaging, serial, parallel
 
 
-def getTs8Gains():
+def getGains(instrument):
+    """Get the nominal gains for a given instrument.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
+
+    Returns
+    -------
+    gains : `dict` [`str`, `dict` [`str`, `float`]]
+        A dict of dicts, keyed by detector name, with each being a dict of
+        amplifier gains, as floats, keyed by amplifier name.
+    """
+    match instrument:
+        case 'LSSTCam':
+            return _getLsstCamGains()
+        case 'LSSTComCam':
+            return _getLsstComCamGains()
+        case 'LSST-TS8':
+            return _getTs8Gains()
+        case _:
+            raise ValueError(f"Unknown instrument {instrument}")
+
+
+def _getLsstComCamGains():
+    """Get the nominal ComCam gains.
+
+    Returns
+    -------
+    gains : `dict` [`str`, `dict` [`str`, `float`]]
+        A dict of dicts, keyed by detector name, with each being a dict of
+        amplifier gains, as floats, keyed by amplifier name.
+    """
+    lsstComCamGainsDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'LSSTComCam_gains')
+
+    filename = os.path.join(lsstComCamGainsDir, 'approx_comcam_ptc_20220217_from_craig_lage.json')
+    adjustmentFactor = 0.79  # this is for approx_comcam_ptc_20220217_from_craig_lage.json only!
+    # these gains are very approximate, and Craig thinks they need this
+    # fudge-factor. Once we get some proper gains from a recent PTC the json
+    # file can be updated and this factor removed.
+
+    with open(filename) as f:
+        gains = json.load(f)
+
+    for ccdName, gainDict in gains.items():
+        gains[ccdName] = {ampName: gain*adjustmentFactor for ampName, gain in gainDict.items()}
+    return gains
+
+
+def _getLsstCamGains():
+    """Get the nominal LSSTCam gains.
+
+    Returns
+    -------
+    gains : `dict` [`str`, `dict` [`str`, `float`]]
+        A dict of dicts, keyed by detector name, with each being a dict of
+        amplifier gains, as floats, keyed by amplifier name.
+    """
+    lsstCamGainDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'LSSTCam_gains')
+
+    filename = os.path.join(lsstCamGainDir, 'curated_ptc_gains_run_13144_2022-02-10.json')
+
+    with open(filename) as f:
+        gains = json.load(f)
+    return gains
+
+
+def _getTs8Gains():
     """Get the gains for all the amps in TS8.
 
     Get the gains for each detector in TS8, and return them in a dict keyed by
@@ -248,7 +317,7 @@ def getTs8Gains():
                     'C07', 'C06', 'C05', 'C04', 'C03', 'C02', 'C01', 'C00']
 
     raftGains = {}
-    ts8GainDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'ts8Gains')
+    ts8GainDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'LSST-TS8_gains')
     files = glob.glob(os.path.join(ts8GainDir, f'*_{DATASET_NAME}.fits'))
 
     for filename in sorted(files):
