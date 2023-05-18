@@ -9,6 +9,10 @@ nightReportPath:     '/project/rubintv/nightReportData'
 auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
 auxTelMetadataShardPath: '/project/rubintv/sidecar_metadata/shards'
 
+# all sky
+allSkyRootDataPath: '/project/rubintv/allsky/raw'
+allSkyOutputPath: '/project/rubintv/allsky'
+
 # animation
 moviePngPath: '/project/rubintv/auxTel_animation'
 
