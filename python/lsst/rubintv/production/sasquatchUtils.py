@@ -24,13 +24,30 @@ import logging
 import os
 import re
 import requests
-from astropy.time import Time
+from datetime import datetime
 
 from lsst.utils import getPackageDir
 
 # note that this is a sub-utils package, and so cannot ever import from .utils
 
 __all__ = ["sendMetadataToSasquatch"]
+
+
+def _fakeTimestamp(dayObs, seqNum):
+    """
+    Return a fake timestamp.
+
+    The timestamp's day is dayObs; its microsecond is seq_num;
+    its hour, minute, and second are 0 reserved for future use.
+
+    Parameters
+    ----------
+    dayObs : `int`
+        A YYYYMMDD integer representing the observation day.
+    seqNum : `int`
+        The image sequence number.
+    """
+    return datetime.strptime(str(dayObs), "%Y%m%d").timestamp() * 1_000_000 + seqNum
 
 
 def _getDefaultValue(dataType):
@@ -52,7 +69,7 @@ def _getDefaultValue(dataType):
         raise ValueError(f"Unsupported type {dataType}")
 
 
-def makeSasquatchPayload(md, namespace, topic, schemaFile, logger=None):
+def makeSasquatchPayload(md, dayObs, seqNum, namespace, topic, schemaFile, logger=None):
     """
     Compose a payload in the right format suitable to send to Sasquatch.
 
@@ -60,6 +77,10 @@ def makeSasquatchPayload(md, namespace, topic, schemaFile, logger=None):
     ----------
     md : `dict`
         The metadata to make a sasquatch payload.
+    dayObs : `int`
+        A YYYYMMDD integer representing the observation day.
+    seqNum : `int`
+        The image sequence number.
     namespace : `str`
         lsst.rubintv
     topic : `str`
@@ -94,23 +115,12 @@ def makeSasquatchPayload(md, namespace, topic, schemaFile, logger=None):
     for key in schema:
         avroSchema.append({"name": key, "type": schema[key]})
 
-    try:
-        timestamp = (
-            Time.strptime(
-                str(md["dayobs"]) + md["tai"], "%Y%m%d%H:%M:%S", scale="tai"
-            ).unix
-            * 1_000_000
-        )
-    except KeyError:
-        logger.debug("Use current time as timestamp")
-        timestamp = Time.now().unix * 1_000_000
-
     md_value = dict()
     # Need a value for every item in schema
     # TODO: type checking and converting?
     for key in schema.keys():
         if key == "timestamp":
-            md_value[key] = timestamp
+            md_value[key] = _fakeTimestamp(dayObs, seqNum)
             continue
         try:
             # value can be: None, empty list, and?
@@ -136,6 +146,7 @@ def makeSasquatchPayload(md, namespace, topic, schemaFile, logger=None):
 
 def sendMetadataToSasquatch(
     mdDict,
+    dayObs,
     instrument="LATISS",
     namespace="lsst.rubintv",
     componentString="debug1",
@@ -151,6 +162,8 @@ def sendMetadataToSasquatch(
         dict should be a sequence number. Each value is a dict of values for
         that seqNum, as {'measurement_name': value}.
         (intentionally make this the same as writeMetadataShard)
+    dayObs : `int`
+        A YYYYMMDD integer representing the observation day.
     instrument : `str`
         This is used to load the corresponding schema and
         to form the full Kafka topic string.
@@ -184,9 +197,11 @@ def sendMetadataToSasquatch(
     }
 
     logger.debug("Sending md to topic %s.%s", namespace, topic)
-    for md in mdDict.values():
+    for seqNum, md in mdDict.items():
         payload = makeSasquatchPayload(
             md,
+            dayObs,
+            seqNum,
             namespace,
             topic,
             schemaFile,
