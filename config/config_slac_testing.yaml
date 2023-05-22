@@ -61,7 +61,7 @@ binning: 8
 
 
 # ComCam configuration:
-comCamButlerPath: '/sdf/group/rubin/repo/main/butler.yaml'
+comCamButlerPath: '/sdf/group/rubin/repo/embargo/butler.yaml'
 comCamBinning: 8
 # # paths for serving TS8 metadata at SLAC
 comCamMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata'
