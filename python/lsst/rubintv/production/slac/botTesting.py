@@ -262,6 +262,7 @@ class RawProcesser:
         md['Image type'] = expRecord.observation_type
         md['Test type'] = expRecord.observation_reason
         md['Date'] = expRecord.timespan.begin.isot
+        md['Run number'] = expRecord.science_program
 
         seqNum = expRecord.seq_num
         dayObs = expRecord.day_obs
