@@ -156,8 +156,8 @@ class Uploader:
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f'Uploaded {filename} to {uploadAs}')
-        except Exception as e:
-            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
+        except Exception:
+            self.log.exception(f"Failed to upload {filename} as {uploadAs} to {channel}")
             return None
 
         return blob
