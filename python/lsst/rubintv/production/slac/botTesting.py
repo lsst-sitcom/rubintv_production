@@ -23,6 +23,7 @@ import os
 import glob
 import logging
 import json
+import re
 import matplotlib.pyplot as plt
 from time import sleep
 from functools import partial
@@ -45,6 +46,7 @@ from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
+from ..sasquatchUtils import sendMetadataToSasquatch
 
 from lsst.summit.utils.butlerUtils import getExpRecord
 from lsst.summit.utils.utils import getExpRecordAge
@@ -312,6 +314,8 @@ class RawProcesser:
         shardData = {seqNum: md}
 
         writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+        instrument = re.sub(r"[^a-zA-Z0-9]", "", self.instrument)
+        sendMetadataToSasquatch(shardData, dayObs, instrument=instrument)
 
     def calculateNoise(self, overscanData, nSkipParallel, nSkipSerial):
         """Calculate the noise, based on the overscans in a raw image.
@@ -376,6 +380,8 @@ class RawProcesser:
         shardData = {seqNum: md}
 
         writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+        instrument = re.sub(r"[^a-zA-Z0-9]", "", self.instrument)
+        sendMetadataToSasquatch(shardData, dayObs, instrument=instrument)
 
     def writeRebHeaderShard(self, expRecord, raw):
         """Write the REB condition metadata to a shard.

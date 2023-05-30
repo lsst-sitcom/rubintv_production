@@ -71,6 +71,7 @@ from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
 from .metadataServers import TimedMetadataServer
+from .sasquatchUtils import sendMetadataToSasquatch
 
 
 __all__ = [
@@ -477,6 +478,7 @@ class MountTorqueChannel(BaseButlerChannel):
 
         md = {seqNum: contents}
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+        sendMetadataToSasquatch(md, dayObs, instrument="LATISS")
         return
 
     def callback(self, expRecord):
@@ -612,6 +614,7 @@ class MetadataCreator(BaseButlerChannel):
         md = self.expRecordToMetadataDict(expRecord, SIDECAR_KEYS_TO_REMOVE)
         dayObs = butlerUtils.getDayObs(expRecord)
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+        sendMetadataToSasquatch(md, dayObs, instrument="LATISS")
         return
 
     def writeLogMessageShards(self, expRecord):
@@ -654,6 +657,7 @@ class MetadataCreator(BaseButlerChannel):
                 md[seqNum].update({'Has annotations?': '🚩'})
 
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+        sendMetadataToSasquatch(md, dayObs, instrument="LATISS")
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
@@ -842,6 +846,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
+            sendMetadataToSasquatch(mdDict, dayObs, instrument="LATISS")
 
             calibrateRes = self.calibrate.run(charRes.exposure,
                                               background=charRes.background,
@@ -876,6 +881,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
             self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
+            sendMetadataToSasquatch(mdDict, dayObs, instrument="LATISS")
             self.clobber(calibrateRes.outputExposure, "calexp", visitDataId)
             tFinal = time.time()
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
