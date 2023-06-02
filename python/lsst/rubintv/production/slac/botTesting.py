@@ -557,7 +557,7 @@ class Plotter:
                                    dataSetName='rawNoises',
                                    nExpected=nExpected,
                                    logger=self.log,
-                                   deleteAfterReading=self.doDeleteFiles)
+                                   deleteIfComplete=True)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
