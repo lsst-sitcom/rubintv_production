@@ -104,7 +104,7 @@ def isOneRaft(instrument):
     return instrument in ['LSST-TS8', 'LSSTComCam']
 
 
-def getNumExpectedItems(instrument, expRecord, logger=None):
+def getNumExpectedItems(expRecord, logger=None):
     """A placeholder function for getting the number of expected items.
 
     For a given instrument, get the number of detectors which were read out or
@@ -116,8 +116,6 @@ def getNumExpectedItems(instrument, expRecord, logger=None):
 
     Parameters
     ----------
-    instrument : `str`
-        The instrument.
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record. This is currently unused, but will be used once
         we are doing this properly.
@@ -126,6 +124,8 @@ def getNumExpectedItems(instrument, expRecord, logger=None):
     """
     if logger is None:
         logger = logging.getLogger(__name__)
+
+    instrument = expRecord.instrument
 
     fallbackValue = None
     if instrument == "LATISS":
@@ -549,7 +549,7 @@ class Plotter:
         """
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-        nExpected = getNumExpectedItems(self.instrument, expRecord)  # expRecord currently unused in function
+        nExpected = getNumExpectedItems(expRecord)
         noises, _ = getShardedData(path=self.locationConfig.calculatedDataPath,
                                    instrument=self.instrument,
                                    dayObs=dayObs,
