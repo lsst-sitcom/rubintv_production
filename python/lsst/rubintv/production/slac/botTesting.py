@@ -21,6 +21,7 @@
 
 import os
 import logging
+import json
 import matplotlib.pyplot as plt
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
@@ -30,6 +31,7 @@ import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
+from lsst.resources import ResourcePath
 
 from .utils import waitForDataProduct, getAmplifierRegions
 from ..utils import writeDataShard, getShardedData, writeMetadataShard
@@ -102,7 +104,7 @@ def isOneRaft(instrument):
     return instrument in ['LSST-TS8', 'LSSTComCam']
 
 
-def getNumExpectedItems(instrument, expRecord):
+def getNumExpectedItems(instrument, expRecord, logger=None):
     """A placeholder function for getting the number of expected items.
 
     For a given instrument, get the number of detectors which were read out or
@@ -119,15 +121,45 @@ def getNumExpectedItems(instrument, expRecord):
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record. This is currently unused, but will be used once
         we are doing this properly.
+    logger : `logging.Logger`
+        The logger, created if not supplied.
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    fallbackValue = None
     if instrument == "LATISS":
-        return 1
+        fallbackValue = 1
     elif instrument == "LSSTCam":
-        return 201
+        fallbackValue = 201
     elif instrument in ["LSST-TS8", "LSSTComCam"]:
-        return 9
+        fallbackValue = 9
     else:
         raise ValueError(f"Unknown instrument {instrument}")
+
+    try:
+        resourcePath = (f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
+                        f"{expRecord.obs_id}_expectedSensors.json")
+        url = ResourcePath(resourcePath)
+        jsonData = url.read()
+        data = json.loads(jsonData)
+        nExpected = len(data['expectedSensors'])
+        if nExpected != fallbackValue:
+            # not a warning because this is it working as expected, but it's
+            # nice to see when we have a partial readout
+            logger.info(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
+                        f" is different from the nominal value of {fallbackValue} for {instrument}")
+        return nExpected
+    except FileNotFoundError:
+        if instrument in ['LSSTCam', 'LSST-TS8']:
+            # these instruments are expected to have this info, the other are
+            # not yet, so only warn when the file is expected and not found.
+            logger.warning(f"Unable to get number of expected items from {resourcePath}, "
+                           f"using fallback value of {fallbackValue}")
+        return fallbackValue
+    except Exception:
+        logger.exception(f"Error calculating expected number of items, using fallback value of {fallbackValue}")
+        return fallbackValue
 
 
 class RawProcesser:
