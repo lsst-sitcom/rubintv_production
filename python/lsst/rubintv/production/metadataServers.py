@@ -107,6 +107,8 @@ class TimedMetadataServer:
             self.log.debug(f'Found {len(shardFiles)} shardFiles')
             sleep(0.1)  # just in case a shard is in the process of being written
 
+        updating = set()
+
         for shardFile in shardFiles:
             # filenames look like
             # metadata-dayObs_20221027_049a5f12-5b96-11ed-80f0-348002f0628.json
@@ -129,12 +131,17 @@ class TimedMetadataServer:
                     if seqNum not in data.keys():
                         data[seqNum] = {}
                     data[seqNum].update(seqNumData)
+                    updating.add((dayObs, seqNum))
             os.remove(shardFile)
 
             with open(mainFile, 'w') as f:
                 json.dump(data, f)
             if not isFileWorldWritable(mainFile):
                 os.chmod(mainFile, 0o777)  # file may be amended by another process
+
+        if updating:
+            for (dayObs, seqNum) in sorted(updating, key=lambda x: (x[0], x[1])):
+                self.log.info(f"Updating metadata tables for: {dayObs=}, {seqNum=}")
 
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
