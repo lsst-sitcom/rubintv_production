@@ -492,7 +492,10 @@ class RawProcesser:
 
             postIsr = self.runIsr(raw)
 
-            writeBinnedImage(postIsr, self.locationConfig.calculatedDataPath, self.locationConfig.binning)
+            writeBinnedImage(exp=postIsr,
+                             instrument=self.instrument,
+                             outputPath=self.locationConfig.calculatedDataPath,
+                             binSize=self.locationConfig.binning)
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
