@@ -178,7 +178,15 @@ class PreBinnedImageSource:
         return afwMath.rotateImageBy90(binnedImage, det.getOrientation().getNQuarter()), det
 
 
-def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAfterReading, logger=None):
+def makeMosaic(deferredDatasetRefs,
+               camera,
+               binSize,
+               dataPath,
+               timeout,
+               nExpected,
+               deleteIfComplete,
+               deleteRegardless,
+               logger=None):
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
     The binsize must match the binning used to write the images to disk
@@ -196,6 +204,13 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
         The path on disk to find the binned images.
     timeout : `float`
         The maximum time to wait for the images to land.
+    nExpected : `int`
+        The number of CCDs expected in the mosaic.
+    deleteIfComplete : `bool`, optional
+        If True, delete the binned image files if the number of expected files
+        is the number which was found.
+    deleteRegardless : `bool`, optional
+        If True, delete the binned images regardless of how many are found.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
     deleteAfterReading : `bool`
@@ -233,8 +248,11 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
         raise ValueError(f"Expected only one exposure, got {expIds}!")
     expId = expIds.pop()
 
+    # initially, deleteAfterReading *MUST* be False, because unless all the
+    # files are there immediately, we will end up chewing holes in the mosaic
+    # just by waiting for them in a loop!
     imageSource = PreBinnedImageSource(expId, dataPath, binSize=binSize,
-                                       deleteAfterReading=deleteAfterReading)
+                                       deleteAfterReading=False)
 
     success = False
     firstWarn = True
@@ -259,7 +277,22 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
             time.sleep(0.5)
             continue
 
+    if success and deleteIfComplete and (len(detectorNameList) == nExpected):
+        # Remaking the image just to delete the files is pretty gross, but it's
+        # very fast and the only simple way of deleting all the files
+        imageSource = PreBinnedImageSource(expId, dataPath, binSize=binSize,
+                                           deleteAfterReading=True)
+        output_mosaic = cgu.showCamera(camera,
+                                       imageSource=imageSource,
+                                       detectorNameList=detectorNameList,
+                                       binSize=binSize)
+
     if not success:
+        # we're *not* complete, so remake the image source with the delete
+        # option only set if we're deleting regardless
+        imageSource = PreBinnedImageSource(expId, dataPath, binSize=binSize,
+                                           deleteAfterReading=deleteRegardless)
+
         # make what you can based on what actually did arrive on disk
         logger.warning(f"Failed to find one or more files for mosaic of {expId},"
                        f" making what is possible, based on the files found after timeout.")
@@ -304,8 +337,17 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
     return existingNames
 
 
-def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, doDeleteFiles,
-                         timeout=5, logger=None):
+def plotFocalPlaneMosaic(butler,
+                         expId,
+                         camera,
+                         binSize,
+                         dataPath,
+                         savePlotAs,
+                         nExpected,
+                         deleteIfComplete=True,
+                         deleteRegardless=False,
+                         timeout=5,
+                         logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
     The binned images must have been created upstream with the correct binning
@@ -325,8 +367,13 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, d
         The path to the binned images.
     savePlotAs : `str`
         The filename to save the plot as.
-    doDeleteFiles : `bool`
-        If True, delete the binned images after making the mosaic.
+    nExpected : `int`
+        The number of CCDs expected in the mosaic.
+    deleteIfComplete : `bool`, optional
+        If True, delete the binned image files if the number of expected files
+        is the number which was found.
+    deleteRegardless : `bool`, optional
+        If True, delete the binned images regardless of how many are found.
     timeout : `float`
         The maximum time to wait for the images to land.
     logger : `logging.Logger`, optional
@@ -354,8 +401,16 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, d
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
     deferredDrefs = [butler.getDirectDeferred(d) for d in dRefs]
 
-    mosaic = makeMosaic(deferredDrefs, camera, binSize, dataPath, timeout,
-                        deleteAfterReading=doDeleteFiles).output_mosaic
+    mosaic = makeMosaic(deferredDrefs,
+                        camera,
+                        binSize,
+                        dataPath,
+                        timeout,
+                        nExpected=nExpected,
+                        deleteIfComplete=deleteIfComplete,
+                        deleteRegardless=deleteRegardless,
+                        logger=logger
+                        ).output_mosaic
     if mosaic is None:
         logger.warning(f"Failed to make mosaic for {expId}")
         return

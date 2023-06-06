@@ -607,10 +607,18 @@ class Plotter:
         plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
-        plotFocalPlaneMosaic(self.butler, expId, self.camera, self.locationConfig.binning,
-                             self.locationConfig.calculatedDataPath, saveFile,
-                             doDeleteFiles=self.doDeleteFiles,
-                             timeout=5)
+        nExpected = getNumExpectedItems(expRecord)
+
+        plotFocalPlaneMosaic(butler=self.butler,
+                             expId=expId,
+                             camera=self.camera,
+                             binSize=self.locationConfig.binning,
+                             dataPath=self.locationConfig.calculatedDataPath,
+                             savePlotAs=saveFile,
+                             nExpected=nExpected,
+                             deleteIfComplete=True,
+                             timeout=5,
+                             logger=self.log)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 
