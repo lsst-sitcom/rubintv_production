@@ -416,7 +416,7 @@ def plotFocalPlaneMosaic(butler,
     logger.info(f"Found {len(dRefs)} dRefs for {expId}")
     # sleazy part - if the raw exists then the binned image will get written
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
-    deferredDrefs = [butler.getDirectDeferred(d) for d in dRefs]
+    deferredDrefs = [butler.getDeferred(d) for d in dRefs]
 
     mosaic = makeMosaic(deferredDrefs,
                         camera,
