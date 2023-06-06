@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import lsst.afw.image as afwImage
 import numpy as np
 from matplotlib import cm, colors
 import matplotlib.pyplot as plt
@@ -32,8 +33,11 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
 
     Parameters
     ----------
-    exp : `lsst.afw.image.Exposure`
-        The exposure to plot.
+    exp : `lsst.afw.image.Exposure` or
+          `lsst.afw.image.MaskedImage` or
+          `lsst.afw.image.Image` or
+          `numpy.ndarray`
+        The exposure or data to plot.
     figure : `matplotlib.figure.Figure`
         The figure to use for plotting.
     saveFilename : `str`
@@ -41,10 +45,21 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
     scalingOption : `int`
         The choice of colormap normalization.
     """
-    if doSmooth:
-        data = quickSmooth(exp.image.array, 1)
-    else:
+    data = None
+    if isinstance(exp, afwImage.Exposure):
         data = exp.image.array
+    elif isinstance(exp, afwImage.MaskedImage):
+        data = exp.image.array
+    elif isinstance(exp, afwImage.Image):
+        data = exp.array
+    elif isinstance(exp, np.ndarray):
+        data = exp
+
+    if data is None:
+        raise TypeError(f"Unknown exposure type: {type(exp)}")
+
+    if doSmooth:
+        data = quickSmooth(data, 1)
 
     cmap = cm.gray
     figure.clear()
@@ -57,6 +72,14 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
         case "CCS":  # The CCS-style scaling
             quantiles = getQuantiles(data, cmap.N)
             norm = colors.BoundaryNorm(quantiles, cmap.N)
+            im1 = ax1.imshow(data, cmap=cmap, origin='lower', norm=norm)
+        case 'asinh':
+            def _forward(x):
+                return np.arcsinh(x)
+
+            def _inverse(x):
+                return np.sinh(x)
+            norm = colors.FuncNorm((_forward, _inverse))
             im1 = ax1.imshow(data, cmap=cmap, origin='lower', norm=norm)
         case _:
             raise ValueError(f"Unknown plot scaling option {scalingOption}")
