@@ -617,8 +617,6 @@ class Plotter:
                              dataPath=self.locationConfig.calculatedDataPath,
                              savePlotAs=saveFile,
                              nExpected=nExpected,
-                             deleteIfComplete=True,
-                             timeout=5,
                              logger=self.log)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
