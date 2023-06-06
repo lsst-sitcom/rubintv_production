@@ -158,7 +158,8 @@ def getNumExpectedItems(expRecord, logger=None):
                            f"using fallback value of {fallbackValue}")
         return fallbackValue
     except Exception:
-        logger.exception(f"Error calculating expected number of items, using fallback value of {fallbackValue}")
+        logger.exception("Error calculating expected number of items, using fallback value "
+                         f"of {fallbackValue}")
         return fallbackValue
 
 
