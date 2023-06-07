@@ -20,9 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import glob
 import logging
 import json
 import matplotlib.pyplot as plt
+from time import sleep
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import IsrTask
@@ -507,7 +509,17 @@ class RawProcesser:
 
 
 class Plotter:
-    """Channel for producing the plots for the cleanroom on RubinTv.
+    """Channel for producing the plots for the cleanroom on RubinTV.
+
+    This will make plots for whatever it can find, and if the input data forms
+    a complete set across the focal plane (taking into account partial
+    readouts), deletes the input data, both to tidy up after itself, and to
+    signal that this was completely processed and nothing is left to do.
+
+    The Replotter class, which inherits from this one, will replot anything
+    that it finds to be complete later on, motivating this to leave any
+    incomplete data, so that other processes can make complete plots once their
+    input processing has finished.
 
     Parameters
     ----------
@@ -677,3 +689,138 @@ class Plotter:
         expRecord.
         """
         self.watcher.run(self.callback)
+
+
+class Replotter(Plotter):
+
+    def getBinnedImageFiles(self, path, instrument, expId=None):
+        """Get a list of the binned image files for a given instrument.
+
+        Optionally filters to only return the matching expId if expId is
+        supplied. If expId is not supplied, all binned images are returned.
+
+        Parameters
+        ----------
+        path : `str`
+            The path to search for binned images.
+        instrument : `str`
+            The instrument name, e.g. 'LSSTCam'.
+        expId : `int`, optional
+            The exposure ID to filter on.
+        """
+        if expId is None:
+            expId = ''
+        pattern = os.path.join(path, f'{expId}*{instrument}*binned*')
+        binnedImages = glob.glob(pattern)
+        return binnedImages
+
+    def getBinnedImageExpIds(self, path, instrument):
+        """Get a list of the exposure IDs for which binned images exist.
+
+        Parameters
+        ----------
+        path : `str`
+            The path to search for binned images.
+        instrument : `str`
+            The instrument name, e.g. 'LSSTCam'.
+
+        Returns
+        -------
+        expIds : `list` [`int`]
+            The list of exposure IDs.
+        """
+        binnedImages = self.getBinnedImageFiles(path, instrument)
+        expIds = sorted(set([int(os.path.basename(f).split('_')[0]) for f in binnedImages]))
+        return expIds
+
+    def getExpRecordFromExpId(self, butler, expId, instrument):
+        """Get the exposure record for a given exposure ID.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The butler.
+        expId : `int`
+            The exposure ID.
+        instrument : `str`
+            The instrument name, e.g. 'LSSTCam'.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        # Note you can't use =instrument as binds can't clash with dimensions
+        where = "exposure.id=expId AND instrument=inst"
+        expRecords = butler.registry.queryDimensionRecords("exposure",
+                                                           where=where,
+                                                           bind={'expId': expId,
+                                                                 'inst': instrument},
+                                                           datasets='raw')
+        expRecords = list(set(expRecords))  # must call set as this may contain many duplicates
+        if len(expRecords) != 1:
+            raise ValueError(f'Failed to find expRecord for {expId=} and {instrument=}')
+        return expRecords[0]
+
+    def findLeftoverMosaics(self, findIncomplete=False):
+        """Get exposure records for which there are leftover mosaic files.
+
+        By default, only records for which there is a complete mosaic fileset
+        are returned. To get all the exposure records for which there are
+        files, set ``findIncomplete`` to ``True``.
+
+        Parameters
+        ----------
+        findIncomplete : `bool`, optional
+            If True, return all records, regardless of whether the leftover
+            file set forms a complete mosaic.
+
+        Returns
+        -------
+        records : `list` [`lsst.daf.butler.DimensionRecord`]
+            The list of records.
+        """
+        # must grab this before the scraping, to protect against new images
+        # arriving during the scrape and giving that as the most recent after
+        # calculating what we should be processing
+        mostRecentExp = self.watcher.getMostRecentExpRecord()
+
+        records = []
+        dataPath = self.locationConfig.calculatedDataPath
+        expIds = self.getBinnedImageExpIds(dataPath, self.instrument)
+        for expId in expIds:
+            record = self.getExpRecordFromExpId(self.butler, expId, self.instrument)
+            if findIncomplete:  # we don't need to check for completeness so skip the costly checks
+                records.append(record)
+                continue
+
+            expected = getNumExpectedItems(record)
+            binnedImages = self.getBinnedImageFiles(dataPath, self.instrument, expId=expId)
+            if expected == len(binnedImages):
+                self.log.info(f"{expId} is complete with {len(binnedImages)} images found")
+                records.append(record)
+            else:
+                self.log.info(f"{expId} is not complete, with {len(binnedImages)} images of {expected} found")
+
+        # check to see if the most recent expRecord is in the list, and remove
+        # it if, so that we don't collide with the the normal processing. If it
+        # doesn't get processed for some reason this will pick it up later.
+        if mostRecentExp in records:
+            records.remove(mostRecentExp)
+        return records
+
+    def run(self):
+        """Run continuously, looking for complete file sets and plotting them.
+        """
+        # TODO: turn this into an end-of-day service, checking for day rollover
+        # and calling findLeftoverMosaics() with findIncomplete=True, and set
+        # deleteRegardless when plotting them to tidy up at the end of the day.
+
+        while True:
+            leftovers = self.findLeftoverMosaics()
+            for expRecord in leftovers:
+                self.log.info(f'Found complete file set for {expRecord.dataId}')
+                self.plotFocalPlane(expRecord)
+            self.log.info(f'Made mosaics for {len(leftovers)} complete file sets')
+
+            sleep(5)
