@@ -3,8 +3,8 @@ dataIdScanPath: '/scratch/rubintv/dataIds'
 bucketName: 'rubintv_data_slac'
 
 # Butler paths - use full paths not aliases here as path existence is checked
-ts8ButlerPath: '/repo/ir2/butler.yaml'
-botButlerPath: '/repo/ir2/butler.yaml'
+ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
+botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
 
 # # data paths
 scratchPath: '/scratch/rubintv'
