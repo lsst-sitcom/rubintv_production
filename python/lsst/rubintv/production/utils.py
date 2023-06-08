@@ -72,9 +72,10 @@ DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.js
 # ensures that the list is maintained, as new products can't be written without
 # being added here first.
 ALLOWED_DATASET_TYPES = ['rawNoises', 'binnedImage']
+SEQNUM_PADDING = 6
 SHARDED_DATA_TEMPLATE = os.path.join("{path}",
                                      "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}"
-                                     "_seqNum_{seqNum:06}_{suffix}.json")
+                                     "_seqNum_{seqNum}_{suffix}.json")
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -150,11 +151,12 @@ def getGlobPatternForShardedData(path, dataSetName, instrument, dayObs, seqNum):
     seqNum : `int`
         The seqNum to find the sharded data for.
     """
+    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}" if seqNum != "*" else '*'
     return SHARDED_DATA_TEMPLATE.format(path=path,
                                         dataSetName=dataSetName,
                                         instrument=instrument,
                                         dayObs=dayObs,
-                                        seqNum=seqNum,
+                                        seqNum=seqNumFormatted,
                                         suffix='*')
 
 
@@ -716,11 +718,12 @@ def createFilenameForDataShard(path, dataSetName, instrument, dayObs, seqNum):
         The filename to write the data to.
     """
     suffix = uuid.uuid1()
+    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}"
     filename = SHARDED_DATA_TEMPLATE.format(path=path,
                                             dataSetName=dataSetName,
                                             instrument=instrument,
                                             dayObs=dayObs,
-                                            seqNum=seqNum,
+                                            seqNum=seqNumFormatted,
                                             suffix=suffix)
     return filename
 
