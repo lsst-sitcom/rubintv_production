@@ -803,18 +803,16 @@ class Replotter(Plotter):
 
         while True:
             if leftovers := self.findLeftoverMosaics():
-                self.log.info('Remaking mosaics...')
                 for expRecord in leftovers:
+                    self.log.info(f'Remaking mosaic for {expRecord.dataId}')
                     self.callback(expRecord, doPlotMosaic=True)  # includes the upload
-                self.log.info('Finished remaking mosaics')
 
             if leftovers := self.getDataShardFilesDict('rawNoises'):
-                self.log.info('Remaking noise plots...')
                 for expRecord in leftovers:
                     nExpected = getNumExpectedItems(expRecord)
                     if len(leftovers[expRecord]) == nExpected:
+                        self.log.info(f'Remaking noise plot for {expRecord.dataId}')
                         self.callback(expRecord, doPlotNoises=True)  # includes the upload
-                self.log.info('Finished making noise plots')
 
             sleep(10)  # this need not be very aggressive
 
