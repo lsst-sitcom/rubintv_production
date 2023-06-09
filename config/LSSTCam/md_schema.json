@@ -1,0 +1,16 @@
+{
+    "timestamp": "long",
+    "Exposure id": "long",
+    "Exposure time": "float",
+    "Dark time": "float",
+    "Image type": "string",
+    "Test type": "string",
+    "Date": "string",
+    "Run number": "string",
+    "Observation id": "string",
+    "Sequencer file": "string",
+    "Observation reason": "string",
+    "Science program": "string",
+    "Filter": "string",
+    "Disperser": "string"
+}
