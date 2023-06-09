@@ -36,11 +36,13 @@ import lsst.afw.image as afwImage
 from lsst.resources import ResourcePath
 
 from .utils import waitForDataProduct, getAmplifierRegions
-from ..utils import writeDataShard, getShardedData, writeMetadataShard
+from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
+
+from lsst.summit.utils.butlerUtils import getExpRecord
 
 _LOG = logging.getLogger(__name__)
 
@@ -149,8 +151,8 @@ def getNumExpectedItems(expRecord, logger=None):
         if nExpected != fallbackValue:
             # not a warning because this is it working as expected, but it's
             # nice to see when we have a partial readout
-            logger.info(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
-                        f" is different from the nominal value of {fallbackValue} for {instrument}")
+            logger.debug(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
+                         f" is different from the nominal value of {fallbackValue} for {instrument}")
         return nExpected
     except FileNotFoundError:
         if instrument in ['LSSTCam', 'LSST-TS8']:
@@ -662,33 +664,46 @@ class Plotter:
             case _:
                 raise ValueError(f'Unknown instrument {instrument}')
 
-    def callback(self, expRecord):
+    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False):
         """Method called on each new expRecord as it is found in the repo.
+
+        Note: the callback is used elsewhere to reprocess old data, so the
+        default doX kwargs are all set to False, but are overrided to True in
+        this class' run() method, such that replotting code sets what it *does*
+        want to True, rather than having to know to set everything it *doesn't*
+        want to False. This might feel a little counterintuitive here, but it
+        makes the replotting code much more natural.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        doPlotMosaic : `bool`
+            If True, plot and upload the focal plane mosaic.
+        doPlotNoises : `bool`
+            If True, plot and upload the per-amplifier noise map.
         """
         self.log.info(f'Making plots for {expRecord.dataId}')
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-
         instPrefix = self.getInstrumentChannelName(self.instrument)
-        # TODO: Need some kind of wait mechanism for each of these
-        noiseMapFile = self.plotNoises(expRecord)
-        channel = f'{instPrefix}_noise_map'
-        self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
-        focalPlaneFile = self.plotFocalPlane(expRecord)
-        channel = f'{instPrefix}_focal_plane_mosaic'
-        self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+        # TODO: Need some kind of wait mechanism for each of these
+        if doPlotNoises:
+            noiseMapFile = self.plotNoises(expRecord)
+            channel = f'{instPrefix}_noise_map'
+            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+
+        if doPlotMosaic:
+            focalPlaneFile = self.plotFocalPlane(expRecord)
+            channel = f'{instPrefix}_focal_plane_mosaic'
+            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):
         """Run continuously, calling the callback method with the latest
         expRecord.
         """
-        self.watcher.run(self.callback)
+        self.watcher.run(self.callback, doPlotMosaic=True, doPlotNoises=True)
 
 
 class Replotter(Plotter):
@@ -733,35 +748,6 @@ class Replotter(Plotter):
         expIds = sorted(set([int(os.path.basename(f).split('_')[0]) for f in binnedImages]))
         return expIds
 
-    def getExpRecordFromExpId(self, butler, expId, instrument):
-        """Get the exposure record for a given exposure ID.
-
-        Parameters
-        ----------
-        butler : `lsst.daf.butler.Butler`
-            The butler.
-        expId : `int`
-            The exposure ID.
-        instrument : `str`
-            The instrument name, e.g. 'LSSTCam'.
-
-        Returns
-        -------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        # Note you can't use =instrument as binds can't clash with dimensions
-        where = "exposure.id=expId AND instrument=inst"
-        expRecords = butler.registry.queryDimensionRecords("exposure",
-                                                           where=where,
-                                                           bind={'expId': expId,
-                                                                 'inst': instrument},
-                                                           datasets='raw')
-        expRecords = list(set(expRecords))  # must call set as this may contain many duplicates
-        if len(expRecords) != 1:
-            raise ValueError(f'Failed to find expRecord for {expId=} and {instrument=}')
-        return expRecords[0]
-
     def findLeftoverMosaics(self, findIncomplete=False):
         """Get exposure records for which there are leftover mosaic files.
 
@@ -780,16 +766,17 @@ class Replotter(Plotter):
         records : `list` [`lsst.daf.butler.DimensionRecord`]
             The list of records.
         """
-        # must grab this before the scraping, to protect against new images
-        # arriving during the scrape and giving that as the most recent after
-        # calculating what we should be processing
+        # must grab this before scanning for data, to protect against new
+        # images arriving during the scrape. This watcher watched for
+        # binnedImages, which are always an earlier or equal expRecord to the
+        # raw one, and so if the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
         records = []
         dataPath = self.locationConfig.calculatedDataPath
         expIds = self.getBinnedImageExpIds(dataPath, self.instrument)
         for expId in expIds:
-            record = self.getExpRecordFromExpId(self.butler, expId, self.instrument)
+            record = getExpRecord(self.butler, self.instrument, expId=expId)
             if findIncomplete:  # we don't need to check for completeness so skip the costly checks
                 records.append(record)
                 continue
@@ -797,16 +784,17 @@ class Replotter(Plotter):
             expected = getNumExpectedItems(record)
             binnedImages = self.getBinnedImageFiles(dataPath, self.instrument, expId=expId)
             if expected == len(binnedImages):
-                self.log.info(f"{expId} is complete with {len(binnedImages)} images found")
+                self.log.debug(f"{expId} is complete with {len(binnedImages)} images found")
                 records.append(record)
             else:
-                self.log.info(f"{expId} is not complete, with {len(binnedImages)} images of {expected} found")
+                self.log.debug(f"{expId} is not complete, with {len(binnedImages)} items of {expected} found")
+                if findIncomplete:
+                    records.append(record)
 
-        # check to see if the most recent expRecord is in the list, and remove
-        # it if, so that we don't collide with the the normal processing. If it
-        # doesn't get processed for some reason this will pick it up later.
-        if mostRecentExp in records:
-            records.remove(mostRecentExp)
+        # Check to see if there is anything more recent than the most recent
+        # expRecord which existed when we started looking for data, and if so,
+        # remove them, so that we don't collide with the running processes.
+        records = [r for r in records if r.timespan.end < mostRecentExp.timespan.end]
         return records
 
     def run(self):
@@ -817,10 +805,114 @@ class Replotter(Plotter):
         # deleteRegardless when plotting them to tidy up at the end of the day.
 
         while True:
-            leftovers = self.findLeftoverMosaics()
-            for expRecord in leftovers:
-                self.log.info(f'Found complete file set for {expRecord.dataId}')
-                self.plotFocalPlane(expRecord)
-            self.log.info(f'Made mosaics for {len(leftovers)} complete file sets')
+            if leftovers := self.findLeftoverMosaics():
+                self.log.info('Remaking mosaics...')
+                for expRecord in leftovers:
+                    self.callback(expRecord, doPlotMosaic=True)  # includes the upload
+                self.log.info('Finished remaking mosaics')
 
-            sleep(5)
+            if leftovers := self.getDataShardFilesDict('rawNoises'):
+                self.log.info('Remaking noise plots...')
+                for expRecord in leftovers:
+                    nExpected = getNumExpectedItems(expRecord)
+                    if len(leftovers[expRecord]) == nExpected:
+                        self.callback(expRecord, doPlotNoises=True)  # includes the upload
+                self.log.info('Finished making noise plots')
+
+            sleep(10)  # this need not be very aggressive
+
+    def getDayObsSeqNumTuplesFromFiles(self, files):
+        """Get the unique dayObs and seqNum tuples from a list of files.
+
+        For a list of many files, get the set of (dayObs, seqNum) tuples for
+        which there is data, as a list.
+
+        Parameters
+        ----------
+        files : `list` [`str`]
+            The list of files.
+
+        Returns
+        -------
+        tuples : `list` [`tuple` [`int`, `int`]]
+            The list of tuples, sorted by dayObs and seqNum.
+        """
+        dayObsSeqNumTuples = set([self.dayObsSeqNumFromFilename(file) for file in files])
+        return sorted(list(dayObsSeqNumTuples), key=lambda x: (x[0], x[1]))
+
+    @staticmethod
+    def dayObsSeqNumFromFilename(filename):
+        """Get the dayObs and seqNum from a data shard file.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename.
+
+        Returns
+        -------
+        dayObs : `int`
+            The dayObs.
+        seqNum : `int`
+            The seqNum.
+        """
+        # files are like
+        # dataShard-rawNoises-LSSTCam-dayObs_20230601_seqNum_000059_...json
+        basename = os.path.basename(filename)  # in case of underscores and dayObs duplication in a full path
+        dayObs = int(basename.split('dayObs_')[1].split('_')[0])
+        seqNum = int(basename.split('seqNum_')[1].split('_')[0])
+        return dayObs, seqNum
+
+    def getDataShardFilesDict(self, dataSetName):
+        """Get a dictionary of data shard files, keyed by exposure record.
+
+        Parameters
+        ----------
+        dataSetName : `str`
+            The data type, e.g. 'rawNoises'.
+
+        Returns
+        -------
+        shards : `dict` [`lsst.daf.butler.DimensionRecord`, `list` [`str`]]
+            A dictionary, keyed by dayObs and seqNum, of lists of data shard
+            files.
+        """
+        # must grab this before scanning for data, to protect against new
+        # images arriving during the scrape. This watcher watched for
+        # binnedImages, which are always an earlier or equal expRecord to the
+        # raw one, and so if the right one to choose
+        mostRecentExp = self.watcher.getMostRecentExpRecord()
+
+        shards = {}
+        # get all the files for this data type
+        pattern = getGlobPatternForShardedData(path=self.locationConfig.calculatedDataPath,
+                                               dataSetName=dataSetName,
+                                               instrument=self.instrument,
+                                               dayObs='*',
+                                               seqNum='*')
+        files = glob.glob(pattern)
+
+        # get the ``set`` of (dayObs, seqNum)s this list of files covers, i.e.
+        # which images we have some data for. ``getExpRecord`` is slow, so
+        # ensure we only do this for each image, rather than for each file.
+        dayObsSeqNums = self.getDayObsSeqNumTuplesFromFiles(files)
+        # _recordMapping is temporary object so that we can look up the main
+        # dict key, which as an expRecord, by its dayObs and seqNum
+        _recordMapping = {}
+        for dayObs, seqNum in dayObsSeqNums:
+            record = getExpRecord(self.butler, self.instrument, dayObs=dayObs, seqNum=seqNum)
+            shards[record] = []  # creating the template return object
+            _recordMapping[(dayObs, seqNum)] = record
+
+        for file in files:
+            dayObs, seqNum = self.dayObsSeqNumFromFilename(file)
+            expRecord = _recordMapping[(dayObs, seqNum)]
+            shards[expRecord].append(file)
+
+        # Check to see if there is anything more recent than the most recent
+        # expRecord which existed when we started looking for data, and if so,
+        # remove the entries so that we don't collide with the running
+        # processes.
+        shards = {record: fileList for record, fileList in shards.items()
+                  if record.timespan.end < mostRecentExp.timespan.end}
+        return shards
