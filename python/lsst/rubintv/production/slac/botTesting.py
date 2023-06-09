@@ -531,12 +531,10 @@ class Plotter:
         The location configuration.
     instrument : `str`
         The instrument.
-    doDeleteFiles : `bool`
-        If True, delete files after they have been processed.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
-    def __init__(self, butler, locationConfig, instrument, doDeleteFiles, doRaise=False):
+    def __init__(self, butler, locationConfig, instrument, doRaise=False):
         self.locationConfig = locationConfig
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
@@ -550,7 +548,6 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
-        self.doDeleteFiles = doDeleteFiles
 
     def plotNoises(self, expRecord):
         """Create a focal plane heatmap of the per-amplifier noises as a png.

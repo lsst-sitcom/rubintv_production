@@ -35,6 +35,5 @@ butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTCam/ra
 plotter = Plotter(butler=butler,
                   locationConfig=locationConfig,
                   instrument='LSSTCam',
-                  doDeleteFiles=True,
                   doRaise=True)
 plotter.run()

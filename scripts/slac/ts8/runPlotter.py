@@ -35,6 +35,5 @@ butler = dafButler.Butler(locationConfig.ts8ButlerPath, collections=['LSST-TS8/r
 plotter = Plotter(butler=butler,
                   locationConfig=locationConfig,
                   instrument='LSST-TS8',
-                  doDeleteFiles=True,
                   doRaise=True)
 plotter.run()
