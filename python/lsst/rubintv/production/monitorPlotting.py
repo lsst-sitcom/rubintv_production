@@ -45,18 +45,17 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
     scalingOption : `int`
         The choice of colormap normalization.
     """
-    data = None
-    if isinstance(exp, afwImage.Exposure):
-        data = exp.image.array
-    elif isinstance(exp, afwImage.MaskedImage):
-        data = exp.image.array
-    elif isinstance(exp, afwImage.Image):
-        data = exp.array
-    elif isinstance(exp, np.ndarray):
-        data = exp
-
-    if data is None:
-        raise TypeError(f"Unknown exposure type: {type(exp)}")
+    match exp:
+        case afwImage.Exposure():
+            data = exp.image.array
+        case afwImage.MaskedImage():
+            data = exp.image.array
+        case afwImage.Image():
+            data = exp.array
+        case np.ndarray():
+            data = exp
+        case _:
+            raise TypeError(f"Unknown exposure type: {type(exp)}")
 
     if doSmooth:
         data = quickSmooth(data, 1)
