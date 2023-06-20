@@ -34,6 +34,6 @@ butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTCam/ra
 rawProcessor = RawProcesser(butler=butler,
                             locationConfig=locationConfig,
                             instrument='LSSTCam',
-                            detectors=range(0, 188+1),
+                            detectors=range(0, 205),
                             doRaise=True)
 rawProcessor.run()
