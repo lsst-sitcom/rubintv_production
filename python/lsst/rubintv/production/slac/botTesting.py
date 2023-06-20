@@ -579,8 +579,8 @@ class Plotter:
             return None
 
         perCcdNoises = fullAmpDictToPerCcdDicts(noises)
-        plt.figure(figsize=(10, 10))
-        ax = plt.subplot(111)
+        ax = self.fig.gca()
+        ax.clear()
 
         xRange = TS8_X_RANGE if isOneRaft(self.instrument) else LSSTCAM_X_RANGE
         yRange = TS8_Y_RANGE if isOneRaft(self.instrument) else LSSTCAM_Y_RANGE
@@ -594,7 +594,7 @@ class Plotter:
                                               y_range=yRange,
                                               camera=self.camera)
 
-        plt.savefig(saveFile)
+        self.fig.savefig(saveFile)
         self.log.info(f'Wrote rawNoises plot for {expRecord.dataId} to {saveFile}')
 
         return saveFile
@@ -625,6 +625,7 @@ class Plotter:
         nExpected = getNumExpectedItems(expRecord)
 
         plotFocalPlaneMosaic(butler=self.butler,
+                             figure=self.fig,
                              expId=expId,
                              camera=self.camera,
                              binSize=self.locationConfig.binning,

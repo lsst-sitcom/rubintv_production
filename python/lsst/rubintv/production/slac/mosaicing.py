@@ -31,7 +31,6 @@ from lsst.summit.utils import getQuantiles
 
 import os
 import lsst.afw.image as afwImage
-import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib import cm
 
@@ -398,6 +397,7 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
 
 
 def plotFocalPlaneMosaic(butler,
+                         figure,
                          expId,
                          camera,
                          binSize,
@@ -417,6 +417,8 @@ def plotFocalPlaneMosaic(butler,
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
+    figure : `matplotlib.figure.Figure`
+        The figure to plot on.
     expId : `int`
         The exposure id.
     camera : `lsst.afw.cameraGeom.Camera`
@@ -475,23 +477,25 @@ def plotFocalPlaneMosaic(butler,
         logger.warning(f"Failed to make mosaic for {expId}")
         return
     logger.info(f"Made mosaic image for {expId}")
-    _plotFpMosaic(mosaic, saveAs=savePlotAs)
+    _plotFpMosaic(mosaic, fig=figure, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
 
 
-def _plotFpMosaic(im, scalingOption='CCS', saveAs=''):
+def _plotFpMosaic(im, fig, scalingOption='CCS', saveAs=''):
     """Plot the focal plane mosaic, optionally saving as a png.
 
     Parameters
     ----------
     im : `lsst.afw.image.Image`
         The focal plane mosaiced image to render.
+    fig : `matplotlib.figure.Figure`
+        The figure to plot on.
     saveAs : `str`, optional
         The filename to save the plot as.
     """
     data = im.array
-    plt.figure(figsize=(16, 16))
-    ax = plt.gca()
+    ax = fig.gca()
+    ax.clear()
 
     cmap = cm.gray
     match scalingOption:
@@ -511,12 +515,12 @@ def _plotFpMosaic(im, scalingOption='CCS', saveAs=''):
         case _:
             raise ValueError(f"Unknown plot scaling option {scalingOption}")
 
-    im = plt.imshow(data, norm=norm, interpolation='None', cmap=cmap, origin='lower')
+    im = ax.imshow(data, norm=norm, interpolation='None', cmap=cmap, origin='lower')
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im, cax=cax)
+    fig.colorbar(im, cax=cax)
 
-    plt.tight_layout()
+    fig.tight_layout()
     if saveAs:
-        plt.savefig(saveAs)
+        fig.savefig(saveAs)
