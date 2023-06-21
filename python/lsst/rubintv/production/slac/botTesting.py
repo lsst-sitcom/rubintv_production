@@ -582,6 +582,7 @@ class Plotter:
             return None
 
         perCcdNoises = fullAmpDictToPerCcdDicts(noises)
+        self.fig.clear()
         ax = self.fig.gca()
         ax.clear()
 
@@ -627,6 +628,7 @@ class Plotter:
 
         nExpected = getNumExpectedItems(expRecord)
 
+        self.fig.clear()
         plotFocalPlaneMosaic(butler=self.butler,
                              figure=self.fig,
                              expId=expId,
