@@ -39,7 +39,7 @@ from .utils import waitForDataProduct, getAmplifierRegions
 from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
-from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
+from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
 
 from lsst.summit.utils.butlerUtils import getExpRecord
@@ -705,27 +705,6 @@ class Plotter:
 
 class Replotter(Plotter):
 
-    def getBinnedImageFiles(self, path, instrument, expId=None):
-        """Get a list of the binned image files for a given instrument.
-
-        Optionally filters to only return the matching expId if expId is
-        supplied. If expId is not supplied, all binned images are returned.
-
-        Parameters
-        ----------
-        path : `str`
-            The path to search for binned images.
-        instrument : `str`
-            The instrument name, e.g. 'LSSTCam'.
-        expId : `int`, optional
-            The exposure ID to filter on.
-        """
-        if expId is None:
-            expId = ''
-        pattern = os.path.join(path, f'{expId}*{instrument}*binned*')
-        binnedImages = glob.glob(pattern)
-        return binnedImages
-
     def getBinnedImageExpIds(self, path, instrument):
         """Get a list of the exposure IDs for which binned images exist.
 
@@ -741,7 +720,7 @@ class Replotter(Plotter):
         expIds : `list` [`int`]
             The list of exposure IDs.
         """
-        binnedImages = self.getBinnedImageFiles(path, instrument)
+        binnedImages = getBinnedImageFiles(path, instrument)
         expIds = sorted(set([int(os.path.basename(f).split('_')[0]) for f in binnedImages]))
         return expIds
 
@@ -779,7 +758,7 @@ class Replotter(Plotter):
                 continue
 
             expected = getNumExpectedItems(record)
-            binnedImages = self.getBinnedImageFiles(dataPath, self.instrument, expId=expId)
+            binnedImages = getBinnedImageFiles(dataPath, self.instrument, expId=expId)
             if expected == len(binnedImages):
                 self.log.debug(f"{expId} is complete with {len(binnedImages)} images found")
                 records.append(record)

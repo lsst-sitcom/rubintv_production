@@ -21,6 +21,7 @@
 
 import logging
 import time
+import glob
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
 from lsst.afw.cameraGeom import utils as cgu
@@ -56,6 +57,28 @@ def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
         The binning factor.
     """
     return os.path.join(dataPath, f'{expId}_{instrument}_{detectorName}_binned_{binSize}.fits')
+
+
+def getBinnedImageFiles(path, instrument, expId=None):
+    """Get a list of the binned image files for a given instrument.
+
+    Optionally filters to only return the matching expId if expId is
+    supplied. If expId is not supplied, all binned images are returned.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to search for binned images.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
+    expId : `int`, optional
+        The exposure ID to filter on.
+    """
+    if expId is None:
+        expId = ''
+    pattern = os.path.join(path, f'{expId}*{instrument}*binned*')
+    binnedImages = glob.glob(pattern)
+    return binnedImages
 
 
 def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
