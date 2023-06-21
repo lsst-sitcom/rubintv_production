@@ -503,6 +503,9 @@ class RawProcesser:
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
+            del raw
+            del postIsr
+
     def run(self):
         """Run continuously, calling the callback method with the latest
         expRecord.
