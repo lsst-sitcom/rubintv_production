@@ -81,6 +81,26 @@ def getBinnedImageFiles(path, instrument, expId=None):
     return binnedImages
 
 
+def getBinnedImageExpIds(path, instrument):
+    """Get a list of the exposure IDs for which binned images exist.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to search for binned images.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
+
+    Returns
+    -------
+    expIds : `list` [`int`]
+        The list of exposure IDs.
+    """
+    binnedImages = getBinnedImageFiles(path, instrument)
+    expIds = sorted(set([int(os.path.basename(f).split('_')[0]) for f in binnedImages]))
+    return expIds
+
+
 def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
     """Write a binned image out for a single or list of deferredDatasetRefs.
 

@@ -39,7 +39,7 @@ from .utils import waitForDataProduct, getAmplifierRegions
 from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
-from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles
+from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
 
 from lsst.summit.utils.butlerUtils import getExpRecord
@@ -705,25 +705,6 @@ class Plotter:
 
 class Replotter(Plotter):
 
-    def getBinnedImageExpIds(self, path, instrument):
-        """Get a list of the exposure IDs for which binned images exist.
-
-        Parameters
-        ----------
-        path : `str`
-            The path to search for binned images.
-        instrument : `str`
-            The instrument name, e.g. 'LSSTCam'.
-
-        Returns
-        -------
-        expIds : `list` [`int`]
-            The list of exposure IDs.
-        """
-        binnedImages = getBinnedImageFiles(path, instrument)
-        expIds = sorted(set([int(os.path.basename(f).split('_')[0]) for f in binnedImages]))
-        return expIds
-
     def findLeftoverMosaics(self, findIncomplete=False):
         """Get exposure records for which there are leftover mosaic files.
 
@@ -750,7 +731,7 @@ class Replotter(Plotter):
 
         records = []
         dataPath = self.locationConfig.calculatedDataPath
-        expIds = self.getBinnedImageExpIds(dataPath, self.instrument)
+        expIds = getBinnedImageExpIds(dataPath, self.instrument)
         for expId in expIds:
             record = getExpRecord(self.butler, self.instrument, expId=expId)
             if findIncomplete:  # we don't need to check for completeness so skip the costly checks
