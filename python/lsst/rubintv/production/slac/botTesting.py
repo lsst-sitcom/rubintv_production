@@ -596,6 +596,7 @@ class Plotter:
         focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
                                               x_range=xRange,
                                               y_range=yRange,
+                                              z_range=(0, 15),
                                               camera=self.camera)
 
         self.fig.savefig(saveFile)
