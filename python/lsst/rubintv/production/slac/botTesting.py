@@ -20,8 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import glob
 import logging
+import json
 import matplotlib.pyplot as plt
+from time import sleep
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import IsrTask
@@ -30,13 +33,16 @@ import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
+from lsst.resources import ResourcePath
 
 from .utils import waitForDataProduct, getAmplifierRegions
-from ..utils import writeDataShard, getShardedData, writeMetadataShard
+from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
-from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic
+from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
+
+from lsst.summit.utils.butlerUtils import getExpRecord
 
 _LOG = logging.getLogger(__name__)
 
@@ -102,7 +108,7 @@ def isOneRaft(instrument):
     return instrument in ['LSST-TS8', 'LSSTComCam']
 
 
-def getNumExpectedItems(instrument, expRecord):
+def getNumExpectedItems(expRecord, logger=None):
     """A placeholder function for getting the number of expected items.
 
     For a given instrument, get the number of detectors which were read out or
@@ -114,20 +120,51 @@ def getNumExpectedItems(instrument, expRecord):
 
     Parameters
     ----------
-    instrument : `str`
-        The instrument.
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record. This is currently unused, but will be used once
         we are doing this properly.
+    logger : `logging.Logger`
+        The logger, created if not supplied.
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    instrument = expRecord.instrument
+
+    fallbackValue = None
     if instrument == "LATISS":
-        return 1
+        fallbackValue = 1
     elif instrument == "LSSTCam":
-        return 201
+        fallbackValue = 201
     elif instrument in ["LSST-TS8", "LSSTComCam"]:
-        return 9
+        fallbackValue = 9
     else:
         raise ValueError(f"Unknown instrument {instrument}")
+
+    try:
+        resourcePath = (f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
+                        f"{expRecord.obs_id}_expectedSensors.json")
+        url = ResourcePath(resourcePath)
+        jsonData = url.read()
+        data = json.loads(jsonData)
+        nExpected = len(data['expectedSensors'])
+        if nExpected != fallbackValue:
+            # not a warning because this is it working as expected, but it's
+            # nice to see when we have a partial readout
+            logger.debug(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
+                         f" is different from the nominal value of {fallbackValue} for {instrument}")
+        return nExpected
+    except FileNotFoundError:
+        if instrument in ['LSSTCam', 'LSST-TS8']:
+            # these instruments are expected to have this info, the other are
+            # not yet, so only warn when the file is expected and not found.
+            logger.warning(f"Unable to get number of expected items from {resourcePath}, "
+                           f"using fallback value of {fallbackValue}")
+        return fallbackValue
+    except Exception:
+        logger.exception("Error calculating expected number of items, using fallback value "
+                         f"of {fallbackValue}")
+        return fallbackValue
 
 
 class RawProcesser:
@@ -459,7 +496,10 @@ class RawProcesser:
 
             postIsr = self.runIsr(raw)
 
-            writeBinnedImage(postIsr, self.locationConfig.calculatedDataPath, self.locationConfig.binning)
+            writeBinnedImage(exp=postIsr,
+                             instrument=self.instrument,
+                             outputPath=self.locationConfig.calculatedDataPath,
+                             binSize=self.locationConfig.binning)
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
@@ -471,7 +511,17 @@ class RawProcesser:
 
 
 class Plotter:
-    """Channel for producing the plots for the cleanroom on RubinTv.
+    """Channel for producing the plots for the cleanroom on RubinTV.
+
+    This will make plots for whatever it can find, and if the input data forms
+    a complete set across the focal plane (taking into account partial
+    readouts), deletes the input data, both to tidy up after itself, and to
+    signal that this was completely processed and nothing is left to do.
+
+    The Replotter class, which inherits from this one, will replot anything
+    that it finds to be complete later on, motivating this to leave any
+    incomplete data, so that other processes can make complete plots once their
+    input processing has finished.
 
     Parameters
     ----------
@@ -481,12 +531,10 @@ class Plotter:
         The location configuration.
     instrument : `str`
         The instrument.
-    doDeleteFiles : `bool`
-        If True, delete files after they have been processed.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
-    def __init__(self, butler, locationConfig, instrument, doDeleteFiles, doRaise=False):
+    def __init__(self, butler, locationConfig, instrument, doRaise=False):
         self.locationConfig = locationConfig
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
@@ -500,7 +548,6 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
-        self.doDeleteFiles = doDeleteFiles
 
     def plotNoises(self, expRecord):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -517,7 +564,7 @@ class Plotter:
         """
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-        nExpected = getNumExpectedItems(self.instrument, expRecord)  # expRecord currently unused in function
+        nExpected = getNumExpectedItems(expRecord)
         noises, _ = getShardedData(path=self.locationConfig.calculatedDataPath,
                                    instrument=self.instrument,
                                    dayObs=dayObs,
@@ -525,7 +572,7 @@ class Plotter:
                                    dataSetName='rawNoises',
                                    nExpected=nExpected,
                                    logger=self.log,
-                                   deleteAfterReading=self.doDeleteFiles)
+                                   deleteIfComplete=True)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
@@ -575,10 +622,16 @@ class Plotter:
         plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
-        plotFocalPlaneMosaic(self.butler, expId, self.camera, self.locationConfig.binning,
-                             self.locationConfig.calculatedDataPath, saveFile,
-                             doDeleteFiles=self.doDeleteFiles,
-                             timeout=5)
+        nExpected = getNumExpectedItems(expRecord)
+
+        plotFocalPlaneMosaic(butler=self.butler,
+                             expId=expId,
+                             camera=self.camera,
+                             binSize=self.locationConfig.binning,
+                             dataPath=self.locationConfig.calculatedDataPath,
+                             savePlotAs=saveFile,
+                             nExpected=nExpected,
+                             logger=self.log)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
 
@@ -608,30 +661,213 @@ class Plotter:
             case _:
                 raise ValueError(f'Unknown instrument {instrument}')
 
-    def callback(self, expRecord):
+    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False):
         """Method called on each new expRecord as it is found in the repo.
+
+        Note: the callback is used elsewhere to reprocess old data, so the
+        default doX kwargs are all set to False, but are overrided to True in
+        this class' run() method, such that replotting code sets what it *does*
+        want to True, rather than having to know to set everything it *doesn't*
+        want to False. This might feel a little counterintuitive here, but it
+        makes the replotting code much more natural.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        doPlotMosaic : `bool`
+            If True, plot and upload the focal plane mosaic.
+        doPlotNoises : `bool`
+            If True, plot and upload the per-amplifier noise map.
         """
         self.log.info(f'Making plots for {expRecord.dataId}')
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-
         instPrefix = self.getInstrumentChannelName(self.instrument)
-        # TODO: Need some kind of wait mechanism for each of these
-        noiseMapFile = self.plotNoises(expRecord)
-        channel = f'{instPrefix}_noise_map'
-        self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
-        focalPlaneFile = self.plotFocalPlane(expRecord)
-        channel = f'{instPrefix}_focal_plane_mosaic'
-        self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+        # TODO: Need some kind of wait mechanism for each of these
+        if doPlotNoises:
+            noiseMapFile = self.plotNoises(expRecord)
+            channel = f'{instPrefix}_noise_map'
+            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+
+        if doPlotMosaic:
+            focalPlaneFile = self.plotFocalPlane(expRecord)
+            channel = f'{instPrefix}_focal_plane_mosaic'
+            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
     def run(self):
         """Run continuously, calling the callback method with the latest
         expRecord.
         """
-        self.watcher.run(self.callback)
+        self.watcher.run(self.callback, doPlotMosaic=True, doPlotNoises=True)
+
+
+class Replotter(Plotter):
+
+    def findLeftoverMosaics(self, findIncomplete=False):
+        """Get exposure records for which there are leftover mosaic files.
+
+        By default, only records for which there is a complete mosaic fileset
+        are returned. To get all the exposure records for which there are
+        files, set ``findIncomplete`` to ``True``.
+
+        Parameters
+        ----------
+        findIncomplete : `bool`, optional
+            If True, return all records, regardless of whether the leftover
+            file set forms a complete mosaic.
+
+        Returns
+        -------
+        records : `list` [`lsst.daf.butler.DimensionRecord`]
+            The list of records.
+        """
+        # must grab this before scanning for data, to protect against new
+        # images arriving during the scrape. This watcher watched for
+        # binnedImages, which are always an earlier or equal expRecord to the
+        # raw one, and so if the right one to choose
+        mostRecentExp = self.watcher.getMostRecentExpRecord()
+
+        records = []
+        dataPath = self.locationConfig.calculatedDataPath
+        expIds = getBinnedImageExpIds(dataPath, self.instrument)
+        for expId in expIds:
+            record = getExpRecord(self.butler, self.instrument, expId=expId)
+            if findIncomplete:  # we don't need to check for completeness so skip the costly checks
+                records.append(record)
+                continue
+
+            expected = getNumExpectedItems(record)
+            binnedImages = getBinnedImageFiles(dataPath, self.instrument, expId=expId)
+            if expected == len(binnedImages):
+                self.log.debug(f"{expId} is complete with {len(binnedImages)} images found")
+                records.append(record)
+            else:
+                self.log.debug(f"{expId} is not complete, with {len(binnedImages)} items of {expected} found")
+                if findIncomplete:
+                    records.append(record)
+
+        # Check to see if there is anything more recent than the most recent
+        # expRecord which existed when we started looking for data, and if so,
+        # remove them, so that we don't collide with the running processes.
+        records = [r for r in records if r.timespan.end < mostRecentExp.timespan.end]
+        return records
+
+    def run(self):
+        """Run continuously, looking for complete file sets and plotting them.
+        """
+        # TODO: turn this into an end-of-day service, checking for day rollover
+        # and calling findLeftoverMosaics() with findIncomplete=True, and set
+        # deleteRegardless when plotting them to tidy up at the end of the day.
+
+        while True:
+            if leftovers := self.findLeftoverMosaics():
+                for expRecord in leftovers:
+                    self.log.info(f'Remaking mosaic for {expRecord.dataId}')
+                    self.callback(expRecord, doPlotMosaic=True)  # includes the upload
+
+            if leftovers := self.getDataShardFilesDict('rawNoises'):
+                for expRecord in leftovers:
+                    nExpected = getNumExpectedItems(expRecord)
+                    if len(leftovers[expRecord]) == nExpected:
+                        self.log.info(f'Remaking noise plot for {expRecord.dataId}')
+                        self.callback(expRecord, doPlotNoises=True)  # includes the upload
+
+            sleep(10)  # this need not be very aggressive
+
+    def getDayObsSeqNumTuplesFromFiles(self, files):
+        """Get the unique dayObs and seqNum tuples from a list of files.
+
+        For a list of many files, get the set of (dayObs, seqNum) tuples for
+        which there is data, as a list.
+
+        Parameters
+        ----------
+        files : `list` [`str`]
+            The list of files.
+
+        Returns
+        -------
+        tuples : `list` [`tuple` [`int`, `int`]]
+            The list of tuples, sorted by dayObs and seqNum.
+        """
+        dayObsSeqNumTuples = set([self.dayObsSeqNumFromFilename(file) for file in files])
+        return sorted(list(dayObsSeqNumTuples), key=lambda x: (x[0], x[1]))
+
+    @staticmethod
+    def dayObsSeqNumFromFilename(filename):
+        """Get the dayObs and seqNum from a data shard file.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename.
+
+        Returns
+        -------
+        dayObs : `int`
+            The dayObs.
+        seqNum : `int`
+            The seqNum.
+        """
+        # files are like
+        # dataShard-rawNoises-LSSTCam-dayObs_20230601_seqNum_000059_...json
+        basename = os.path.basename(filename)  # in case of underscores and dayObs duplication in a full path
+        dayObs = int(basename.split('dayObs_')[1].split('_')[0])
+        seqNum = int(basename.split('seqNum_')[1].split('_')[0])
+        return dayObs, seqNum
+
+    def getDataShardFilesDict(self, dataSetName):
+        """Get a dictionary of data shard files, keyed by exposure record.
+
+        Parameters
+        ----------
+        dataSetName : `str`
+            The data type, e.g. 'rawNoises'.
+
+        Returns
+        -------
+        shards : `dict` [`lsst.daf.butler.DimensionRecord`, `list` [`str`]]
+            A dictionary, keyed by dayObs and seqNum, of lists of data shard
+            files.
+        """
+        # must grab this before scanning for data, to protect against new
+        # images arriving during the scrape. This watcher watched for
+        # binnedImages, which are always an earlier or equal expRecord to the
+        # raw one, and so if the right one to choose
+        mostRecentExp = self.watcher.getMostRecentExpRecord()
+
+        shards = {}
+        # get all the files for this data type
+        pattern = getGlobPatternForShardedData(path=self.locationConfig.calculatedDataPath,
+                                               dataSetName=dataSetName,
+                                               instrument=self.instrument,
+                                               dayObs='*',
+                                               seqNum='*')
+        files = glob.glob(pattern)
+
+        # get the ``set`` of (dayObs, seqNum)s this list of files covers, i.e.
+        # which images we have some data for. ``getExpRecord`` is slow, so
+        # ensure we only do this for each image, rather than for each file.
+        dayObsSeqNums = self.getDayObsSeqNumTuplesFromFiles(files)
+        # _recordMapping is temporary object so that we can look up the main
+        # dict key, which as an expRecord, by its dayObs and seqNum
+        _recordMapping = {}
+        for dayObs, seqNum in dayObsSeqNums:
+            record = getExpRecord(self.butler, self.instrument, dayObs=dayObs, seqNum=seqNum)
+            shards[record] = []  # creating the template return object
+            _recordMapping[(dayObs, seqNum)] = record
+
+        for file in files:
+            dayObs, seqNum = self.dayObsSeqNumFromFilename(file)
+            expRecord = _recordMapping[(dayObs, seqNum)]
+            shards[expRecord].append(file)
+
+        # Check to see if there is anything more recent than the most recent
+        # expRecord which existed when we started looking for data, and if so,
+        # remove the entries so that we don't collide with the running
+        # processes.
+        shards = {record: fileList for record, fileList in shards.items()
+                  if record.timespan.end < mostRecentExp.timespan.end}
+        return shards

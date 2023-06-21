@@ -1,3 +1,4 @@
+
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -20,20 +21,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.slac import Replotter
 from lsst.summit.utils.utils import setupLogging
+from lsst.rubintv.production.utils import LocationConfig
+import lsst.daf.butler as dafButler
 
 setupLogging()
-print('Running TEST raw BOT processor for all 189 detectors...')
+print('Running replotter...')
 
 location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTCam/raw/all', 'LSSTCam/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTCam',
-                            detectors=range(0, 205),
-                            doRaise=True)
-rawProcessor.run()
+plotter = Replotter(butler=butler,
+                    locationConfig=locationConfig,
+                    instrument='LSSTCam',
+                    doRaise=True)
+plotter.run()

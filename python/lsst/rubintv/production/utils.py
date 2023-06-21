@@ -72,9 +72,10 @@ DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.js
 # ensures that the list is maintained, as new products can't be written without
 # being added here first.
 ALLOWED_DATASET_TYPES = ['rawNoises', 'binnedImage']
+SEQNUM_PADDING = 6
 SHARDED_DATA_TEMPLATE = os.path.join("{path}",
                                      "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}"
-                                     "_seqNum_{seqNum:06}_{suffix}.json")
+                                     "_seqNum_{seqNum}_{suffix}.json")
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -150,11 +151,12 @@ def getGlobPatternForShardedData(path, dataSetName, instrument, dayObs, seqNum):
     seqNum : `int`
         The seqNum to find the sharded data for.
     """
+    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}" if seqNum != "*" else '*'
     return SHARDED_DATA_TEMPLATE.format(path=path,
                                         dataSetName=dataSetName,
                                         instrument=instrument,
                                         dayObs=dayObs,
-                                        seqNum=seqNum,
+                                        seqNum=seqNumFormatted,
                                         suffix='*')
 
 
@@ -716,11 +718,12 @@ def createFilenameForDataShard(path, dataSetName, instrument, dayObs, seqNum):
         The filename to write the data to.
     """
     suffix = uuid.uuid1()
+    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}"
     filename = SHARDED_DATA_TEMPLATE.format(path=path,
                                             dataSetName=dataSetName,
                                             instrument=instrument,
                                             dayObs=dayObs,
-                                            seqNum=seqNum,
+                                            seqNum=seqNumFormatted,
                                             suffix=suffix)
     return filename
 
@@ -733,7 +736,8 @@ def getShardedData(path,
                    nExpected,
                    timeout=5,
                    logger=None,
-                   deleteAfterReading=True):
+                   deleteIfComplete=True,
+                   deleteRegardless=False):
     """Read back the sharded data for a given dayObs, seqNum, and dataset.
 
     Looks for ``nExpected`` files in the directory ``path``, merges their
@@ -762,12 +766,11 @@ def getShardedData(path,
         The timeout period after which to give up waiting for files to land.
     logger : `logging.Logger`, optional
         The logger for logging warnings if files don't appear.
-    deleteAfterReading : `bool`, optional
-        If True, delete the files after reading them. False should only be set
-        for debug use or if the files will be needed by other downstream
-        processes. This is because if a given dataId is reprocessed then having
-        files left lying around will cause a RuntimeError to be raised next
-        time the function is called unless the files are manually deleted.
+    deleteIfComplete : `bool`, optional
+        Delete the input datafiles if there were the number expected?
+    deleteRegardless : `bool`, optional
+        If True, delete the files after reading them, regardless of whether the
+        expected number of items were found.
 
     Returns
     -------
@@ -811,7 +814,7 @@ def getShardedData(path,
         with open(dataShard) as f:
             shard = json.load(f)
         data.update(shard)
-        if deleteAfterReading:
+        if deleteRegardless or (deleteIfComplete and len(files) == nExpected):
             os.remove(dataShard)
     return data, len(files)
 

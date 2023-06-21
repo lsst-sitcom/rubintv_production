@@ -21,6 +21,7 @@
 
 import logging
 import time
+import glob
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
 from lsst.afw.cameraGeom import utils as cgu
@@ -39,13 +40,15 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from ..utils import isFileWorldWritable
 
 
-def getBinnedFilename(expId, detectorName, dataPath, binSize):
+def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
     """Get the full path and filename for a binned image.
 
     Parameters
     ----------
     expId : `int`
         The exposure id.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
     dataPath : `str`
@@ -53,7 +56,49 @@ def getBinnedFilename(expId, detectorName, dataPath, binSize):
     binSize : `int`
         The binning factor.
     """
-    return os.path.join(dataPath, f'{expId}_{detectorName}_binned_{binSize}.fits')
+    return os.path.join(dataPath, f'{expId}_{instrument}_{detectorName}_binned_{binSize}.fits')
+
+
+def getBinnedImageFiles(path, instrument, expId=None):
+    """Get a list of the binned image files for a given instrument.
+
+    Optionally filters to only return the matching expId if expId is
+    supplied. If expId is not supplied, all binned images are returned.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to search for binned images.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
+    expId : `int`, optional
+        The exposure ID to filter on.
+    """
+    if expId is None:
+        expId = ''
+    pattern = os.path.join(path, f'{expId}*{instrument}*binned*')
+    binnedImages = glob.glob(pattern)
+    return binnedImages
+
+
+def getBinnedImageExpIds(path, instrument):
+    """Get a list of the exposure IDs for which binned images exist.
+
+    Parameters
+    ----------
+    path : `str`
+        The path to search for binned images.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
+
+    Returns
+    -------
+    expIds : `list` [`int`]
+        The list of exposure IDs.
+    """
+    binnedImages = getBinnedImageFiles(path, instrument)
+    expIds = sorted(set([int(os.path.basename(f).split('_')[0]) for f in binnedImages]))
+    return expIds
 
 
 def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
@@ -72,10 +117,11 @@ def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
     deferredDatasetRefs = ensure_iterable(deferredDatasetRefs)
     for dRef in deferredDatasetRefs:
         exp = dRef.get()
-        writeBinnedImage(exp, outputPath, binSize)
+        instrument = dRef.dataId['instrument']
+        writeBinnedImage(exp, instrument=instrument, outputPath=outputPath, binSize=binSize)
 
 
-def writeBinnedImage(exp, outputPath, binSize):
+def writeBinnedImage(exp, instrument, outputPath, binSize):
     """Bin an image and write it to disk.
 
     The image is binned by ``binSize`` and written to ``outputPath`` according
@@ -85,6 +131,8 @@ def writeBinnedImage(exp, outputPath, binSize):
     ----------
     exp : `lsst.afw.image.Exposure`
         The exposure to bin.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
     outputPath : `str`
         The path on disk to write the binned image to.
     binSize : `int`
@@ -101,20 +149,22 @@ def writeBinnedImage(exp, outputPath, binSize):
 
     expId = exp.visitInfo.id  # note this is *not* exp.info.id, as that has the detNum on the end!
     detName = exp.detector.getName()
-    outFilename = getBinnedFilename(expId, detName, outputPath, binSize)
+    outFilename = getBinnedFilename(expId, instrument, detName, outputPath, binSize)
     binnedImage.writeFits(outFilename)
 
     if not isFileWorldWritable(outFilename):
         os.chmod(outFilename, 0o777)
 
 
-def readBinnedImage(expId, detectorName, dataPath, binSize, deleteAfterReading, logger=None):
+def readBinnedImage(expId, instrument, detectorName, dataPath, binSize, deleteAfterReading, logger=None):
     """Read a pre-binned image in from disk.
 
     Parameters
     ----------
     expId : `int`
         The exposure id.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
     dataPath : `str`
@@ -131,7 +181,7 @@ def readBinnedImage(expId, detectorName, dataPath, binSize, deleteAfterReading, 
     image : `lsst.afw.image.ImageF`
         The binned image.
     """
-    filename = getBinnedFilename(expId, detectorName, dataPath, binSize)
+    filename = getBinnedFilename(expId, instrument, detectorName, dataPath, binSize)
     image = afwImage.ImageF(filename)
     if deleteAfterReading:
         try:
@@ -153,6 +203,8 @@ class PreBinnedImageSource:
     ----------
     expId : `int`
         The exposure id.
+    instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
     dataPath : `str`
         The path to the written files on disk.
     binSize : `int`
@@ -161,8 +213,9 @@ class PreBinnedImageSource:
     isTrimmed = True  # required attribute camGeom.utils.showCamera(imageSource)
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
-    def __init__(self, expId, dataPath, binSize, deleteAfterReading):
+    def __init__(self, expId, instrument, dataPath, binSize, deleteAfterReading):
         self.expId = expId
+        self.instrument = instrument
         self.dataPath = dataPath
         self.binSize = binSize
         self.deleteAfterReading = deleteAfterReading
@@ -173,12 +226,24 @@ class PreBinnedImageSource:
         """
         assert binSize == self.binSize
         detName = det.getName()
-        binnedImage = readBinnedImage(self.expId, detName, self.dataPath, binSize,
+        binnedImage = readBinnedImage(expId=self.expId,
+                                      instrument=self.instrument,
+                                      detectorName=detName,
+                                      dataPath=self.dataPath,
+                                      binSize=binSize,
                                       deleteAfterReading=self.deleteAfterReading)
         return afwMath.rotateImageBy90(binnedImage, det.getOrientation().getNQuarter()), det
 
 
-def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAfterReading, logger=None):
+def makeMosaic(deferredDatasetRefs,
+               camera,
+               binSize,
+               dataPath,
+               timeout,
+               nExpected,
+               deleteIfComplete,
+               deleteRegardless,
+               logger=None):
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
     The binsize must match the binning used to write the images to disk
@@ -196,6 +261,13 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
         The path on disk to find the binned images.
     timeout : `float`
         The maximum time to wait for the images to land.
+    nExpected : `int`
+        The number of CCDs expected in the mosaic.
+    deleteIfComplete : `bool`, optional
+        If True, delete the binned image files if the number of expected files
+        is the number which was found.
+    deleteRegardless : `bool`, optional
+        If True, delete the binned images regardless of how many are found.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
     deleteAfterReading : `bool`
@@ -220,6 +292,8 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
     if logger is None:
         logger = logging.getLogger(__name__)
 
+    instrument = camera.getName()
+
     detectorNameList = []
     expIds = set()
 
@@ -233,8 +307,11 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
         raise ValueError(f"Expected only one exposure, got {expIds}!")
     expId = expIds.pop()
 
-    imageSource = PreBinnedImageSource(expId, dataPath, binSize=binSize,
-                                       deleteAfterReading=deleteAfterReading)
+    # initially, deleteAfterReading *MUST* be False, because unless all the
+    # files are there immediately, we will end up chewing holes in the mosaic
+    # just by waiting for them in a loop!
+    imageSource = PreBinnedImageSource(expId, instrument, dataPath, binSize=binSize,
+                                       deleteAfterReading=False)
 
     success = False
     firstWarn = True
@@ -259,7 +336,22 @@ def makeMosaic(deferredDatasetRefs, camera, binSize, dataPath, timeout, deleteAf
             time.sleep(0.5)
             continue
 
+    if success and deleteIfComplete and (len(detectorNameList) == nExpected):
+        # Remaking the image just to delete the files is pretty gross, but it's
+        # very fast and the only simple way of deleting all the files
+        imageSource = PreBinnedImageSource(expId, instrument, dataPath, binSize=binSize,
+                                           deleteAfterReading=True)
+        output_mosaic = cgu.showCamera(camera,
+                                       imageSource=imageSource,
+                                       detectorNameList=detectorNameList,
+                                       binSize=binSize)
+
     if not success:
+        # we're *not* complete, so remake the image source with the delete
+        # option only set if we're deleting regardless
+        imageSource = PreBinnedImageSource(expId, instrument, dataPath, binSize=binSize,
+                                           deleteAfterReading=deleteRegardless)
+
         # make what you can based on what actually did arrive on disk
         logger.warning(f"Failed to find one or more files for mosaic of {expId},"
                        f" making what is possible, based on the files found after timeout.")
@@ -298,14 +390,24 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
     existingNames : `list` of `str`
         The detector names for which binned images exist.
     """
+    instrument = camera.getName()
     detNames = [det.getName() for det in camera]
     existingNames = [detName for detName in detNames if
-                     os.path.exists(getBinnedFilename(expId, detName, dataPath, binSize))]
+                     os.path.exists(getBinnedFilename(expId, instrument, detName, dataPath, binSize))]
     return existingNames
 
 
-def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, doDeleteFiles,
-                         timeout=5, logger=None):
+def plotFocalPlaneMosaic(butler,
+                         expId,
+                         camera,
+                         binSize,
+                         dataPath,
+                         savePlotAs,
+                         nExpected,
+                         deleteIfComplete=True,
+                         deleteRegardless=False,
+                         timeout=5,
+                         logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
     The binned images must have been created upstream with the correct binning
@@ -325,8 +427,13 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, d
         The path to the binned images.
     savePlotAs : `str`
         The filename to save the plot as.
-    doDeleteFiles : `bool`
-        If True, delete the binned images after making the mosaic.
+    nExpected : `int`
+        The number of CCDs expected in the mosaic.
+    deleteIfComplete : `bool`, optional
+        If True, delete the binned image files if the number of expected files
+        is the number which was found.
+    deleteRegardless : `bool`, optional
+        If True, delete the binned images regardless of how many are found.
     timeout : `float`
         The maximum time to wait for the images to land.
     logger : `logging.Logger`, optional
@@ -352,10 +459,18 @@ def plotFocalPlaneMosaic(butler, expId, camera, binSize, dataPath, savePlotAs, d
     logger.info(f"Found {len(dRefs)} dRefs for {expId}")
     # sleazy part - if the raw exists then the binned image will get written
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
-    deferredDrefs = [butler.getDirectDeferred(d) for d in dRefs]
+    deferredDrefs = [butler.getDeferred(d) for d in dRefs]
 
-    mosaic = makeMosaic(deferredDrefs, camera, binSize, dataPath, timeout,
-                        deleteAfterReading=doDeleteFiles).output_mosaic
+    mosaic = makeMosaic(deferredDrefs,
+                        camera,
+                        binSize,
+                        dataPath,
+                        timeout,
+                        nExpected=nExpected,
+                        deleteIfComplete=deleteIfComplete,
+                        deleteRegardless=deleteRegardless,
+                        logger=logger
+                        ).output_mosaic
     if mosaic is None:
         logger.warning(f"Failed to make mosaic for {expId}")
         return

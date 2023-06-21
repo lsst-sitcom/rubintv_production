@@ -69,7 +69,7 @@ if os.path.isdir(outputDir) is False:
     print(f"Output directory {outputDir} does not exist, creating it")
     os.makedirs(outputDir)
 
-for detNum in range(0, 188+1):
+for detNum in range(0, 204+1):
     scriptName = os.path.join(outputDir, f"runIsrRunner_{detNum:03}.py")
     with open(scriptName, 'w') as f:
         contents = isrRunnerScript.format(detNum, detNum)

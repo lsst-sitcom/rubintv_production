@@ -122,7 +122,7 @@ class FileWatcher:
                                                                    universe=dafButler.DimensionUniverse())
         return expRecord
 
-    def run(self, callback):
+    def run(self, callback, **kwargs):
         """Run forever, calling ``callback`` on each most recent expRecord.
 
         Parameters
@@ -142,7 +142,7 @@ class FileWatcher:
                     continue
                 else:
                     lastFound = expRecord.id
-                    callback(expRecord)
+                    callback(expRecord, **kwargs)
                     if self.heartbeater is not None:
                         self.heartbeater.beat()  # call after the callback so as not to delay processing
 

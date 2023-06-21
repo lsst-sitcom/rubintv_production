@@ -26,7 +26,7 @@ from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running TEST raw BOT processor for all 189 detectors...')
+print('Running raw processor for detector 198...')
 
 location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
@@ -34,6 +34,6 @@ butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTCam/ra
 rawProcessor = RawProcesser(butler=butler,
                             locationConfig=locationConfig,
                             instrument='LSSTCam',
-                            detectors=range(0, 205),
+                            detectors=198,
                             doRaise=True)
 rawProcessor.run()
