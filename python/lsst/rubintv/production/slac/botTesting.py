@@ -89,7 +89,7 @@ TS8_REB_HEADER_DETECTORS = [18, 21, 24]
 LSSTCOMCAM_REB_HEADER_DETECTORS = [0, 3, 6]
 # The magic detectors which write the REB headers for LSSTCam, selected to land
 # on all the different REBs
-LSSTCAM_REB_HEADER_DETECTORS = [999]  # XXX Fake value, replace once known
+LSSTCAM_REB_HEADER_DETECTORS = [13, 94]  # 1x e2v, 1x ITL. Need a better way to do this for partial reads.
 
 TS8_X_RANGE = (-63.2, 63.1)
 TS8_Y_RANGE = (-62.5, 62.6)
@@ -393,18 +393,21 @@ class RawProcesser:
 
         if self.instrument == 'LSST-TS8':
             detectorList = TS8_REB_HEADER_DETECTORS
+            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f'REB{rebNumber} Header'
         elif self.instrument == 'LSSTComCam':
             detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
+            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f'REB{rebNumber} Header'
         elif self.instrument == 'LSSTCam':
             detectorList = LSSTCAM_REB_HEADER_DETECTORS
+            rebNumber = detector.getName()  # use the full name for now
+            itemName = f'REB{rebNumber} Header'
         else:
             raise ValueError(f'Unknown instrument {self.instrument}')
 
         if not any(detNum in detectorList for detNum in self.detectors):
             return
-
-        rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
-        itemName = f'REB{rebNumber} Header'
 
         md = {}
         for headerKey in REB_HEADERS:
