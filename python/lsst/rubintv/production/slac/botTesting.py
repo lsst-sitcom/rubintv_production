@@ -43,6 +43,8 @@ from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFil
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
 
 from lsst.summit.utils.butlerUtils import getExpRecord
+from lsst.summit.utils.utils import getExpRecordAge
+
 
 _LOG = logging.getLogger(__name__)
 
@@ -714,24 +716,16 @@ class Plotter:
 
 
 class Replotter(Plotter):
-
-    def findLeftoverMosaics(self, findIncomplete=False):
+    def getLeftoverMosaicDict(self):
         """Get exposure records for which there are leftover mosaic files.
 
-        By default, only records for which there is a complete mosaic fileset
-        are returned. To get all the exposure records for which there are
-        files, set ``findIncomplete`` to ``True``.
-
-        Parameters
-        ----------
-        findIncomplete : `bool`, optional
-            If True, return all records, regardless of whether the leftover
-            file set forms a complete mosaic.
+        Returns a dict, keyed by exposure record, containing the number of files
+        that record.
 
         Returns
         -------
-        records : `list` [`lsst.daf.butler.DimensionRecord`]
-            The list of records.
+        shards : `dict` [`lsst.daf.butler.DimensionRecord`, `list` [`str`]]
+            A dictionary, keyed by exposure record, of the binned image files.
         """
         # must grab this before scanning for data, to protect against new
         # images arriving during the scrape. This watcher watched for
@@ -739,34 +733,22 @@ class Replotter(Plotter):
         # raw one, and so if the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
-        records = []
+        records = {}
         dataPath = self.locationConfig.calculatedDataPath
         expIds = getBinnedImageExpIds(dataPath, self.instrument)
-        allFiles = getBinnedImageFiles(dataPath, self.instrument)  # grab all the files once and filter later
-        self.log.debug(f'Found {len(expIds)} expIds with binned images')
+        allFiles = getBinnedImageFiles(dataPath, self.instrument)
+        self.log.debug(f'Found {len(expIds)} expIds with binned images, and {len(allFiles)} associated files')
         for expId in expIds:
             record = getExpRecord(self.butler, self.instrument, expId=expId)
-            if findIncomplete:  # we don't need to check for completeness so skip the costly checks
-                records.append(record)
-                continue
-
-            expected = getNumExpectedItems(record)
-            # filtering to get binnedImages with a a list comp is *much* faster
-            # than re-globbing if there are a lot of files.
+            # a list comp is *much* faster than re-globbing if there are a lot
+            # of files.
             binnedImages = [f for f in allFiles if f.find(f'{expId}')!=-1]
-
-            if expected == len(binnedImages):
-                self.log.debug(f"{expId} is complete with {len(binnedImages)} images found")
-                records.append(record)
-            else:
-                self.log.debug(f"{expId} is not complete, with {len(binnedImages)} items of {expected} found")
-                if findIncomplete:
-                    records.append(record)
+            records[record] = binnedImages
 
         # Check to see if there is anything more recent than the most recent
         # expRecord which existed when we started looking for data, and if so,
         # remove them, so that we don't collide with the running processes.
-        records = [r for r in records if r.timespan.end < mostRecentExp.timespan.end]
+        records = {r: files for r, files in records.items() if r.timespan.end < mostRecentExp.timespan.end}
         return records
 
     def run(self):
@@ -775,19 +757,38 @@ class Replotter(Plotter):
         # TODO: turn this into an end-of-day service, checking for day rollover
         # and calling findLeftoverMosaics() with findIncomplete=True, and set
         # deleteRegardless when plotting them to tidy up at the end of the day.
+        STALE_AGE = 60*60  # 1 hour
 
         while True:
-            if leftovers := self.findLeftoverMosaics():
-                for expRecord in leftovers:
-                    self.log.info(f'Remaking mosaic for {expRecord.dataId}')
-                    self.callback(expRecord, doPlotMosaic=True)  # includes the upload
+            # handle mosaics
+            if leftovers := self.getLeftoverMosaicDict():
+                for recordNum, (expRecord, files) in enumerate(leftovers.items()):
+                    self.log.info(f"Processing leftover mosaic {recordNum+1} of {len(leftovers)}")
+                    if getNumExpectedItems(expRecord) == len(files):
+                        # no need to delete here because it's complete
+                        # and so will self-delete automatically
+                        self.log.info(f'Remaking mosaic for {expRecord.dataId}')
+                        self.callback(expRecord, doPlotMosaic=True)
+                    elif getExpRecordAge(expRecord) > STALE_AGE:
+                        self.callback(expRecord, doPlotMosaic=True)
+                        # the callback didn't cause an OOM error, so the plot
+                        # is made and sent, so we are safe to delete the files
+                        self.log.info(f'Removing stale mosaic files for {expRecord.dataId}')
+                        for f in files:
+                            os.remove(f)
 
+            # handle noise maps
             if leftovers := self.getDataShardFilesDict('rawNoises'):
-                for expRecord in leftovers:
-                    nExpected = getNumExpectedItems(expRecord)
-                    if len(leftovers[expRecord]) == nExpected:
+                for recordNum, (expRecord, files) in enumerate(leftovers.items()):
+                    self.log.info(f"Processing leftover noisemap {recordNum+1} of {len(leftovers)}")
+                    if getNumExpectedItems(expRecord) == len(files):
                         self.log.info(f'Remaking noise plot for {expRecord.dataId}')
                         self.callback(expRecord, doPlotNoises=True)  # includes the upload
+                    elif getExpRecordAge(expRecord) > STALE_AGE:
+                        self.callback(expRecord, doPlotNoises=True)  # includes the upload
+                        self.log.info(f'Removing stale noise map files for {expRecord.dataId}')
+                        for f in files:
+                            os.remove(f)
 
             sleep(10)  # this need not be very aggressive
 
