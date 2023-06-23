@@ -558,7 +558,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
-        self.STALE_AGE = 60*60  # 1 hour
+        self.STALE_AGE = 5*60  # in seconds, so 5 mins
 
     def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
