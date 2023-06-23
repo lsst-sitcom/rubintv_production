@@ -556,7 +556,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
-        self.self.STALE_AGE = 60*60  # 1 hour
+        self.STALE_AGE = 60*60  # 1 hour
 
     def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -726,8 +726,8 @@ class Replotter(Plotter):
     def getLeftoverMosaicDict(self):
         """Get exposure records for which there are leftover mosaic files.
 
-        Returns a dict, keyed by exposure record, containing the number of files
-        that record.
+        Returns a dict, keyed by exposure record, containing a list of the
+        files for that record.
 
         Returns
         -------
@@ -749,7 +749,7 @@ class Replotter(Plotter):
             record = getExpRecord(self.butler, self.instrument, expId=expId)
             # a list comp is *much* faster than re-globbing if there are a lot
             # of files.
-            binnedImages = [f for f in allFiles if f.find(f'{expId}')!=-1]
+            binnedImages = [f for f in allFiles if f.find(f'{expId}') != -1]
             records[record] = binnedImages
 
         # Check to see if there is anything more recent than the most recent
