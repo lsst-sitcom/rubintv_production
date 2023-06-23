@@ -314,7 +314,7 @@ def makeMosaic(deferredDatasetRefs,
 
     success = False
     firstWarn = True
-    waitTime = 0
+    waitTime = -0.000001  # start at minus 1 microsec as an easy fix for the first loop for timeouts of zero
     startTime = time.time()
     while (not success) and (waitTime < timeout):
         try:
