@@ -557,13 +557,15 @@ class Plotter:
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
 
-    def plotNoises(self, expRecord):
+    def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        timeout : `int`
+            The timeout for waiting for the data to be complete.
 
         Returns
         -------
@@ -579,6 +581,7 @@ class Plotter:
                                    seqNum=seqNum,
                                    dataSetName='rawNoises',
                                    nExpected=nExpected,
+                                   timeout=timeout,
                                    logger=self.log,
                                    deleteIfComplete=True)
 
@@ -609,7 +612,7 @@ class Plotter:
 
         return saveFile
 
-    def plotFocalPlane(self, expRecord):
+    def plotFocalPlane(self, expRecord, timeout):
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -619,6 +622,8 @@ class Plotter:
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        timeout : `int`
+            The timeout for waiting for the data to be complete.
 
         Returns
         -------
@@ -643,6 +648,7 @@ class Plotter:
                              dataPath=self.locationConfig.calculatedDataPath,
                              savePlotAs=saveFile,
                              nExpected=nExpected,
+                             timeout=timeout,
                              logger=self.log)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
@@ -673,7 +679,7 @@ class Plotter:
             case _:
                 raise ValueError(f'Unknown instrument {instrument}')
 
-    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False):
+    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False, timeout=5):
         """Method called on each new expRecord as it is found in the repo.
 
         Note: the callback is used elsewhere to reprocess old data, so the
@@ -699,12 +705,12 @@ class Plotter:
 
         # TODO: Need some kind of wait mechanism for each of these
         if doPlotNoises:
-            noiseMapFile = self.plotNoises(expRecord)
+            noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
             channel = f'{instPrefix}_noise_map'
             self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         if doPlotMosaic:
-            focalPlaneFile = self.plotFocalPlane(expRecord)
+            focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
             channel = f'{instPrefix}_focal_plane_mosaic'
             self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
@@ -768,9 +774,9 @@ class Replotter(Plotter):
                         # no need to delete here because it's complete
                         # and so will self-delete automatically
                         self.log.info(f'Remaking mosaic for {expRecord.dataId}')
-                        self.callback(expRecord, doPlotMosaic=True)
+                        self.callback(expRecord, doPlotMosaic=True, timeout=0)
                     elif getExpRecordAge(expRecord) > STALE_AGE:
-                        self.callback(expRecord, doPlotMosaic=True)
+                        self.callback(expRecord, doPlotMosaic=True, timeout=0)
                         # the callback didn't cause an OOM error, so the plot
                         # is made and sent, so we are safe to delete the files
                         self.log.info(f'Removing stale mosaic files for {expRecord.dataId}')
@@ -783,9 +789,9 @@ class Replotter(Plotter):
                     self.log.info(f"Processing leftover noisemap {recordNum+1} of {len(leftovers)}")
                     if getNumExpectedItems(expRecord) == len(files):
                         self.log.info(f'Remaking noise plot for {expRecord.dataId}')
-                        self.callback(expRecord, doPlotNoises=True)  # includes the upload
+                        self.callback(expRecord, doPlotNoises=True, timeout=0)  # includes the upload
                     elif getExpRecordAge(expRecord) > STALE_AGE:
-                        self.callback(expRecord, doPlotNoises=True)  # includes the upload
+                        self.callback(expRecord, doPlotNoises=True, timeout=0)  # includes the upload
                         self.log.info(f'Removing stale noise map files for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)

@@ -404,9 +404,9 @@ def plotFocalPlaneMosaic(butler,
                          dataPath,
                          savePlotAs,
                          nExpected,
+                         timeout,
                          deleteIfComplete=True,
                          deleteRegardless=False,
-                         timeout=5,
                          logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
@@ -431,13 +431,13 @@ def plotFocalPlaneMosaic(butler,
         The filename to save the plot as.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
+    timeout : `float`
+        The maximum time to wait for the images to land.
     deleteIfComplete : `bool`, optional
         If True, delete the binned image files if the number of expected files
         is the number which was found.
     deleteRegardless : `bool`, optional
         If True, delete the binned images regardless of how many are found.
-    timeout : `float`
-        The maximum time to wait for the images to land.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
 
