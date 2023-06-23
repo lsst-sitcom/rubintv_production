@@ -556,6 +556,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
+        self.self.STALE_AGE = 60*60  # 1 hour
 
     def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -760,11 +761,6 @@ class Replotter(Plotter):
     def run(self):
         """Run continuously, looking for complete file sets and plotting them.
         """
-        # TODO: turn this into an end-of-day service, checking for day rollover
-        # and calling findLeftoverMosaics() with findIncomplete=True, and set
-        # deleteRegardless when plotting them to tidy up at the end of the day.
-        STALE_AGE = 60*60  # 1 hour
-
         while True:
             # handle mosaics
             if leftovers := self.getLeftoverMosaicDict():
@@ -775,7 +771,7 @@ class Replotter(Plotter):
                         # and so will self-delete automatically
                         self.log.info(f'Remaking mosaic for {expRecord.dataId}')
                         self.callback(expRecord, doPlotMosaic=True, timeout=0)
-                    elif getExpRecordAge(expRecord) > STALE_AGE:
+                    elif getExpRecordAge(expRecord) > self.STALE_AGE:
                         self.callback(expRecord, doPlotMosaic=True, timeout=0)
                         # the callback didn't cause an OOM error, so the plot
                         # is made and sent, so we are safe to delete the files
@@ -790,7 +786,7 @@ class Replotter(Plotter):
                     if getNumExpectedItems(expRecord) == len(files):
                         self.log.info(f'Remaking noise plot for {expRecord.dataId}')
                         self.callback(expRecord, doPlotNoises=True, timeout=0)  # includes the upload
-                    elif getExpRecordAge(expRecord) > STALE_AGE:
+                    elif getExpRecordAge(expRecord) > self.STALE_AGE:
                         self.callback(expRecord, doPlotNoises=True, timeout=0)  # includes the upload
                         self.log.info(f'Removing stale noise map files for {expRecord.dataId}')
                         for f in files:
