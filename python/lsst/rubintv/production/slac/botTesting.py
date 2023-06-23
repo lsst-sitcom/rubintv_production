@@ -25,6 +25,8 @@ import logging
 import json
 import matplotlib.pyplot as plt
 from time import sleep
+from functools import partial
+
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import IsrTask
@@ -761,34 +763,39 @@ class Replotter(Plotter):
     def run(self):
         """Run continuously, looking for complete file sets and plotting them.
         """
+        # workloads is a list of tuples, each of which is: (a filter function,
+        # a worker function, a string for the log). The filter function returns
+        # a dict of {expRecords: the corresponding files}
+        workloads = (
+            (
+                self.getLeftoverMosaicDict,
+                partial(self.callback, doPlotMosaic=True, timeout=0),
+                'mosaic',
+            ),
+            (
+                partial(self.getDataShardFilesDict, 'rawNoises'),
+                partial(self.callback, doPlotNoises=True, timeout=0),
+                'noisePlot',
+            )
+        )
+
         while True:
-            # handle mosaics
-            if leftovers := self.getLeftoverMosaicDict():
+            for filterFunction, workerFunction, workloadName in workloads:
+                leftovers = filterFunction()
+                if not leftovers:
+                    continue
                 for recordNum, (expRecord, files) in enumerate(leftovers.items()):
-                    self.log.info(f"Processing leftover mosaic {recordNum+1} of {len(leftovers)}")
+                    self.log.info(f"Processing leftover {workloadName} {recordNum+1} of {len(leftovers)}")
                     if getNumExpectedItems(expRecord) == len(files):
                         # no need to delete here because it's complete
                         # and so will self-delete automatically
-                        self.log.info(f'Remaking mosaic for {expRecord.dataId}')
-                        self.callback(expRecord, doPlotMosaic=True, timeout=0)
+                        self.log.info(f'Remaking {workloadName} for {expRecord.dataId}')
+                        workerFunction(expRecord)
                     elif getExpRecordAge(expRecord) > self.STALE_AGE:
-                        self.callback(expRecord, doPlotMosaic=True, timeout=0)
+                        workerFunction(expRecord)
                         # the callback didn't cause an OOM error, so the plot
                         # is made and sent, so we are safe to delete the files
-                        self.log.info(f'Removing stale mosaic files for {expRecord.dataId}')
-                        for f in files:
-                            os.remove(f)
-
-            # handle noise maps
-            if leftovers := self.getDataShardFilesDict('rawNoises'):
-                for recordNum, (expRecord, files) in enumerate(leftovers.items()):
-                    self.log.info(f"Processing leftover noisemap {recordNum+1} of {len(leftovers)}")
-                    if getNumExpectedItems(expRecord) == len(files):
-                        self.log.info(f'Remaking noise plot for {expRecord.dataId}')
-                        self.callback(expRecord, doPlotNoises=True, timeout=0)  # includes the upload
-                    elif getExpRecordAge(expRecord) > self.STALE_AGE:
-                        self.callback(expRecord, doPlotNoises=True, timeout=0)  # includes the upload
-                        self.log.info(f'Removing stale noise map files for {expRecord.dataId}')
+                        self.log.info(f'Removing stale {workloadName} files for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)
 
