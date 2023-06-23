@@ -742,6 +742,8 @@ class Replotter(Plotter):
         records = []
         dataPath = self.locationConfig.calculatedDataPath
         expIds = getBinnedImageExpIds(dataPath, self.instrument)
+        allFiles = getBinnedImageFiles(dataPath, self.instrument)  # grab all the files once and filter later
+        self.log.debug(f'Found {len(expIds)} expIds with binned images')
         for expId in expIds:
             record = getExpRecord(self.butler, self.instrument, expId=expId)
             if findIncomplete:  # we don't need to check for completeness so skip the costly checks
@@ -749,7 +751,10 @@ class Replotter(Plotter):
                 continue
 
             expected = getNumExpectedItems(record)
-            binnedImages = getBinnedImageFiles(dataPath, self.instrument, expId=expId)
+            # filtering to get binnedImages with a a list comp is *much* faster
+            # than re-globbing if there are a lot of files.
+            binnedImages = [f for f in allFiles if f.find(f'{expId}')!=-1]
+
             if expected == len(binnedImages):
                 self.log.debug(f"{expId} is complete with {len(binnedImages)} images found")
                 records.append(record)
