@@ -787,15 +787,15 @@ class Replotter(Plotter):
                 for recordNum, (expRecord, files) in enumerate(leftovers.items()):
                     self.log.info(f"Processing leftover {workloadName} {recordNum+1} of {len(leftovers)}")
                     if getNumExpectedItems(expRecord) == len(files):
-                        # no need to delete here because it's complete
-                        # and so will self-delete automatically
-                        self.log.info(f'Remaking {workloadName} for {expRecord.dataId}')
+                        # no need to delete here because it's complete and so
+                        # will self-delete automatically
+                        self.log.info(f'Remaking full {workloadName} for {expRecord.dataId}')
                         workerFunction(expRecord)
                     elif getExpRecordAge(expRecord) > self.STALE_AGE:
+                        self.log.info(f'Remaking partial, stale {workloadName} for {expRecord.dataId}')
                         workerFunction(expRecord)
-                        # the callback didn't cause an OOM error, so the plot
-                        # is made and sent, so we are safe to delete the files
-                        self.log.info(f'Removing stale {workloadName} files for {expRecord.dataId}')
+                        self.log.info(f'Removing {len(files)} stale {workloadName} files'
+                                      f' for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)
 
