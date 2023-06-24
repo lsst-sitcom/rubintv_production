@@ -31,6 +31,7 @@ from .utils import (isFileWorldWritable,
                     raiseIf,
                     sanitizeNans,
                     )
+from .watchers import FileWatcher, writeDataIdFile
 
 _LOG = logging.getLogger(__name__)
 
@@ -184,3 +185,256 @@ class TimedMetadataServer:
             if self.heartbeater is not None:
                 self.heartbeater.beat()
             sleep(self.cadence)
+
+
+class MultiSensorMetadataServer:
+    """Class for serving per-detector, per-REB/raft and per-CCD metedata in
+    multi-CCD cameras, i.e. ComCam, LSSTCam and TS8.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    instrument : `str`
+        The instrument.
+    detectors : `int` or `list` [`int`]
+        The detector, or detectors, to process.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
+    """
+    def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
+        if instrument not in ['LSST-TS8', 'LSSTCam', 'LSSTComCam']:
+            raise ValueError(f'Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam')
+        self.locationConfig = locationConfig
+        self.butler = butler
+        self.instrument = instrument
+        self.camera = butler.get('camera', instrument=self.instrument)
+
+        match instrument:
+            case 'LSST-TS8':
+                metadataShardPath = locationConfig.ts8MetadataShardPath
+            case 'LSSTComCam':
+                metadataShardPath = locationConfig.comCamMetadataShardPath
+            case 'LSSTCam':
+                metadataShardPath = locationConfig.botMetadataShardPath
+            case _:
+                raise ValueError(f'Instrument {instrument} not supported.')
+        self.metadataShardPath = metadataShardPath
+
+        self.detectors = self.camera.getDetector()
+        name = f'MultiSensorMetadataServer_{self.instrument}'
+        self.log = _LOG.getChild(name)
+        self.watcher = FileWatcher(locationConfig=locationConfig,
+                                   instrument=self.instrument,
+                                   dataProduct='raw',
+                                   doRaise=doRaise)
+
+
+    def writeExpRecordMetadataShard(self, expRecord):
+        """Write the exposure record metedata to a shard.
+
+        Only fires once, based on the value of TS8_METADATA_DETECTOR or
+        LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
+                            else LSSTCOMCAM_METADATA_DETECTOR)
+        if metadataDetector not in self.detectors:
+            return
+
+        md = {}
+        md['Exposure time'] = expRecord.exposure_time
+        md['Dark time'] = expRecord.dark_time
+        md['Image type'] = expRecord.observation_type
+        md['Test type'] = expRecord.observation_reason
+        md['Date'] = expRecord.timespan.begin.isot
+        md['Run number'] = expRecord.science_program
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: md}
+
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+
+    def writeImageMetadataShard(self, expRecord, exposureMetadata):
+        """Write the image metadata to a shard.
+
+        Note that all these header values are constant across all detectors,
+        so it is perfectly safe to pull them from one and display once.
+
+        Only fires once, based on the value of TS8_METADATA_DETECTOR or
+        LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        exposureMetadata : `dict`
+            The exposure metadata as a dict.
+        """
+        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
+                            else LSSTCOMCAM_METADATA_DETECTOR)
+        if metadataDetector not in self.detectors:
+            return
+
+        md = {}
+        for headerKey, displayValue in PER_IMAGE_HEADERS.items():
+            value = exposureMetadata.get(headerKey)
+            if value:
+                md[displayValue] = value
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: md}
+
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+
+    def writeRebHeaderShard(self, expRecord, raw):
+        """Write the REB condition metadata to a shard.
+
+        Note that all these header values are constant across all detectors, so
+        it is perfectly safe to pull them from one and display once.
+
+        Only fires once per REB, based on the value of
+        TS8_REB_HEADER_DETECTORS, LSSTCOMCAM_REB_HEADER_DETECTORS, or
+        LSSTCAM_REB_HEADER_DETECTORS, depending on the instrument.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        raw : `lsst.afw.image.Exposure`
+            The image containing the detector and metadata.
+        """
+        detector = raw.detector
+        exposureMetadata = raw.getMetadata().toDict()
+
+        if self.instrument == 'LSST-TS8':
+            detectorList = TS8_REB_HEADER_DETECTORS
+            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f'REB{rebNumber} Header'
+        elif self.instrument == 'LSSTComCam':
+            detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
+            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f'REB{rebNumber} Header'
+        elif self.instrument == 'LSSTCam':
+            detectorList = LSSTCAM_REB_HEADER_DETECTORS
+            rebNumber = detector.getName()  # use the full name for now
+            itemName = f'REB{rebNumber} Header'
+        else:
+            raise ValueError(f'Unknown instrument {self.instrument}')
+
+        if not any(detNum in detectorList for detNum in self.detectors):
+            return
+
+        md = {}
+        for headerKey in REB_HEADERS:
+            value = exposureMetadata.get(headerKey)
+            if value:
+                md[headerKey] = value
+
+        md['DISPLAY_VALUE'] = "📖"
+
+        seqNum = expRecord.seq_num
+        dayObs = expRecord.day_obs
+        shardData = {seqNum: {itemName: md}}  # uploading a dict item here!
+
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+
+    def callback(self, expRecord):
+        """Method called for each new expRecord as it is found in the repo.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+
+        today = expRecord.day_obs
+        seqNum = expRecord.seq_num
+
+        # things we need to do:
+        # 1. write the exposure record metadata to a shard - always do that
+
+        """
+        For each day:
+        get a list of all the seqNums we have
+
+        """
+
+        try:  # metadata writing should never bring the processing down
+            # this only fires for a single detector, based on METADATA_DETECTOR
+            self.writeExpRecordMetadataShard(expRecord)
+        except Exception:
+            self.log.exception(f'Failed to write metadata shard for {expRecord.dataId}')
+
+        if expRecord.observation_type == 'scan':
+            self.log.info(f'Skipping scan-mode image {expRecord.dataId}')
+            return
+
+        for detNum in self.detectors:
+            dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
+            self.log.info(f'Processing raw for {dataId}')
+            ampNoises = {}
+            raw = waitForDataProduct(butler=self.butler,
+                                     expRecord=expRecord,
+                                     dataset='raw',
+                                     detector=detNum,
+                                     timeout=5,
+                                     logger=self.log)
+            if not raw:
+                # Note to future: given that if we timeout here, everything
+                # downstream of this will fail, perhaps we should consider
+                # writing some kind of failure shard to signal that other
+                # things shouldn't bother waiting, rather than letting all
+                # downstream things timeout in these situations. I guess it
+                # depends on how often this actually ends up happening.
+                # Perhaps, give we should be striving for always processing
+                # everything, especially so early on (i.e. in isr on lab data)
+                # we actually shouldn't do this.
+                continue  # waitForDataProduct itself warns if it times out
+
+            self.writeImageMetadataShard(expRecord, raw.getMetadata().toDict())
+            self.writeRebHeaderShard(expRecord, raw)
+
+            detector = raw.detector
+            imaging, serialOverscan, parallelOverscan = getAmplifierRegions(raw)
+            for amp in detector:
+                ampName = amp.getName()
+                overscan = serialOverscan[ampName]
+                noise, _ = self.calculateNoise(overscan, 5, 200)
+                entryName = "_".join([detector.getName(), amp.getName()])
+                ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
+
+            # write the data
+            writeDataShard(path=self.locationConfig.calculatedDataPath,
+                           instrument=self.instrument,
+                           dayObs=dayObs,
+                           seqNum=seqNum,
+                           dataSetName='rawNoises',
+                           dataDict=ampNoises)
+            self.log.info(f'Wrote rawNoises data shard for detector {detNum}')
+            # then signal we're done for downstream
+            writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
+
+            postIsr = self.runIsr(raw)
+
+            writeBinnedImage(exp=postIsr,
+                             instrument=self.instrument,
+                             outputPath=self.locationConfig.calculatedDataPath,
+                             binSize=self.locationConfig.binning)
+            writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
+            self.log.info(f'Wrote binned image for detector {detNum}')
+
+            del raw
+            del postIsr
+
+    def run(self):
+        """Run continuously, calling the callback method with the latest
+        expRecord.
+        """
+        self.watcher.run(self.callback)
