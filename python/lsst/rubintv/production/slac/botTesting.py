@@ -784,7 +784,11 @@ class Replotter(Plotter):
                 leftovers = filterFunction()
                 if not leftovers:
                     continue
-                for recordNum, (expRecord, files) in enumerate(leftovers.items()):
+
+                records = list(leftovers.keys())
+                records = sorted(records, key=lambda r: r.timespan.end, reverse=True)  # newest first
+                for recordNum, expRecord in enumerate(records):
+                    files = leftovers[expRecord]
                     self.log.info(f"Processing leftover {workloadName} {recordNum+1} of {len(leftovers)}")
                     if getNumExpectedItems(expRecord) == len(files):
                         # no need to delete here because it's complete and so
