@@ -798,6 +798,9 @@ class Replotter(Plotter):
                                       f' for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)
+                    else:
+                        self.log.info(f'Not processing {workloadName} for {expRecord.dataId},'
+                                      ' waiting for it to go stale')
 
             sleep(10)  # this need not be very aggressive
 
