@@ -745,6 +745,9 @@ class Replotter(Plotter):
         records = {}
         dataPath = self.locationConfig.calculatedDataPath
         expIds = getBinnedImageExpIds(dataPath, self.instrument)
+        if not expIds:
+            return {}
+
         allFiles = getBinnedImageFiles(dataPath, self.instrument)
         self.log.debug(f'Found {len(expIds)} expIds with binned images, and {len(allFiles)} associated files')
         for expId in expIds:
