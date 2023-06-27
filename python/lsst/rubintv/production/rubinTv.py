@@ -1233,12 +1233,13 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         self.plotChannelName = 'tma_mount_motion_profile'
         self.metadataChannelName = 'tma_metadata'
+        self.doRaise = doRaise
 
         super().__init__(locationConfig=locationConfig,
                          metadataDirectory=metadataDirectory,
                          shardsDirectory=shardsDirectory,
                          channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
-                         doRaise=True)  # XXX change this back before merging
+                         doRaise=self.doRaise)
 
         self.eventMaker = TMAEventMaker()
         self.client = self.eventMaker.client
