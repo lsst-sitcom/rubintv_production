@@ -27,6 +27,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from time import sleep
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -51,6 +52,7 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import getCurrentDayObs_int
+from lsst.summit.utils.tmaUtils import TMAEventMaker, plotEvent
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.summit.utils import NightReport
@@ -63,6 +65,7 @@ from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
+from .metadataServers import TimedMetadataServer
 
 
 __all__ = [
@@ -76,6 +79,7 @@ __all__ = [
     'Heartbeater',
     'CalibrateCcdRunner',
     'NightReportChannel',
+    'TmaTelemetryChannel',
 ]
 
 
@@ -1191,3 +1195,127 @@ class NightReportChannel(BaseButlerChannel):
         except Exception as e:
             msg = f"Skipped updating the night report for {dataId}:"
             raiseIf(self.doRaise, e, self.log, msg=msg)
+
+
+class TmaTelemetryChannel(TimedMetadataServer):
+    """Class for generating TMA events and plotting their telemetry.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    metadataDirectory : `str`
+        The name of the directory for which the metadata is being served. Note
+        that this directory and the ``shardsDirectory`` are passed in because
+        although the ``LocationConfig`` holds all the location based path info
+        (and the name of the bucket to upload to), many directories containg
+        shards exist, and each one goes to a different page on the web app, so
+        this class must be told which set of files to be collating and
+        uploading to which channel.
+    shardsDirectory : `str`
+        The directory to find the shards in, usually of the form
+        ``metadataDirectory`` + ``'/shards'``.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
+    """
+    # The time between sweeps of the EFD for today's data.
+    cadence = 10
+    # upload heartbeat every n seconds
+    HEARTBEAT_UPLOAD_PERIOD = 30
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 120
+
+    def __init__(self, *,
+                 locationConfig,
+                 metadataDirectory,
+                 shardsDirectory,
+                 doRaise=False):
+
+        self.plotChannelName = 'tma_mount_motion_profile'
+        self.metadataChannelName = 'tma_metadata'
+
+        super().__init__(locationConfig=locationConfig,
+                         metadataDirectory=metadataDirectory,
+                         shardsDirectory=shardsDirectory,
+                         channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
+                         doRaise=True)  # XXX change this back before merging
+
+        self.eventMaker = TMAEventMaker()
+        self.client = self.eventMaker.client
+        self.figure = plt.figure(figsize=(10, 6))
+        self.prePadding = 1
+        self.postPadding = 2
+
+    def processDay(self, dayObs, skipEventNumbers={}):
+        """
+        """
+        events = self.eventMaker.getEvents(dayObs)
+        plotted = set()
+        for event in events:
+            if event.seqNum in skipEventNumbers:
+                continue
+            self.log.info(f'Plotting event {event.seqNum}')
+            self.figure.clear()
+            ax = self.figure.gca()
+            ax.clear()
+
+            plotEvent(self.client,
+                      event,
+                      fig=self.figure,
+                      prePadding=self.prePadding,
+                      postPadding=self.postPadding,)
+            filename = self._getSaveFilename(dayObs, event)
+            self.figure.savefig(filename)
+            self.uploader.uploadPerSeqNumPlot(self.plotChannelName,
+                                              dayObsInt=dayObs,
+                                              seqNumInt=event.seqNum,
+                                              filename=filename,
+                                              isLiveFile=True  # XXX remove this before merging
+                                              )
+            plotted.add(event.seqNum)
+            rowData = self.eventToMetadataRow(event)
+            writeMetadataShard(self.shardsDirectory, dayObs, rowData)
+            self.mergeShardsAndUpload()
+
+        return plotted
+
+        # rowData['Azimuth start'] = event.
+        # rowData['Azimuth end'] = event.
+        # rowData['Elevation start'] = event.
+        # rowData['Elevation end'] = event.
+
+    def eventToMetadataRow(self, event):
+        rowData = {}
+        seqNum = event.seqNum
+        rowData['Seq. No.'] = event.seqNum
+        rowData['Event version number'] = event.version
+        rowData['Event type'] = event.type.name
+        rowData['End reason'] = event.endReason.name
+        rowData['Duration'] = event.duration
+        rowData['Time UTC'] = event.begin.isot
+        return {seqNum: rowData}
+
+    def _getSaveFilename(self, dayObs, event):
+        filename = f"tma_mount_motion_profile_{dayObs}_{event.seqNum:06}.png"
+        filename = os.path.join(self.locationConfig.plotPath, filename)
+        return filename
+
+    def run(self):
+        """Run continuously, updating the plots and uploading the shards.
+        """
+        dayObs = getCurrentDayObs_int()
+        plotted = set()
+        while True:
+            try:
+                events = self.eventMaker.getEvents(dayObs)
+                for event in events:
+                    justMade = self.processDay(dayObs, skipEventNumbers=plotted)
+                    plotted.add(justMade)
+
+                self.mergeShardsAndUpload()  # updates all shards everywhere
+
+                self.heartbeater.beat()
+                sleep(self.cadence)
+
+            except Exception as e:
+                raiseIf(self.doRaise, e, self.log)
