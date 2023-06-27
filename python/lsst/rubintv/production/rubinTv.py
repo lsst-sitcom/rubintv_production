@@ -52,7 +52,11 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import getCurrentDayObs_int
-from lsst.summit.utils.tmaUtils import TMAEventMaker, plotEvent
+from lsst.summit.utils.tmaUtils import (TMAEventMaker,
+                                        plotEvent,
+                                        getCommandsDuringEvent,
+                                        getAzimuthElevationDataForEvent,
+                                        )
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.summit.utils import NightReport
@@ -1255,17 +1259,46 @@ class TmaTelemetryChannel(TimedMetadataServer):
         for event in events:
             if event.seqNum in skipEventNumbers:
                 continue
+            assert event.dayObs == dayObs
             self.log.info(f'Plotting event {event.seqNum}')
             self.figure.clear()
             ax = self.figure.gca()
             ax.clear()
 
             try:
+                # get the data separately so we can take some min/max on it etc
+                azimuthData, elevationData = getAzimuthElevationDataForEvent(self.client,
+                                                                             event,
+                                                                             prePadding=self.prePadding,
+                                                                             postPadding=self.postPadding)
+
+                azStart = azimuthData.iloc[0]['actualPosition']
+                elStart = elevationData.iloc[0]['actualPosition']
+                azMove = azimuthData.iloc[-1]['actualPosition'] - azStart
+                elMove = elevationData.iloc[-1]['actualPosition'] - elStart
+                md = {}
+                md['Azimuth start'] = azStart
+                md['Elevation start'] = elStart
+                md['Azimuth move'] = azMove
+                md['Elevation move'] = elMove
+                rowData = {event.seqNum: md}
+                writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+                commands = getCommandsDuringEvent(self.client, event)
+                if not all([time is None for time in commands.values()]):
+                    rowData = {event.seqNum: {'Has commands?': '✅'}}
+                    writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
                 plotEvent(self.client,
                           event,
                           fig=self.figure,
                           prePadding=self.prePadding,
-                          postPadding=self.postPadding,)
+                          postPadding=self.postPadding,
+                          commands=commands,
+                          azimuthData=azimuthData,
+                          elevationData=elevationData,
+                          )
+
                 filename = self._getSaveFilename(dayObs, event)
                 self.figure.savefig(filename)
                 self.uploader.uploadPerSeqNumPlot(self.plotChannelName,
@@ -1275,21 +1308,19 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                                   isLiveFile=True  # XXX remove this before merging
                                                   )
             except Exception as e:
+                rowData = {event.seqNum: {'Plotting failed?': '😔'}}
+                writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
                 self.log.exception(f'Failed to plot event {event.seqNum}')
                 raiseIf(self.doRaise, e, self.log)
             finally:
                 plotted.add(event.seqNum)  # don't retry plotting on failure
 
             rowData = self.eventToMetadataRow(event)
-            writeMetadataShard(self.shardsDirectory, dayObs, rowData)
+            writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
             self.mergeShardsAndUpload()
 
         return plotted
-
-        # rowData['Azimuth start'] = event.
-        # rowData['Azimuth end'] = event.
-        # rowData['Elevation start'] = event.
-        # rowData['Elevation end'] = event.
 
     def eventToMetadataRow(self, event):
         rowData = {}
