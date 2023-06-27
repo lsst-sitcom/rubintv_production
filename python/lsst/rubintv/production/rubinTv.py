@@ -1259,20 +1259,26 @@ class TmaTelemetryChannel(TimedMetadataServer):
             ax = self.figure.gca()
             ax.clear()
 
-            plotEvent(self.client,
-                      event,
-                      fig=self.figure,
-                      prePadding=self.prePadding,
-                      postPadding=self.postPadding,)
-            filename = self._getSaveFilename(dayObs, event)
-            self.figure.savefig(filename)
-            self.uploader.uploadPerSeqNumPlot(self.plotChannelName,
-                                              dayObsInt=dayObs,
-                                              seqNumInt=event.seqNum,
-                                              filename=filename,
-                                              isLiveFile=True  # XXX remove this before merging
-                                              )
-            plotted.add(event.seqNum)
+            try:
+                plotEvent(self.client,
+                          event,
+                          fig=self.figure,
+                          prePadding=self.prePadding,
+                          postPadding=self.postPadding,)
+                filename = self._getSaveFilename(dayObs, event)
+                self.figure.savefig(filename)
+                self.uploader.uploadPerSeqNumPlot(self.plotChannelName,
+                                                  dayObsInt=dayObs,
+                                                  seqNumInt=event.seqNum,
+                                                  filename=filename,
+                                                  isLiveFile=True  # XXX remove this before merging
+                                                  )
+            except Exception as e:
+                self.log.exception(f'Failed to plot event {event.seqNum}')
+                raiseIf(self.doRaise, e, self.log)
+            finally:
+                plotted.add(event.seqNum)  # don't retry plotting on failure
+
             rowData = self.eventToMetadataRow(event)
             writeMetadataShard(self.shardsDirectory, dayObs, rowData)
             self.mergeShardsAndUpload()
