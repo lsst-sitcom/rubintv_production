@@ -1257,6 +1257,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
         """
         """
         events = self.eventMaker.getEvents(dayObs)
+        self.log.info(f'Found {len(events)} events for {dayObs=} of which'
+                      f' {len(skipEventNumbers)} have already been created')
         plotted = set()
         for event in events:
             if event.seqNum in skipEventNumbers:
