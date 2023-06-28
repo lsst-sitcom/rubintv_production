@@ -57,6 +57,7 @@ from lsst.summit.utils.tmaUtils import (TMAEventMaker,
                                         getCommandsDuringEvent,
                                         getAzimuthElevationDataForEvent,
                                         )
+from lsst.summit.utils.efdUtils import clipDataToEvent
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.summit.utils import NightReport
@@ -1272,15 +1273,24 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                                                              prePadding=self.prePadding,
                                                                              postPadding=self.postPadding)
 
-                azStart = azimuthData.iloc[0]['actualPosition']
-                elStart = elevationData.iloc[0]['actualPosition']
-                azMove = azimuthData.iloc[-1]['actualPosition'] - azStart
-                elMove = elevationData.iloc[-1]['actualPosition'] - elStart
+                clippedAz = clipDataToEvent(azimuthData, event)
+                clippedEl = clipDataToEvent(elevationData, event)
+
+                azStart = clippedAz.iloc[0]['actualPosition']
+                elStart = clippedEl.iloc[0]['actualPosition']
+                azMove = clippedAz.iloc[-1]['actualPosition'] - azStart
+                elMove = clippedEl.iloc[-1]['actualPosition'] - elStart
                 md = {}
                 md['Azimuth start'] = azStart
                 md['Elevation start'] = elStart
                 md['Azimuth move'] = azMove
                 md['Elevation move'] = elMove
+                # key=abs gets the item with the largest absolute value
+                # but keeps the sign so we don't deal with min/max depending on
+                # the direction of the move etc
+                md['Largest azimuth torque'] = max(clippedAz['actualTorque'], key=abs)
+                md['Largest elevation torque'] = max(clippedEl['actualTorque'], key=abs)
+
                 rowData = {event.seqNum: md}
                 writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
