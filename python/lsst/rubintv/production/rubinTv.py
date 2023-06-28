@@ -1246,8 +1246,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
                          channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
                          doRaise=self.doRaise)
 
-        self.eventMaker = TMAEventMaker()
-        self.client = self.eventMaker.client
+        self.client = EfdClient('summit_efd')  # k8s pods don't support auto-making the client
+        self.eventMaker = TMAEventMaker(client=self.client)
         self.figure = plt.figure(figsize=(10, 8))
         self.prePadding = 1
         self.postPadding = 2
