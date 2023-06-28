@@ -1377,6 +1377,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
                     dayObs = getCurrentDayObs_int()
                     plotted = set()
 
+                # TODO: need to work out a better way of dealing with pod
+                # restarts. At present this will just remake everything.
                 justMade = self.processDay(dayObs, skipEventNumbers=plotted)
                 plotted.update(justMade)
 
