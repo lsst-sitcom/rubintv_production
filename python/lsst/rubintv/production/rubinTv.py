@@ -1248,7 +1248,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         self.eventMaker = TMAEventMaker()
         self.client = self.eventMaker.client
-        self.figure = plt.figure(figsize=(10, 6))
+        self.figure = plt.figure(figsize=(10, 8))
         self.prePadding = 1
         self.postPadding = 2
         self.commandsToPlot = ['raDecTarget', 'moveToTarget', 'startTracking', 'stopTracking']
