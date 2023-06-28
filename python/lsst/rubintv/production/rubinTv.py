@@ -1277,20 +1277,35 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 clippedAz = clipDataToEvent(azimuthData, event)
                 clippedEl = clipDataToEvent(elevationData, event)
 
-                azStart = clippedAz.iloc[0]['actualPosition']
-                elStart = clippedEl.iloc[0]['actualPosition']
-                azMove = clippedAz.iloc[-1]['actualPosition'] - azStart
-                elMove = clippedEl.iloc[-1]['actualPosition'] - elStart
                 md = {}
+                azStart = None
+                elStart = None
+                azMove = None
+                elMove = None
+                maxElTorque = None
+                maxAzTorque = None
+
+                if len(clippedAz) > 0:
+                    azStart = clippedAz.iloc[0]['actualPosition']
+                    azMove = clippedAz.iloc[-1]['actualPosition'] - azStart
+                    # key=abs gets the item with the largest absolute value but
+                    # keeps the sign so we don't deal with min/max depending on
+                    # the direction of the move etc
+                    maxAzTorque = max(clippedAz['actualTorque'], key=abs)
+
+                if len(clippedEl) > 0:
+                    elStart = clippedEl.iloc[0]['actualPosition']
+                    elMove = clippedEl.iloc[-1]['actualPosition'] - elStart
+                    maxElTorque = max(clippedEl['actualTorque'], key=abs)
+
+                # values could be None by design, for when there is no data
+                # in the clipped dataframes, i.e. from the event window exactly
                 md['Azimuth start'] = azStart
                 md['Elevation start'] = elStart
                 md['Azimuth move'] = azMove
                 md['Elevation move'] = elMove
-                # key=abs gets the item with the largest absolute value
-                # but keeps the sign so we don't deal with min/max depending on
-                # the direction of the move etc
-                md['Largest azimuth torque'] = max(clippedAz['actualTorque'], key=abs)
-                md['Largest elevation torque'] = max(clippedEl['actualTorque'], key=abs)
+                md['Largest azimuth torque'] = maxAzTorque
+                md['Largest elevation torque'] = maxElTorque
 
                 rowData = {event.seqNum: md}
                 writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
