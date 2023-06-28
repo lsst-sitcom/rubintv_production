@@ -1371,10 +1371,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
         plotted = set()
         while True:
             try:
-                events = self.eventMaker.getEvents(dayObs)
-                for event in events:
-                    justMade = self.processDay(dayObs, skipEventNumbers=plotted)
-                    plotted.add(justMade)
+                if hasDayRolledOver(dayObs):
+                    dayObs = getCurrentDayObs_int()
+                    plotted = set()
+
+                justMade = self.processDay(dayObs, skipEventNumbers=plotted)
+                plotted.add(justMade)
 
                 self.mergeShardsAndUpload()  # updates all shards everywhere
 
