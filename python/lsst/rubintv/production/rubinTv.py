@@ -1251,6 +1251,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
         self.figure = plt.figure(figsize=(10, 6))
         self.prePadding = 1
         self.postPadding = 2
+        self.commandsToPlot = ['raDecTarget', 'moveToTarget', 'startTracking', 'stopTracking']
 
     def processDay(self, dayObs, skipEventNumbers={}):
         """
@@ -1294,7 +1295,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 rowData = {event.seqNum: md}
                 writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
-                commands = getCommandsDuringEvent(self.client, event)
+                commands = getCommandsDuringEvent(self.client, event, self.commandsToPlot, doLog=False)
                 if not all([time is None for time in commands.values()]):
                     rowData = {event.seqNum: {'Has commands?': '✅'}}
                     writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
