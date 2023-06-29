@@ -31,3 +31,7 @@ scratchPath: '/project/rubintv/LSSTComCam'
 plotPath: '/project/rubintv/LSSTComCam/plots'
 binnedImagePath: '/project/rubintv/LSSTComCam/binnedImages'
 calculatedDataPath: '/project/rubintv/LSSTComCam/calculatedData'
+
+# TMA config:
+tmaMetadataPath: '/project/rubintv/tma/sidecar_metadata'
+tmaMetadataShardPath: '/project/rubintv/tma/sidecar_metadata/shards'
