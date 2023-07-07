@@ -25,6 +25,10 @@ import logging
 import json
 import matplotlib.pyplot as plt
 from time import sleep
+from functools import partial
+from dataclasses import dataclass
+from typing import Callable
+
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
 from lsst.ip.isr import IsrTask
@@ -43,6 +47,8 @@ from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFil
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
 
 from lsst.summit.utils.butlerUtils import getExpRecord
+from lsst.summit.utils.utils import getExpRecordAge
+
 
 _LOG = logging.getLogger(__name__)
 
@@ -89,7 +95,7 @@ TS8_REB_HEADER_DETECTORS = [18, 21, 24]
 LSSTCOMCAM_REB_HEADER_DETECTORS = [0, 3, 6]
 # The magic detectors which write the REB headers for LSSTCam, selected to land
 # on all the different REBs
-LSSTCAM_REB_HEADER_DETECTORS = [999]  # XXX Fake value, replace once known
+LSSTCAM_REB_HEADER_DETECTORS = [13, 94]  # 1x e2v, 1x ITL. Need a better way to do this for partial reads.
 
 TS8_X_RANGE = (-63.2, 63.1)
 TS8_Y_RANGE = (-62.5, 62.6)
@@ -393,18 +399,21 @@ class RawProcesser:
 
         if self.instrument == 'LSST-TS8':
             detectorList = TS8_REB_HEADER_DETECTORS
+            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f'REB{rebNumber} Header'
         elif self.instrument == 'LSSTComCam':
             detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
+            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f'REB{rebNumber} Header'
         elif self.instrument == 'LSSTCam':
             detectorList = LSSTCAM_REB_HEADER_DETECTORS
+            rebNumber = detector.getName()  # use the full name for now
+            itemName = f'REB{rebNumber} Header'
         else:
             raise ValueError(f'Unknown instrument {self.instrument}')
 
         if not any(detNum in detectorList for detNum in self.detectors):
             return
-
-        rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
-        itemName = f'REB{rebNumber} Header'
 
         md = {}
         for headerKey in REB_HEADERS:
@@ -503,6 +512,9 @@ class RawProcesser:
             writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
+            del raw
+            del postIsr
+
     def run(self):
         """Run continuously, calling the callback method with the latest
         expRecord.
@@ -548,14 +560,17 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
+        self.STALE_AGE = 5*60  # in seconds, so 5 mins
 
-    def plotNoises(self, expRecord):
+    def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        timeout : `int`
+            The timeout for waiting for the data to be complete.
 
         Returns
         -------
@@ -571,6 +586,7 @@ class Plotter:
                                    seqNum=seqNum,
                                    dataSetName='rawNoises',
                                    nExpected=nExpected,
+                                   timeout=timeout,
                                    logger=self.log,
                                    deleteIfComplete=True)
 
@@ -579,8 +595,9 @@ class Plotter:
             return None
 
         perCcdNoises = fullAmpDictToPerCcdDicts(noises)
-        plt.figure(figsize=(10, 10))
-        ax = plt.subplot(111)
+        self.fig.clear()
+        ax = self.fig.gca()
+        ax.clear()
 
         xRange = TS8_X_RANGE if isOneRaft(self.instrument) else LSSTCAM_X_RANGE
         yRange = TS8_Y_RANGE if isOneRaft(self.instrument) else LSSTCAM_Y_RANGE
@@ -592,14 +609,15 @@ class Plotter:
         focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
                                               x_range=xRange,
                                               y_range=yRange,
+                                              z_range=(0, 15),
                                               camera=self.camera)
 
-        plt.savefig(saveFile)
+        self.fig.savefig(saveFile)
         self.log.info(f'Wrote rawNoises plot for {expRecord.dataId} to {saveFile}')
 
         return saveFile
 
-    def plotFocalPlane(self, expRecord):
+    def plotFocalPlane(self, expRecord, timeout):
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -609,6 +627,8 @@ class Plotter:
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        timeout : `int`
+            The timeout for waiting for the data to be complete.
 
         Returns
         -------
@@ -624,13 +644,16 @@ class Plotter:
 
         nExpected = getNumExpectedItems(expRecord)
 
+        self.fig.clear()
         plotFocalPlaneMosaic(butler=self.butler,
+                             figure=self.fig,
                              expId=expId,
                              camera=self.camera,
                              binSize=self.locationConfig.binning,
                              dataPath=self.locationConfig.calculatedDataPath,
                              savePlotAs=saveFile,
                              nExpected=nExpected,
+                             timeout=timeout,
                              logger=self.log)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
         return saveFile
@@ -661,7 +684,7 @@ class Plotter:
             case _:
                 raise ValueError(f'Unknown instrument {instrument}')
 
-    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False):
+    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False, timeout=5):
         """Method called on each new expRecord as it is found in the repo.
 
         Note: the callback is used elsewhere to reprocess old data, so the
@@ -679,6 +702,9 @@ class Plotter:
             If True, plot and upload the focal plane mosaic.
         doPlotNoises : `bool`
             If True, plot and upload the per-amplifier noise map.
+        timeout : `float`
+            How to wait for data products to land before giving up and plotting
+            what we have.
         """
         self.log.info(f'Making plots for {expRecord.dataId}')
         dayObs = expRecord.day_obs
@@ -687,12 +713,12 @@ class Plotter:
 
         # TODO: Need some kind of wait mechanism for each of these
         if doPlotNoises:
-            noiseMapFile = self.plotNoises(expRecord)
+            noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
             channel = f'{instPrefix}_noise_map'
             self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         if doPlotMosaic:
-            focalPlaneFile = self.plotFocalPlane(expRecord)
+            focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
             channel = f'{instPrefix}_focal_plane_mosaic'
             self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
@@ -705,23 +731,22 @@ class Plotter:
 
 class Replotter(Plotter):
 
-    def findLeftoverMosaics(self, findIncomplete=False):
+    @dataclass
+    class ReplotterWorkload(Uploader):
+        finderFunction: Callable
+        workerFunction: Callable
+        name: str
+
+    def getLeftoverMosaicDict(self):
         """Get exposure records for which there are leftover mosaic files.
 
-        By default, only records for which there is a complete mosaic fileset
-        are returned. To get all the exposure records for which there are
-        files, set ``findIncomplete`` to ``True``.
-
-        Parameters
-        ----------
-        findIncomplete : `bool`, optional
-            If True, return all records, regardless of whether the leftover
-            file set forms a complete mosaic.
+        Returns a dict, keyed by exposure record, containing a list of the
+        files for that record.
 
         Returns
         -------
-        records : `list` [`lsst.daf.butler.DimensionRecord`]
-            The list of records.
+        shards : `dict` [`lsst.daf.butler.DimensionRecord`, `list` [`str`]]
+            A dictionary, keyed by exposure record, of the binned image files.
         """
         # must grab this before scanning for data, to protect against new
         # images arriving during the scrape. This watcher watched for
@@ -729,50 +754,73 @@ class Replotter(Plotter):
         # raw one, and so if the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
-        records = []
+        records = {}
         dataPath = self.locationConfig.calculatedDataPath
         expIds = getBinnedImageExpIds(dataPath, self.instrument)
+        if not expIds:
+            return {}
+
+        allFiles = getBinnedImageFiles(dataPath, self.instrument)
+        self.log.debug(f'Found {len(expIds)} expIds with binned images, and {len(allFiles)} associated files')
         for expId in expIds:
             record = getExpRecord(self.butler, self.instrument, expId=expId)
-            if findIncomplete:  # we don't need to check for completeness so skip the costly checks
-                records.append(record)
-                continue
-
-            expected = getNumExpectedItems(record)
-            binnedImages = getBinnedImageFiles(dataPath, self.instrument, expId=expId)
-            if expected == len(binnedImages):
-                self.log.debug(f"{expId} is complete with {len(binnedImages)} images found")
-                records.append(record)
-            else:
-                self.log.debug(f"{expId} is not complete, with {len(binnedImages)} items of {expected} found")
-                if findIncomplete:
-                    records.append(record)
+            # a list comp is *much* faster than re-globbing if there are a lot
+            # of files.
+            binnedImages = [f for f in allFiles if f.find(f'{expId}') != -1]
+            records[record] = binnedImages
 
         # Check to see if there is anything more recent than the most recent
         # expRecord which existed when we started looking for data, and if so,
         # remove them, so that we don't collide with the running processes.
-        records = [r for r in records if r.timespan.end < mostRecentExp.timespan.end]
+        records = {r: files for r, files in records.items() if r.timespan.end < mostRecentExp.timespan.end}
         return records
 
     def run(self):
         """Run continuously, looking for complete file sets and plotting them.
         """
-        # TODO: turn this into an end-of-day service, checking for day rollover
-        # and calling findLeftoverMosaics() with findIncomplete=True, and set
-        # deleteRegardless when plotting them to tidy up at the end of the day.
+        # workloads are a dataclass, holding a callable called finderFunction,
+        # which returns returns a dict of {expRecord: [corresponding files]}
+        # which are the exposure records which have data to be processed, and
+        # the corresponding files to process, a callable called workerFunction,
+        # which does the actual processing of each exposure record, and a
+        # string called name, which is used for logging.
+        workload1 = self.ReplotterWorkload(
+            finderFunction=self.getLeftoverMosaicDict,
+            workerFunction=partial(self.callback, doPlotMosaic=True, timeout=0),
+            name='mosaic',
+        )
+        workload2 = self.ReplotterWorkload(
+            finderFunction=partial(self.getDataShardFilesDict, 'rawNoises'),
+            workerFunction=partial(self.callback, doPlotNoises=True, timeout=0),
+            name='noisePlot',
+        )
 
         while True:
-            if leftovers := self.findLeftoverMosaics():
-                for expRecord in leftovers:
-                    self.log.info(f'Remaking mosaic for {expRecord.dataId}')
-                    self.callback(expRecord, doPlotMosaic=True)  # includes the upload
+            for workload in [workload1, workload2]:
+                leftovers = workload.finderFunction()
+                if not leftovers:
+                    continue
 
-            if leftovers := self.getDataShardFilesDict('rawNoises'):
-                for expRecord in leftovers:
-                    nExpected = getNumExpectedItems(expRecord)
-                    if len(leftovers[expRecord]) == nExpected:
-                        self.log.info(f'Remaking noise plot for {expRecord.dataId}')
-                        self.callback(expRecord, doPlotNoises=True)  # includes the upload
+                records = list(leftovers.keys())
+                records = sorted(records, key=lambda r: r.timespan.end, reverse=True)  # newest first
+                for recordNum, expRecord in enumerate(records):
+                    files = leftovers[expRecord]
+                    self.log.info(f"Processing leftover {workload.name} {recordNum+1} of {len(leftovers)}")
+                    if getNumExpectedItems(expRecord) == len(files):
+                        # no need to delete here because it's complete and so
+                        # will self-delete automatically
+                        self.log.info(f'Remaking full {workload.name} for {expRecord.dataId}')
+                        workload.workerFunction(expRecord)
+                    elif getExpRecordAge(expRecord) > self.STALE_AGE:
+                        self.log.info(f'Remaking partial, stale {workload.name} for {expRecord.dataId}')
+                        workload.workerFunction(expRecord)
+                        self.log.info(f'Removing {len(files)} stale {workload.name} files'
+                                      f' for {expRecord.dataId}')
+                        for f in files:
+                            os.remove(f)
+                    else:
+                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
+                                      ' waiting for it to go stale')
 
             sleep(10)  # this need not be very aggressive
 

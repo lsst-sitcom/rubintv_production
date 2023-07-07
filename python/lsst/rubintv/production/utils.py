@@ -734,7 +734,7 @@ def getShardedData(path,
                    seqNum,
                    dataSetName,
                    nExpected,
-                   timeout=5,
+                   timeout,
                    logger=None,
                    deleteIfComplete=True,
                    deleteRegardless=False):
@@ -762,7 +762,7 @@ def getShardedData(path,
         been collected, their contents are merged and returned immediately. If
         ``nExpected`` items are not found after ``timeout`` seconds, the items
         which have been found within the time limit are merged and returned.
-    timeout : `float`, optional
+    timeout : `float`
         The timeout period after which to give up waiting for files to land.
     logger : `logging.Logger`, optional
         The logger for logging warnings if files don't appear.
@@ -791,7 +791,9 @@ def getShardedData(path,
                                            seqNum=seqNum)
 
     start = time.time()
-    while time.time() - start < timeout:
+    firstLoop = True
+    while firstLoop or (time.time() - start < timeout):
+        firstLoop = False  # ensure we always run at least once
         files = glob.glob(pattern)
         if len(files) > nExpected:
             # it is ambiguous which to use to form a coherent set, so raise

@@ -31,7 +31,6 @@ from lsst.summit.utils import getQuantiles
 
 import os
 import lsst.afw.image as afwImage
-import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib import cm
 
@@ -315,7 +314,7 @@ def makeMosaic(deferredDatasetRefs,
 
     success = False
     firstWarn = True
-    waitTime = 0
+    waitTime = -0.000001  # start at minus 1 microsec as an easy fix for the first loop for timeouts of zero
     startTime = time.time()
     while (not success) and (waitTime < timeout):
         try:
@@ -398,15 +397,16 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
 
 
 def plotFocalPlaneMosaic(butler,
+                         figure,
                          expId,
                          camera,
                          binSize,
                          dataPath,
                          savePlotAs,
                          nExpected,
+                         timeout,
                          deleteIfComplete=True,
                          deleteRegardless=False,
-                         timeout=5,
                          logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
@@ -417,6 +417,8 @@ def plotFocalPlaneMosaic(butler,
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
+    figure : `matplotlib.figure.Figure`
+        The figure to plot on.
     expId : `int`
         The exposure id.
     camera : `lsst.afw.cameraGeom.Camera`
@@ -429,13 +431,13 @@ def plotFocalPlaneMosaic(butler,
         The filename to save the plot as.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
+    timeout : `float`
+        The maximum time to wait for the images to land.
     deleteIfComplete : `bool`, optional
         If True, delete the binned image files if the number of expected files
         is the number which was found.
     deleteRegardless : `bool`, optional
         If True, delete the binned images regardless of how many are found.
-    timeout : `float`
-        The maximum time to wait for the images to land.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
 
@@ -475,23 +477,25 @@ def plotFocalPlaneMosaic(butler,
         logger.warning(f"Failed to make mosaic for {expId}")
         return
     logger.info(f"Made mosaic image for {expId}")
-    _plotFpMosaic(mosaic, saveAs=savePlotAs)
+    _plotFpMosaic(mosaic, fig=figure, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
 
 
-def _plotFpMosaic(im, scalingOption='CCS', saveAs=''):
+def _plotFpMosaic(im, fig, scalingOption='CCS', saveAs=''):
     """Plot the focal plane mosaic, optionally saving as a png.
 
     Parameters
     ----------
     im : `lsst.afw.image.Image`
         The focal plane mosaiced image to render.
+    fig : `matplotlib.figure.Figure`
+        The figure to plot on.
     saveAs : `str`, optional
         The filename to save the plot as.
     """
     data = im.array
-    plt.figure(figsize=(16, 16))
-    ax = plt.gca()
+    ax = fig.gca()
+    ax.clear()
 
     cmap = cm.gray
     match scalingOption:
@@ -511,12 +515,12 @@ def _plotFpMosaic(im, scalingOption='CCS', saveAs=''):
         case _:
             raise ValueError(f"Unknown plot scaling option {scalingOption}")
 
-    im = plt.imshow(data, norm=norm, interpolation='None', cmap=cmap, origin='lower')
+    im = ax.imshow(data, norm=norm, interpolation='None', cmap=cmap, origin='lower')
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im, cax=cax)
+    fig.colorbar(im, cax=cax)
 
-    plt.tight_layout()
+    fig.tight_layout()
     if saveAs:
-        plt.savefig(saveAs)
+        fig.savefig(saveAs)
