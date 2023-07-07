@@ -792,7 +792,7 @@ def getShardedData(path,
 
     start = time.time()
     firstLoop = True
-    while firstLoop or time.time() - start < timeout:
+    while firstLoop or (time.time() - start < timeout):
         firstLoop = False  # ensure we always run at least once
         files = glob.glob(pattern)
         if len(files) > nExpected:
