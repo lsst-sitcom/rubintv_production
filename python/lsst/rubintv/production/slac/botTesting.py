@@ -26,6 +26,8 @@ import json
 import matplotlib.pyplot as plt
 from time import sleep
 from functools import partial
+from dataclasses import dataclass
+from typing import Callable
 
 from lsst.eo.pipe.plotting import focal_plane_plotting
 
@@ -700,6 +702,9 @@ class Plotter:
             If True, plot and upload the focal plane mosaic.
         doPlotNoises : `bool`
             If True, plot and upload the per-amplifier noise map.
+        timeout : `float`
+            How to wait for data products to land before giving up and plotting
+            what we have.
         """
         self.log.info(f'Making plots for {expRecord.dataId}')
         dayObs = expRecord.day_obs
@@ -725,6 +730,13 @@ class Plotter:
 
 
 class Replotter(Plotter):
+
+    @dataclass
+    class ReplotterWorkload(Uploader):
+        finderFunction: Callable
+        workerFunction: Callable
+        name: str
+
     def getLeftoverMosaicDict(self):
         """Get exposure records for which there are leftover mosaic files.
 
@@ -766,25 +778,26 @@ class Replotter(Plotter):
     def run(self):
         """Run continuously, looking for complete file sets and plotting them.
         """
-        # workloads is a list of tuples, each of which is: (a filter function,
-        # a worker function, a string for the log). The filter function returns
-        # a dict of {expRecords: the corresponding files}
-        workloads = (
-            (
-                self.getLeftoverMosaicDict,
-                partial(self.callback, doPlotMosaic=True, timeout=0),
-                'mosaic',
-            ),
-            (
-                partial(self.getDataShardFilesDict, 'rawNoises'),
-                partial(self.callback, doPlotNoises=True, timeout=0),
-                'noisePlot',
-            )
+        # workloads are a dataclass, holding a callable called finderFunction,
+        # which returns returns a dict of {expRecord: [corresponding files]}
+        # which are the exposure records which have data to be processed, and
+        # the corresponding files to process, a callable called workerFunction,
+        # which does the actual processing of each exposure record, and a
+        # string called name, which is used for logging.
+        workload1 = self.ReplotterWorkload(
+            finderFunction=self.getLeftoverMosaicDict,
+            workerFunction=partial(self.callback, doPlotMosaic=True, timeout=0),
+            name='mosaic',
+        )
+        workload2 = self.ReplotterWorkload(
+            finderFunction=partial(self.getDataShardFilesDict, 'rawNoises'),
+            workerFunction=partial(self.callback, doPlotNoises=True, timeout=0),
+            name='noisePlot',
         )
 
         while True:
-            for filterFunction, workerFunction, workloadName in workloads:
-                leftovers = filterFunction()
+            for workload in [workload1, workload2]:
+                leftovers = workload.finderFunction()
                 if not leftovers:
                     continue
 
@@ -792,21 +805,21 @@ class Replotter(Plotter):
                 records = sorted(records, key=lambda r: r.timespan.end, reverse=True)  # newest first
                 for recordNum, expRecord in enumerate(records):
                     files = leftovers[expRecord]
-                    self.log.info(f"Processing leftover {workloadName} {recordNum+1} of {len(leftovers)}")
+                    self.log.info(f"Processing leftover {workload.name} {recordNum+1} of {len(leftovers)}")
                     if getNumExpectedItems(expRecord) == len(files):
                         # no need to delete here because it's complete and so
                         # will self-delete automatically
-                        self.log.info(f'Remaking full {workloadName} for {expRecord.dataId}')
-                        workerFunction(expRecord)
+                        self.log.info(f'Remaking full {workload.name} for {expRecord.dataId}')
+                        workload.workerFunction(expRecord)
                     elif getExpRecordAge(expRecord) > self.STALE_AGE:
-                        self.log.info(f'Remaking partial, stale {workloadName} for {expRecord.dataId}')
-                        workerFunction(expRecord)
-                        self.log.info(f'Removing {len(files)} stale {workloadName} files'
+                        self.log.info(f'Remaking partial, stale {workload.name} for {expRecord.dataId}')
+                        workload.workerFunction(expRecord)
+                        self.log.info(f'Removing {len(files)} stale {workload.name} files'
                                       f' for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)
                     else:
-                        self.log.info(f'Not processing {workloadName} for {expRecord.dataId},'
+                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
                                       ' waiting for it to go stale')
 
             sleep(10)  # this need not be very aggressive
