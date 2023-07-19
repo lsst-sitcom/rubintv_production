@@ -428,6 +428,19 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    # TMA config:
+    @cached_property
+    def tmaMetadataPath(self):
+        directory = self._config['tmaMetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def tmaMetadataShardPath(self):
+        directory = self._config['tmaMetadataShardPath']
+        self._checkDir(directory)
+        return directory
+
 
 def getSiteConfig(site='summit'):
     """Get the site configuration, given a site name.

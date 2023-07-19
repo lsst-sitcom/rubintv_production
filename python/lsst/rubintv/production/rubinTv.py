@@ -27,6 +27,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from time import sleep
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -51,6 +52,12 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import getCurrentDayObs_int
+from lsst.summit.utils.tmaUtils import (TMAEventMaker,
+                                        plotEvent,
+                                        getCommandsDuringEvent,
+                                        getAzimuthElevationDataForEvent,
+                                        )
+from lsst.summit.utils.efdUtils import clipDataToEvent
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.summit.utils import NightReport
@@ -63,6 +70,7 @@ from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
+from .metadataServers import TimedMetadataServer
 
 
 __all__ = [
@@ -76,6 +84,7 @@ __all__ = [
     'Heartbeater',
     'CalibrateCcdRunner',
     'NightReportChannel',
+    'TmaTelemetryChannel',
 ]
 
 
@@ -1191,3 +1200,192 @@ class NightReportChannel(BaseButlerChannel):
         except Exception as e:
             msg = f"Skipped updating the night report for {dataId}:"
             raiseIf(self.doRaise, e, self.log, msg=msg)
+
+
+class TmaTelemetryChannel(TimedMetadataServer):
+    """Class for generating TMA events and plotting their telemetry.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    metadataDirectory : `str`
+        The name of the directory for which the metadata is being served. Note
+        that this directory and the ``shardsDirectory`` are passed in because
+        although the ``LocationConfig`` holds all the location based path info
+        (and the name of the bucket to upload to), many directories containing
+        shards exist, and each one goes to a different page on the web app, so
+        this class must be told which set of files to be collating and
+        uploading to which channel.
+    shardsDirectory : `str`
+        The directory to find the shards in, usually of the form
+        ``metadataDirectory`` + ``'/shards'``.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
+    """
+    # The time between sweeps of the EFD for today's data.
+    cadence = 10
+    # upload heartbeat every n seconds
+    HEARTBEAT_UPLOAD_PERIOD = 30
+    # consider service 'dead' if this time exceeded between heartbeats
+    HEARTBEAT_FLATLINE_PERIOD = 120
+
+    def __init__(self, *,
+                 locationConfig,
+                 metadataDirectory,
+                 shardsDirectory,
+                 doRaise=False):
+
+        self.plotChannelName = 'tma_mount_motion_profile'
+        self.metadataChannelName = 'tma_metadata'
+        self.doRaise = doRaise
+
+        super().__init__(locationConfig=locationConfig,
+                         metadataDirectory=metadataDirectory,
+                         shardsDirectory=shardsDirectory,
+                         channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
+                         doRaise=self.doRaise)
+
+        self.client = EfdClient('summit_efd')  # k8s pods don't support auto-making the client
+        self.eventMaker = TMAEventMaker(client=self.client)
+        self.figure = plt.figure(figsize=(10, 8))
+        self.prePadding = 1
+        self.postPadding = 2
+        self.commandsToPlot = ['raDecTarget', 'moveToTarget', 'startTracking', 'stopTracking']
+
+    def processDay(self, dayObs, skipEventNumbers={}):
+        """
+        """
+        events = self.eventMaker.getEvents(dayObs)
+        self.log.info(f'Found {len(events)} events for {dayObs=} of which'
+                      f' {len(skipEventNumbers)} have already been created')
+        plotted = set()
+        for event in events:
+            if event.seqNum in skipEventNumbers:
+                continue
+            assert event.dayObs == dayObs
+            self.log.info(f'Plotting event {event.seqNum}')
+            self.figure.clear()
+            ax = self.figure.gca()
+            ax.clear()
+
+            try:
+                # get the data separately so we can take some min/max on it etc
+                azimuthData, elevationData = getAzimuthElevationDataForEvent(self.client,
+                                                                             event,
+                                                                             prePadding=self.prePadding,
+                                                                             postPadding=self.postPadding)
+
+                clippedAz = clipDataToEvent(azimuthData, event)
+                clippedEl = clipDataToEvent(elevationData, event)
+
+                md = {}
+                azStart = None
+                elStart = None
+                azMove = None
+                elMove = None
+                maxElTorque = None
+                maxAzTorque = None
+
+                if len(clippedAz) > 0:
+                    azStart = clippedAz.iloc[0]['actualPosition']
+                    azMove = clippedAz.iloc[-1]['actualPosition'] - azStart
+                    # key=abs gets the item with the largest absolute value but
+                    # keeps the sign so we don't deal with min/max depending on
+                    # the direction of the move etc
+                    maxAzTorque = max(clippedAz['actualTorque'], key=abs)
+
+                if len(clippedEl) > 0:
+                    elStart = clippedEl.iloc[0]['actualPosition']
+                    elMove = clippedEl.iloc[-1]['actualPosition'] - elStart
+                    maxElTorque = max(clippedEl['actualTorque'], key=abs)
+
+                # values could be None by design, for when there is no data
+                # in the clipped dataframes, i.e. from the event window exactly
+                md['Azimuth start'] = azStart
+                md['Elevation start'] = elStart
+                md['Azimuth move'] = azMove
+                md['Elevation move'] = elMove
+                md['Largest azimuth torque'] = maxAzTorque
+                md['Largest elevation torque'] = maxElTorque
+
+                rowData = {event.seqNum: md}
+                writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+                commands = getCommandsDuringEvent(self.client, event, self.commandsToPlot, doLog=False)
+                if not all([time is None for time in commands.values()]):
+                    rowData = {event.seqNum: {'Has commands?': '✅'}}
+                    writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+                plotEvent(self.client,
+                          event,
+                          fig=self.figure,
+                          prePadding=self.prePadding,
+                          postPadding=self.postPadding,
+                          commands=commands,
+                          azimuthData=azimuthData,
+                          elevationData=elevationData,
+                          )
+
+                filename = self._getSaveFilename(dayObs, event)
+                self.figure.savefig(filename)
+                self.uploader.uploadPerSeqNumPlot(self.plotChannelName,
+                                                  dayObsInt=dayObs,
+                                                  seqNumInt=event.seqNum,
+                                                  filename=filename,
+                                                  isLiveFile=False
+                                                  )
+            except Exception as e:
+                rowData = {event.seqNum: {'Plotting failed?': '😔'}}
+                writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+                self.log.exception(f'Failed to plot event {event.seqNum}')
+                raiseIf(self.doRaise, e, self.log)
+            finally:
+                plotted.add(event.seqNum)  # don't retry plotting on failure
+
+            rowData = self.eventToMetadataRow(event)
+            writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+            self.mergeShardsAndUpload()
+
+        return plotted
+
+    def eventToMetadataRow(self, event):
+        rowData = {}
+        seqNum = event.seqNum
+        rowData['Seq. No.'] = event.seqNum
+        rowData['Event version number'] = event.version
+        rowData['Event type'] = event.type.name
+        rowData['End reason'] = event.endReason.name
+        rowData['Duration'] = event.duration
+        rowData['Time UTC'] = event.begin.isot
+        return {seqNum: rowData}
+
+    def _getSaveFilename(self, dayObs, event):
+        filename = f"tma_mount_motion_profile_{dayObs}_{event.seqNum:06}.png"
+        filename = os.path.join(self.locationConfig.plotPath, filename)
+        return filename
+
+    def run(self):
+        """Run continuously, updating the plots and uploading the shards.
+        """
+        dayObs = getCurrentDayObs_int()
+        plotted = set()
+        while True:
+            try:
+                if hasDayRolledOver(dayObs):
+                    dayObs = getCurrentDayObs_int()
+                    plotted = set()
+
+                # TODO: need to work out a better way of dealing with pod
+                # restarts. At present this will just remake everything.
+                justMade = self.processDay(dayObs, skipEventNumbers=plotted)
+                plotted.update(justMade)
+
+                self.mergeShardsAndUpload()  # updates all shards everywhere
+
+                self.heartbeater.beat()
+                sleep(self.cadence)
+
+            except Exception as e:
+                raiseIf(self.doRaise, e, self.log)

@@ -26,6 +26,8 @@ CHANNELS = ["summit_imexam",
             "slac_lsstcam_noise_map",
             "slac_lsstcam_focal_plane_mosaic",
             "slac_lsstcam_metadata",
+            "tma_mount_motion_profile",
+            "tma_metadata",
             ]
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
