@@ -1333,7 +1333,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                                   dayObsInt=dayObs,
                                                   seqNumInt=event.seqNum,
                                                   filename=filename,
-                                                  isLiveFile=True  # XXX remove this before merging
+                                                  isLiveFile=False
                                                   )
             except Exception as e:
                 rowData = {event.seqNum: {'Plotting failed?': '😔'}}
