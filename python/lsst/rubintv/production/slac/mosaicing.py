@@ -449,6 +449,72 @@ def plotFocalPlaneMosaic(butler,
     if not logger:
         logger = logging.getLogger('lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic')
 
+    mosaic = getMosaicImage(butler=butler,
+                            expId=expId,
+                            camera=camera,
+                            binSize=binSize,
+                            dataPath=dataPath,
+                            nExpected=nExpected,
+                            timeout=timeout,
+                            deleteIfComplete=deleteIfComplete,
+                            deleteRegardless=deleteRegardless,
+                            logger=logger)
+
+    if mosaic is None:
+        logger.warning(f"Failed to make mosaic for {expId}")
+        return
+    logger.info(f"Made mosaic image for {expId}")
+    _plotFpMosaic(mosaic, fig=figure, saveAs=savePlotAs)
+    logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
+
+
+def getMosaicImage(butler,
+                   expId,
+                   camera,
+                   binSize,
+                   dataPath,
+                   nExpected,
+                   timeout,
+                   deleteIfComplete=True,
+                   deleteRegardless=False,
+                   logger=None):
+    """Save a full focal plane binned mosaic image for a given expId.
+
+    The binned images must have been created upstream with the correct binning
+    factor, as this uses a PreBinnedImageSource.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler.
+    expId : `int`
+        The exposure id.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera.
+    binSize : `int`
+        The binning factor.
+    dataPath : `str`
+        The path to the binned images.
+    nExpected : `int`
+        The number of CCDs expected in the mosaic.
+    timeout : `float`
+        The maximum time to wait for the images to land.
+    deleteIfComplete : `bool`, optional
+        If True, delete the binned image files if the number of expected files
+        is the number which was found.
+    deleteRegardless : `bool`, optional
+        If True, delete the binned images regardless of how many are found.
+    logger : `logging.Logger`, optional
+        The logger, created if not provided.
+
+    Returns
+    -------
+    mosaic : `lsst.afw.image.Image`
+        The binned mosaiced image.
+    """
+    if not logger:
+        logger = logging.getLogger('lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic')
+
     where = 'exposure=expId'
     # we hardcode "raw" here the per-CCD binned images are written out
     # by the isrRunners to the dataPath, so we are not looking for butler-
@@ -475,10 +541,8 @@ def plotFocalPlaneMosaic(butler,
                         ).output_mosaic
     if mosaic is None:
         logger.warning(f"Failed to make mosaic for {expId}")
-        return
-    logger.info(f"Made mosaic image for {expId}")
-    _plotFpMosaic(mosaic, fig=figure, saveAs=savePlotAs)
-    logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
+
+    return mosaic
 
 
 def _plotFpMosaic(im, fig, scalingOption='CCS', saveAs=''):
