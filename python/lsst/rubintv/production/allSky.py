@@ -321,6 +321,7 @@ class DayAnimator:
                  outputImageDir,
                  outputMovieDir,
                  uploader,
+                 epoUploader,
                  channel,
                  bucketName,
                  historical=False):
@@ -329,6 +330,7 @@ class DayAnimator:
         self.outputImageDir = outputImageDir
         self.outputMovieDir = outputMovieDir
         self.uploader = uploader
+        self.epoUploader = epoUploader
         self.channel = channel
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
@@ -412,7 +414,12 @@ class DayAnimator:
                 raise RuntimeError(f'Failed to find movie {creationFilename}')
 
         if not self.DRY_RUN:
-            self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename)
+            self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
+            try:
+                self.epoUploader.googleUpload(self.channel, creationFilename, uploadAsFilename,
+                                              isLargeFile=True)
+            except Exception as e:
+                self.log.exception(f'Failed to upload movie to EPO bucket: {e}')
         else:
             self.log.info(f"Would have uploaded {creationFilename} as {uploadAsFilename}")
         return
@@ -436,6 +443,12 @@ class DayAnimator:
             self.uploader.googleUpload(channel=channel,
                                        sourceFilename=sourceFilename,
                                        uploadAsFilename=uploadAsFilename)
+            try:
+                self.uploader.googleUpload(channel=channel,
+                                           sourceFilename=sourceFilename,
+                                           uploadAsFilename=uploadAsFilename)
+            except Exception as e:
+                self.log.exception(f'Failed to upload still to EPO bucket: {e}')
         else:
             self.log.info(f"Would have uploaded {sourceFilename} as {uploadAsFilename}")
 
@@ -541,6 +554,7 @@ class AllSkyMovieChannel:
     def __init__(self, locationConfig, doRaise=False):
         self.locationConfig = locationConfig
         self.uploader = Uploader(self.locationConfig.bucketName)
+        self.epoUploader = Uploader('epo_rubintv_data')
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
         self.doRaise = doRaise
@@ -584,6 +598,7 @@ class AllSkyMovieChannel:
                                outputImageDir=outputJpgDir,
                                outputMovieDir=outputMovieDir,
                                uploader=self.uploader,
+                               epoUploader=self.epoUploader,
                                channel=self.channel,
                                bucketName=self.locationConfig.bucketName,)
         animator.run()
