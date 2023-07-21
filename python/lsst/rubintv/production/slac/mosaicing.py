@@ -22,9 +22,16 @@
 import logging
 import time
 import glob
+from dataclasses import dataclass
+from scipy.optimize import curve_fit
+from scipy.ndimage import center_of_mass
+
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
+import lsst.afw.detection as afwDetect
+import lsst.afw.geom
 from lsst.afw.cameraGeom import utils as cgu
+from lsst.afw.cameraGeom import FOCAL_PLANE, PIXELS
 import lsst.pipe.base as pipeBase
 from lsst.afw.fits import FitsError
 from lsst.summit.utils import getQuantiles
@@ -33,6 +40,10 @@ import os
 import lsst.afw.image as afwImage
 import matplotlib.colors as colors
 from matplotlib import cm
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import subplot_mosaic
+from matplotlib.colors import LogNorm
+import matplotlib.patches as patches
 
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -588,3 +599,171 @@ def _plotFpMosaic(im, fig, scalingOption='CCS', saveAs=''):
     fig.tight_layout()
     if saveAs:
         fig.savefig(saveAs)
+
+
+SIGMATOFWHM = 2.0*np.sqrt(2.0*np.log(2.0))
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class GausFitParameters:
+    goodFit: bool
+    mean: float
+    sigma: float
+    amplitude: float
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class SpotInfo:
+    flux: float
+    centerOfMass: tuple
+    footprint: lsst.afw.detection.Footprint
+    xFitPars: GausFitParameters
+    yFitPars: GausFitParameters
+
+
+def gauss(x, a, x0, sigma):
+    return a*np.exp(-(x-x0)**2/(2*sigma**2))
+
+
+def getSpotInfo(exp, threshold=100, nPixMin=3000, logger=None):
+    threshold = afwDetect.Threshold(threshold, afwDetect.Threshold.VALUE)
+    footPrintSet = afwDetect.FootprintSet(exp.getMaskedImage(), threshold, "DETECTED", nPixMin)
+    footprints = footPrintSet.getFootprints()
+    nFootprints = len(footprints)
+
+    footprint = None
+    if nFootprints == 0:
+        logger.warning(f'Found no footprints in exposure with {threshold=} and {nPixMin=}')
+        return
+
+    footprint = footprints[0]  # assume we have one
+    if nFootprints > 1:  # but if we have more, find the brightest
+        logger.info(f'Found {nFootprints} footprints in exposure with {threshold=} and {nPixMin=},'
+                    ' selecting the brightest')
+        footprints = sorted(footprints, key=lambda fp: fp.computeFluxFromImage(exp.image), reverse=True)
+        footprint = footprints[0]
+    flux = footprint.computeFluxFromImage(exp.image)
+
+    cutoutCenterOfMass = center_of_mass(exp[footprint.getBBox()].image.array)
+    xy0 = footprint.getBBox().getBegin()
+    centerOfMass = (cutoutCenterOfMass[0] + xy0[0], cutoutCenterOfMass[1] + xy0[1])
+
+    bbox = footprint.getBBox()
+    xSlice = exp[bbox].image.array[bbox.getWidth()//2]
+    ySlice = exp[bbox].image.array[bbox.getHeight()//2]
+
+    fits = []
+    bounds = ((0, 0, 0), (np.inf, np.inf, np.inf))
+    for data in (xSlice, ySlice):
+        peakPos = len(data)//2
+        width = 25
+        amplitude = np.max(data)
+
+        try:
+            pars, _ = curve_fit(gauss, np.arange(len(data)), data, [amplitude, peakPos, width],
+                                bounds=bounds)
+            fits.append(GausFitParameters(goodFit=True, mean=pars[1], sigma=np.abs(pars[2]),
+                                          amplitude=np.abs(pars[0])))
+        except RuntimeError:
+            fits.append(GausFitParameters(goodFit=False, mean=np.nan, sigma=np.nan, amplitude=np.nan))
+
+    spotInfo = SpotInfo(
+        flux=flux,
+        centerOfMass=centerOfMass,
+        footprint=footprint,
+        xFitPars=fits[0],
+        yFitPars=fits[1],
+    )
+    return spotInfo
+
+
+def plotSpot(exp, spotInfo):
+    flux = spotInfo.flux
+    center = spotInfo.centerOfMass
+    footprint = spotInfo.footprint
+    bbox = footprint.getBBox()
+    spotArea = footprint.getArea()
+    approx_radius = np.sqrt(spotArea/np.pi)
+
+    fig, axs = subplot_mosaic(
+        """
+        AAB
+        AAC
+        """,
+        figsize=(20, 10)
+    )
+
+    norm = LogNorm(vmin=1, vmax=1e4)  # same for both plots
+    aspect = 'equal'
+    fitAlpha = 0.5
+
+    # main image plot
+    axs["A"].imshow(exp.image.array,
+                    norm=norm,
+                    aspect=aspect,
+                    origin="lower")
+    rect = patches.Rectangle((bbox.getMinX(), bbox.getMinY()),
+                             bbox.getWidth(),
+                             bbox.getHeight(),
+                             linewidth=1,
+                             edgecolor='r',
+                             facecolor='none')
+    axs["A"].add_patch(rect)
+    text = (f'Total photons in spot: {flux:.12e}\n'
+            f'Center of spot: x={center[0]:.0f}, y={center[1]:.0f}\n'
+            f'Spot area: {spotArea:.4e} px^2\n'
+            f'Approx radius: {approx_radius:.2f}px')
+    axs["A"].annotate(text,
+                      xy=(bbox.getMaxX(), bbox.getMaxY()),
+                      xycoords='data',
+                      xytext=(10, 10),
+                      textcoords='offset points',
+                      bbox=dict(boxstyle="square,pad=0.3", fc="lightblue", ec="steelblue", lw=2))
+    axs["A"].set_title("Assembled image with spot details")
+
+    # spot zoom-in plot
+    axs["B"].set_title("CCOB spot close-up")
+    axRef = axs["B"].imshow(exp.getImage()[bbox].array,
+                            norm=norm,
+                            aspect=aspect,
+                            origin="lower")
+    divider = make_axes_locatable(axs["B"])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    _ = plt.colorbar(axRef, cax=cax)
+
+    # xy profile plot and fitting
+    xSlice = exp[bbox].image.array[bbox.getWidth()//2]
+    ySlice = exp[bbox].image.array[bbox.getHeight()//2]
+    xs = np.arange(len(xSlice))
+
+    axs["C"].plot(xSlice, c='r', ls='-', label="X profile", )
+    if spotInfo.xFitPars.goodFit:
+        xFitline = gauss(xs, spotInfo.xFitPars.amplitude, spotInfo.xFitPars.mean, spotInfo.xFitPars.sigma)
+        axs["C"].plot(xs, xFitline, c='r', ls='--', alpha=fitAlpha, label="X-profile Gaussian fit",)
+
+    axs["C"].plot(ySlice, c='b', ls='-', label="Y profile")
+    if spotInfo.yFitPars.goodFit:
+        yFitline = gauss(xs, spotInfo.yFitPars.amplitude, spotInfo.yFitPars.mean, spotInfo.yFitPars.sigma)
+        axs["C"].plot(xs, yFitline, c='b', ls='--', alpha=fitAlpha, label="Y-profile Gaussian fit")
+
+    axs["C"].legend()
+    axs["C"].set_title("X/Y slices of the spot profile")
+    if spotInfo.xFitPars.goodFit or spotInfo.yFitPars.goodFit:
+        axs["C"].set_ylim(100, 1.1*max((max(yFitline), max(xFitline))))
+    plt.tight_layout()
+    plt.show()
+
+
+def getDetector(image, centroid, camera):
+    binning = 8
+    plateScale = 1/100
+    camCenter = image.getBBox().getCenter()
+    centroidToUse = ((centroid[0]-camCenter[0])*binning*plateScale,
+                     (centroid[1]-camCenter[1])*binning*plateScale)
+
+    for det in camera:
+        xy = det.getTransform(FOCAL_PLANE, PIXELS).getMapping().applyForward(centroidToUse)
+        if det.getBBox().contains(xy[0], xy[1]):
+            return det
+    print('not found')
+    return None
