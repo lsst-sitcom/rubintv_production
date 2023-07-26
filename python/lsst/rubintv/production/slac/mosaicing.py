@@ -692,8 +692,8 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
     centerOfMass = (cutoutCenterOfMass[0] + xy0[0], cutoutCenterOfMass[1] + xy0[1])
 
     bbox = footprint.getBBox()
-    xSlice = image[bbox].array[bbox.getWidth()//2]
-    ySlice = image[bbox].array[bbox.getHeight()//2]
+    xSlice = image[bbox].array[:, bbox.getWidth()//2]
+    ySlice = image[bbox].array[bbox.getWidth()//2, :]
 
     fits = []
     bounds = ((0, 0, 0), (np.inf, np.inf, np.inf))
@@ -817,9 +817,10 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     _ = plt.colorbar(axRef, cax=cax)
 
     # xy profile plot and fitting
-    xSlice = image[fpBbox].array[fpBbox.getWidth()//2]
-    ySlice = image[fpBbox].array[fpBbox.getHeight()//2]
+    xSlice = image[fpBbox].array[:, fpBbox.getWidth()//2]
+    ySlice = image[fpBbox].array[fpBbox.getWidth()//2, :]
     xs = np.arange(len(xSlice))
+    ys = np.arange(len(ySlice))
 
     axs["C"].plot(xSlice, c='r', ls='-', label="X profile", )
     if spotInfo.xFitPars.goodFit:
@@ -828,8 +829,8 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
 
     axs["C"].plot(ySlice, c='b', ls='-', label="Y profile")
     if spotInfo.yFitPars.goodFit:
-        yFitline = gauss(xs, spotInfo.yFitPars.amplitude, spotInfo.yFitPars.mean, spotInfo.yFitPars.sigma)
-        axs["C"].plot(xs, yFitline, c='b', ls='--', alpha=fitAlpha, label="Y-profile Gaussian fit")
+        yFitline = gauss(ys, spotInfo.yFitPars.amplitude, spotInfo.yFitPars.mean, spotInfo.yFitPars.sigma)
+        axs["C"].plot(ys, yFitline, c='b', ls='--', alpha=fitAlpha, label="Y-profile Gaussian fit")
 
     axs["C"].legend()
     axs["C"].set_title("X/Y slices of the spot profile")
