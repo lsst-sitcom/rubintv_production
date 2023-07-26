@@ -30,6 +30,7 @@ from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDetect
 import lsst.afw.geom
+from lsst.geom import Box2I, Extent2I
 from lsst.afw.cameraGeom import utils as cgu
 from lsst.afw.cameraGeom import FOCAL_PLANE, PIXELS
 import lsst.pipe.base as pipeBase
@@ -752,7 +753,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     size = max(boxSizeMin, fpBbox.width, fpBbox.height)
     extent = Extent2I(size, size)
     bbox = Box2I.makeCenteredBox(fpBbox.getCenter(), extent)
-    bbox = bbox.clippedTo(im.getBBox())  # ensure we never overrun the image array
+    bbox = bbox.clippedTo(image.getBBox())  # ensure we never overrun the image array
 
     if fig is None:
         if logger is None:
