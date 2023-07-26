@@ -620,9 +620,6 @@ def _plotFpMosaic(im, fig, scalingOption='CCS', saveAs=''):
         fig.savefig(saveAs)
 
 
-SIGMATOFWHM = 2.0*np.sqrt(2.0*np.log(2.0))
-
-
 @dataclass(slots=True, kw_only=True, frozen=True)
 class GausFitParameters:
     goodFit: bool
@@ -645,7 +642,12 @@ def gauss(x, a, x0, sigma):
 
 
 def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=None):
-    """XXX
+    """Calculate the spot flux, position and shape for a CCOB narrow beam spot.
+
+    The spot is assumed to be the brightest object in the image, and the
+    position is calculated from the center of mass of the footprint. The
+    shape is calculated by fitting a Gaussian to the x and y slices through
+    the center of the footprint.
 
     Parameters
     ----------
@@ -666,14 +668,13 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
     spotInfo : `lsst.rubintv.production.slac.mosaicing.SpotInfo`
         The spot information, or ``None`` if no spot was found.
     """
-    exp = afwImage.ExposureF(afwImage.MaskedImageF(image))  # detection has to have an exposure
+    maskedImage = afwImage.MaskedImageF(image)  # detection has to have a masked image
 
     threshold = afwDetect.Threshold(threshold, afwDetect.Threshold.VALUE)
-    footPrintSet = afwDetect.FootprintSet(exp.getMaskedImage(), threshold, "DETECTED", nPixMin)
+    footPrintSet = afwDetect.FootprintSet(maskedImage, threshold, "DETECTED", nPixMin)
     footprints = footPrintSet.getFootprints()
     nFootprints = len(footprints)
 
-    footprint = None
     if nFootprints == 0:
         logger.warning(f'Found no footprints in exposure with {threshold=} and {nPixMin=}')
         return
@@ -682,17 +683,17 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
     if nFootprints > 1:  # but if we have more, find the brightest
         logger.info(f'Found {nFootprints} footprints in exposure with {threshold=} and {nPixMin=},'
                     ' selecting the brightest')
-        footprints = sorted(footprints, key=lambda fp: fp.computeFluxFromImage(exp.image), reverse=True)
+        footprints = sorted(footprints, key=lambda fp: fp.computeFluxFromImage(image), reverse=True)
         footprint = footprints[0]
-    flux = footprint.computeFluxFromImage(exp.image)
+    flux = footprint.computeFluxFromImage(image)
 
-    cutoutCenterOfMass = center_of_mass(exp[footprint.getBBox()].image.array)
+    cutoutCenterOfMass = center_of_mass(image[footprint.getBBox()].array)
     xy0 = footprint.getBBox().getBegin()
     centerOfMass = (cutoutCenterOfMass[0] + xy0[0], cutoutCenterOfMass[1] + xy0[1])
 
     bbox = footprint.getBBox()
-    xSlice = exp[bbox].image.array[bbox.getWidth()//2]
-    ySlice = exp[bbox].image.array[bbox.getHeight()//2]
+    xSlice = image[bbox].array[bbox.getWidth()//2]
+    ySlice = image[bbox].array[bbox.getHeight()//2]
 
     fits = []
     bounds = ((0, 0, 0), (np.inf, np.inf, np.inf))
