@@ -878,7 +878,7 @@ class Plotter:
         """Run continuously, calling the callback method with the latest
         expRecord.
         """
-        self.watcher.run(self.callback, doPlotMosaic=True, doPlotNoises=True)
+        self.watcher.run(self.callback, doPlotMosaic=True, doPlotNoises=True, doCcobAnalysis=True)
 
 
 class Replotter(Plotter):
