@@ -722,7 +722,7 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
     return spotInfo
 
 
-def plotCcobSpotInfo(image, spotInfo, fig=None, saveAs='', logger=None):
+def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logger=None):
     """Plot the analyzed CCOB spot profile.
 
     Parameters
@@ -744,9 +744,15 @@ def plotCcobSpotInfo(image, spotInfo, fig=None, saveAs='', logger=None):
     flux = spotInfo.flux
     center = spotInfo.centerOfMass
     footprint = spotInfo.footprint
-    bbox = footprint.getBBox()
+    fpBbox = footprint.getBBox()
     spotArea = footprint.getArea()
     approx_radius = np.sqrt(spotArea/np.pi)
+
+    # make a square box of at least the min size, centered on the original bbox
+    size = max(boxSizeMin, fpBbox.width, fpBbox.height)
+    extent = Extent2I(size, size)
+    bbox = Box2I.makeCenteredBox(fpBbox.getCenter(), extent)
+    bbox = bbox.clippedTo(im.getBBox())  # ensure we never overrun the image array
 
     if fig is None:
         if logger is None:
@@ -784,10 +790,12 @@ def plotCcobSpotInfo(image, spotInfo, fig=None, saveAs='', logger=None):
                              edgecolor='r',
                              facecolor='none')
     axs["A"].add_patch(rect)
-    text = (f'Total photons in spot: {flux:.12e}\n'
-            f'Center of spot: x={center[0]:.0f}, y={center[1]:.0f}\n'
-            f'Spot area: {spotArea:.4e} px^2\n'
-            f'Approx radius: {approx_radius:.2f}px')
+    text = (f'Total electrons in spot: {flux/1e6:.1f} Me-\n'
+            f'Center of spot (binned coords): x={center[0]:.0f}, y={center[1]:.0f}\n'
+            f'Spot area: {spotArea:.0f} binned px^2\n'
+            f'Approx radius: {approx_radius:.1f} binned px\n'
+            f'x fit width: {spotInfo.xFitPars.sigma:.1f} binned px sigma\n'
+            f'y fit width: {spotInfo.yFitPars.sigma:.1f} binned px sigma')
     axs["A"].annotate(text,
                       xy=(bbox.getMaxX(), bbox.getMaxY()),
                       xycoords='data',
@@ -807,8 +815,8 @@ def plotCcobSpotInfo(image, spotInfo, fig=None, saveAs='', logger=None):
     _ = plt.colorbar(axRef, cax=cax)
 
     # xy profile plot and fitting
-    xSlice = image[bbox].array[bbox.getWidth()//2]
-    ySlice = image[bbox].array[bbox.getHeight()//2]
+    xSlice = image[fpBbox].array[fpBbox.getWidth()//2]
+    ySlice = image[fpBbox].array[fpBbox.getHeight()//2]
     xs = np.arange(len(xSlice))
 
     axs["C"].plot(xSlice, c='r', ls='-', label="X profile", )
