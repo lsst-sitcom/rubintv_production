@@ -759,7 +759,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
         if logger is None:
             logger = logging.getLogger(__name__)
         logger.warning("Making new matplotlib figure - if this is in a loop you're going to have a bad time."
-                       " Pass in a figure with fig = plt.figure(figsize=(20, 10)) to avoid this warning.")
+                       " Pass in a figure with fig = plt.figure(figsize=(15, 10)) to avoid this warning.")
         fig, axs = subplot_mosaic(
             """
             AAB
