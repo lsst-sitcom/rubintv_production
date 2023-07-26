@@ -49,6 +49,24 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from ..utils import isFileWorldWritable
 
+__all__ = (
+    'getBinnedFilename',
+    'getBinnedImageFiles',
+    'getBinnedImageExpIds',
+    'writeBinnedImageFromDeferredRefs',
+    'writeBinnedImage',
+    'readBinnedImage',
+    'PreBinnedImageSource',
+    'makeMosaic',
+    'plotFocalPlaneMosaic',
+    'getMosaicImage',
+    'GausFitParameters',
+    'SpotInfo',
+    'analyzeCcobSpotImage',
+    'plotCcobSpotInfo',
+    'getDetectorForBinnedImageLocation',
+)
+
 
 def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
     """Get the full path and filename for a binned image.
@@ -625,7 +643,30 @@ def gauss(x, a, x0, sigma):
     return a*np.exp(-(x-x0)**2/(2*sigma**2))
 
 
-def getSpotInfo(exp, threshold=100, nPixMin=3000, logger=None):
+def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=None):
+    """XXX
+
+    Parameters
+    ----------
+    image : `lsst.afw.image.Image`
+        The mosaiced image.
+    binning : `int`
+        The binning factor.
+    threshold : `float`
+        The threshold in counts (which will be in electrons if the gain was
+        applied when creating the image, and in ADU if not).
+    nPixMin : `int`
+        The minimum number of pixels in a footprint.
+    logger : `logging.Logger`, optional
+        The logger, created if needed and not provided.
+
+    Returns
+    -------
+    spotInfo : `lsst.rubintv.production.slac.mosaicing.SpotInfo`
+        The spot information, or ``None`` if no spot was found.
+    """
+    exp = afwImage.ExposureF(afwImage.MaskedImageF(image))  # detection has to have an exposure
+
     threshold = afwDetect.Threshold(threshold, afwDetect.Threshold.VALUE)
     footPrintSet = afwDetect.FootprintSet(exp.getMaskedImage(), threshold, "DETECTED", nPixMin)
     footprints = footPrintSet.getFootprints()
@@ -660,15 +701,19 @@ def getSpotInfo(exp, threshold=100, nPixMin=3000, logger=None):
         amplitude = np.max(data)
 
         try:
-            pars, _ = curve_fit(gauss, np.arange(len(data)), data, [amplitude, peakPos, width],
-                                bounds=bounds)
-            fits.append(GausFitParameters(goodFit=True, mean=pars[1], sigma=np.abs(pars[2]),
+            pars, _ = curve_fit(gauss, np.arange(len(data)), data, [amplitude, peakPos, width], bounds=bounds)
+            fits.append(GausFitParameters(goodFit=True,
+                                          mean=pars[1],
+                                          sigma=np.abs(pars[2]),
                                           amplitude=np.abs(pars[0])))
         except RuntimeError:
-            fits.append(GausFitParameters(goodFit=False, mean=np.nan, sigma=np.nan, amplitude=np.nan))
+            fits.append(GausFitParameters(goodFit=False,
+                                          mean=np.nan,
+                                          sigma=np.nan,
+                                          amplitude=np.nan))
 
     spotInfo = SpotInfo(
-        flux=flux,
+        flux=flux * binning**2,
         centerOfMass=centerOfMass,
         footprint=footprint,
         xFitPars=fits[0],
@@ -677,7 +722,25 @@ def getSpotInfo(exp, threshold=100, nPixMin=3000, logger=None):
     return spotInfo
 
 
-def plotSpot(exp, spotInfo):
+def plotCcobSpotInfo(image, spotInfo, fig=None, saveAs='', logger=None):
+    """Plot the analyzed CCOB spot profile.
+
+    Parameters
+    ----------
+    image : `lsst.afw.image.Image`
+        The mosaiced image.
+    spotInfo : `lsst.rubintv.production.slac.mosaicing.SpotInfo`
+        The spot information.
+    saveAs : `str`
+        The filename to save the plot as.
+    logger : `logging.Logger`, optional
+        The logger, created if needed and not provided.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure`
+        The figure.
+    """
     flux = spotInfo.flux
     center = spotInfo.centerOfMass
     footprint = spotInfo.footprint
@@ -685,20 +748,32 @@ def plotSpot(exp, spotInfo):
     spotArea = footprint.getArea()
     approx_radius = np.sqrt(spotArea/np.pi)
 
-    fig, axs = subplot_mosaic(
-        """
-        AAB
-        AAC
-        """,
-        figsize=(20, 10)
-    )
+    if fig is None:
+        if logger is None:
+            logger = logging.getLogger(__name__)
+        logger.warning("Making new matplotlib figure - if this is in a loop you're going to have a bad time."
+                       " Pass in a figure with fig = plt.figure(figsize=(20, 10)) to avoid this warning.")
+        fig, axs = subplot_mosaic(
+            """
+            AAB
+            AAC
+            """,
+            figsize=(20, 10)
+        )
+    else:
+        axs = fig.subplot_mosaic(
+            """
+            AAB
+            AAC
+            """
+        )
 
     norm = LogNorm(vmin=1, vmax=1e4)  # same for both plots
     aspect = 'equal'
     fitAlpha = 0.5
 
     # main image plot
-    axs["A"].imshow(exp.image.array,
+    axs["A"].imshow(image.array,
                     norm=norm,
                     aspect=aspect,
                     origin="lower")
@@ -723,7 +798,7 @@ def plotSpot(exp, spotInfo):
 
     # spot zoom-in plot
     axs["B"].set_title("CCOB spot close-up")
-    axRef = axs["B"].imshow(exp.getImage()[bbox].array,
+    axRef = axs["B"].imshow(image[bbox].array,
                             norm=norm,
                             aspect=aspect,
                             origin="lower")
@@ -732,8 +807,8 @@ def plotSpot(exp, spotInfo):
     _ = plt.colorbar(axRef, cax=cax)
 
     # xy profile plot and fitting
-    xSlice = exp[bbox].image.array[bbox.getWidth()//2]
-    ySlice = exp[bbox].image.array[bbox.getHeight()//2]
+    xSlice = image[bbox].array[bbox.getWidth()//2]
+    ySlice = image[bbox].array[bbox.getHeight()//2]
     xs = np.arange(len(xSlice))
 
     axs["C"].plot(xSlice, c='r', ls='-', label="X profile", )
@@ -752,18 +827,53 @@ def plotSpot(exp, spotInfo):
         axs["C"].set_ylim(100, 1.1*max((max(yFitline), max(xFitline))))
     plt.tight_layout()
     plt.show()
+    if saveAs:
+        fig.savefig(saveAs)
+
+    return fig
 
 
-def getDetector(image, centroid, camera):
-    binning = 8
-    plateScale = 1/100
+def getDetectorForBinnedImageLocation(image, location, binning, camera, logger=None):
+    """Get the detector which contains a point in a binned image.
+
+    Binned mosaic images contain chip gaps, and so working out which detector
+    a given location falls on is not trivial. This function uses the camera
+    model to work out which detector a given location falls on.
+
+    Parameters
+    ----------
+    image : `lsst.afw.image.Image`
+        The image on which the location was found.
+    location : `tuple` of `float`
+        The location in the binned mosaic image to get the detector for.
+    binning : `int`
+        The binning factor for the binned mosaiced image.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera model, containing the detectors.
+    logger : `logging.Logger`, optional
+        The logger for warning if the chip isn't found. Created if needed and
+        not supplied.
+
+    Returns
+    -------
+    detector : `lsst.afw.cameraGeom.Detector`
+        The detector on which the location falls, or ``None`` if not found (for
+        example if the location is outside of the focal plane, or falls in a
+        chip gap).
+    """
+    plateScale = 1/100  # mm/pixel
     camCenter = image.getBBox().getCenter()
-    centroidToUse = ((centroid[0]-camCenter[0])*binning*plateScale,
-                     (centroid[1]-camCenter[1])*binning*plateScale)
+    # need to offset to the camera center for the transform to work as that is
+    # centered at (0, 0), i.e. with the left half of the camera at negative x
+    centroidToUse = ((location[0]-camCenter[0])*binning*plateScale,
+                     (location[1]-camCenter[1])*binning*plateScale)
 
     for det in camera:
         xy = det.getTransform(FOCAL_PLANE, PIXELS).getMapping().applyForward(centroidToUse)
         if det.getBBox().contains(xy[0], xy[1]):
             return det
-    print('not found')
+
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    logger.warning(f"Could not find detector for {location=}")
     return None
