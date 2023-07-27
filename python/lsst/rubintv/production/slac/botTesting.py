@@ -737,9 +737,9 @@ class Plotter:
 
         md = {}
         md['Spot location'] = detName if detName else 'Not found'
-        md['Spot flux (Me-)'] = f"{spotInfo.flux / 1.e6:.2f}"
-        md['Spot profile x sigma'] = f"{xFitWidth:.2f}"
-        md['Spot profile y sigma'] = f"{yFitWidth:.2f}"
+        md['Spot flux (Me-)'] = f"{spotInfo.flux  * spotInfo.binning**2/ 1.e6:.2f}"
+        md['Spot profile x sigma'] = f"{xFitWidth * spotInfo.binning:.2f}"
+        md['Spot profile y sigma'] = f"{yFitWidth * spotInfo.binning:.2f}"
 
         shardData = {seqNum: md}
         writeMetadataShard(self.metadataShardPath, dayObs, shardData)
