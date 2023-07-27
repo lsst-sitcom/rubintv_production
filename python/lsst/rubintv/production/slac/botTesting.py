@@ -940,7 +940,7 @@ class Replotter(Plotter):
         # string called name, which is used for logging.
         workload1 = self.ReplotterWorkload(
             finderFunction=self.getLeftoverMosaicDict,
-            workerFunction=partial(self.callback, doPlotMosaic=True, timeout=0),
+            workerFunction=partial(self.callback, doPlotMosaic=True, doCcobAnalysis=True, timeout=0),
             name='mosaic',
         )
         workload2 = self.ReplotterWorkload(
