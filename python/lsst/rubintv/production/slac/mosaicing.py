@@ -632,6 +632,7 @@ class GausFitParameters:
 class SpotInfo:
     flux: float
     centerOfMass: tuple
+    binning: int
     footprint: lsst.afw.detection.Footprint
     xFitPars: GausFitParameters
     yFitPars: GausFitParameters
@@ -715,8 +716,9 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
                                           amplitude=np.nan))
 
     spotInfo = SpotInfo(
-        flux=flux * binning**2,
+        flux=flux,
         centerOfMass=centerOfMass,
+        binning=binning,
         footprint=footprint,
         xFitPars=fits[0],
         yFitPars=fits[1],
@@ -749,6 +751,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     fpBbox = footprint.getBBox()
     spotArea = footprint.getArea()
     approx_radius = np.sqrt(spotArea/np.pi)
+    binning = spotInfo.binning
 
     # make a square box of at least the min size, centered on the original bbox
     size = max(boxSizeMin, fpBbox.width, fpBbox.height)
@@ -792,12 +795,12 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
                              edgecolor='r',
                              facecolor='none')
     axs["A"].add_patch(rect)
-    text = (f'Total electrons in spot: {flux/1e6:.1f} Me-\n'
+    text = (f'Total electrons in spot: {flux * binning**2/1e6:.1f} Me-\n'
             f'Center of spot (binned coords): x={center[0]:.0f}, y={center[1]:.0f}\n'
-            f'Spot area: {spotArea:.0f} binned px^2\n'
-            f'Approx radius: {approx_radius:.1f} binned px\n'
-            f'x fit width: {spotInfo.xFitPars.sigma:.1f} binned px sigma\n'
-            f'y fit width: {spotInfo.yFitPars.sigma:.1f} binned px sigma')
+            f'Spot area: {spotArea * binning**2:.0f} px^2\n'
+            f'Approx radius: {approx_radius * binning:.1f} px\n'
+            f'x fit width: {spotInfo.xFitPars.sigma * binning:.1f} px sigma\n'
+            f'y fit width: {spotInfo.yFitPars.sigma * binning:.1f} px sigma')
     axs["A"].annotate(text,
                       xy=(bbox.getMaxX(), bbox.getMaxY()),
                       xycoords='data',
