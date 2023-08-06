@@ -31,6 +31,7 @@ import time
 import math
 import numpy as np
 
+import lsst.daf.butler as dafButler
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from .channels import PREFIXES
 
@@ -175,6 +176,11 @@ class FakeExposureRecord:
 
     def __repr__(self):
         return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
+
+
+def expRecordFromJson(expRecordJson):
+    return dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
+                                                          universe=dafButler.DimensionUniverse())
 
 
 def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
