@@ -34,9 +34,26 @@ class RedisHelper:
     def __init__(self, isHeadNode=False):
         self.isHeadNode = isHeadNode
         self.redis = redis.Redis()
+        self._testRedisConnection()
         self.log = logging.getLogger('lsst.rubintv.production.redisUtils.RedisHelper')
 
         self._mostRecents = {}
+
+    def _testRedisConnection(self):
+        """Check that redis is online and can be contacted.
+
+        Raises
+        ------
+        RuntimeError:
+            Raised if redis can't be contacted.
+            Raised on any other unexpected error.
+        """
+        try:
+            self.redis.ping()
+        except redis.exceptions.ConnectionError as e:
+            raise RuntimeError('Could not connect to redis - is it running?') from e
+        except Exception as e:
+            raise RuntimeError(f'Unexpected error connecting to redis: {e}')
 
     def updateMostRecent(self, dataProduct, expRecord):
         if dataProduct not in self._mostRecents:
