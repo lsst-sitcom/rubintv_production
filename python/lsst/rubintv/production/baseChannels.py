@@ -26,7 +26,7 @@ from abc import ABC, abstractmethod
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
-from .watchers import FileWatcher
+from .watchers import FileWatcher, RedisWatcher
 from .uploaders import Uploader
 
 __all__ = [
@@ -106,22 +106,32 @@ class BaseButlerChannel(BaseChannel):
                  instrument,
                  butler,
                  dataProduct,
+                 detectors,
                  channelName,
+                 watcherType,
                  doRaise,
                  ):
-        fileWatcher = FileWatcher(locationConfig=locationConfig,
+        if watcherType == 'file':
+            watcher = FileWatcher(locationConfig=locationConfig,
                                   instrument=instrument,
                                   dataProduct=dataProduct,
                                   heartbeatChannelName=channelName,
                                   doRaise=doRaise)
+        elif watcherType == 'redis':
+            watcher = RedisWatcher(detectors=detectors, dataProduct=dataProduct)
+        else:
+            raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
         log = logging.getLogger(f'lsst.rubintv.production.{channelName}')
         super().__init__(locationConfig=locationConfig,
                          log=log,
-                         watcher=fileWatcher,
+                         watcher=watcher,
                          doRaise=doRaise)
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
+        # XXX will keeping detectors in the class be necessary, or does it only
+        # need to go in the RedisWatcher
+        self.detectors = detectors
 
     @abstractmethod
     def callback(self, expRecord):
