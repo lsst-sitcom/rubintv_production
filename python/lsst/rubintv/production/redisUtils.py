@@ -77,7 +77,7 @@ class RedisHelper:
 
         expRecordJson = json.dumps(expRecord.to_simple().json())
         with self.redis.pipeline() as pipe:
-            while True:
+            while True:  # continue trying until we break out
                 try:
                     # Start a transactional block to ensure atomicity. Take the
                     # current expRecord off the current list if there is one,
@@ -96,22 +96,24 @@ class RedisHelper:
                     pipe.lpush(f'{dataProduct}-backlog', old)
                     pipe.lpush(dataProduct, expRecordJson)
                     pipe.execute()
-                    break
+                    break  # success!
+
                 except redis.WatchError:
                     dayObs = expRecord.day_obs
                     seqNum = expRecord.seq_num
                     self.log.info(f'redis.WatchError putting expRecord for {dayObs=}, {seqNum=}, retrying...')
+                    # WatchError so no break here
 
                 except Exception as e:
                     dayObs = expRecord.day_obs
                     seqNum = expRecord.seq_num
                     self.log.exception(f'Error putting expRecord for {dayObs=}, {seqNum=}: {e}'
                                        ' This image will not be processed!')
-                    break
+                    break  # a real exception, so don't retry
 
         self.updateMostRecent(dataProduct, expRecord)
 
-    def popDataId(self, dataProduct, expRecord, includeBacklog=False):
+    def popDataId(self, dataProduct):
         """Get the most recent image from the top of the stack.
 
         If includeBacklog is set, items which were not the most recently put
@@ -120,8 +122,9 @@ class RedisHelper:
         """
         self._checkIsHeadNode()
         expRecordJson = self.redis.lpop(f'{dataProduct}')
-        expRecord = expRecordFromJson(expRecordJson)
-        return expRecord
+        if expRecordJson is None:
+            return
+        return expRecordFromJson(expRecordJson)
 
     def insertDataId(self, dataProduct, expRecord, index=1):
         """Insert an exposure into the queue.
@@ -144,11 +147,56 @@ class RedisHelper:
 
         Returns
         -------
-        commands : `list` of `str`
-            The commands that have been sent.
+        commands : `list` of `dict` : `dict`
+            The commands that have been sent. As a list of dicts, where each dict is the
         """
         commands = []
-        while command := self.redis.rpop('commands'):
+        while command := self.redis.rpop('commands'):  # rpop for FIFO
             commands.append(json.loads(command.decode('utf-8')))
 
         return commands
+
+    def enqueueCurrentWork(self, expRecord, detector):
+        """Send a unit of work to a specific worker-queue.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure to process for the specified detector.
+        detector : `int`
+            The detector to enqueue the work for.
+        """
+        # XXX I think this should work the same as the main pushDataId function
+        # so that there can only ever be a single item on the current queue per
+        # detector, and then the workers themselves can decide whether to
+        # consume from their backlog queues depending on their
+        # WorkerProcessingMode
+        expRecordJson = json.dumps(expRecord.to_simple().json())
+        self.redis.lpush(f'current-{detector}', expRecordJson)
+
+    def enqueueBacklogWork(self, expRecord, detector):
+        """Send a unit of work to a specific worker-queue.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure to process for the specified detector.
+        detector : `int`
+            The detector to enqueue the work for.
+        """
+        expRecordJson = json.dumps(expRecord.to_simple().json())
+        self.redis.lpush(f'backlog-{detector}', expRecordJson)
+
+    def getWork(self, detector, includeBacklog=False):
+        """Get the next unit of work from a specific worker queue.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure to process for the specified detector, or
+            ``None`` if the queue is empty.
+        """
+        expRecordJson = self.redis.lpop(f'current-{detector}').decode('utf-8')
+        if not expRecordJson and includeBacklog:
+            expRecordJson = self.redis.lpop(f'backlog-{detector}').decode('utf-8')
+        return expRecordFromJson(expRecordJson)

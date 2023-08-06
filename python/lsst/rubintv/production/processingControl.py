@@ -26,7 +26,6 @@ from datetime import timedelta
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
-from .watchers import ButlerWatcher
 from .redisUtils import RedisHelper
 
 
@@ -54,7 +53,6 @@ class HeadProcessController:
     def __init__(self):
         self.redisHelper = RedisHelper(isHeadNode=True)
         self.focalPlane = CameraControlConfig()
-        # self.butlerWatcher = ButlerWatcher()
 
     def confirmRunning(self, instrument):
         self.redisHelper.redis.setex(f'butlerWatcher-{instrument}',
@@ -71,11 +69,17 @@ class HeadProcessController:
                 attr = getattr(self.focalPlane, method)
                 attr.__call__(**kwargs)
 
+    def doFanout(self):
+        expRecord = self.redisHelper.popDataId('raw')
+        if expRecord is not None:
+            for detector in self.focalPlane.getEnabledDetIds():
+                self.redisHelper.enqueueCurrentWork(expRecord, detector)
+
     def run(self):
         while True:
             self.executeRemoteCommands()  # look for remote control commands here
             self.confirmRunning()  # push the expiry out 10s
-            # self.butlerWatcher.getMo
+            self.doFanout()
 
 
 class RemoteProcessController:
