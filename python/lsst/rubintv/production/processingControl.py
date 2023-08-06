@@ -70,6 +70,8 @@ class HeadProcessController:
     def __init__(self):
         self.redisHelper = RedisHelper(isHeadNode=True)
         self.focalPlane = CameraControlConfig()
+        self.workerMode = WorkerProcessingMode.WAITING
+        self.visitMode = VisitProcessingMode.CONSTANT
 
     def confirmRunning(self, instrument):
         self.redisHelper.redis.setex(f'butlerWatcher-{instrument}',
@@ -81,10 +83,32 @@ class HeadProcessController:
         if commandList is None:
             return
 
+        def getBottomComponent(obj, componentList):
+            if len(componentList) == 0:
+                return obj
+            else:
+                return getBottomComponent(getattr(obj, componentList[0]), componentList[1:])
+
+        def parseCommand(command):
+            getterParts = None
+            setterPart = None
+            if '=' in command:
+                getterPart, setterPart = command.split('=')
+                getterParts = getterPart.split('.')
+            else:
+                getterParts = command.split('.')
+            return getterParts, setterPart
+
         for command in commandList:
             for method, kwargs in command.items():
-                attr = getattr(self.focalPlane, method)
-                attr.__call__(**kwargs)
+                getterParts, setter = parseCommand(method)
+                component = getBottomComponent(self, getterParts[:-1])
+                functionName = getterParts[-1]
+                if setter is not None:
+                    component.__setattr__(functionName, eval(setter))
+                else:
+                    attr = getattr(component, functionName)
+                    attr.__call__(**kwargs)
 
     def doFanout(self):
         expRecord = self.redisHelper.popDataId('raw')
