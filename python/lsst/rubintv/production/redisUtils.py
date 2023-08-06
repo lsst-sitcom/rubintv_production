@@ -26,7 +26,7 @@ import logging
 from .utils import expRecordFromJson
 
 __all__ = (
-    'writeDataIdToRedis'
+    'RedisHelper'
 )
 
 
