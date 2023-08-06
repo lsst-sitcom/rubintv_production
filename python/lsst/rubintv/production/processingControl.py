@@ -118,28 +118,97 @@ class CameraControlConfig:
         self._guiders = [det for det in self._detectors if self.isGuider(det)]
         self._wavefronts = [det for det in self._detectors if self.isWavefront(det)]
         self.plot = FocalPlaneGeometryPlot()
+        # XXX would be nice if we could improve the spurious/nonsense plot info
         self.plotInfo = {"plotName": "test plot", "run": "no run",
                          "tableName": None, "bands": []}
 
     @staticmethod
     def isWavefront(detector):
+        """Check if the detector is a wavefront sensor.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector.
+
+        Returns
+        -------
+        isWavefront : `bool`
+            `True` is the detector is a wavefront sensor, else `False`.
+        """
         return detector.getPhysicalType() == 'ITL_WF'
 
     @staticmethod
     def isGuider(detector):
+        """Check if the detector is a guider.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector.
+
+        Returns
+        -------
+        isGuider : `bool`
+            `True` is the detector is a guider sensor, else `False`.
+        """
         return detector.getPhysicalType() == 'ITL_G'
 
     @staticmethod
     def isImaging(detector):
+        """Check if the detector is an imaging sensor.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector.
+
+        Returns
+        -------
+        isImaging : `bool`
+            `True` is the detector is an imaging sensor, else `False`.
+        """
         return detector.getPhysicalType() in ['E2V', 'ITL']
 
     @staticmethod
     def _getRaftTuple(detector):
+        """Get the detector's raft x, y coordinates as integers.
+
+        Numbers are zero-indexed, with (0, 0) being at the bottom left.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector.
+
+        Returns
+        -------
+        x : `int`
+            The raft's column number, zero-indexed.
+        y : `int`
+            The raft's row number, zero-indexed.
+        """
         rString = detector.getName().split('_')[0]
         return int(rString[1]), int(rString[2])
 
     @staticmethod
     def _getSensorTuple(detector):
+        """Get the detector's x, y coordinates as integers within the raft.
+
+        Numbers are zero-indexed, with (0, 0) being at the bottom left.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector.
+
+        Returns
+        -------
+        x : `int`
+            The detectors's column number, zero-indexed within the raft.
+        y : `int`
+            The detectors's row number, zero-indexed within the raft.
+        """
         sString = detector.getName().split('_')[1]
         return int(sString[1]), int(sString[2])
 
@@ -155,72 +224,133 @@ class CameraControlConfig:
         return col, row
 
     def setWavefrontOn(self):
+        """Turn all the wavefront sensors on.
+        """
         for detector in self._wavefronts:
             self._detectorStates[detector] = True
 
     def setWavefrontOff(self):
+        """Turn all the wavefront sensors off.
+        """
         for detector in self._wavefronts:
             self._detectorStates[detector] = False
 
     def setGuidersOn(self):
+        """Turn all the guider sensors on.
+        """
         for detector in self._guiders:
             self._detectorStates[detector] = True
 
     def setGuidersOff(self):
+        """Turn all the wavefront sensors off.
+        """
         for detector in self._guiders:
             self._detectorStates[detector] = False
 
     def setFullChequerboard(self, phase=0):
+        """Set a chequerboard pattern at the CCD level.
+
+        Parameters
+        ----------
+        phase : `int`, optional
+            Any integer is acceptable as it is applied mod-2, so even integers
+            will get you one phase, and odd integers will give the other.
+            Even-phase contains 96 detectors, odd-phase contains 93.
+        """
         for detector in self._imaging:
             x, y = self._getFullLocationTuple(detector)
             self._detectorStates[detector] = ((x % 2) + (y % 2) + phase) % 2
 
     def setRaftChequerboard(self, phase=0):
+        """Set a chequerboard pattern at the raft level.
+
+        Parameters
+        ----------
+        phase : `int`, optional
+            Any integer is acceptable as it is applied mod-2, so even integers
+            will get you one phase, and odd integers will give the other. The
+            even-phase contains 108 detectors (12 rafts), the odd-phase
+            contains 81 (9 rafts).
+        """
         for detector in self._imaging:
             raftX, raftY = self._getRaftTuple(detector)
             self._detectorStates[detector] = ((raftX % 2) + (raftY % 2) + phase) % 2
 
     def setE2Von(self):
+        """Turn all e2v sensors on.
+        """
         for detector in self._imaging:
             if detector.getPhysicalType() == 'E2V':
                 self._detectorStates[detector] = True
 
     def setITLon(self):
+        """Turn all ITL sensors on.
+        """
         for detector in self._imaging:
             if detector.getPhysicalType() == 'ITL':
                 self._detectorStates[detector] = True
 
     def setAllOn(self):
-        """Note: includes corners and guiders
+        """Turn all sensors on.
+
+        Note that this includes wavefront sensors and guiders.
         """
         for detector in self._detectors:
             self._detectorStates[detector] = True
 
     def setAllOff(self):
-        """Note: includes corners and guiders
+        """Turn all sensors off.
+
+        Note that this includes wavefront sensors and guiders.
         """
         for detector in self._detectors:
             self._detectorStates[detector] = False
 
     def setAllImagingOn(self):
+        """Turn all imaging sensors on.
+        """
         for detector in self._imaging:
             self._detectorStates[detector] = True
 
     def setAllImagingOff(self):
+        """Turn all imaging sensors off.
+        """
         for detector in self._imaging:
             self._detectorStates[detector] = False
 
     def invertImagingSelection(self):
+        """Invert the selection of the imaging chips only.
+        """
         for detector in self._imaging:
             self._detectorStates[detector] = not self._detectorStates[detector]
 
     def getNumEnabled(self):
+        """Get the number of enabled sensors.
+
+        Returns
+        -------
+        nEnabled : `int`
+            The number of enabled CCDs.
+        """
         return sum(self._detectorStates.values())
 
     def getEnabledDetIds(self):
+        """Get the detectorIds of the enabled sensors.
+
+        Returns
+        -------
+        enabled : `list` of `int`
+            The detectorIds of the enabled CCDs.
+        """
         return sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
 
     def asPlotData(self):
+        """Get the data in a form for rendering as a FocalPlaneGeometryPlot.
+
+        Returns
+        -------
+        XXX Get this from analysis tools directly.
+        """
         detNums = []
         ampNames = []
         x = []
@@ -242,7 +372,21 @@ class CameraControlConfig:
             'z': np.array(z)
         }
 
-    def plotConfig(self):
+    def plotConfig(self, saveAs=''):
+        """Plot the current configuration.
+
+        Parameters
+        ----------
+        saveAs : `str`, optional
+            If specified, save the figure to this file.
+
+        Returns
+        -------
+        fig : `matplotlib.figure.Figure`
+            The plotted focal plane as a `Figure`.
+        """
         self.plot.level = 'detector'
         plot = self.plot.makePlot(self.asPlotData(), self.camera, self.plotInfo)
+        if saveAs:
+            plot.savefig(saveAs)
         return plot
