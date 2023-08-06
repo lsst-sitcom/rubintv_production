@@ -30,6 +30,23 @@ from .redisUtils import RedisHelper
 
 
 class WorkerProcessingMode(enum.IntEnum):
+    """Defines the mode in which worker nodes process images.
+
+    WAITING: The worker will process only the most recently taken image, and
+        then will wait for new images to land, and will not process the backlog
+        in the meantime.
+    CONSUMING: The worker will always process the most recent image, but will
+        will also process the backlog of images if no new images have landed
+        during the last processing.
+    MURDEROUS: The worker will process the most recent image, and will also
+        work its way through the backlog of images, but if new images land
+        while backlog images are bring processed, the worker will abandon the
+        work in progress and switch to processing the newly-landed image. Only
+        backlog images will be abandoned though - if the in-progress processing
+        is for an image which came from the `current` stack then processing
+        will not be abadoned. This is necessary, otherwise, if we can't keep up
+        with the incoming images, we will never fully process a single image!
+    """
     WAITING = 0
     CONSUMING = 1
     MURDEROUS = 2
