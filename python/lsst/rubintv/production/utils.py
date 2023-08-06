@@ -179,6 +179,8 @@ class FakeExposureRecord:
 
 
 def expRecordFromJson(expRecordJson):
+    if not expRecordJson:
+        return None
     return dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
                                                           universe=dafButler.DimensionUniverse())
 
