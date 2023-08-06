@@ -148,7 +148,20 @@ class RedisHelper:
         Returns
         -------
         commands : `list` of `dict` : `dict`
-            The commands that have been sent. As a list of dicts, where each dict is the
+            The commands that have been sent. As a list of dicts, where each
+            dict has a single string key, which is the function to be called,
+            and dict value, optionally populated with kwargs to call that
+            function with.
+
+            For example, to ensure the guiders are on, the wavefronts are off,
+            and we have a phase-0 per-CCD chequerboard, the received commands
+            would look like:
+
+            commands = [
+                {'setAllOff': {}},
+                {'setFullChequerboard': {'phase': 0}},
+                {'setGuidersOn': {}},
+            ]
         """
         commands = []
         while command := self.redis.rpop('commands'):  # rpop for FIFO
