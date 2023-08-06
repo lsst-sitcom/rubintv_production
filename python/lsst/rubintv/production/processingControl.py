@@ -99,12 +99,23 @@ class HeadProcessController:
                 getterParts = command.split('.')
             return getterParts, setterPart
 
+        def validateSetterPart(setterPart):
+            """Ensure code passed to eval isn't evil.
+            """
+            # raise if we're not trying to instantiate a known class
+            if setterPart.split('.')[0] not in globals():
+                raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
+            # raise if there's anything other than a simple assignment
+            if ' ' in setterPart:  # this should significantlty limit the vulnerability here
+                raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
+
         for command in commandList:
             for method, kwargs in command.items():
                 getterParts, setter = parseCommand(method)
                 component = getBottomComponent(self, getterParts[:-1])
                 functionName = getterParts[-1]
                 if setter is not None:
+                    validateSetterPart(setter)
                     component.__setattr__(functionName, eval(setter))
                 else:
                     attr = getattr(component, functionName)
