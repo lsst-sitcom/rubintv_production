@@ -19,10 +19,88 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import numpy as np
+import json
+import enum
+from datetime import timedelta
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
-import numpy as np
+from .watchers import ButlerWatcher
+from .redisUtils import RedisHelper
+
+
+class WorkerProcessingMode(enum.IntEnum):
+    WAITING = 0
+    CONSUMING = 1
+    MURDEROUS = 2
+
+
+class VisitProcessingMode(enum.IntEnum):
+    CONSTANT = 0
+    ALTERNATING = 1
+    ALTERNATING_BY_TWOS = 2
+
+
+class HeadProcessController:
+    """The head node, which controls which pods process which images.
+
+    Decides how and when each detector-visit is farmed out.
+
+    Despite being the head node, the behaviour of this controller can be
+    remotely controlled by a RemoteProcessController, for example to change the
+    processing strategy from a notebook or from LOVE.
+    """
+    def __init__(self):
+        self.redisHelper = RedisHelper(isHeadNode=True)
+        self.focalPlane = CameraControlConfig()
+        # self.butlerWatcher = ButlerWatcher()
+
+    def confirmRunning(self, instrument):
+        self.redisHelper.redis.setex(f'butlerWatcher-{instrument}',
+                                     timedelta(seconds=10),
+                                     value=1)
+
+    def executeRemoteCommands(self):
+        commandList = self.redisHelper.getRemoteCommands()
+        if commandList is None:
+            return
+
+        for command in commandList:
+            for method, kwargs in command.items():
+                attr = getattr(self.focalPlane, method)
+                attr.__call__(**kwargs)
+
+    def run(self):
+        while True:
+            self.executeRemoteCommands()  # look for remote control commands here
+            self.confirmRunning()  # push the expiry out 10s
+            # self.butlerWatcher.getMo
+
+
+class RemoteProcessController:
+    def __init__(self):
+        self.redisHelper = RedisHelper()
+
+    def sendCommand(self, method, **kwargs):
+        """Execute the specified method on the head node with the specified
+        kwargs.
+
+        Note that all kwargs must be JSON serializable.
+        """
+        payload = {method: kwargs}
+        self.redisHelper.redis.lpush('commands', json.dumps(payload))
+
+
+class PodProcessController:
+    def __init__(self, detectors):
+        self.redisHelper = RedisHelper()
+
+    def isHeadNodeRuning(self, instrument):
+        isRunning = self.redisHelper.redis.get(f'butlerWatcher-{instrument}')
+        return bool(isRunning)  # 0 and None both bool() to False
+
+    # def run():
 
 
 class CameraControlConfig:
