@@ -416,8 +416,11 @@ class DayAnimator:
         if not self.DRY_RUN:
             self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
             try:
-                self.epoUploader.googleUpload(self.channel, creationFilename, uploadAsFilename,
-                                              isLargeFile=True)
+                self.epoUploader.googleUpload(self.channel,
+                                              creationFilename,
+                                              'all_sky_current.mp4',
+                                              isLargeFile=True,
+                                              isLiveFile=True)
             except Exception as e:
                 self.log.exception(f'Failed to upload movie to EPO bucket: {e}')
         else:
@@ -444,9 +447,10 @@ class DayAnimator:
                                        sourceFilename=sourceFilename,
                                        uploadAsFilename=uploadAsFilename)
             try:
-                self.uploader.googleUpload(channel=channel,
-                                           sourceFilename=sourceFilename,
-                                           uploadAsFilename=uploadAsFilename)
+                self.epoUploader.googleUpload(channel=channel,
+                                              sourceFilename=sourceFilename,
+                                              uploadAsFilename='all_sky_current.jpg',
+                                              isLiveFile=True)
             except Exception as e:
                 self.log.exception(f'Failed to upload still to EPO bucket: {e}')
         else:
