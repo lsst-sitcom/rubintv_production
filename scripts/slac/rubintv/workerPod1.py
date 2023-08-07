@@ -27,7 +27,9 @@ REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
 
 log = logging.getLogger('lsst.rubintv.production.frontendWorkerPod1')
-log.info('Pod init successful')
+msg = 'Pod init successful'
+print(msg)
+log.info(msg)
 
 while True:
     try:
@@ -35,7 +37,9 @@ while True:
         import numpy as np
         data = np.zeros((10, 10), dtype=np.float32)
         img = afwImage.ImageF(data)
-        log.info('Create an afwImage - stack import successful')
+        msg = 'Create an afwImage - stack import successful'
+        print(msg)
+        log.info(msg)
     except Exception as e:
         log.exception(f'Failed to create an afwImage: {e}')
 
@@ -43,7 +47,9 @@ while True:
         from lsst.daf.butler import Butler
         butler = Butler('/sdf/group/rubin/repo/ir2/butler.yaml',
                         collections=['LSSTCam/raw/all', 'LSSTCam/calib'])
-        log.info('Created a full camera butler - repo mount sucessful')
+        msg = 'Created a full camera butler - repo mount sucessful'
+        print(msg)
+        log.info(msg)
     except Exception as e:
         log.exception(f'Failed to create the butler: {e}')
 
@@ -53,7 +59,9 @@ while True:
         records = butler.registry.queryDimensionRecords('exposure', where=where, datasets='raw')
         record = list(records)[0]
         assert isinstance(record, DimensionRecord)
-        log.info('Successfully accessed an exposure record - butler is really working')
+        msg = 'Successfully accessed an exposure record - butler is really working'
+        print(msg)
+        log.info(msg)
     except Exception as e:
         log.exception(f'Failed to get a dimension record from the butler: {e}')
 
@@ -61,7 +69,9 @@ while True:
         import redis
         r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
         r.ping()
-        log.info('Successfully spoke to redis!')
+        msg = 'Successfully spoke to redis!'
+        print(msg)
+        log.info(msg)
     except Exception as e:
         log.exception(f'Failed to connect to redis: {e}')
 
