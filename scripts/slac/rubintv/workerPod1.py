@@ -54,6 +54,15 @@ while True:
         log.exception(f'Failed to create the butler: {e}')
 
     try:
+        import lsst.summit.utils.butlerUtils as butlerUtils
+        butler = butlerUtils.makeDefaultLatissButler(embargo=True)
+        msg = 'Created an embargo LATISS butler - embargo credentials working'
+        print(msg)
+        log.info(msg)
+    except Exception as e:
+        log.exception(f'Failed to create LATISS embargo butler: {e}')
+
+    try:
         from lsst.daf.butler import DimensionRecord
         where = "exposure.day_obs>=20230101 AND exposure.seq_num=1"
         records = butler.registry.queryDimensionRecords('exposure', where=where, datasets='raw')
