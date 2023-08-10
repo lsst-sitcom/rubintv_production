@@ -300,6 +300,8 @@ class DayAnimator:
         with write privileges.
     uploader : `lsst.rubintv.production.Uploader`
         The uploader for sending images and movies to GCS.
+    epoUploader : `lsst.rubintv.production.Uploader`
+        The uploader for sending images and movies to the EPO bucket.
     channel : `str`
         The name of the channel. Must match a channel name in rubinTv.py.
     bucketName : `str`
