@@ -122,6 +122,12 @@ class FileWatcher:
         ----------
         previousExpId : `int`, optional
             The previous exposure id.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.DimensionRecord` or `None`
+            The most recent exposure record, or `None` if no new record was
+            found.
         """
         pattern = getGlobPatternForDataProduct(dataIdPath=self.locationConfig.dataIdScanPath,
                                                dataProduct=self.dataProduct,
