@@ -73,12 +73,20 @@ class RedisHelper:
             raise RuntimeError('This function is only for the head node - consume your queue, worker!')
 
     def pushDataId(self, dataProduct, expRecord):
-        """Put an exposure on the top of the stack for immediate processing.
+        """Put an exposure on the `current` stack for immediate processing.
 
-        Each data product has its own stack, and putting an exposure record
-        onto its stack indicates that it is time to start processing that
-        exposure. Note that the dataProduct can be any string - it need not be
-        restricted to dafButler dataProducts.
+        If there is an unprocessed item on the current stack when the new item
+        is pushed (and there can only ever be only one) the previous item is
+        moved to the top of the backlog stack.
+
+        Each data product has its own `current` stack, and putting an exposure
+        record onto its stack indicates that it is time to start processing
+        that data product for that exposure. Note that the dataProduct can be
+        any string - it need not be restricted to dafButler dataProducts.
+
+        Note, his function may only be called from the head node or a
+        ``ButlerWatcher``. If this function is called from elsewhere a
+        ``RuntimeError`` is raised.
 
         Parameters
         ----------
@@ -89,12 +97,17 @@ class RedisHelper:
         log : `logging.Logger`, optional
             The logger to use. If provided, and info-level message is logged
             about where what file was written.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if called from a worker node.
         """
         self._checkIsHeadNode()
 
         expRecordJson = json.dumps(expRecord.to_simple().json())
         with self.redis.pipeline() as pipe:
-            while True:  # continue trying until we break out
+            while True:  # continue trying until we break out, though this should usually work first try
                 try:
                     # Start a transactional block to ensure atomicity. Take the
                     # current expRecord off the current list if there is one,
@@ -116,17 +129,17 @@ class RedisHelper:
                     break  # success!
 
                 except redis.WatchError:
+                    # No break here, this is the expected flow for a retry
                     dayObs = expRecord.day_obs
                     seqNum = expRecord.seq_num
                     self.log.info(f'redis.WatchError putting expRecord for {dayObs=}, {seqNum=}, retrying...')
-                    # WatchError so no break here
 
                 except Exception as e:
                     dayObs = expRecord.day_obs
                     seqNum = expRecord.seq_num
                     self.log.exception(f'Error putting expRecord for {dayObs=}, {seqNum=}: {e}'
                                        ' This image will not be processed!')
-                    break  # a real exception, so don't retry
+                    break  # an unexpected (real) exception, so don't retry
 
         self.updateMostRecent(dataProduct, expRecord)
 
