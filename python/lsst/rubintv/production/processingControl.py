@@ -23,6 +23,8 @@ import numpy as np
 import json
 import enum
 from datetime import timedelta
+import logging
+from ast import literal_eval
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
@@ -69,6 +71,7 @@ class HeadProcessController:
     """
     def __init__(self):
         self.instrument = 'LSSTCam'
+        self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
         self.redisHelper = RedisHelper(isHeadNode=True)
         self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
@@ -91,12 +94,52 @@ class HeadProcessController:
             return
 
         def getBottomComponent(obj, componentList):
+            """Get the bottom-most component of an object.
+
+            Given a part of compound object, get the part which is being
+            referred to, so for example, if passed
+            `someClass.somePart.otherPart.componentToGet` then return
+            `componentToGet` as an object, such that it can be called or set to
+            things, as appropriate.
+
+            Parameters
+            ----------
+            obj : `object`
+                The object to get the component from.
+            componentList : `list` of `str`
+                The drill-down list, so from the example above, this would be
+                ['somePart', 'otherPart', 'componentToGet']. Note it does not
+                include the name of the class itself, i.e. 'self'.
+            """
             if len(componentList) == 0:
                 return obj
             else:
                 return getBottomComponent(getattr(obj, componentList[0]), componentList[1:])
 
         def parseCommand(command):
+            """Given a command, return the getting parts and the setting parts,
+            if any.
+
+            For example, 'focalPlane.setFullChequerboard' is just components to
+            call, and would therefore return `['focalPlane',
+            'setFullChequerboard'], None` and if the command were
+            'workerMode=WorkerProcessingMode.CONSUMING' this would return
+            `['workerMode'], ['WorkerProcessingMode.CONSUMING']`
+
+            Parameters
+            ----------
+            command : `str`
+                The command to parse.
+
+            Returns
+            -------
+            getterParts : `list` of `str`
+                List of components to get from `self`, such that the last item
+                can be called.
+            setterPart : `str`
+                If a setter type command, what the component is being set to,
+                such that it can be instantiated.
+            """
             getterParts = None
             setterPart = None
             if '=' in command:
@@ -106,16 +149,42 @@ class HeadProcessController:
                 getterParts = command.split('.')
             return getterParts, setterPart
 
-        def validateSetterPart(setterPart):
-            """Ensure code passed to eval isn't evil.
-            """
-            # raise if we're not trying to instantiate a known class
-            if setterPart.split('.')[0] not in globals():
-                raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
-            # raise if there's anything other than a simple assignment
-            if ' ' in setterPart:  # this should significantlty limit the vulnerability here
-                raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
+        def safeEval(setterPart):
+            """Ensure whatever we're being asked to instantiate is safe to.
 
+            If a primative is passed, it's safely evaluated with literal_eval,
+            otherwise, it's only instantiated if it's already an item in the
+            global namespace, ensuring that arbitrary code execution cannot
+            occur.
+
+            Parameters
+            ----------
+            setterPart : `str`
+                Whatever item we need to instantiate.
+
+            Returns
+            -------
+            item : `obj`
+                Whatever item was asked for.
+
+            Raises
+                ValueError if the item could not be safely evaluated.
+            """
+            try:
+                # if we have a primative, get it simply and safely
+                item = literal_eval(setterPart)
+                return item
+            except (SyntaxError, ValueError):  # anything non-primative will raise like this
+                pass
+
+            if setterPart.split('.')[0] in globals():
+                # we're instantiating a known class, so it's safe
+                item = eval(setterPart)
+                return item
+            raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
+
+        # command list is a list of dict: dict with each dict only having a
+        # single key, and the value being the kwargs, if any.
         for command in commandList:
             try:
                 for method, kwargs in command.items():
@@ -123,13 +192,13 @@ class HeadProcessController:
                     component = getBottomComponent(self, getterParts[:-1])
                     functionName = getterParts[-1]
                     if setter is not None:
-                        validateSetterPart(setter)
-                        component.__setattr__(functionName, eval(setter))
+                        setItem = safeEval(setter)
+                        component.__setattr__(functionName, setItem)
                     else:
                         attr = getattr(component, functionName)
                         attr.__call__(**kwargs)
-            except Exception:
-                self.log.warning(f"Failed to apply command {command}")
+            except Exception as e:
+                self.log.exception(f"Failed to apply command {command}: {e}")
                 return  # do not apply further commands as soon as one fails
 
     def doFanout(self):
