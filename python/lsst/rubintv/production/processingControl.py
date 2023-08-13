@@ -64,17 +64,18 @@ class HeadProcessController:
     Decides how and when each detector-visit is farmed out.
 
     Despite being the head node, the behaviour of this controller can be
-    remotely controlled by a RemoteProcessController, for example to change the
+    remotely controlled by a RemoteController, for example to change the
     processing strategy from a notebook or from LOVE.
     """
     def __init__(self):
+        self.instrument = 'LSSTCam'
         self.redisHelper = RedisHelper(isHeadNode=True)
-        self.focalPlane = CameraControlConfig()
+        self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
 
-    def confirmRunning(self, instrument):
-        self.redisHelper.redis.setex(f'butlerWatcher-{instrument}',
+    def confirmRunning(self):
+        self.redisHelper.redis.setex(f'butlerWatcher-{self.instrument}',
                                      timedelta(seconds=10),
                                      value=1)
 
@@ -134,7 +135,7 @@ class HeadProcessController:
     def doFanout(self):
         expRecord = self.redisHelper.popDataId('raw')
         if expRecord is not None:
-            for detector in self.focalPlane.getEnabledDetIds():
+            for detector in self.focalPlaneControl.getEnabledDetIds():
                 self.redisHelper.enqueueCurrentWork(expRecord, detector)
 
     def run(self):
