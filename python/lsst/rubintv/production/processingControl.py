@@ -79,6 +79,12 @@ class HeadProcessController:
                                      value=1)
 
     def executeRemoteCommands(self):
+        """Execute commands sent from a RemoteController or LOVE.
+
+        Pops all remote commands from the stack and executes them as if they
+        were calls to this class itself. Remote code can therefore do anything
+        that this class itself can do, and furthermore, nothing that it cannot.
+        """
         commandList = self.redisHelper.getRemoteCommands()
         if commandList is None:
             return
@@ -110,16 +116,20 @@ class HeadProcessController:
                 raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
 
         for command in commandList:
-            for method, kwargs in command.items():
-                getterParts, setter = parseCommand(method)
-                component = getBottomComponent(self, getterParts[:-1])
-                functionName = getterParts[-1]
-                if setter is not None:
-                    validateSetterPart(setter)
-                    component.__setattr__(functionName, eval(setter))
-                else:
-                    attr = getattr(component, functionName)
-                    attr.__call__(**kwargs)
+            try:
+                for method, kwargs in command.items():
+                    getterParts, setter = parseCommand(method)
+                    component = getBottomComponent(self, getterParts[:-1])
+                    functionName = getterParts[-1]
+                    if setter is not None:
+                        validateSetterPart(setter)
+                        component.__setattr__(functionName, eval(setter))
+                    else:
+                        attr = getattr(component, functionName)
+                        attr.__call__(**kwargs)
+            except Exception:
+                self.log.warning(f"Failed to apply command {command}")
+                return  # do not apply further commands as soon as one fails
 
     def doFanout(self):
         expRecord = self.redisHelper.popDataId('raw')
@@ -134,7 +144,7 @@ class HeadProcessController:
             self.doFanout()
 
 
-class RemoteProcessController:
+class RemoteController:
     def __init__(self):
         self.redisHelper = RedisHelper()
 
