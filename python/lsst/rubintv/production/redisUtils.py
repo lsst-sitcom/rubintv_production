@@ -22,6 +22,7 @@
 import json
 import redis
 import logging
+from datetime import timedelta
 
 from .utils import expRecordFromJson
 
@@ -63,6 +64,31 @@ class RedisHelper:
                 self._mostRecents[dataProduct] = expRecord.timespan.end
             else:
                 return
+
+    def affirmRunning(self, podName, timePeriod):
+        """Affirm that the named pod is running OK and should not be considered
+        dead for `timePeriod` seconds.
+
+        Parameters
+        ----------
+        podName : `str`
+            The name of the pod.
+        timePeriod : `float`
+            The amount of time after which the pod would be considered dead if
+            not reaffirmed by.
+        """
+        self.redis.setex(podName, timedelta(seconds=timePeriod), value=1)
+
+    def confirmRunning(self, podName):
+        """Check whether the named pod is running or should be considered dead.
+
+        Parameters
+        ----------
+        podName : `str`
+            The name of the pod.
+        """
+        isRunning = self.r.get(podName)
+        return bool(isRunning)  # 0 and None both bool() to False
 
     def _checkIsHeadNode(self):
         """Note: this isn't how atomicity of transactions is ensured, this is
@@ -147,8 +173,8 @@ class RedisHelper:
         """Get the most recent image from the top of the stack.
 
         If includeBacklog is set, items which were not the most recently put
-        will also be returned. Otherwise, an exposure record will only be returned
-        if it's the most recently landed image.
+        will also be returned. Otherwise, an exposure record will only be
+        returned if it's the most recently landed image.
         """
         self._checkIsHeadNode()
         expRecordJson = self.redis.lpop(f'{dataProduct}')

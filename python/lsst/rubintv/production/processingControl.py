@@ -22,9 +22,9 @@
 import numpy as np
 import json
 import enum
-from datetime import timedelta
 import logging
 from ast import literal_eval
+from time import sleep
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
@@ -71,29 +71,58 @@ class HeadProcessController:
     """
     def __init__(self):
         self.instrument = 'LSSTCam'
+        self.name = f'headNode-{self.instrument}'
         self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
         self.redisHelper = RedisHelper(isHeadNode=True)
         self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
         self.remoteController = RemoteController()
+        self.nDispatched = 0
 
-    def confirmRunning(self):
-        self.redisHelper.redis.setex(f'butlerWatcher-{self.instrument}',
-                                     timedelta(seconds=10),
-                                     value=1)
+    def doFanout(self, expRecord):
+        """Send the expRecord out for processing based on current selection.
 
-    def doFanout(self):
-        expRecord = self.redisHelper.popDataId('raw')
-        if expRecord is not None:
-            for detector in self.focalPlaneControl.getEnabledDetIds():
-                self.redisHelper.enqueueCurrentWork(expRecord, detector)
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The expRecord to process.
+        """
+        for detector in self.focalPlaneControl.getEnabledDetIds():
+            self.redisHelper.enqueueCurrentWork(expRecord, detector)
+        self.nDispatched += 1
+
+    def getWork(self):
+        return self.redisHelper.popDataId('raw')
+
+    def repattern(self):
+        """Apply the VisitProcessingMode to the focal plane sensor selection.
+        """
+        match self.visitMode:
+            case VisitProcessingMode.CONSTANT:
+                return
+            case VisitProcessingMode.ALTERNATING:
+                self.focalPlaneControl.invertImagingSelection()
+            case VisitProcessingMode.ALTERNATING_BY_TWOS:
+                if self.nDispatched % 2 == 0:
+                    self.focalPlaneControl.invertImagingSelection()
+            case _:
+                raise ValueError(f'Unknown visit processing mode {self.visitMode=}')
 
     def run(self):
         while True:
+            self.redisHelper.affirmRunning(self.name, 10)  # push the expiry out 10s
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
-            self.confirmRunning()  # push the expiry out 10s
-            self.doFanout()
+            work = self.getWork()
+            if work is None:
+                sleep(0.1)
+                continue
+
+            self.doFanout(work)
+            # note the repattern comes after the fanout so that any commands
+            # executed are present for the next image to follow and only then
+            # do we toggle
+            self.repattern()
 
 
 class RemoteController:
