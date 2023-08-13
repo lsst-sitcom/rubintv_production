@@ -76,18 +76,53 @@ class HeadProcessController:
         self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
+        self.remoteController = RemoteController()
 
     def confirmRunning(self):
         self.redisHelper.redis.setex(f'butlerWatcher-{self.instrument}',
                                      timedelta(seconds=10),
                                      value=1)
 
-    def executeRemoteCommands(self):
+    def doFanout(self):
+        expRecord = self.redisHelper.popDataId('raw')
+        if expRecord is not None:
+            for detector in self.focalPlaneControl.getEnabledDetIds():
+                self.redisHelper.enqueueCurrentWork(expRecord, detector)
+
+    def run(self):
+        while True:
+            self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
+            self.confirmRunning()  # push the expiry out 10s
+            self.doFanout()
+
+
+class RemoteController:
+    def __init__(self):
+        self.log = logging.getLogger('lsst.rubintv.production.processControl.RemoteController')
+        self.redisHelper = RedisHelper()
+
+    def sendCommand(self, method, **kwargs):
+        """Execute the specified method on the head node with the specified
+        kwargs.
+
+        Note that all kwargs must be JSON serializable.
+        """
+        payload = {method: kwargs}
+        self.redisHelper.redis.lpush('commands', json.dumps(payload))
+
+    def executeRemoteCommands(self, parentClass):
         """Execute commands sent from a RemoteController or LOVE.
 
         Pops all remote commands from the stack and executes them as if they
         were calls to this class itself. Remote code can therefore do anything
         that this class itself can do, and furthermore, nothing that it cannot.
+
+        Parameters
+        ----------
+        parentClass : `obj`
+            The class which owns this ``RemoteController``, such that commands
+            can be executed on the parent object itself, rather than only on
+            the remote controller.
         """
         commandList = self.redisHelper.getRemoteCommands()
         if commandList is None:
@@ -189,7 +224,7 @@ class HeadProcessController:
             try:
                 for method, kwargs in command.items():
                     getterParts, setter = parseCommand(method)
-                    component = getBottomComponent(self, getterParts[:-1])
+                    component = getBottomComponent(parentClass, getterParts[:-1])
                     functionName = getterParts[-1]
                     if setter is not None:
                         setItem = safeEval(setter)
@@ -200,32 +235,6 @@ class HeadProcessController:
             except Exception as e:
                 self.log.exception(f"Failed to apply command {command}: {e}")
                 return  # do not apply further commands as soon as one fails
-
-    def doFanout(self):
-        expRecord = self.redisHelper.popDataId('raw')
-        if expRecord is not None:
-            for detector in self.focalPlaneControl.getEnabledDetIds():
-                self.redisHelper.enqueueCurrentWork(expRecord, detector)
-
-    def run(self):
-        while True:
-            self.executeRemoteCommands()  # look for remote control commands here
-            self.confirmRunning()  # push the expiry out 10s
-            self.doFanout()
-
-
-class RemoteController:
-    def __init__(self):
-        self.redisHelper = RedisHelper()
-
-    def sendCommand(self, method, **kwargs):
-        """Execute the specified method on the head node with the specified
-        kwargs.
-
-        Note that all kwargs must be JSON serializable.
-        """
-        payload = {method: kwargs}
-        self.redisHelper.redis.lpush('commands', json.dumps(payload))
 
 
 class PodProcessController:
