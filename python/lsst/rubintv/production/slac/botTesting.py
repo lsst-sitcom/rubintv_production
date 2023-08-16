@@ -808,21 +808,27 @@ class Replotter(Plotter):
                 for recordNum, expRecord in enumerate(records):
                     files = leftovers[expRecord]
                     self.log.info(f"Processing leftover {workload.name} {recordNum+1} of {len(leftovers)}")
-                    if getNumExpectedItems(expRecord) == len(files):
+                    isComplete = getNumExpectedItems(expRecord) == len(files)
+                    isStale = getExpRecordAge(expRecord) > self.STALE_AGE
+                    if not isStale:
+                        # note that unless it's stale we don't process, ever,
+                        # because this could collide with the normally running
+                        # processes.
+                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
+                                      ' waiting for it to go stale')
+                        continue
+                    if isComplete:
                         # no need to delete here because it's complete and so
                         # will self-delete automatically
                         self.log.info(f'Remaking full {workload.name} for {expRecord.dataId}')
                         workload.workerFunction(expRecord)
-                    elif getExpRecordAge(expRecord) > self.STALE_AGE:
+                    else:
                         self.log.info(f'Remaking partial, stale {workload.name} for {expRecord.dataId}')
                         workload.workerFunction(expRecord)
                         self.log.info(f'Removing {len(files)} stale {workload.name} files'
                                       f' for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)
-                    else:
-                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
-                                      ' waiting for it to go stale')
 
             sleep(10)  # this need not be very aggressive
 
