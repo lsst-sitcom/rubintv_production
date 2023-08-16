@@ -20,11 +20,30 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import os
 from time import sleep
 
-REPO_LOCATION = '/sdf/group/rubin/repo/ir2/butler.yaml'
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
+REPO_LOCATION = os.getenv(
+    'DAF_BUTLER_REPOSITORY_INDEX',
+    '/sdf/group/rubin/repo/ir2/butler.yaml'
+)
+REPO_COLLECTIONS = os.getenv(
+    'DAF_BUTLER_COLLECTIONS',
+    'LSSTCam/raw/all,LSSTCam/calib'
+).split('/')
+REDIS_HOST = os.getenv(
+    'REDIS_HOST',
+    'localhost'
+)
+REDIS_PORT = int(os.getenv(
+    'REDIS_PORT',
+    '6379'
+))
+REDIS_PASSWORD = os.getenv(
+    'REDIS_PASSWORD',
+    ''
+)
+
 
 log = logging.getLogger('lsst.rubintv.production.frontendWorkerPod1')
 msg = 'Pod init successful'
@@ -45,8 +64,8 @@ while True:
 
     try:
         from lsst.daf.butler import Butler
-        butler = Butler('/sdf/group/rubin/repo/ir2/butler.yaml',
-                        collections=['LSSTCam/raw/all', 'LSSTCam/calib'])
+        butler = Butler(REPO_LOCATION,
+                        collections=REPO_COLLECTIONS)
         msg = 'Created a full camera butler - repo mount sucessful'
         print(msg)
         log.info(msg)
@@ -76,7 +95,9 @@ while True:
 
     try:
         import redis
-        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+        r = redis.Redis(host=REDIS_HOST,
+                        port=REDIS_PORT,
+                        password=REDIS_PASSWORD)
         r.ping()
         msg = 'Successfully spoke to redis!'
         print(msg)
