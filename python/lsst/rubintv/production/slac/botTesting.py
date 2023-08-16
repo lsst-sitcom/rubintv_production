@@ -772,7 +772,9 @@ class Replotter(Plotter):
         # Check to see if there is anything more recent than the most recent
         # expRecord which existed when we started looking for data, and if so,
         # remove them, so that we don't collide with the running processes.
-        records = {r: files for r, files in records.items() if r.timespan.end < mostRecentExp.timespan.end}
+        # Note this is <= not < to deliberately include that record itself,
+        # because the complete ones are now only processed if also stale.
+        records = {r: files for r, files in records.items() if r.timespan.end <= mostRecentExp.timespan.end}
         return records
 
     def run(self):
@@ -915,7 +917,9 @@ class Replotter(Plotter):
         # Check to see if there is anything more recent than the most recent
         # expRecord which existed when we started looking for data, and if so,
         # remove the entries so that we don't collide with the running
-        # processes.
+        # processes. Note this is <= not < to deliberately include that record
+        # itself, because the complete ones are now only processed if also
+        # stale.
         shards = {record: fileList for record, fileList in shards.items()
-                  if record.timespan.end < mostRecentExp.timespan.end}
+                  if record.timespan.end <= mostRecentExp.timespan.end}
         return shards
