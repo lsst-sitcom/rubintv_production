@@ -749,9 +749,9 @@ class Replotter(Plotter):
             A dictionary, keyed by exposure record, of the binned image files.
         """
         # must grab this before scanning for data, to protect against new
-        # images arriving during the scrape. This watcher watched for
+        # images arriving during the scrape. This watcher watches for
         # binnedImages, which are always an earlier or equal expRecord to the
-        # raw one, and so if the right one to choose
+        # raw one, and so is the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
         records = {}
@@ -881,9 +881,9 @@ class Replotter(Plotter):
             files.
         """
         # must grab this before scanning for data, to protect against new
-        # images arriving during the scrape. This watcher watched for
+        # images arriving during the scrape. This watcher watches for
         # binnedImages, which are always an earlier or equal expRecord to the
-        # raw one, and so if the right one to choose
+        # raw one, and so is the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
         shards = {}
