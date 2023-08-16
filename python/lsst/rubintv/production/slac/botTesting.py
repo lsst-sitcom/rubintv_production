@@ -560,7 +560,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
-        self.STALE_AGE = 5*60  # in seconds, so 5 mins
+        self.STALE_AGE_SECONDS = 45  # in seconds
 
     def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -809,7 +809,7 @@ class Replotter(Plotter):
                     files = leftovers[expRecord]
                     self.log.info(f"Processing leftover {workload.name} {recordNum+1} of {len(leftovers)}")
                     isComplete = getNumExpectedItems(expRecord) == len(files)
-                    isStale = getExpRecordAge(expRecord) > self.STALE_AGE
+                    isStale = getExpRecordAge(expRecord) > self.STALE_AGE_SECONDS
                     if not isStale:
                         # note that unless it's stale we don't process, ever,
                         # because this could collide with the normally running
