@@ -560,7 +560,7 @@ class Plotter:
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
-        self.STALE_AGE = 5*60  # in seconds, so 5 mins
+        self.STALE_AGE_SECONDS = 45  # in seconds
 
     def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -749,9 +749,9 @@ class Replotter(Plotter):
             A dictionary, keyed by exposure record, of the binned image files.
         """
         # must grab this before scanning for data, to protect against new
-        # images arriving during the scrape. This watcher watched for
+        # images arriving during the scrape. This watcher watches for
         # binnedImages, which are always an earlier or equal expRecord to the
-        # raw one, and so if the right one to choose
+        # raw one, and so is the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
         records = {}
@@ -772,7 +772,9 @@ class Replotter(Plotter):
         # Check to see if there is anything more recent than the most recent
         # expRecord which existed when we started looking for data, and if so,
         # remove them, so that we don't collide with the running processes.
-        records = {r: files for r, files in records.items() if r.timespan.end < mostRecentExp.timespan.end}
+        # Note this is <= not < to deliberately include that record itself,
+        # because the complete ones are now only processed if also stale.
+        records = {r: files for r, files in records.items() if r.timespan.end <= mostRecentExp.timespan.end}
         return records
 
     def run(self):
@@ -806,21 +808,27 @@ class Replotter(Plotter):
                 for recordNum, expRecord in enumerate(records):
                     files = leftovers[expRecord]
                     self.log.info(f"Processing leftover {workload.name} {recordNum+1} of {len(leftovers)}")
-                    if getNumExpectedItems(expRecord) == len(files):
+                    isComplete = getNumExpectedItems(expRecord) == len(files)
+                    isStale = getExpRecordAge(expRecord) > self.STALE_AGE_SECONDS
+                    if not isStale:
+                        # note that unless it's stale we don't process, ever,
+                        # because this could collide with the normally running
+                        # processes.
+                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
+                                      ' waiting for it to go stale')
+                        continue
+                    if isComplete:
                         # no need to delete here because it's complete and so
                         # will self-delete automatically
                         self.log.info(f'Remaking full {workload.name} for {expRecord.dataId}')
                         workload.workerFunction(expRecord)
-                    elif getExpRecordAge(expRecord) > self.STALE_AGE:
+                    else:
                         self.log.info(f'Remaking partial, stale {workload.name} for {expRecord.dataId}')
                         workload.workerFunction(expRecord)
                         self.log.info(f'Removing {len(files)} stale {workload.name} files'
                                       f' for {expRecord.dataId}')
                         for f in files:
                             os.remove(f)
-                    else:
-                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
-                                      ' waiting for it to go stale')
 
             sleep(10)  # this need not be very aggressive
 
@@ -881,9 +889,9 @@ class Replotter(Plotter):
             files.
         """
         # must grab this before scanning for data, to protect against new
-        # images arriving during the scrape. This watcher watched for
+        # images arriving during the scrape. This watcher watches for
         # binnedImages, which are always an earlier or equal expRecord to the
-        # raw one, and so if the right one to choose
+        # raw one, and so is the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
 
         shards = {}
@@ -915,7 +923,9 @@ class Replotter(Plotter):
         # Check to see if there is anything more recent than the most recent
         # expRecord which existed when we started looking for data, and if so,
         # remove the entries so that we don't collide with the running
-        # processes.
+        # processes. Note this is <= not < to deliberately include that record
+        # itself, because the complete ones are now only processed if also
+        # stale.
         shards = {record: fileList for record, fileList in shards.items()
-                  if record.timespan.end < mostRecentExp.timespan.end}
+                  if record.timespan.end <= mostRecentExp.timespan.end}
         return shards
