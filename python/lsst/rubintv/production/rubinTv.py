@@ -57,7 +57,7 @@ from lsst.summit.utils.tmaUtils import (TMAEventMaker,
                                         getCommandsDuringEvent,
                                         getAzimuthElevationDataForEvent,
                                         )
-from lsst.summit.utils.efdUtils import clipDataToEvent
+from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
 from lsst.summit.utils import NightReport
@@ -423,7 +423,7 @@ class MountTorqueChannel(BaseButlerChannel):
                          dataProduct='raw',
                          channelName='auxtel_mount_torques',
                          doRaise=doRaise)
-        self.client = EfdClient('summit_efd')
+        self.client = makeEfdClient()
         self.fig = plt.figure(figsize=(16, 16))
         self.detector = 0
 
@@ -1246,7 +1246,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                          channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
                          doRaise=self.doRaise)
 
-        self.client = EfdClient('summit_efd')  # k8s pods don't support auto-making the client
+        self.client = makeEfdClient()
         self.eventMaker = TMAEventMaker(client=self.client)
         self.figure = plt.figure(figsize=(10, 8))
         self.prePadding = 1
