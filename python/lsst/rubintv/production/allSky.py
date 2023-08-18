@@ -206,7 +206,7 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
 
     north = ('N', 2800, 1100)
     east = ('E', 1000, 120)
-    south = ('S', 25, 2150)  # updated
+    south = ('S', 25, 2150)
     west = ('W', 2000, 2950)
     pointSize = 150
 
