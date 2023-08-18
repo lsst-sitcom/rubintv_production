@@ -43,7 +43,7 @@ from lsst.pipe.base import Instrument
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
 
 try:
-    from lsst_efd_client import EfdClient
+    from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
     HAS_EFD_CLIENT = True
 except ImportError:
     HAS_EFD_CLIENT = False
