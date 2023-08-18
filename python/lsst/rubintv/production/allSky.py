@@ -26,6 +26,7 @@ import logging
 import subprocess
 from PIL import Image
 from PIL.ExifTags import TAGS
+import matplotlib.font_manager
 
 from lsst.utils.iteration import ensure_iterable
 from lsst.summit.utils.utils import (dayObsIntToString,
@@ -107,6 +108,35 @@ def dayObsFromDirName(fullDirName, logger):
         return None, None
 
 
+def getUbuntuFontPath(logger=None):
+    """Get the path to the Ubuntu font, if available.
+
+    Parameters
+    ----------
+    logger : `logging.logger`
+        The logger.
+
+    Returns
+    -------
+    ubuntuBoldPath : `str`
+        The path to the Ubuntu bold font, or ``None`` if not found.
+    """
+    fontPaths = matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext='ttf')
+
+    ubuntuBoldPath = [f for f in fontPaths if f.find('Ubuntu-B.') != -1]
+    if not ubuntuBoldPath:
+        if not logger:  # only create if needed
+            logger = _LOG.getChild("convertAndAnnotate")
+        logger.warning('Warning - cound not fund Ubuntu bold font!')
+        return
+    if len(ubuntuBoldPath) != 1:
+        if not logger:  # only create if needed
+            logger = _LOG.getChild("convertAndAnnotate")
+        logger.warning('Warning - found multiple fonts for Ubuntu bold, picking the first!')
+    ubuntuBoldPath = ubuntuBoldPath[0]
+    return ubuntuBoldPath
+
+
 def getDateTimeFromExif(filename):
     """Get the image date and time from the exif data.
 
@@ -171,16 +201,19 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
             cmd.append(annotationCommand)
 
     north = ('N', 2800, 1100)
-    east = ('E', 1000, 100)
+    east = ('E', 1000, 120)
     south = ('S', 25, 2150)  # updated
     west = ('W', 2000, 2950)
     pointSize = 150
+
+    fontPath = getUbuntuFontPath()
+    fontStr = f'-font {fontPath} ' if fontPath else ''  # note the trailing space so it add cleanly
 
     for directionData in [north, east, south, west]:
         letter, x, y = directionData
         _x = x + xCrop
         _y = y
-        annotationCommand = f'-pointsize {pointSize} -fill white -annotate +{_x}+{_y} "{letter}"'
+        annotationCommand = f'-pointsize {pointSize} -fill white {fontStr}-annotate +{_x}+{_y} "{letter}"'
         cmd.append(annotationCommand)
 
     cmd.append(outFilename)
