@@ -137,7 +137,7 @@ def getUbuntuFontPath(logger=None):
     return ubuntuBoldPath
 
 
-def getDateTimeFromExif(filename):
+def getDateTimeFromExif(filename, logger=None):
     """Get the image date and time from the exif data.
 
     Parameters
@@ -149,6 +149,8 @@ def getDateTimeFromExif(filename):
     -------
     dateStr, timeStr : `tuple` of `str`
         The date and time strings, or ``None`` if parsing failed.
+    logger : `logging.logger`
+        The logger, created if needed and not supplied.
     """
     tagMap = {v: k for k, v in TAGS.items()}
 
@@ -163,7 +165,9 @@ def getDateTimeFromExif(filename):
             dateStr = f"{year}-{month}-{day}"
             return dateStr, timeStr
         else:
-            print(f"Failed to get DateTime from exif data in {filename}")
+            if not logger:  # only create if needed
+                logger = _LOG.getChild("getDateTimeFromExif")
+                logger.warning(f"Failed to get DateTime from exif data in {filename}")
     return None
 
 
@@ -472,14 +476,14 @@ class DayAnimator:
         for file in sorted(files):  # sort just helps debug
             outputFilename = self._getConvertedFilename(file)
             self.log.debug(f"Converting {file} to {outputFilename}")
-            date, time = getDateTimeFromExif(file)
+            date, time = getDateTimeFromExif(file, logger=self.log)
             if not self.DRY_RUN:
                 if os.path.exists(outputFilename):
                     self.log.warning(f"Found already converted {outputFilename}")
                     if forceRegen:
-                        _convertAndAnnotate(file, outputFilename, textItems=[date, time])
+                        _convertAndAnnotate(file, outputFilename, textItems=[date, time], logger=self.log)
                 else:
-                    _convertAndAnnotate(file, outputFilename, textItems=[date, time])
+                    _convertAndAnnotate(file, outputFilename, textItems=[date, time], logger=self.log)
             convertedFiles.add(file)
         return set(convertedFiles)
 
