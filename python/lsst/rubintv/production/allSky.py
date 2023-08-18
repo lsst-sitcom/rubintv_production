@@ -160,7 +160,7 @@ def getDateTimeFromExif(filename):
             # dateTimeStr comes out like "2021:08:17 06:57:00"
             dateStr, timeStr = dateTimeStr.split(' ')
             year, month, day = dateStr.split(':')
-            dateStr = f"{month}/{day}/{year}"
+            dateStr = f"{year}-{month}-{day}"
             return dateStr, timeStr
         else:
             print(f"Failed to get DateTime from exif data in {filename}")
