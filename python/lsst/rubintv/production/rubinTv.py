@@ -42,6 +42,12 @@ from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
 
+try:
+    from lsst_efd_client import EfdClient
+    HAS_EFD_CLIENT = True
+except ImportError:
+    HAS_EFD_CLIENT = False
+
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
