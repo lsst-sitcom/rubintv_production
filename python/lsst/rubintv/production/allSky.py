@@ -126,12 +126,12 @@ def getUbuntuFontPath(logger=None):
     ubuntuBoldPath = [f for f in fontPaths if f.find('Ubuntu-B.') != -1]
     if not ubuntuBoldPath:
         if not logger:  # only create if needed
-            logger = _LOG.getChild("convertAndAnnotate")
+            logger = _LOG.getChild("getUbuntuFontPath")
         logger.warning('Warning - cound not fund Ubuntu bold font!')
         return
     if len(ubuntuBoldPath) != 1:
         if not logger:  # only create if needed
-            logger = _LOG.getChild("convertAndAnnotate")
+            logger = _LOG.getChild("getUbuntuFontPath")
         logger.warning('Warning - found multiple fonts for Ubuntu bold, picking the first!')
     ubuntuBoldPath = ubuntuBoldPath[0]
     return ubuntuBoldPath
@@ -481,9 +481,9 @@ class DayAnimator:
                 if os.path.exists(outputFilename):
                     self.log.warning(f"Found already converted {outputFilename}")
                     if forceRegen:
-                        _convertAndAnnotate(file, outputFilename, textItems=[date, time], logger=self.log)
+                        _convertAndAnnotate(file, outputFilename, textItems=[date, time])
                 else:
-                    _convertAndAnnotate(file, outputFilename, textItems=[date, time], logger=self.log)
+                    _convertAndAnnotate(file, outputFilename, textItems=[date, time])
             convertedFiles.add(file)
         return set(convertedFiles)
 
