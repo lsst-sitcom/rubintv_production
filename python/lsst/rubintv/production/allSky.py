@@ -193,6 +193,9 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
            '-contrast-stretch .5%x.5%',  # approximately the same as 99.5% scale in ds9
            ]
 
+    fontPath = getUbuntuFontPath()
+    fontStr = f'-font {fontPath} ' if fontPath else ''  # note the trailing space so it add cleanly
+
     if textItems:
         textItems = ensure_iterable(textItems)
         xLocation = 25
@@ -201,7 +204,7 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
         _x = xLocation + xCrop
         for itemNum, item in enumerate(textItems):
             _y = (itemNum * 1.15 * pointSize) + yLocation
-            annotationCommand = f'-pointsize {pointSize} -fill white -annotate +{_x}+{_y} "{item}"'
+            annotationCommand = f'-pointsize {pointSize} -fill white {fontStr}-annotate +{_x}+{_y} "{item}"'
             cmd.append(annotationCommand)
 
     north = ('N', 2800, 1100)
@@ -209,9 +212,6 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
     south = ('S', 25, 2150)
     west = ('W', 2000, 2950)
     pointSize = 150
-
-    fontPath = getUbuntuFontPath()
-    fontStr = f'-font {fontPath} ' if fontPath else ''  # note the trailing space so it add cleanly
 
     for directionData in [north, east, south, west]:
         letter, x, y = directionData
