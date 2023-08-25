@@ -453,11 +453,33 @@ class CameraControlConfig:
             if detector.getPhysicalType() == 'E2V':
                 self._detectorStates[detector] = True
 
+    def setE2Voff(self):
+        """Turn all e2v sensors off.
+        """
+        for detector in self._imaging:
+            if detector.getPhysicalType() == 'E2V':
+                self._detectorStates[detector] = False
+
     def setITLon(self):
         """Turn all ITL sensors on.
         """
         for detector in self._imaging:
             if detector.getPhysicalType() == 'ITL':
+                self._detectorStates[detector] = True
+
+    def setITLoff(self):
+        """Turn all ITL sensors off.
+        """
+        for detector in self._imaging:
+            if detector.getPhysicalType() == 'ITL':
+                self._detectorStates[detector] = False
+
+    def setFullFocalPlaneGuidersOn(self):
+        """Turn all ITL sensors on.
+        """
+        for detector in self._imaging:
+            sensorX, sensorY = self._getSensorTuple(detector)
+            if sensorX <= 1 and sensorY <= 1:
                 self._detectorStates[detector] = True
 
     def setAllOn(self):
