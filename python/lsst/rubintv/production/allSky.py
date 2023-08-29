@@ -24,7 +24,11 @@ import time
 from time import sleep
 import logging
 import subprocess
+from PIL import Image
+from PIL.ExifTags import TAGS
+import matplotlib.font_manager
 
+from lsst.utils.iteration import ensure_iterable
 from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_int,
                                      getCurrentDayObs_datetime,
@@ -104,7 +108,70 @@ def dayObsFromDirName(fullDirName, logger):
         return None, None
 
 
-def _convertJpgScale(inFilename, outFilename):
+def getUbuntuFontPath(logger=None):
+    """Get the path to the Ubuntu font, if available.
+
+    Parameters
+    ----------
+    logger : `logging.logger`
+        The logger.
+
+    Returns
+    -------
+    ubuntuBoldPath : `str`
+        The path to the Ubuntu bold font, or ``None`` if not found.
+    """
+    fontPaths = matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext='ttf')
+
+    ubuntuBoldPath = [f for f in fontPaths if f.find('Ubuntu-B.') != -1]
+    if not ubuntuBoldPath:
+        if not logger:  # only create if needed
+            logger = _LOG.getChild("getUbuntuFontPath")
+        logger.warning('Warning - cound not fund Ubuntu bold font!')
+        return
+    if len(ubuntuBoldPath) != 1:
+        if not logger:  # only create if needed
+            logger = _LOG.getChild("getUbuntuFontPath")
+        logger.warning('Warning - found multiple fonts for Ubuntu bold, picking the first!')
+    ubuntuBoldPath = ubuntuBoldPath[0]
+    return ubuntuBoldPath
+
+
+def getDateTimeFromExif(filename, logger=None):
+    """Get the image date and time from the exif data.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to get the exif data from.
+
+    Returns
+    -------
+    dateStr, timeStr : `tuple` of `str`
+        The date and time strings, or two empty strings if parsing failed.
+    logger : `logging.logger`
+        The logger, created if needed and not supplied.
+    """
+    tagMap = {v: k for k, v in TAGS.items()}
+
+    with Image.open(filename) as img:
+        exifData = img.getexif()
+        tagNum = tagMap['DateTime']
+        dateTimeStr = exifData.get(tagNum)
+        if dateTimeStr:
+            # dateTimeStr comes out like "2021:08:17 06:57:00"
+            dateStr, timeStr = dateTimeStr.split(' ')
+            year, month, day = dateStr.split(':')
+            dateStr = f"{year}-{month}-{day}"
+            return dateStr, timeStr
+        else:
+            if not logger:  # only create if needed
+                logger = _LOG.getChild("getDateTimeFromExif")
+            logger.warning(f"Failed to get DateTime from exif data in {filename}")
+    return '', ''
+
+
+def _convertAndAnnotate(inFilename, outFilename, textItems=None):
     """Convert an image file, cropping and stretching for correctly for use
     in the all sky cam TV channel.
 
@@ -114,13 +181,46 @@ def _convertJpgScale(inFilename, outFilename):
         The input filename.
     outFilename : `str`
         The output filename.
+    textItems : `Iterable` of `str`, optional
+        Text items to add to the top left corner of the image. Each item is
+        added on a new line, going down the image, in the order supplied.
     """
+    imgSize = 2970
+    xCrop = 747
     cmd = ['convert',
            inFilename,
-           '-crop 2970x2970+747+0',  # crops to square
+           f'-crop {imgSize}x{imgSize}+{xCrop}+0',  # crops to square
            '-contrast-stretch .5%x.5%',  # approximately the same as 99.5% scale in ds9
-           outFilename,
            ]
+
+    fontPath = getUbuntuFontPath()
+    fontStr = f'-font {fontPath} ' if fontPath else ''  # note the trailing space so it add cleanly
+
+    if textItems:
+        textItems = ensure_iterable(textItems)
+        xLocation = 25
+        yLocation = 100
+        pointSize = 100
+        _x = xLocation + xCrop
+        for itemNum, item in enumerate(textItems):
+            _y = (itemNum * 1.15 * pointSize) + yLocation
+            annotationCommand = f'-pointsize {pointSize} -fill white {fontStr}-annotate +{_x}+{_y} "{item}"'
+            cmd.append(annotationCommand)
+
+    north = ('N', 2800, 1100)
+    east = ('E', 1000, 120)
+    south = ('S', 25, 2150)
+    west = ('W', 2000, 2950)
+    pointSize = 150
+
+    for directionData in [north, east, south, west]:
+        letter, x, y = directionData
+        _x = x + xCrop
+        _y = y
+        annotationCommand = f'-pointsize {pointSize} -fill white {fontStr}-annotate +{_x}+{_y} "{letter}"'
+        cmd.append(annotationCommand)
+
+    cmd.append(outFilename)
     subprocess.check_call(r' '.join(cmd), shell=True)
 
 
@@ -376,13 +476,15 @@ class DayAnimator:
         for file in sorted(files):  # sort just helps debug
             outputFilename = self._getConvertedFilename(file)
             self.log.debug(f"Converting {file} to {outputFilename}")
+            date, time = getDateTimeFromExif(file, logger=self.log)
+            textItems = [date, time] if date or time else None
             if not self.DRY_RUN:
                 if os.path.exists(outputFilename):
                     self.log.warning(f"Found already converted {outputFilename}")
                     if forceRegen:
-                        _convertJpgScale(file, outputFilename)
+                        _convertAndAnnotate(file, outputFilename, textItems=textItems)
                 else:
-                    _convertJpgScale(file, outputFilename)
+                    _convertAndAnnotate(file, outputFilename, textItems=textItems)
             convertedFiles.add(file)
         return set(convertedFiles)
 
