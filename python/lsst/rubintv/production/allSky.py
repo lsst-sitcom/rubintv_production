@@ -148,7 +148,7 @@ def getDateTimeFromExif(filename, logger=None):
     Returns
     -------
     dateStr, timeStr : `tuple` of `str`
-        The date and time strings, or ``None`` if parsing failed.
+        The date and time strings, or two empty strings if parsing failed.
     logger : `logging.logger`
         The logger, created if needed and not supplied.
     """
@@ -168,7 +168,7 @@ def getDateTimeFromExif(filename, logger=None):
             if not logger:  # only create if needed
                 logger = _LOG.getChild("getDateTimeFromExif")
                 logger.warning(f"Failed to get DateTime from exif data in {filename}")
-    return None
+    return '', ''
 
 
 def _convertAndAnnotate(inFilename, outFilename, textItems=None):
@@ -477,13 +477,14 @@ class DayAnimator:
             outputFilename = self._getConvertedFilename(file)
             self.log.debug(f"Converting {file} to {outputFilename}")
             date, time = getDateTimeFromExif(file, logger=self.log)
+            textItems = [date, time] if date or time else None
             if not self.DRY_RUN:
                 if os.path.exists(outputFilename):
                     self.log.warning(f"Found already converted {outputFilename}")
                     if forceRegen:
-                        _convertAndAnnotate(file, outputFilename, textItems=[date, time])
+                        _convertAndAnnotate(file, outputFilename, textItems=textItems)
                 else:
-                    _convertAndAnnotate(file, outputFilename, textItems=[date, time])
+                    _convertAndAnnotate(file, outputFilename, textItems=textItems)
             convertedFiles.add(file)
         return set(convertedFiles)
 
