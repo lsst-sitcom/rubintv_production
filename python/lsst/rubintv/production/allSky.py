@@ -167,7 +167,7 @@ def getDateTimeFromExif(filename, logger=None):
         else:
             if not logger:  # only create if needed
                 logger = _LOG.getChild("getDateTimeFromExif")
-                logger.warning(f"Failed to get DateTime from exif data in {filename}")
+            logger.warning(f"Failed to get DateTime from exif data in {filename}")
     return '', ''
 
 
