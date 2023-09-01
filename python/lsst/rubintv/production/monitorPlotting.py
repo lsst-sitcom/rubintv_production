@@ -63,6 +63,7 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
     cmap = cm.gray
     figure.clear()
     ax1 = figure.add_subplot(111)
+    allNanColorbar = False
     match scalingOption:
         case "default":
             vmin = np.percentile(data, 1)
@@ -71,6 +72,8 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
         case "CCS":  # The CCS-style scaling
             quantiles = getQuantiles(data, cmap.N)
             norm = colors.BoundaryNorm(quantiles, cmap.N)
+            if np.all(np.isnan(quantiles)):
+                allNanColorbar = True
             im1 = ax1.imshow(data, cmap=cmap, origin='lower', norm=norm)
         case 'asinh':
             def _forward(x):
@@ -85,7 +88,17 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
 
     divider = make_axes_locatable(ax1)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im1, cax=cax)
+    if not allNanColorbar:
+        # this is the line which raises for all-nans. Oddly though, for some
+        # reason, the two lines above are sufficient to add a 0-1 range
+        # all-white colour bar, and so are left outside of this if-block to
+        # help people see that something has gone wrong. The labels are set to
+        # nan in the else block below.
+        plt.colorbar(im1, cax=cax)
+    else:
+        # set the tick labels on the cax to all nan manually
+        cax.set_yticklabels(['nan' for _ in cax.get_yticklabels()])
+
     plt.tight_layout()
     if saveFilename:
         plt.savefig(saveFilename)
