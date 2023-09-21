@@ -368,7 +368,7 @@ class MonitorChannel(BaseButlerChannel):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
             self.log.warning(f"Skipping {outputFilename}")
             return
-        plotExp(exp, self.fig, outputFilename)
+        plotExp(exp, self.fig, outputFilename, scalingOption='CCS')
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
