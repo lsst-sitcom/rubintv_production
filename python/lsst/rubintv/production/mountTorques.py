@@ -38,7 +38,6 @@ __all__ = ["calculateMountErrors"]
 
 NON_TRACKING_IMAGE_TYPES = ['BIAS',
                             'FLAT',
-                            'DARK',
                             ]
 
 AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC = 280.0
@@ -104,6 +103,15 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     if imgType in NON_TRACKING_IMAGE_TYPES:
         logger.info(f'Skipping mount torques for non-tracking image type {imgType} for {dataIdString}')
         return False
+
+    # only process these if they're the unusual tracking-darks used for closed
+    # dome testing of the telescope.
+    if imgType == 'DARK':
+        if expRecord.target_name == 'slew_icrs':
+            logger.info(f'Calculating mount torques for slewing dark image {dataIdString}')
+        else:
+            logger.info(f'Skipping mount torques for non-slewing dark for {dataIdString}')
+            return False
 
     exptime = expRecord.exposure_time
     if exptime < 1.99:
