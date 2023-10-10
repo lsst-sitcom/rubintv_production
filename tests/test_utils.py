@@ -20,11 +20,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Test cases for utils."""
+import logging
 import unittest
+from unittest.mock import patch, MagicMock
 import lsst.utils.tests
 
 from lsst.rubintv.production.utils import (isDayObsContiguous,
                                            sanitizeNans,
+                                           hasDayRolledOver,
                                            )
 
 
@@ -52,6 +55,33 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
 
         noneKeyedDict = {None: 1.0, 'b': {'c': float('nan'), 'd': 2.0}}
         self.assertEqual(sanitizeNans(noneKeyedDict), {None: 1.0, 'b': {'c': None, 'd': 2.0}})
+
+    @patch("lsst.rubintv.production.utils.getCurrentDayObs_int")
+    def test_has_day_rolled_over(self, mock_get_current_day_obs_int):
+        logger = MagicMock(spec=logging.Logger)
+        day_obs = 20200305
+        mock_get_current_day_obs_int.return_value = day_obs + 1
+
+        self.assertTrue(hasDayRolledOver(day_obs, logger=logger))
+
+    @patch("lsst.rubintv.production.utils.getCurrentDayObs_int")
+    def test_has_not_rolled_over(self, mock_get_current_day_obs_int):
+        logger = MagicMock(spec=logging.Logger)
+        day_obs = 20200305
+        mock_get_current_day_obs_int.return_value = day_obs
+
+        self.assertFalse(hasDayRolledOver(day_obs, logger=logger))
+        logger.warning.assert_not_called()
+
+    @patch("lsst.rubintv.production.utils.getCurrentDayObs_int")
+    def test_has_rolled_over_unexpectedly(self, mock_get_current_day_obs_int):
+        logger = MagicMock(spec=logging.Logger)
+        day_obs = 20200305
+        mock_get_current_day_obs_int.return_value = day_obs + 2
+
+        self.assertTrue(hasDayRolledOver(day_obs, logger=logger))
+        logger.warning.assert_called_once_with(f"Encountered non-linear time! dayObs supplied was {day_obs}"
+                                               f" and now the current dayObs is {day_obs + 2}!")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
