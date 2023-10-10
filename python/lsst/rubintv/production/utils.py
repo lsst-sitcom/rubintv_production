@@ -534,7 +534,7 @@ def raiseIf(doRaise, error, logger, msg=''):
 
 
 def isDayObsContiguous(dayObs, otherDayObs):
-    """Check if two dayObs integers are coniguous or not.
+    """Check if two dayObs integers are contiguous or not.
 
     DayObs take forms like 20220727 and therefore don't trivially compare.
 
