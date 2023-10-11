@@ -265,7 +265,9 @@ class RedisHelper:
             The next exposure to process for the specified detector, or
             ``None`` if the queue is empty.
         """
-        expRecordJson = self.redis.lpop(f'current-{detector}').decode('utf-8')
-        if not expRecordJson and includeBacklog:
-            expRecordJson = self.redis.lpop(f'backlog-{detector}').decode('utf-8')
-        return expRecordFromJson(expRecordJson)
+        expRecordJson = self.redis.lpop(f'current-{detector}')
+        if expRecordJson is None and includeBacklog:
+            expRecordJson = self.redis.lpop(f'backlog-{detector}')
+        if expRecordJson is None:
+            return None
+        return expRecordFromJson(expRecordJson.decode('utf-8'))
