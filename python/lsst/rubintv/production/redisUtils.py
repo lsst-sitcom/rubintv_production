@@ -186,7 +186,7 @@ class RedisHelper:
         podName : `str`
             The name of the pod.
         """
-        isRunning = self.r.get(podName)
+        isRunning = self.redis.get(podName)
         return bool(isRunning)  # 0 and None both bool() to False
 
     def _checkIsHeadNode(self):
