@@ -23,12 +23,111 @@ import json
 import redis
 import logging
 from datetime import timedelta
+import os
+import time
 
 from .utils import expRecordFromJson
+
+# Check if the environment is a notebook
+clear_output = None
+IN_NOTEBOOK = False
+try:
+    from IPython import get_ipython
+    ipython_instance = get_ipython()
+    # Check if notebook and not just IPython terminal. ipython_instance is None
+    # if not in IPython environment, and if IPKernelApp is not in the config
+    # then it's not a notebook, just an ipython terminal.
+    if ipython_instance is None or "IPKernelApp" not in ipython_instance.config:
+        IN_NOTEBOOK = False
+    else:
+        from IPython.display import clear_output
+        IN_NOTEBOOK = True
+except (ImportError, NameError):
+    pass
 
 __all__ = (
     'RedisHelper'
 )
+
+
+def decode_string(value):
+    """Decode a string from bytes to UTF-8.
+
+    Parameters
+    ----------
+    value : bytes
+        Bytes value to decode.
+
+    Returns
+    -------
+    str
+        Decoded string.
+    """
+    return value.decode('utf-8')
+
+
+def decode_hash(hash_dict):
+    """Decode a hash dictionary from bytes to UTF-8.
+
+    Parameters
+    ----------
+    hash_dict : dict
+        Dictionary with bytes keys and values.
+
+    Returns
+    -------
+    dict
+        Dictionary with decoded keys and values.
+    """
+    return {k.decode('utf-8'): v.decode('utf-8') for k, v in hash_dict.items()}
+
+
+def decode_list(value_list):
+    """Decode a list of values from bytes to UTF-8.
+
+    Parameters
+    ----------
+    value_list : list
+        List of bytes values to decode.
+
+    Returns
+    -------
+    list
+        List of decoded values.
+    """
+    return [item.decode('utf-8') for item in value_list]
+
+
+def decode_set(value_set):
+    """Decode a set of values from bytes to UTF-8.
+
+    Parameters
+    ----------
+    value_set : set
+        Set of bytes values to decode.
+
+    Returns
+    -------
+    set
+        Set of decoded values.
+    """
+    return {item.decode('utf-8') for item in value_set}
+
+
+def decode_zset(value_zset):
+    """Decode a zset of values from bytes to UTF-8.
+
+    Parameters
+    ----------
+    value_zset : list
+        List of tuple with bytes values and scores to decode.
+
+    Returns
+    -------
+    list
+        List of tuples with decoded values and scores.
+    """
+    return [(item[0].decode('utf-8'), item[1]) for item in value_zset]
 
 
 class RedisHelper:
@@ -271,3 +370,63 @@ class RedisHelper:
         if expRecordJson is None:
             return None
         return expRecordFromJson(expRecordJson.decode('utf-8'))
+
+    def displayRedisContents(self):
+        """Get the next unit of work from a specific worker queue.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure to process for the specified detector, or
+            ``None`` if the queue is empty.
+        """
+        r = self.redis
+
+        # Get all keys in the database
+        keys = r.keys('*')
+
+        for key in keys:
+            key = decode_string(key)
+            type_of_key = r.type(key).decode('utf-8')
+
+            # Handle different Redis data types
+            if type_of_key == 'string':
+                value = decode_string(r.get(key))
+                print(f"{key}: {value}")
+            elif type_of_key == 'hash':
+                values = decode_hash(r.hgetall(key))
+                print(f"{key}: {values}")
+            elif type_of_key == 'list':
+                values = decode_list(r.lrange(key, 0, -1))
+                print(f"{key}: {values}")
+            elif type_of_key == 'set':
+                values = decode_set(r.smembers(key))
+                print(f"{key}: {values}")
+            elif type_of_key == 'zset':
+                values = decode_zset(r.zrange(key, 0, -1, withscores=True))
+                print(f"{key}: {values}")
+            else:
+                print(f"Unsupported type for key: {key}")
+
+    def monitorRedis(self, interval=1):
+        """Continuously display the contents of Redis database in the console.
+
+        This function prints the entire contents of the redis database to
+        either the console or the notebook every ``interval`` seconds. The
+        console/notebook cell is cleared before each update.
+
+        Parameters
+        ----------
+        interval : `float`, optional
+            The time interval between each update of the Redis database
+            contents. Default is every second.
+        """
+        while True:
+            self.displayRedisContents()
+            time.sleep(interval)
+
+            # Clear the screen according to the environment
+            if IN_NOTEBOOK:
+                clear_output(wait=True)
+            else:
+                print('\033c', end='')  # clear the terminal
