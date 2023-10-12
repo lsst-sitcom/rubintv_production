@@ -231,40 +231,46 @@ class RedisHelper:
         self._checkIsHeadNode()
 
         expRecordJson = expRecord.to_simple().json()
-        with self.redis.pipeline() as pipe:
-            while True:  # continue trying until we break out, though this should usually work first try
-                try:
-                    # Start a transactional block to ensure atomicity. Take the
-                    # current expRecord off the current list if there is one,
-                    # move it to the top of the backlog, and put the new one on
-                    # the current stack in its place
+        while True:
+            try:
+                with self.redis.pipeline() as pipe:
                     pipe.watch(dataProduct)
+
+                    # Get the length and current value before the transactional
+                    # block.
+                    currentLength = pipe.llen(dataProduct)
+                    currentValue = pipe.lindex(dataProduct, 0) if currentLength == 1 else None
+
                     pipe.multi()
-                    numExisting = pipe.llen(dataProduct)
-                    if numExisting > 1:
-                        raise RuntimeError('Too many current expRecords on current stack - check the logic')
-                    old = None
-                    if numExisting == 1:
-                        old = pipe.lpop(dataProduct)
-                    nRemaining = pipe.llen(dataProduct)
-                    assert nRemaining == 0  # this *must* always be true, so a very hard check here
-                    pipe.lpush(f'{dataProduct}-backlog', old)
-                    pipe.lpush(dataProduct, expRecordJson)
+                    # Decide action based on currentLength and currentValue.
+                    if currentLength == 0:
+                        pipe.lpush(dataProduct, expRecordJson)
+                    elif currentLength == 1:
+                        if currentValue:
+                            pipe.lpush(dataProduct + "_backlog", currentValue)
+                        # Remove the old item before adding the new one
+                        pipe.lpop(dataProduct)
+                        pipe.lpush(dataProduct, expRecordJson)
+                    else:
+                        # In an ideal scenario, this shouldn't happen since
+                        # your list should always have 0 or 1 items.
+                        self.log.warning('Found more than one item on the current queue! This should never'
+                                         ' happen, check the redisHelper logic')
+                        pipe.lpush(dataProduct + "_backlog", expRecordJson)
+
                     pipe.execute()
                     break  # success!
 
-                except redis.WatchError:
-                    # No break here, this is the expected flow for a retry
-                    dayObs = expRecord.day_obs
-                    seqNum = expRecord.seq_num
-                    self.log.info(f'redis.WatchError putting expRecord for {dayObs=}, {seqNum=}, retrying...')
+            except redis.WatchError:
+                dayObs = expRecord.day_obs
+                seqNum = expRecord.seq_num
+                self.log.info(f'redis.WatchError putting expRecord for {dayObs=}, {seqNum=}, retrying...')
+            except Exception as e:
+                dayObs = expRecord.day_obs
+                seqNum = expRecord.seq_num
+                self.log.exception(f'Error putting expRecord for {dayObs=}, {seqNum=}: {e}')
+                break
 
-                except Exception as e:
-                    dayObs = expRecord.day_obs
-                    seqNum = expRecord.seq_num
-                    self.log.exception(f'Error putting expRecord for {dayObs=}, {seqNum=}: {e}'
-                                       ' This image will not be processed!')
-                    break  # an unexpected (real) exception, so don't retry
 
         self.updateMostRecent(dataProduct, expRecord)
 
