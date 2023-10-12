@@ -230,7 +230,7 @@ class RedisHelper:
         """
         self._checkIsHeadNode()
 
-        expRecordJson = json.dumps(expRecord.to_simple().json())
+        expRecordJson = expRecord.to_simple().json()
         with self.redis.pipeline() as pipe:
             while True:  # continue trying until we break out, though this should usually work first try
                 try:
@@ -279,7 +279,7 @@ class RedisHelper:
         expRecordJson = self.redis.lpop(f'{dataProduct}')
         if expRecordJson is None:
             return
-        return expRecordFromJson(expRecordJson)
+        return expRecordFromJson(expRecordJson.decode('utf-8'))
 
     def insertDataId(self, dataProduct, expRecord, index=1):
         """Insert an exposure into the queue.
@@ -290,7 +290,7 @@ class RedisHelper:
         """
         self._checkIsHeadNode()
         if index == -1:
-            expRecordJson = json.dumps(expRecord.to_simple().json())
+            expRecordJson = expRecord.to_simple().json()
             self.redis.rpush(f'{dataProduct}', expRecordJson)
         else:
             # Need to work out how to do this, LINSERT seemed to need the value
@@ -339,7 +339,7 @@ class RedisHelper:
         # detector, and then the workers themselves can decide whether to
         # consume from their backlog queues depending on their
         # WorkerProcessingMode
-        expRecordJson = json.dumps(expRecord.to_simple().json())
+        expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(f'current-{detector}', expRecordJson)
 
     def enqueueBacklogWork(self, expRecord, detector):
@@ -352,7 +352,7 @@ class RedisHelper:
         detector : `int`
             The detector to enqueue the work for.
         """
-        expRecordJson = json.dumps(expRecord.to_simple().json())
+        expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(f'backlog-{detector}', expRecordJson)
 
     def getWork(self, detector, includeBacklog=False):
