@@ -1,4 +1,4 @@
-# This file is part of summit_utils.
+# This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -19,40 +19,176 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import copy
 import unittest
 import lsst.utils.tests
+import json
+
+from utils import getSampleExpRecord
 
 from lsst.rubintv.production.payloads import (
     Payload,
-    Pipeline,
+    PayloadResult,
 )
 
 
 class TestPayload(unittest.TestCase):
-    def test_from_json(self):
-        json_str = '{"dayObs": 1, "seqNum": 2, "detector": 3, "pipeline": "test"}'
-        payload = Payload.from_json(json_str)
-        self.assertEqual(payload.dayObs, 1)
-        self.assertEqual(payload.seqNum, 2)
-        self.assertEqual(payload.detector, 3)
-        self.assertEqual(payload.pipeline, 'test')
+    def setUp(self):
+        self.expRecord = getSampleExpRecord()
+        self.payload = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
+        self.validJson = self.payload.to_json()
+        test = Payload.from_json(self.validJson)  # check the validJson is actually valid
+        self.assertIsInstance(test, Payload)
 
-        json_str = '{"dayObs": 1, "seqNum": 2, "detector": 3, "illegalItem": "test"}'
+    def test_constructor(self):
+        payload = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
+        self.assertEqual(payload.expRecord, self.expRecord)
+        self.assertEqual(payload.detector, 3)
+        self.assertEqual(payload.pipeline, "test")
+
+        with self.assertRaises(TypeError):
+            payload = Payload(
+                expRecord=self.expRecord,
+                detector=3,
+                pipeline="test",
+                illegalKwarg="test",
+            )
+
+    def test_equality(self):
+        payload1 = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
+        payload2 = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
+        payloadDiffPipeline = Payload(
+            expRecord=self.expRecord, detector=3, pipeline="diff_pipeline"
+        )
+        payloadDiffDetector = Payload(
+            expRecord=self.expRecord, detector=123, pipeline="test"
+        )
+
+        diffExpRecord = copy.deepcopy(self.expRecord)
+        object.__setattr__(
+            diffExpRecord, "dataId", {"instrument": ""}
+        )  # mutate expRecord to make it different
+        payloadDiffExpRecord = Payload(
+            expRecord=diffExpRecord, detector=3, pipeline="test"
+        )
+
+        self.assertEqual(payload1, payload2)
+        self.assertNotEqual(payload1, payloadDiffPipeline)
+        self.assertNotEqual(payload1, payloadDiffDetector)
+        self.assertNotEqual(payload1, payloadDiffExpRecord)
+
+    def test_roundtrip(self):
+        payload = Payload.from_json(self.validJson)
+        payloadJson = payload.to_json()
+        reconstructedPayload = Payload.from_json(payloadJson)
+        self.assertEqual(payload, reconstructedPayload)
+
+    def test_from_json(self):
+        payload = Payload.from_json(self.validJson)
+        self.assertEqual(payload.expRecord, self.expRecord)
+        self.assertEqual(payload.detector, 3)
+        self.assertEqual(payload.pipeline, "test")
+
+        json_str = (
+            '{"expRecord": ' +
+            json.dumps(self.expRecord.to_simple().json()) +
+            ', "detector": 3, "pipeline": "test"}'
+        )
+        payload = Payload.from_json(json_str)
+        self.assertEqual(payload, self.payload)
+
+        json_str = (
+            '{"expRecord": ' +
+            json.dumps(self.expRecord.to_simple().json()) +
+            ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
+        )
         with self.assertRaises(TypeError):
             payload = Payload.from_json(json_str)
-            payload = Payload(dayObs=1, seqNum=2, detector=3, illegalKwarg='test')
-
-    def test_to_json(self):
-        payload = Payload(dayObs=1, seqNum=2, detector=3, pipeline='test')
-        json_str = payload.to_json()
-        expected_json_str = '{"dayObs": 1, "seqNum": 2, "detector": 3, "pipeline": "test"}'
-        self.assertEqual(json_str, expected_json_str)
 
 
-class TestPipeline(unittest.TestCase):
-    def test_pipeline(self):
-        pipeline = Pipeline(pipeline='test')
-        self.assertEqual(pipeline.pipeline, 'test')
+class TestPayloadResult(unittest.TestCase):
+    def setUp(self):
+        self.expRecord = getSampleExpRecord()
+        self.payload_result = PayloadResult(
+            expRecord=self.expRecord,
+            detector=3,
+            pipeline="test",
+            startTime=0.0,
+            endTime=1.0,
+            splitTimings={"step1": 0.5, "step2": 0.3},
+            success=True,
+            message="Test message",
+        )
+        self.validJson = self.payload_result.to_json()
+        test = PayloadResult.from_json(self.validJson)  # check the validJson is actually valid
+        self.assertIsInstance(test, PayloadResult)
+
+    def test_constructor(self):
+        payload_result = PayloadResult(
+            expRecord=self.expRecord,
+            detector=3,
+            pipeline="test",
+            startTime=0.0,
+            endTime=1.0,
+            splitTimings={"step1": 0.5, "step2": 0.3},
+            success=True,
+            message="Test message",
+        )
+        self.assertEqual(payload_result.detector, 3)
+        self.assertEqual(payload_result.pipeline, "test")
+        self.assertEqual(payload_result.startTime, 0.0)
+        self.assertEqual(payload_result.endTime, 1.0)
+        self.assertEqual(payload_result.splitTimings, {"step1": 0.5, "step2": 0.3})
+        self.assertEqual(payload_result.success, True)
+        self.assertEqual(payload_result.message, "Test message")
+
+        with self.assertRaises(TypeError):
+            payload_result = PayloadResult(
+                expRecord=self.expRecord,
+                detector=3,
+                pipeline="test",
+                startTime=0.0,
+                endTime=1.0,
+                splitTimings={"step1": 0.5, "step2": 0.3},
+                success=True,
+                message="Test message",
+                illegalKwarg="test",
+            )
+
+    def test_roundtrip(self):
+        payload_result = PayloadResult.from_json(self.validJson)
+        payload_result_json = payload_result.to_json()
+        reconstructed_payload_result = PayloadResult.from_json(payload_result_json)
+        self.assertEqual(payload_result, reconstructed_payload_result)
+
+    def test_from_json(self):
+        payload_result = PayloadResult.from_json(self.validJson)
+        self.assertEqual(payload_result.detector, 3)
+        self.assertEqual(payload_result.pipeline, "test")
+        self.assertEqual(payload_result.startTime, 0.0)
+        self.assertEqual(payload_result.endTime, 1.0)
+        self.assertEqual(payload_result.splitTimings, {"step1": 0.5, "step2": 0.3})
+        self.assertEqual(payload_result.success, True)
+        self.assertEqual(payload_result.message, "Test message")
+
+        json_str = (
+            '{"expRecord": ' +
+            json.dumps(self.expRecord.to_simple().json()) +
+            ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": ' +
+            '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message"}'
+        )
+        payload_result = PayloadResult.from_json(json_str)
+        self.assertEqual(payload_result, self.payload_result)
+
+        json_str = (
+            '{"expRecord": ' +
+            json.dumps(self.expRecord.to_simple().json()) +
+            ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": ' +
+            '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message", "illegalItem": ' +
+            '"test"}'
+        )
+        with self.assertRaises(TypeError):
+            payload_result = PayloadResult.from_json(json_str)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
