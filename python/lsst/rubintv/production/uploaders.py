@@ -23,6 +23,9 @@ import json
 import os
 import time
 import logging
+from abc import abstractmethod, ABC
+from enum import Enum
+from typing import Optional
 
 from lsst.summit.utils.utils import dayObsIntToString
 
@@ -42,6 +45,117 @@ __all__ = [
 
 _LOG = logging.getLogger(__name__)
 
+
+class Uploader(Metaclass=ABC):
+
+    @abstractmethod
+    def upload_sequential_number_plot(self, channel: str, observation_day: int, sequence_number: int,
+                                      filename: str, is_live_file: bool = False, is_large_file: bool = False):
+        """
+        Upload a per-dayObs/seqNum plot to the bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        observation_day : `int`
+            The dayObs of the plot.
+        sequence_number : `int`
+            The seqNum of the plot.
+        filename : `str`
+            The full path and filename of the file to upload.
+        is_live_file : `bool`, optional
+            The file is being updated constantly, and so caching should be
+            disabled.
+        is_large_file : `bool`, optional
+            The file is large, so add a longer timeout to the upload.
+
+        Raises
+        ------
+        ValueError
+            Raised if the specified channel is not in the list of existing
+            channels as specified in CHANNELS
+        """
+        pass
+
+    @abstractmethod
+    def upload_night_report_data(self, channel, observation_day: int, filename: str, plot_group: str = ''):
+        """
+        Upload night report type plot or json file to a night report channel
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        observation_day : `int`
+            The dayObs.
+        filename : `str`
+            The full path and filename of the file to upload.
+        plot_group : `str`, optional
+            The group to upload the plot to. The 'default' group is used if
+            this is not specified. However, people are encouraged to supply
+            groups for their plots, so the 'default' value is not put in the
+            function signature to indicate this.
+
+        Raises
+        ------
+        ValueError
+            Raised if the specified channel is not in the list of existing
+            channels as specified in CHANNELS
+        """
+        pass
+
+    @abstractmethod
+    def upload(self, channel: str, source_filename: str, upload_as_filename: Optional[str] = None,
+               is_live_file: bool = False, is_large_file: bool = False):
+        """Upload a file to the RubinTV Google cloud storage bucket.
+
+        Parameters
+        ----------
+        channel : `str`
+            The RubinTV channel to upload to.
+        source_filename : `str`
+            The full path and filename of the file to upload.
+        upload_as_filename : `str`, optional
+            Optionally rename the file to this upon upload.
+        is_live_file : `bool`, optional
+            The file is being updated constantly, and so caching should be
+            disabled.
+        is_large_file : `bool`, optional
+            The file is large, so add a longer timeout to the upload.
+
+        Raises
+        ------
+        """
+        pass
+
+class Buckets(Enum):
+    SUMMIT = "rubin-rubintv-data-tts"
+    TTS = "rubin-rubintv-data-tts"
+
+
+import boto3
+
+class S3Uploader(Uploader):
+
+    def __init__(self, bucket: int = ""):
+        super().__init__()
+        s3_bucket_name = bucket
+
+        session = boto3.session.Session(profile_name=s3_bucket_name)
+        s3 = session.resource("s3", endpoint_url="https://s3dfrgw.slac.stanford.edu")
+        bucket_s3 = s3.Bucket(s3_bucket_name)
+
+    def upload_sequential_number_plot(self, channel: str, observation_day: int, sequence_number: int,
+                                      filename: str, is_live_file: bool = False, is_large_file: bool = False):
+        pass
+
+    def upload_night_report_data(self, channel, observation_day: int, filename: str, plot_group: str = ''):
+        pass
+
+    def upload(self, channel: str, source_filename: str, upload_as_filename: Optional[str] = None,
+               is_live_file: bool = False, is_large_file: bool = False):
+        pass
 
 class Uploader:
     """Class for handling uploads to the Google Cloud Storage bucket.
