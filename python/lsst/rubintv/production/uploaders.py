@@ -170,6 +170,7 @@ class S3Uploader(iUploader):
         """
         S3 Uploader initialization. Here the connection with the remote S3 bucket is stablished.
         Raises
+        CommunicationError: When connection could not be stablished with S3 server
         ------
         """
         super().__init__()
