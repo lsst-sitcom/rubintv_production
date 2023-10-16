@@ -35,12 +35,6 @@ from lsst.summit.utils.utils import dayObsIntToString
 
 from .channels import CHANNELS
 
-__all__ = [
-    'Uploader',
-    'S3Uploader',
-    "UploadError"
-]
-
 _LOG = logging.getLogger(__name__)
 
 try:
@@ -50,10 +44,12 @@ try:
 except ImportError:
     HAS_GOOGLE_STORAGE = False
 
+
 __all__ = [
+    'Heartbeater',
     'Uploader',
     'S3Uploader',
-    'Heartbeater',
+    "UploadError"
 ]
 
 
@@ -62,10 +58,12 @@ class ConnectionError(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
 
+
 class UploadError(Exception):
 
     def __init__(self, msg: str):
         super().__init__(msg)
+
 
 class iUploader(ABC):
 
@@ -156,7 +154,8 @@ class iUploader(ABC):
         """
         raise NotImplementedError()
 
-class Buckets(Enum):
+
+class Bucket(Enum):
     SUMMIT = "rubin-rubintv-data-tts"
     TTS = "rubin-rubintv-data-tts"
     USDF = "rubin-rubintv-data-usdf"
@@ -166,9 +165,14 @@ class S3Uploader(iUploader):
 
     _ENDPOINT_URL = "https://s3dfrgw.slac.stanford.edu"
 
-    def __init__(self, bucket: Buckets = Buckets.TTS) -> None:
+    def __init__(self, bucket: Bucket = Bucket.TTS) -> None:
         """
         S3 Uploader initialization. Here the connection with the remote S3 bucket is stablished.
+        Parameters
+        ----------
+        bucket: Enum Bucket
+        Bucket identifier to connect to. Available buckets: SUMMIT, TTS, USDF.
+
         Raises
         CommunicationError: When connection could not be stablished with S3 server
         ------
