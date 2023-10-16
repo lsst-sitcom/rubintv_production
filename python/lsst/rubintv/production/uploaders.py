@@ -29,7 +29,7 @@ from boto3.session import Session as S3_session
 from botocore.exceptions import ClientError
 from boto3.resources.base import ServiceResource
 from enum import Enum
-from typing import Optional, override
+from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString
 
@@ -128,14 +128,6 @@ class Uploader(ABC):
             The RubinTV channel to upload to.
         source_filename : `str`
             The full path and filename of the file to upload.
-        upload_as_filename : `str`, optional
-            Optionally rename the file to this upon upload.
-        is_live_file : `bool`, optional
-            The file is being updated constantly, and so caching should be
-            disabled.
-        is_large_file : `bool`, optional
-            The file is large, so add a longer timeout to the upload.
-
         Raises
         ------
         UploadError
@@ -158,8 +150,6 @@ class S3Uploader(Uploader):
         S3 Uploader initialization. Here the connection with the remote S3 bucket is stablished.
         Raises
         ------
-
-
         """
         super().__init__()
         self._log = _LOG.getChild("S3Uploader")
@@ -175,21 +165,23 @@ class S3Uploader(Uploader):
     def upload_sequential_number_plot(self, channel: str, observation_day: int, sequence_number: int,
                                       filename: str, is_live_file: bool = False, is_large_file: bool = False) -> str:
         """
-        Upload night report type plot or json file to a night report channel
+        Upload a per-dayObs/seqNum plot to the bucket.
 
         Parameters
         ----------
         channel : `str`
             The RubinTV channel to upload to.
         observation_day : `int`
-            The dayObs.
+            The dayObs of the plot.
+        sequence_number : `int`
+            The seqNum of the plot.
         filename : `str`
             The full path and filename of the file to upload.
-        plot_group : `str`, optional
-            The group to upload the plot to. The 'default' group is used if
-            this is not specified. However, people are encouraged to supply
-            groups for their plots, so the 'default' value is not put in the
-            function signature to indicate this.
+        is_live_file : `bool`, optional
+            The file is being updated constantly, and so caching should be
+            disabled.
+        is_large_file : `bool`, optional
+            The file is large, so add a longer timeout to the upload.
 
         Raises
         ------
@@ -273,14 +265,6 @@ class S3Uploader(Uploader):
             The RubinTV channel to upload to.
         source_filename : `str`
             The full path and filename of the file to upload.
-        upload_as_filename : `str`, optional
-            Optionally rename the file to this upon upload.
-        is_live_file : `bool`, optional
-            The file is being updated constantly, and so caching should be
-            disabled.
-        is_large_file : `bool`, optional
-            The file is large, so add a longer timeout to the upload.
-
         Raises
         ------
         UploadError
