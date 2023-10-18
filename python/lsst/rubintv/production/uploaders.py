@@ -151,15 +151,19 @@ class IUploader(ABC):
 
 
 class Bucket(Enum):
-    SUMMIT = "rubin-rubintv-data-tts"
+    SUMMIT = "rubin-rubintv-data-summit"
     TTS = "rubin-rubintv-data-tts"
     USDF = "rubin-rubintv-data-usdf"
 
 
-class S3Uploader(IUploader):
-    _ENDPOINT_URL = "https://s3dfrgw.slac.stanford.edu"
+class EndPoint(Enum):
+    USDF = {"data_point": "https://s3dfrgw.slac.stanford.edu",
+            "buckets_available": [Bucket.SUMMIT, Bucket.TTS]}
 
-    def __init__(self, bucket: Bucket = Bucket.TTS) -> None:
+
+class S3Uploader(IUploader):
+
+    def __init__(self, end_point: EndPoint = EndPoint.USDF, bucket: Bucket = Bucket.TTS) -> None:
         """
         S3 Uploader initialization. Here the connection with the remote S3
         bucket is stablished.
@@ -169,12 +173,15 @@ class S3Uploader(IUploader):
         Bucket identifier to connect to. Available buckets: SUMMIT, TTS, USDF.
 
         Raises
+        ValueError: If bucket not valid for endpoint selected
         CommunicationError: When connection could not be stablished with S3
         server
         ------
         """
         super().__init__()
         self._log = _LOG.getChild("S3Uploader")
+        if bucket not in end_point.value['buckets_available']:
+            raise ValueError('Invalid bucket')
         try:
             self._session = S3_session(profile_name=bucket.value)
             self._S3 = self._session.resource(
