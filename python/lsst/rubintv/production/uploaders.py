@@ -158,7 +158,7 @@ class Bucket(Enum):
 
 class EndPoint(Enum):
     USDF = {"data_point": "https://s3dfrgw.slac.stanford.edu",
-            "buckets_available": [Bucket.SUMMIT, Bucket.TTS]}
+            "buckets_available": [Bucket.SUMMIT, Bucket.TTS, Bucket.USDF]}
 
 
 class S3Uploader(IUploader):
@@ -185,7 +185,7 @@ class S3Uploader(IUploader):
         try:
             self._session = S3_session(profile_name=bucket.value)
             self._S3 = self._session.resource(
-                "s3", endpoint_url=S3Uploader._ENDPOINT_URL
+                "s3", endpoint_url=end_point.value["data_point"]
             )  # type: ServiceResource
             self._bucket_s3 = self._S3.Bucket(bucket.value)  # type: ignore
         except ClientError:
@@ -306,13 +306,13 @@ class S3Uploader(IUploader):
         return upload_as
 
     @override
-    def upload(self, channel: str, source_filename: str) -> None:
+    def upload(self, destiny_filename: str, source_filename: str) -> None:
         """Upload a file to an storage bucket.
 
         Parameters
         ----------
-        channel : `str`
-            The RubinTV channel to upload to.
+        destiny_filename : `str`
+            The destiny filename including channel location
         source_filename : `str`
             The full path and filename of the file to upload.
         Raises
@@ -322,12 +322,12 @@ class S3Uploader(IUploader):
         """
         try:
             self._bucket_s3.upload_file(
-                Filename=source_filename, Key=channel
+                Filename=source_filename, Key=destiny_filename
             )
         except ClientError as e:
             logging.error(e)
             raise UploadError(
-                f"Failed uploadig file {source_filename} as Key: {channel}"
+                f"Failed uploadig file {source_filename} as Key: {destiny_filename}"
             )
 
 
