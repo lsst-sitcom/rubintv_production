@@ -802,7 +802,10 @@ class Plotter:
         isCcobSpotImage : `bool`
             True if the image is a CCOB spot image, False otherwise.
         """
-        if expRecord.observation_type == 'ccob' and expRecord.observation_reason == 'ccob':
+        if (
+            expRecord.observation_type in ['ccob', 'ccobthin'] and
+            expRecord.observation_reason in ['ccob', 'ccobthin']
+        ):
             return True
         return False
 
