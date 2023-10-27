@@ -753,8 +753,9 @@ class Plotter:
 
         Returns
         -------
-        filename : `str`
-            The filename the plot was saved to.
+        filename : `str` or `None`.
+            The filename the plot was saved to, or `None` if the analysis
+            failed.
         """
         nExpected = getNumExpectedItems(expRecord)
         binning = self.locationConfig.binning
@@ -774,6 +775,8 @@ class Plotter:
             return None
 
         spotInfo = analyzeCcobSpotImage(image, binning=binning, logger=self.log)
+        if spotInfo is None:
+            return
 
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
