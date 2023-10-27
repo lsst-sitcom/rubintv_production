@@ -272,6 +272,7 @@ def makeMosaic(deferredDatasetRefs,
                nExpected,
                deleteIfComplete,
                deleteRegardless,
+               doNotDelete,
                logger=None):
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
@@ -297,6 +298,8 @@ def makeMosaic(deferredDatasetRefs,
         is the number which was found.
     deleteRegardless : `bool`, optional
         If True, delete the binned images regardless of how many are found.
+    doNotDelete : `bool`, optional
+        If True, do not delete the binned images after reading them.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
     deleteAfterReading : `bool`
@@ -320,6 +323,11 @@ def makeMosaic(deferredDatasetRefs,
     """
     if logger is None:
         logger = logging.getLogger(__name__)
+
+    if doNotDelete:
+        if deleteRegardless:
+            raise ValueError("doNotDelete and deleteRegardless are mutually exclusive")
+        deleteIfComplete = False
 
     instrument = camera.getName()
 
@@ -437,6 +445,7 @@ def plotFocalPlaneMosaic(butler,
                          timeout,
                          deleteIfComplete=True,
                          deleteRegardless=False,
+                         doNotDelete=False,
                          logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
@@ -468,6 +477,10 @@ def plotFocalPlaneMosaic(butler,
         is the number which was found.
     deleteRegardless : `bool`, optional
         If True, delete the binned images regardless of how many are found.
+        `doNotDelete` trumps `deleteIfComplete`, but raises a ValueError if
+        used with `deleteRegardless`.
+    doNotDelete : `bool`, optional
+        If True, do not delete the binned images after reading them.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
 
@@ -488,6 +501,7 @@ def plotFocalPlaneMosaic(butler,
                             timeout=timeout,
                             deleteIfComplete=deleteIfComplete,
                             deleteRegardless=deleteRegardless,
+                            doNotDelete=doNotDelete,
                             logger=logger)
 
     if mosaic is None:
@@ -507,6 +521,7 @@ def getMosaicImage(butler,
                    timeout,
                    deleteIfComplete=True,
                    deleteRegardless=False,
+                   doNotDelete=False,
                    logger=None):
     """Save a full focal plane binned mosaic image for a given expId.
 
@@ -534,6 +549,8 @@ def getMosaicImage(butler,
         is the number which was found.
     deleteRegardless : `bool`, optional
         If True, delete the binned images regardless of how many are found.
+    doNotDelete : `bool`, optional
+        If True, do not delete the binned images after reading them.
     logger : `logging.Logger`, optional
         The logger, created if not provided.
 
@@ -567,6 +584,7 @@ def getMosaicImage(butler,
                         nExpected=nExpected,
                         deleteIfComplete=deleteIfComplete,
                         deleteRegardless=deleteRegardless,
+                        doNotDelete=doNotDelete,
                         logger=logger
                         ).output_mosaic
     if mosaic is None:
