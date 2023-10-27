@@ -639,7 +639,7 @@ class Plotter:
 
         return saveFile
 
-    def plotFocalPlane(self, expRecord, timeout):
+    def plotFocalPlane(self, expRecord, timeout, doNotDelete=False):
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -651,6 +651,8 @@ class Plotter:
             The exposure record.
         timeout : `int`
             The timeout for waiting for the data to be complete.
+        doNotDelete : `bool`, optional
+            If True, do not delete the input data, even if it is complete.
 
         Returns
         -------
@@ -675,6 +677,7 @@ class Plotter:
                              dataPath=self.locationConfig.calculatedDataPath,
                              savePlotAs=saveFile,
                              nExpected=nExpected,
+                             doNotDelete=doNotDelete,
                              timeout=timeout,
                              logger=self.log)
         self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
@@ -766,6 +769,10 @@ class Plotter:
                                deleteIfComplete=False,
                                deleteRegardless=False,
                                )
+        if image is None:
+            self.log.warning(f'No mosaic found for {expRecord.dataId}')
+            return None
+
         spotInfo = analyzeCcobSpotImage(image, binning=binning)
 
         dayObs = expRecord.day_obs
@@ -842,18 +849,23 @@ class Plotter:
         # TODO: Need some kind of wait mechanism for each of these
         if doPlotNoises:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_noise_map'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+            if noiseMapFile:
+                channel = f'{instPrefix}_noise_map'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         if doPlotMosaic:
-            focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_focal_plane_mosaic'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+            focalPlaneFile = self.plotFocalPlane(expRecord,
+                                                 timeout=timeout,
+                                                 doNotDelete=doCcobAnalysis)
+            if focalPlaneFile:
+                channel = f'{instPrefix}_focal_plane_mosaic'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
 
         if doCcobAnalysis:
             ccobAnalsisPlot = self.runCcobAnalysis(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_ccob_analysis'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, ccobAnalsisPlot, isLiveFile=True)
+            if ccobAnalsisPlot:
+                channel = f'{instPrefix}_ccob_analysis'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, ccobAnalsisPlot, isLiveFile=True)
 
     def run(self):
         """Run continuously, calling the callback method with the latest
