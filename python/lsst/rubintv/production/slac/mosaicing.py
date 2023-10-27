@@ -687,6 +687,8 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
     spotInfo : `lsst.rubintv.production.slac.mosaicing.SpotInfo`
         The spot information, or ``None`` if no spot was found.
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
     maskedImage = afwImage.MaskedImageF(image)  # detection has to have a masked image
 
     threshold = afwDetect.Threshold(threshold, afwDetect.Threshold.VALUE)
