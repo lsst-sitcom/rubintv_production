@@ -780,7 +780,7 @@ class Plotter:
             self.log.warning(f'No mosaic found for {expRecord.dataId}')
             return None
 
-        spotInfo = analyzeCcobSpotImage(image, binning=binning)
+        spotInfo = analyzeCcobSpotImage(image, binning=binning, logger=self.log)
 
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
