@@ -92,6 +92,7 @@ PER_IMAGE_HEADERS = {'OBSID': 'Observation Id',
                      'CCOBADC': 'CCOB Photodiode value',
                      'CCOBFLST': 'CCOB flash time (commanded)',
                      'PROJTIME': 'CCOB flash time (measured)',
+                     'CATKW129': 'CCOB narrow flash time (commanded)',
                      'CCOBFLUX': 'CCOB target flux',
                      }
 
