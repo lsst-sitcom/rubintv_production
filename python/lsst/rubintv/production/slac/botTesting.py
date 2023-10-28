@@ -602,19 +602,21 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         nExpected = getNumExpectedItems(expRecord)
-        noises, _ = getShardedData(path=self.locationConfig.calculatedDataPath,
-                                   instrument=self.instrument,
-                                   dayObs=dayObs,
-                                   seqNum=seqNum,
-                                   dataSetName='rawNoises',
-                                   nExpected=nExpected,
-                                   timeout=timeout,
-                                   logger=self.log,
-                                   deleteIfComplete=True)
+        noises, nFiles = getShardedData(path=self.locationConfig.calculatedDataPath,
+                                        instrument=self.instrument,
+                                        dayObs=dayObs,
+                                        seqNum=seqNum,
+                                        dataSetName='rawNoises',
+                                        nExpected=nExpected,
+                                        timeout=timeout,
+                                        logger=self.log,
+                                        deleteIfComplete=True)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
             return None
+
+        self.log.info(f'Making noise plot for {expRecord.dataId} with data from {nFiles} files')
 
         perCcdNoises = fullAmpDictToPerCcdDicts(noises)
         self.fig.clear()
