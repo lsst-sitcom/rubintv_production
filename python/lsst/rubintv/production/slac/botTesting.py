@@ -658,8 +658,9 @@ class Plotter:
 
         Returns
         -------
-        filename : `str`
-            The filename the plot was saved to.
+        filename : `str` or `None`
+            The filename the plot was saved to, or `None` if the plot could not
+            be made.
         """
         expId = expRecord.id
         dayObs = expRecord.day_obs
@@ -671,19 +672,21 @@ class Plotter:
         nExpected = getNumExpectedItems(expRecord)
 
         self.fig.clear()
-        plotFocalPlaneMosaic(butler=self.butler,
-                             figure=self.fig,
-                             expId=expId,
-                             camera=self.camera,
-                             binSize=self.locationConfig.binning,
-                             dataPath=self.locationConfig.calculatedDataPath,
-                             savePlotAs=saveFile,
-                             nExpected=nExpected,
-                             doNotDelete=doNotDelete,
-                             timeout=timeout,
-                             logger=self.log)
-        self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
-        return saveFile
+        success = plotFocalPlaneMosaic(butler=self.butler,
+                                       figure=self.fig,
+                                       expId=expId,
+                                       camera=self.camera,
+                                       binSize=self.locationConfig.binning,
+                                       dataPath=self.locationConfig.calculatedDataPath,
+                                       savePlotAs=saveFile,
+                                       nExpected=nExpected,
+                                       doNotDelete=doNotDelete,
+                                       timeout=timeout,
+                                       logger=self.log)
+        if success:
+            self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
+            return saveFile
+        return None
 
     @staticmethod
     def getInstrumentChannelName(instrument):
