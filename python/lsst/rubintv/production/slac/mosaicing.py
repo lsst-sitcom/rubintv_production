@@ -486,8 +486,8 @@ def plotFocalPlaneMosaic(butler,
 
     Returns
     -------
-    existingNames : `list` of `str`
-        The detector names for which binned images exist.
+    success : `bool`
+        True if the mosaic was made and saved, False otherwise.
     """
     if not logger:
         logger = logging.getLogger('lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic')
@@ -506,10 +506,11 @@ def plotFocalPlaneMosaic(butler,
 
     if mosaic is None:
         logger.warning(f"Failed to make mosaic for {expId}")
-        return
+        return False
     logger.info(f"Made mosaic image for {expId}")
     _plotFpMosaic(mosaic, fig=figure, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
+    return True
 
 
 def getMosaicImage(butler,
@@ -588,7 +589,7 @@ def getMosaicImage(butler,
                         logger=logger
                         ).output_mosaic
     if mosaic is None:
-        logger.warning(f"Failed to make mosaic for {expId}")
+        logger.warning(f"Failed to get the mosaic image for {expId}")
 
     return mosaic
 
