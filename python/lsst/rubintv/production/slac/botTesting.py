@@ -43,7 +43,16 @@ from .utils import waitForDataProduct, getAmplifierRegions
 from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
 from ..uploaders import Uploader
 from ..watchers import FileWatcher, writeDataIdFile
-from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
+from .mosaicing import (
+    writeBinnedImage,
+    plotFocalPlaneMosaic,
+    getBinnedImageFiles,
+    getBinnedImageExpIds,
+    getMosaicImage,
+    analyzeCcobSpotImage,
+    plotCcobSpotInfo,
+    getDetectorForBinnedImageLocation,
+)
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
 
 from lsst.summit.utils.butlerUtils import getExpRecord
@@ -83,6 +92,7 @@ PER_IMAGE_HEADERS = {'OBSID': 'Observation Id',
                      'CCOBADC': 'CCOB Photodiode value',
                      'CCOBFLST': 'CCOB flash time (commanded)',
                      'PROJTIME': 'CCOB flash time (measured)',
+                     'CATKW129': 'CCOB narrow flash time (commanded)',
                      'CCOBFLUX': 'CCOB target flux',
                      }
 
@@ -284,7 +294,7 @@ class RawProcesser:
         return postIsr
 
     def writeExpRecordMetadataShard(self, expRecord):
-        """Write the exposure record metedata to a shard.
+        """Write the exposure record metadata to a shard.
 
         Only fires once, based on the value of TS8_METADATA_DETECTOR or
         LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
@@ -551,6 +561,17 @@ class Plotter:
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
         self.instrument = instrument
+        match instrument:
+            case 'LSST-TS8':
+                metadataShardPath = locationConfig.ts8MetadataShardPath
+            case 'LSSTComCam':
+                metadataShardPath = locationConfig.comCamMetadataShardPath
+            case 'LSSTCam':
+                metadataShardPath = locationConfig.botMetadataShardPath
+            case _:
+                raise ValueError(f'Instrument {instrument} not supported.')
+        self.metadataShardPath = metadataShardPath
+
         self.uploader = Uploader(self.locationConfig.bucketName)
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
@@ -559,6 +580,7 @@ class Plotter:
                                    dataProduct='binnedImage',
                                    doRaise=doRaise)
         self.fig = plt.figure(figsize=(12, 12))
+        self.ccobFigure = plt.figure(figsize=(15, 10))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
@@ -580,19 +602,21 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         nExpected = getNumExpectedItems(expRecord)
-        noises, _ = getShardedData(path=self.locationConfig.calculatedDataPath,
-                                   instrument=self.instrument,
-                                   dayObs=dayObs,
-                                   seqNum=seqNum,
-                                   dataSetName='rawNoises',
-                                   nExpected=nExpected,
-                                   timeout=timeout,
-                                   logger=self.log,
-                                   deleteIfComplete=True)
+        noises, nFiles = getShardedData(path=self.locationConfig.calculatedDataPath,
+                                        instrument=self.instrument,
+                                        dayObs=dayObs,
+                                        seqNum=seqNum,
+                                        dataSetName='rawNoises',
+                                        nExpected=nExpected,
+                                        timeout=timeout,
+                                        logger=self.log,
+                                        deleteIfComplete=True)
 
         if not noises:
             self.log.warning(f'No noise data found for {expRecord.dataId}')
             return None
+
+        self.log.info(f'Making noise plot for {expRecord.dataId} with data from {nFiles} files')
 
         perCcdNoises = fullAmpDictToPerCcdDicts(noises)
         self.fig.clear()
@@ -617,7 +641,7 @@ class Plotter:
 
         return saveFile
 
-    def plotFocalPlane(self, expRecord, timeout):
+    def plotFocalPlane(self, expRecord, timeout, doNotDelete=False):
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -629,34 +653,41 @@ class Plotter:
             The exposure record.
         timeout : `int`
             The timeout for waiting for the data to be complete.
+        doNotDelete : `bool`, optional
+            If True, do not delete the input data, even if it is complete.
 
         Returns
         -------
-        filename : `str`
-            The filename the plot was saved to.
+        filename : `str` or `None`
+            The filename the plot was saved to, or `None` if the plot could not
+            be made.
         """
         expId = expRecord.id
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        instPrefix = self.getInstrumentChannelName(self.instrument)
+        plotName = f'{instPrefix}FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         nExpected = getNumExpectedItems(expRecord)
 
         self.fig.clear()
-        plotFocalPlaneMosaic(butler=self.butler,
-                             figure=self.fig,
-                             expId=expId,
-                             camera=self.camera,
-                             binSize=self.locationConfig.binning,
-                             dataPath=self.locationConfig.calculatedDataPath,
-                             savePlotAs=saveFile,
-                             nExpected=nExpected,
-                             timeout=timeout,
-                             logger=self.log)
-        self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
-        return saveFile
+        success = plotFocalPlaneMosaic(butler=self.butler,
+                                       figure=self.fig,
+                                       expId=expId,
+                                       camera=self.camera,
+                                       binSize=self.locationConfig.binning,
+                                       dataPath=self.locationConfig.calculatedDataPath,
+                                       savePlotAs=saveFile,
+                                       nExpected=nExpected,
+                                       doNotDelete=doNotDelete,
+                                       timeout=timeout,
+                                       logger=self.log)
+        if success:
+            self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
+            return saveFile
+        return None
 
     @staticmethod
     def getInstrumentChannelName(instrument):
@@ -684,7 +715,111 @@ class Plotter:
             case _:
                 raise ValueError(f'Unknown instrument {instrument}')
 
-    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False, timeout=5):
+    def writeCcobAnalysisShard(self, expRecord, image, spotInfo, binning, camera):
+        """Write the CCOB analysis information to a metadata shard.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        image : `lsst.afw.image.Image`
+            The image.
+        spotInfo : `lsst.rubintv.production.slac.mosaicing.SpotInfo`
+            The spot information.
+        binning : `int`
+            The binning factor.
+        camera : `lsst.afw.cameraGeom.Camera`
+            The camera.
+        """
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+
+        detName = getDetectorForBinnedImageLocation(image, spotInfo.centerOfMass, binning, camera).getName()
+        xFitWidth = spotInfo.xFitPars.sigma
+        yFitWidth = spotInfo.yFitPars.sigma
+
+        md = {}
+        md['Spot location'] = detName if detName else 'Not found'
+        md['Spot flux (Me-)'] = f"{spotInfo.flux  * spotInfo.binning**2/ 1.e6:.2f}"
+        md['Spot profile x sigma'] = f"{xFitWidth * spotInfo.binning:.2f}"
+        md['Spot profile y sigma'] = f"{yFitWidth * spotInfo.binning:.2f}"
+
+        shardData = {seqNum: md}
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
+
+    def runCcobAnalysis(self, expRecord, timeout):
+        """Run the CCOB analysis for the specified exposure.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        timeout : `int`
+            The timeout
+
+        Returns
+        -------
+        filename : `str` or `None`.
+            The filename the plot was saved to, or `None` if the analysis
+            failed.
+        """
+        nExpected = getNumExpectedItems(expRecord)
+        binning = self.locationConfig.binning
+
+        image = getMosaicImage(butler=self.butler,
+                               expId=expRecord.id,
+                               camera=self.camera,
+                               binSize=binning,
+                               dataPath=self.locationConfig.calculatedDataPath,
+                               nExpected=nExpected,
+                               timeout=timeout,
+                               deleteIfComplete=False,
+                               deleteRegardless=False,
+                               )
+        if image is None:
+            self.log.warning(f'No mosaic found for {expRecord.dataId}')
+            return None
+
+        spotInfo = analyzeCcobSpotImage(image, binning=binning, logger=self.log)
+        if spotInfo is None:
+            return
+
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        instPrefix = self.getInstrumentChannelName(self.instrument)
+        plotName = f'{instPrefix}-ccob-analysis_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
+
+        self.ccobFigure.clear()
+        plotCcobSpotInfo(image, spotInfo, fig=self.ccobFigure, saveAs=saveFile)
+        self.log.info(f'Wrote CCOB analysis plot for {expRecord.dataId} to {saveFile}')
+
+        self.writeCcobAnalysisShard(expRecord, image, spotInfo, binning, self.camera)
+        self.log.info(f'Wrote shard file for CCOB analysis for {expRecord.dataId}')
+
+        return saveFile
+
+    def isCcobSpotImage(self, expRecord):
+        """Determine if the image is a CCOB narrow beam spot image.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        isCcobSpotImage : `bool`
+            True if the image is a CCOB spot image, False otherwise.
+        """
+        if (
+            expRecord.observation_type in ['ccob', 'ccobthin'] and
+            expRecord.observation_reason in ['ccob', 'ccobthin']
+        ):
+            return True
+        return False
+
+    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False, doCcobAnalysis=False, timeout=5):
         """Method called on each new expRecord as it is found in the repo.
 
         Note: the callback is used elsewhere to reprocess old data, so the
@@ -702,6 +837,10 @@ class Plotter:
             If True, plot and upload the focal plane mosaic.
         doPlotNoises : `bool`
             If True, plot and upload the per-amplifier noise map.
+        doCcobAnalysis : `bool`
+            If True, run the CCOB spot analysis and upload the plot and
+            metadata if the image is a CCOB spot image. Does nothing if the
+            exposure record relates to an image of a different type.
         timeout : `float`
             How to wait for data products to land before giving up and plotting
             what we have.
@@ -711,22 +850,37 @@ class Plotter:
         seqNum = expRecord.seq_num
         instPrefix = self.getInstrumentChannelName(self.instrument)
 
+        isCcobSpotImage = self.isCcobSpotImage(expRecord)
+        if doCcobAnalysis and not isCcobSpotImage:
+            self.log.info('Skipping non-CCOB spot image')
+            doCcobAnalysis = False
+
         # TODO: Need some kind of wait mechanism for each of these
         if doPlotNoises:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_noise_map'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+            if noiseMapFile:
+                channel = f'{instPrefix}_noise_map'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         if doPlotMosaic:
-            focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_focal_plane_mosaic'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+            focalPlaneFile = self.plotFocalPlane(expRecord,
+                                                 timeout=timeout,
+                                                 doNotDelete=doCcobAnalysis)
+            if focalPlaneFile:
+                channel = f'{instPrefix}_focal_plane_mosaic'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+
+        if doCcobAnalysis:
+            ccobAnalsisPlot = self.runCcobAnalysis(expRecord, timeout=timeout)
+            if ccobAnalsisPlot:
+                channel = f'{instPrefix}_ccob_analysis'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, ccobAnalsisPlot, isLiveFile=True)
 
     def run(self):
         """Run continuously, calling the callback method with the latest
         expRecord.
         """
-        self.watcher.run(self.callback, doPlotMosaic=True, doPlotNoises=True)
+        self.watcher.run(self.callback, doPlotMosaic=True, doPlotNoises=True, doCcobAnalysis=True)
 
 
 class Replotter(Plotter):
@@ -788,7 +942,7 @@ class Replotter(Plotter):
         # string called name, which is used for logging.
         workload1 = self.ReplotterWorkload(
             finderFunction=self.getLeftoverMosaicDict,
-            workerFunction=partial(self.callback, doPlotMosaic=True, timeout=0),
+            workerFunction=partial(self.callback, doPlotMosaic=True, doCcobAnalysis=True, timeout=0),
             name='mosaic',
         )
         workload2 = self.ReplotterWorkload(
