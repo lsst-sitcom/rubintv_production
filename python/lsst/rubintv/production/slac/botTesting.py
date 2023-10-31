@@ -666,7 +666,8 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        instPrefix = self.getInstrumentChannelName(self.instrument)
+        plotName = f'{instPrefix}FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         nExpected = getNumExpectedItems(expRecord)
