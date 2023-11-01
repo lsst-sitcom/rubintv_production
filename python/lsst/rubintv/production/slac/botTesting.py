@@ -877,8 +877,12 @@ class Plotter:
                 )
 
         if doPlotMosaic:
-            focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout, doNotDelete=doCcobAnalysis)
+            focalPlaneFile = self.plotFocalPlane(expRecord,
+                                                 timeout=timeout,
+                                                 doNotDelete=doCcobAnalysis)
             if focalPlaneFile:  # only upload on plot success
+            # doNotDelete=doCcobAnalysis because we need to keep the mosaic
+            # files if doing ccob analysis as that uses runs on the mosaic
                 channel = f'{instPrefix}_focal_plane_mosaic'
                 self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
                 self.s3Uploader.uploadPerSeqNumPlot(
