@@ -756,6 +756,10 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
         The mosaiced image.
     spotInfo : `lsst.rubintv.production.slac.mosaicing.SpotInfo`
         The spot information.
+    boxSizeMin : `int`, optional
+        The minimum size of the zoom-in box.
+    fig : `matplotlib.figure.Figure`, optional
+        The figure to plot on, created if not supplied.
     saveAs : `str`
         The filename to save the plot as.
     logger : `logging.Logger`, optional
