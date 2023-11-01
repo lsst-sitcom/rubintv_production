@@ -168,6 +168,12 @@ def waitForDataProduct(butler, expRecord, dataset, detector, timeout, cadence=1,
     # allow using a limited butler, and thus polling wouldn't be a problem
     # at all as that can just use the filesystem.
 
+    if timeout == 0:
+        # zero means get it if it's immediately available, but it takes
+        # non-zero time to go from the startTime = time.time() line to the
+        # while loop, so add something tiny to account for that.
+        timeout = 0.01
+
     startTime = time.time()
     while time.time() - startTime < timeout:
         try:
