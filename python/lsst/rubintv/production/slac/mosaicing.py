@@ -41,7 +41,6 @@ import os
 import lsst.afw.image as afwImage
 import matplotlib.colors as colors
 from matplotlib import cm
-import matplotlib.pyplot as plt
 from matplotlib.pyplot import subplot_mosaic
 from matplotlib.colors import LogNorm
 import matplotlib.patches as patches
@@ -650,7 +649,9 @@ class GausFitParameters:
 @dataclass(slots=True, kw_only=True, frozen=True)
 class SpotInfo:
     flux: float
-    centerOfMass: tuple
+    centerOfMassMosaic: tuple
+    centerOfMassLocal: tuple
+    bbox: tuple
     binning: int
     footprint: lsst.afw.detection.Footprint
     xFitPars: GausFitParameters
@@ -711,13 +712,13 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
         footprint = footprints[0]
     flux = footprint.computeFluxFromImage(image)
 
-    cutoutCenterOfMass = center_of_mass(image[footprint.getBBox()].array)
+    cutoutCenterOfMass = center_of_mass(image[footprint.getBBox()].array)  # y, x coords
     xy0 = footprint.getBBox().getBegin()
-    centerOfMass = (cutoutCenterOfMass[0] + xy0[0], cutoutCenterOfMass[1] + xy0[1])
+    centerOfMass = (cutoutCenterOfMass[1] + xy0[0], cutoutCenterOfMass[0] + xy0[1])
 
     bbox = footprint.getBBox()
-    xSlice = image[bbox].array[:, bbox.getWidth()//2]
-    ySlice = image[bbox].array[bbox.getWidth()//2, :]
+    xSlice = image[bbox].array[:, int(np.round(cutoutCenterOfMass[1]))]
+    ySlice = image[bbox].array[int(np.round(cutoutCenterOfMass[0])), :]
 
     fits = []
     bounds = ((0, 0, 0), (np.inf, np.inf, np.inf))
@@ -740,7 +741,9 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
 
     spotInfo = SpotInfo(
         flux=flux,
-        centerOfMass=centerOfMass,
+        centerOfMassMosaic=centerOfMass,
+        centerOfMassLocal=cutoutCenterOfMass,
+        bbox=bbox,
         binning=binning,
         footprint=footprint,
         xFitPars=fits[0],
@@ -775,7 +778,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
         The figure.
     """
     flux = spotInfo.flux
-    center = spotInfo.centerOfMass
+    center = spotInfo.centerOfMassMosaic
     footprint = spotInfo.footprint
     fpBbox = footprint.getBBox()
     spotArea = footprint.getArea()
@@ -843,7 +846,8 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
 
     # Calculate the offset
     if zoomBbox.getMinX() + estimated_width > image.getBBox().getMaxX():
-        # if the text box is going to overrun the image, put it to the left of the spot
+        # if the text box is going to overrun the image, put it to down and to
+        # the left of the spot
         xy = (zoomBbox.getMinX(), zoomBbox.getMinY())
         xytext = (-estimated_width, -estimated_height)
     else:
@@ -864,6 +868,8 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
                             norm=norm,
                             aspect=aspect,
                             origin="lower")
+    axs["B"].scatter(spotInfo.centerOfMassLocal[1], spotInfo.centerOfMassLocal[0], c='r', marker='x', s=100)
+
     divider = make_axes_locatable(axs["B"])
     cax = divider.append_axes("right", size="5%", pad=0.05)
     _ = fig.colorbar(axRef, cax=cax)
