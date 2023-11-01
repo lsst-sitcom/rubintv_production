@@ -256,6 +256,10 @@ class RawProcesser:
 
         isrConfig.overscan.fitType = 'MEDIAN_PER_ROW'
         isrConfig.overscan.doParallelOverscan = True  # NB: doParallelOverscan *requires* MEDIAN_PER_ROW too
+
+        # ensure saturated images don't become all nan. This seems to be a bug
+        # in the parallel overscan code
+        isrConfig.overscan.parallelOverscanMaskThreshold = 1000000
         isrConfig.doApplyGains = True
         isrConfig.usePtcGains = True
 
