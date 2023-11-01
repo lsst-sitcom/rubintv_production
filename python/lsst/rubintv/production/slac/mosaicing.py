@@ -842,7 +842,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
                             origin="lower")
     divider = make_axes_locatable(axs["B"])
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    _ = plt.colorbar(axRef, cax=cax)
+    _ = fig.colorbar(axRef, cax=cax)
 
     # xy profile plot and fitting
     xSlice = image[fpBbox].array[:, fpBbox.getWidth()//2]
@@ -864,8 +864,8 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     axs["C"].set_title("X/Y slices of the spot profile")
     if spotInfo.xFitPars.goodFit or spotInfo.yFitPars.goodFit:
         axs["C"].set_ylim(100, 1.1*max((max(yFitline), max(xFitline))))
-    plt.tight_layout()
-    plt.show()
+
+    fig.tight_layout()
     if saveAs:
         fig.savefig(saveAs)
 
