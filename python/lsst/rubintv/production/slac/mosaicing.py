@@ -820,16 +820,35 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
                              edgecolor='r',
                              facecolor='none')
     axs["A"].add_patch(rect)
+
     text = (f'Total electrons in spot: {flux * binning**2/1e6:.1f} Me-\n'
             f'Center of spot (binned coords): x={center[0]:.0f}, y={center[1]:.0f}\n'
             f'Spot area: {spotArea * binning**2:.0f} px^2\n'
             f'Approx radius: {approx_radius * binning:.1f} px\n'
             f'x fit width: {spotInfo.xFitPars.sigma * binning:.1f} px sigma\n'
             f'y fit width: {spotInfo.yFitPars.sigma * binning:.1f} px sigma')
+
+    # Calculate a rough width and height of the text box
+    char_width_est = 6  # Estimate of the average character width in pixels
+    char_height_est = 14  # Estimate of the average character height in pixels
+    num_lines = text.count('\n') + 1
+    max_line_length = max(len(line) for line in text.split('\n'))
+    estimated_width = max_line_length * char_width_est
+    estimated_height = num_lines * char_height_est
+
+    # Calculate the offset
+    if bbox.getMinX() + estimated_width > image.getBBox().getMaxX():
+        # if the text box is going to overrun the image, put it to the left of the spot
+        xy = (bbox.getMinX(), bbox.getMinY())
+        xytext = (-estimated_width, -estimated_height)
+    else:
+        xy = (bbox.getMaxX(), bbox.getMaxY())
+        xytext = (10, 10)
+
     axs["A"].annotate(text,
-                      xy=(bbox.getMaxX(), bbox.getMaxY()),
+                      xy=xy,
                       xycoords='data',
-                      xytext=(10, 10),
+                      xytext=xytext,
                       textcoords='offset points',
                       bbox=dict(boxstyle="square,pad=0.3", fc="lightblue", ec="steelblue", lw=2))
     axs["A"].set_title("Assembled image with spot details")
