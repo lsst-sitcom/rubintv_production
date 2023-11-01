@@ -655,13 +655,15 @@ class SpotInfo:
     footprint: lsst.afw.detection.Footprint
     xFitPars: GausFitParameters
     yFitPars: GausFitParameters
+    xSlice: np.ndarray
+    ySlice: np.ndarray
 
 
 def gauss(x, a, x0, sigma):
     return a*np.exp(-(x-x0)**2/(2*sigma**2))
 
 
-def analyzeCcobSpotImage(image, binning, threshold=80, nPixMin=1000, logger=None):
+def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=None):
     """Calculate the spot flux, position and shape for a CCOB narrow beam spot.
 
     The spot is assumed to be the brightest object in the image, and the
@@ -743,6 +745,8 @@ def analyzeCcobSpotImage(image, binning, threshold=80, nPixMin=1000, logger=None
         footprint=footprint,
         xFitPars=fits[0],
         yFitPars=fits[1],
+        xSlice=xSlice,
+        ySlice=ySlice
     )
     return spotInfo
 
@@ -781,8 +785,8 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     # make a square box of at least the min size, centered on the original bbox
     size = max(boxSizeMin, fpBbox.width, fpBbox.height)
     extent = Extent2I(size, size)
-    bbox = Box2I.makeCenteredBox(fpBbox.getCenter(), extent)
-    bbox = bbox.clippedTo(image.getBBox())  # ensure we never overrun the image array
+    zoomBbox = Box2I.makeCenteredBox(fpBbox.getCenter(), extent)
+    zoomBbox = zoomBbox.clippedTo(image.getBBox())  # ensure we never overrun the image array
 
     if fig is None:
         if logger is None:
@@ -813,13 +817,14 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
                     norm=norm,
                     aspect=aspect,
                     origin="lower")
-    rect = patches.Rectangle((bbox.getMinX(), bbox.getMinY()),
-                             bbox.getWidth(),
-                             bbox.getHeight(),
+    rect = patches.Rectangle((zoomBbox.getMinX(), zoomBbox.getMinY()),
+                             zoomBbox.getWidth(),
+                             zoomBbox.getHeight(),
                              linewidth=1,
                              edgecolor='r',
                              facecolor='none')
     axs["A"].add_patch(rect)
+    axs["A"].scatter(*center, c='r', marker='x', s=100)  # Add red "x" at the center of mass
 
     text = (f'Total electrons in spot: {flux * binning**2/1e6:.1f} Me-\n'
             f'Center of spot (binned coords): x={center[0]:.0f}, y={center[1]:.0f}\n'
@@ -837,12 +842,12 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     estimated_height = num_lines * char_height_est
 
     # Calculate the offset
-    if bbox.getMinX() + estimated_width > image.getBBox().getMaxX():
+    if zoomBbox.getMinX() + estimated_width > image.getBBox().getMaxX():
         # if the text box is going to overrun the image, put it to the left of the spot
-        xy = (bbox.getMinX(), bbox.getMinY())
+        xy = (zoomBbox.getMinX(), zoomBbox.getMinY())
         xytext = (-estimated_width, -estimated_height)
     else:
-        xy = (bbox.getMaxX(), bbox.getMaxY())
+        xy = (zoomBbox.getMaxX(), zoomBbox.getMaxY())
         xytext = (10, 10)
 
     axs["A"].annotate(text,
@@ -855,7 +860,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
 
     # spot zoom-in plot
     axs["B"].set_title("CCOB spot close-up")
-    axRef = axs["B"].imshow(image[bbox].array,
+    axRef = axs["B"].imshow(image[zoomBbox].array,
                             norm=norm,
                             aspect=aspect,
                             origin="lower")
@@ -863,18 +868,15 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     cax = divider.append_axes("right", size="5%", pad=0.05)
     _ = fig.colorbar(axRef, cax=cax)
 
-    # xy profile plot and fitting
-    xSlice = image[fpBbox].array[:, fpBbox.getWidth()//2]
-    ySlice = image[fpBbox].array[fpBbox.getWidth()//2, :]
-    xs = np.arange(len(xSlice))
-    ys = np.arange(len(ySlice))
+    xs = np.arange(len(spotInfo.xSlice))
+    ys = np.arange(len(spotInfo.ySlice))
 
-    axs["C"].plot(xSlice, c='r', ls='-', label="X profile", )
+    axs["C"].plot(spotInfo.xSlice, c='r', ls='-', label="X profile", )
     if spotInfo.xFitPars.goodFit:
         xFitline = gauss(xs, spotInfo.xFitPars.amplitude, spotInfo.xFitPars.mean, spotInfo.xFitPars.sigma)
         axs["C"].plot(xs, xFitline, c='r', ls='--', alpha=fitAlpha, label="X-profile Gaussian fit",)
 
-    axs["C"].plot(ySlice, c='b', ls='-', label="Y profile")
+    axs["C"].plot(spotInfo.ySlice, c='b', ls='-', label="Y profile")
     if spotInfo.yFitPars.goodFit:
         yFitline = gauss(ys, spotInfo.yFitPars.amplitude, spotInfo.yFitPars.mean, spotInfo.yFitPars.sigma)
         axs["C"].plot(ys, yFitline, c='b', ls='--', alpha=fitAlpha, label="Y-profile Gaussian fit")
