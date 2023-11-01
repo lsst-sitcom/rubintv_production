@@ -863,6 +863,8 @@ class Plotter:
                 self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
 
         if doPlotMosaic:
+            # doNotDelete=doCcobAnalysis because we need to keep the mosaic
+            # files if doing ccob analysis as that uses runs on the mosaic
             focalPlaneFile = self.plotFocalPlane(expRecord,
                                                  timeout=timeout,
                                                  doNotDelete=doCcobAnalysis)
