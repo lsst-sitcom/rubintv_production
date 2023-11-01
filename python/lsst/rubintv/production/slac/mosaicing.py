@@ -661,7 +661,7 @@ def gauss(x, a, x0, sigma):
     return a*np.exp(-(x-x0)**2/(2*sigma**2))
 
 
-def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=None):
+def analyzeCcobSpotImage(image, binning, threshold=80, nPixMin=1000, logger=None):
     """Calculate the spot flux, position and shape for a CCOB narrow beam spot.
 
     The spot is assumed to be the brightest object in the image, and the
