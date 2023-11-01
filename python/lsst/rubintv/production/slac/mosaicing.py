@@ -794,7 +794,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
             AAB
             AAC
             """,
-            figsize=(20, 10)
+            figsize=(15, 10)
         )
     else:
         axs = fig.subplot_mosaic(
