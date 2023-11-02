@@ -717,8 +717,8 @@ def analyzeCcobSpotImage(image, binning, threshold=100, nPixMin=3000, logger=Non
     centerOfMass = (cutoutCenterOfMass[1] + xy0[0], cutoutCenterOfMass[0] + xy0[1])
 
     bbox = footprint.getBBox()
-    xSlice = image[bbox].array[:, int(np.round(cutoutCenterOfMass[1]))]
-    ySlice = image[bbox].array[int(np.round(cutoutCenterOfMass[0])), :]
+    xSlice = image[bbox].array[int(np.round(cutoutCenterOfMass[0])), :]
+    ySlice = image[bbox].array[:, int(np.round(cutoutCenterOfMass[1]))]
 
     fits = []
     bounds = ((0, 0, 0), (np.inf, np.inf, np.inf))
@@ -863,7 +863,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     axs["A"].set_title("Assembled image with spot details")
 
     # spot zoom-in plot
-    axs["B"].set_title("CCOB spot close-up")
+    axs["B"].set_title(f"CCOB spot close-up - pixel binning = {spotInfo.binning}")
     axRef = axs["B"].imshow(image[zoomBbox].array,
                             norm=norm,
                             aspect=aspect,
@@ -888,7 +888,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
         axs["C"].plot(ys, yFitline, c='b', ls='--', alpha=fitAlpha, label="Y-profile Gaussian fit")
 
     axs["C"].legend()
-    axs["C"].set_title("X/Y slices of the spot profile")
+    axs["C"].set_title(f"Spot Profile X/Y slices - pixel binning = {spotInfo.binning}")
     if spotInfo.xFitPars.goodFit or spotInfo.yFitPars.goodFit:
         axs["C"].set_ylim(100, 1.1*max((max(yFitline), max(xFitline))))
 
