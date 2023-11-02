@@ -790,6 +790,7 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     extent = Extent2I(size, size)
     zoomBbox = Box2I.makeCenteredBox(fpBbox.getCenter(), extent)
     zoomBbox = zoomBbox.clippedTo(image.getBBox())  # ensure we never overrun the image array
+    bboxOffset = spotInfo.bbox.getBegin() - zoomBbox.getBegin()
 
     if fig is None:
         if logger is None:
@@ -868,7 +869,10 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
                             norm=norm,
                             aspect=aspect,
                             origin="lower")
-    axs["B"].scatter(spotInfo.centerOfMassLocal[1], spotInfo.centerOfMassLocal[0], c='r', marker='x', s=100)
+
+    zoomBoxCentroid = (spotInfo.centerOfMassLocal[1] + bboxOffset[0],
+                       spotInfo.centerOfMassLocal[0] + bboxOffset[1])
+    axs["B"].scatter(*zoomBoxCentroid, c='r', marker='x', s=100)
 
     divider = make_axes_locatable(axs["B"])
     cax = divider.append_axes("right", size="5%", pad=0.05)
