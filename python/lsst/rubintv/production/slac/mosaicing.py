@@ -882,11 +882,13 @@ def plotCcobSpotInfo(image, spotInfo, boxSizeMin=150, fig=None, saveAs='', logge
     ys = np.arange(len(spotInfo.ySlice))
 
     axs["C"].plot(spotInfo.xSlice, c='r', ls='-', label="X profile", )
+    xFitline = (0, 0)  # must be defined for the max() call later
     if spotInfo.xFitPars.goodFit:
         xFitline = gauss(xs, spotInfo.xFitPars.amplitude, spotInfo.xFitPars.mean, spotInfo.xFitPars.sigma)
         axs["C"].plot(xs, xFitline, c='r', ls='--', alpha=fitAlpha, label="X-profile Gaussian fit",)
 
     axs["C"].plot(spotInfo.ySlice, c='b', ls='-', label="Y profile")
+    yFitline = (0, 0)  # must be defined for the max() call later
     if spotInfo.yFitPars.goodFit:
         yFitline = gauss(ys, spotInfo.yFitPars.amplitude, spotInfo.yFitPars.mean, spotInfo.yFitPars.sigma)
         axs["C"].plot(ys, yFitline, c='b', ls='--', alpha=fitAlpha, label="Y-profile Gaussian fit")
