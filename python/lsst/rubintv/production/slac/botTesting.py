@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import gc
 import glob
 import logging
 import json
@@ -295,6 +296,7 @@ class RawProcesser:
             ptcDataset = gainsToPtcDataset(gains[detNameForGains])
 
         postIsr = self.isrTask.run(raw, ptc=ptcDataset).exposure
+        del raw
         return postIsr
 
     def writeExpRecordMetadataShard(self, expRecord):
@@ -528,6 +530,7 @@ class RawProcesser:
 
             del raw
             del postIsr
+            gc.collect()
 
     def run(self):
         """Run continuously, calling the callback method with the latest
