@@ -745,7 +745,10 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        detName = getDetectorForBinnedImageLocation(image, spotInfo.centerOfMassMosaic, binning, camera).getName()
+        detName = None
+        detector = getDetectorForBinnedImageLocation(image, spotInfo.centerOfMassMosaic, binning, camera)
+        if detector is not None:
+            detName = detector.getName()
         xFitWidth = spotInfo.xFitPars.sigma
         yFitWidth = spotInfo.yFitPars.sigma
 
