@@ -589,7 +589,7 @@ class Plotter:
         self.fig = plt.figure(figsize=(12, 12))
         self.ccobFigure = plt.figure(figsize=(15, 10))
         self.doRaise = doRaise
-        self.STALE_AGE_SECONDS = 45  # in seconds
+        self.STALE_AGE_SECONDS = 30  # in seconds
 
     def plotNoises(self, expRecord, timeout):
         """Create a focal plane heatmap of the per-amplifier noises as a png.
@@ -870,7 +870,7 @@ class Plotter:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
             if noiseMapFile:
                 channel = f'{instPrefix}_noise_map'
-                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile, isLiveFile=True)
 
         if doPlotMosaic:
             # doNotDelete=doCcobAnalysis because we need to keep the mosaic
@@ -880,7 +880,7 @@ class Plotter:
                                                  doNotDelete=doCcobAnalysis)
             if focalPlaneFile:
                 channel = f'{instPrefix}_focal_plane_mosaic'
-                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile, isLiveFile=True)
 
         if doCcobAnalysis:
             ccobAnalsisPlot = self.runCcobAnalysis(expRecord, timeout=timeout)
