@@ -486,7 +486,7 @@ class RawProcesser:
                                      expRecord=expRecord,
                                      dataset='raw',
                                      detector=detNum,
-                                     timeout=5,
+                                     timeout=7,
                                      logger=self.log)
             if not raw:
                 # Note to future: given that if we timeout here, everything
