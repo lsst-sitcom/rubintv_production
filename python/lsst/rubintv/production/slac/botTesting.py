@@ -790,7 +790,7 @@ class Plotter:
                                dataPath=self.locationConfig.calculatedDataPath,
                                nExpected=nExpected,
                                timeout=timeout,
-                               deleteIfComplete=False,
+                               deleteIfComplete=True,
                                deleteRegardless=False,
                                )
         if image is None:
