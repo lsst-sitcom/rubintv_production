@@ -947,6 +947,10 @@ class Replotter(Plotter):
         # binnedImages, which are always an earlier or equal expRecord to the
         # raw one, and so is the right one to choose
         mostRecentExp = self.watcher.getMostRecentExpRecord()
+        if mostRecentExp is None:
+            # if everything has just started up then there might not even be a
+            # single binned image
+            return {}
 
         records = {}
         dataPath = self.locationConfig.calculatedDataPath
