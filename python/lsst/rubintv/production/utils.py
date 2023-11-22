@@ -29,6 +29,7 @@ import json
 import glob
 import time
 import math
+import threading
 
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from .channels import PREFIXES
@@ -82,11 +83,35 @@ SHARDED_DATA_TEMPLATE = os.path.join("{path}",
 # only.
 
 
-def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
+def _writeWithDelay(filename, contents, delay=0):
+    """Write a file with an optional delay.
+
+    Designed to be run in a thread, such that the delay doesn't block.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename to write to.
+    contents : `str`
+        The contents to write.
+    delay : `float`, optional
+        The delay to add before writing.
+    """
+    if delay:
+        time.sleep(delay)
+    with open(filename, 'w') as f:
+        f.write(contents)
+
+
+def writeDataIdFile(dataIdPath, dataProduct, expRecord, delay=0, log=None):
     """Write a dataId file for a dataProduct to be consumed by a FileWatcher.
 
     Note that the dataProduct can be any string, it need not be restricted to
     dafButler dataProducts.
+
+    The file is written in a thread, with an optional delay, meaning the delay
+    does not block execution. This is to allow time for ingestion to finish
+    without blocking finding new data.
 
     Parameters
     ----------
@@ -96,6 +121,8 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
         The data product to write the dataId file for.
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record to write the dataId file for.
+    delay : `float`, optional
+        The non-blocking delay to add before writing the file.
     log : `logging.Logger`, optional
         The logger to use. If provided, and info-level message is logged about
         where what file was written.
@@ -107,10 +134,18 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
                                       instrument=expRecord.instrument,
                                       dataProduct=dataProduct,
                                       expId=expId)
-    with open(outFile, 'w') as f:
-        f.write(json.dumps(expRecord.to_simple().json()))
+
+    contents = json.dumps(expRecord.to_simple().json())
+
+    writeThread = threading.Thread(target=_writeWithDelay, args=(outFile, contents, delay))
+    writeThread.start()
+
     if log:
-        log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
+        if delay:
+            log.info(f"Will write dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}"
+                     f" in {delay}s...")
+        else:
+            log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
 
 
 def getGlobPatternForDataProduct(dataIdPath, dataProduct, instrument):
