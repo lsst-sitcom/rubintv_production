@@ -696,6 +696,8 @@ class Plotter:
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         nExpected = getNumExpectedItems(expRecord)
+        shardData = {seqNum: {'Number of CCDs readout': nExpected}}
+        writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
         self.fig.clear()
         success = plotFocalPlaneMosaic(butler=self.butler,
