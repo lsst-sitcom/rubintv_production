@@ -36,5 +36,6 @@ butlerWatcher = ButlerWatcher(butler=butler,
                               locationConfig=locationConfig,
                               instrument='LSSTCam',
                               dataProducts='raw',
+                              rawDelay=3,
                               doRaise=True)
 butlerWatcher.run()
