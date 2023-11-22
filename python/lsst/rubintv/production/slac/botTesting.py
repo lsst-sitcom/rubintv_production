@@ -521,7 +521,7 @@ class RawProcesser:
                            dataDict=ampNoises)
             self.log.info(f'Wrote rawNoises data shard for detector {detNum}')
             # then signal we're done for downstream
-            writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
+            writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, log=self.log)
 
             postIsr = self.runIsr(raw)
 
@@ -529,7 +529,7 @@ class RawProcesser:
                              instrument=self.instrument,
                              outputPath=self.locationConfig.calculatedDataPath,
                              binSize=self.locationConfig.binning)
-            writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
+            writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, log=self.log)
             self.log.info(f'Wrote binned image for detector {detNum}')
 
             del raw
