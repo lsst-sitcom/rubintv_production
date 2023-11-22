@@ -183,6 +183,8 @@ class ButlerWatcher:
         The location config.
     dataProducts : `str` or `list` [`str`]
         The data products to watch for.
+    rawDelay : `float`, optional
+        The delay to apply before publishing raw data, in seconds.
     doRaise : `bool`, optional
         Raise exceptions or log them as warnings?
     """
@@ -193,11 +195,12 @@ class ButlerWatcher:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, locationConfig, instrument, butler, dataProducts, doRaise=False):
+    def __init__(self, locationConfig, instrument, butler, dataProducts, rawDelay=0, doRaise=False):
         self.locationConfig = locationConfig
         self.instrument = instrument
         self.butler = butler
         self.dataProducts = list(ensure_iterable(dataProducts))  # must call list or we get a generator back
+        self.rawDelay = rawDelay
         self.doRaise = doRaise
         self.log = _LOG.getChild("butlerWatcher")
 
@@ -299,7 +302,14 @@ class ButlerWatcher:
                         self._deleteExistingData(found['raw'])
 
                     for product, expRecord in found.items():
-                        writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
+                        delay = 0
+                        if product == 'raw':
+                            delay = self.rawDelay
+                        writeDataIdFile(self.locationConfig.dataIdScanPath,
+                                        product,
+                                        expRecord,
+                                        delay=delay,
+                                        log=self.log)
                         lastWrittenIds[product] = expRecord.id
                     # beat after the callback so as not to delay processing
                     # and also so it is only called if things are working
