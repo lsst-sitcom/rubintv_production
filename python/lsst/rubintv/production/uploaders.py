@@ -157,7 +157,7 @@ class Bucket(Enum):
 
 
 class EndPoint(Enum):
-    USDF = {"data_point": "https://usdf-rsp.slac.stanford.edu/",
+    USDF = {"data_point": "https://s3dfrgw.slac.stanford.edu",
             "buckets_available": [Bucket.SUMMIT, Bucket.TTS, Bucket.USDF]}
 
 
