@@ -159,6 +159,8 @@ class Bucket(Enum):
 class EndPoint(Enum):
     USDF = {"data_point": "https://s3dfrgw.slac.stanford.edu",
             "buckets_available": [Bucket.SUMMIT, Bucket.TTS, Bucket.USDF]}
+    SUMMIT = {"data_point": "https://s3.rubintv.cp.lsst.org",
+              "buckets_available": [Bucket.SUMMIT, Bucket.USDF]}
 
 
 class S3Uploader(IUploader):
