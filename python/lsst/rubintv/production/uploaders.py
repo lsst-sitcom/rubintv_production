@@ -214,7 +214,7 @@ class S3Uploader(IUploader):
         self._bucket_info = end_point.value["buckets_available"][bucket]  # type: BucketInformation
         self._s3_bucket = self._create_bucket_connection(end_point=self._end_point,
                                                          bucket_info=self._bucket_info,
-                                                         https_proxy=https_proxy)
+                                                         proxy_url=https_proxy)
 
     def _create_bucket_connection(self, end_point: str,
                                   bucket_info: BucketInformation, proxy_url: str) -> ServiceResource:
