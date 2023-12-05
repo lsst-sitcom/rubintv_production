@@ -27,10 +27,10 @@ import time
 from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from dataclasses import dataclass
 from enum import Enum
-from requests.adapters import HTTPAdapter
 from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString
@@ -240,16 +240,14 @@ class S3Uploader(IUploader):
         """
         try:
             proxy_dict = {"http": proxy_url, "https": proxy_url}
-            adapter = HTTPAdapter(max_retries=3, pool_connections=5, pool_maxsize=5, proxy_manager=proxy_dict)
 
             # Create a custom botocore session with the proxy adapter
             botocore_session = S3_session(profile_name=bucket_info.profile_name)
-            botocore_session.session.mount("http://", adapter)
-            botocore_session.session.mount("https://", adapter)
 
             # Create an S3 resource with the custom botocore session
             s3_resource = S3_session.resource('s3', endpoint_url=end_point.value["data_point"],
-                                              botocore_session=botocore_session)
+                                              botocore_session=botocore_session,
+                                              config=Config(proxies=proxy_dict))
             return s3_resource.Bucket(bucket_info.bucket_name)
         except ClientError:
             self._log.exception(f"Failed client connection: {bucket_info.profile_name}")
