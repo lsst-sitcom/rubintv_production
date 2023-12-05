@@ -26,8 +26,11 @@ import time
 
 from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
+from boto3 import Bucket
 from botocore.exceptions import ClientError
+from dataclasses import dataclass
 from enum import Enum
+from requests.adapters import HTTPAdapter
 from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString
@@ -150,49 +153,108 @@ class IUploader(ABC):
         raise NotImplementedError()
 
 
-class Bucket(Enum):
-    SUMMIT = "rubin-rubintv-data-summit"
-    TTS = "rubin-rubintv-data-tts"
-    USDF = "rubin-rubintv-data-usdf"
+class ConnectBucket(Enum):
+    USDF = 1
+    SUMMIT = 2
+    TTS = 3
+    BTS = 4
+
+
+@dataclass(frozen=True)
+class BucketInformation:
+    profile_name: str
+    bucket_name: str
 
 
 class EndPoint(Enum):
-    USDF = {"data_point": "https://s3dfrgw.slac.stanford.edu",
-            "buckets_available": [Bucket.SUMMIT, Bucket.TTS, Bucket.USDF]}
-    SUMMIT = {"data_point": "https://s3.rubintv.cp.lsst.org",
-              "buckets_available": [Bucket.SUMMIT, Bucket.USDF]}
+    USDF = {"end_point": "https://s3dfrgw.slac.stanford.edu",
+            "buckets_available": {
+                Bucket.SUMMIT: BucketInformation(
+                    "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
+                ),
+                Bucket.USDF: BucketInformation(
+                    "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
+                )
+            }
+            }
+
+    SUMMIT = {"end_point": "https://s3.rubintv.cp.lsst.org",
+              "buckets_available": {Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")}}
 
 
 class S3Uploader(IUploader):
 
-    def __init__(self, end_point: EndPoint = EndPoint.USDF, bucket: Bucket = Bucket.TTS) -> None:
+    def __init__(self, end_point: EndPoint = EndPoint.USDF,
+                 bucket: Bucket = ConnectBucket.USDF,
+                 https_proxy: str = "") -> None:
         """
         S3 Uploader initialization. Here the connection with the remote S3
         bucket is stablished.
+
         Parameters
         ----------
-        bucket: Enum Bucket
-        Bucket identifier to connect to. Available buckets: SUMMIT, TTS, USDF.
-
+        end_point: `Enum EndPoint`
+            The complete URL to use for to construct the S3 client
+        bucket : `Enum AvailableBucket`
+            Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
+            USDF or BTS.
+        https_proxy: `str`, optional
+            URL of an https proxy if needed. Form should be: https://host:port
         Raises
-        ValueError: If bucket not valid for endpoint selected
-        CommunicationError: When connection could not be stablished with S3
-        server
+            ValueError: If bucket not valid for endpoint selected
+            ConnectionError: When connection could not be stablished with
+                                S3 server
         ------
         """
         super().__init__()
         self._log = _LOG.getChild("S3Uploader")
-        if bucket not in end_point.value['buckets_available']:
+        if bucket not in end_point.value['buckets_available'].keys():
             raise ValueError('Invalid bucket')
+        self._end_point = EndPoint.value["end_point"]
+        self._bucket_info = EndPoint.value["buckets_available"][bucket]  # type: BucketInformation
+        self._s3_bucket = self._create_bucket_connection(end_point=self._end_point,
+                                                         bucket_info=self._bucket_info,
+                                                         https_proxy=https_proxy)
+
+    def _create_bucket_connection(self, end_point: str,
+                                  bucket_info: BucketInformation, proxy_url: str) -> Bucket:
+        """
+        create bucket connection used to upload files
+
+        Parameters
+        ----------
+        end_point: `Enum EndPoint`
+            The complete URL to use for to construct the S3 client
+        bucket : `Enum AvailableBucket`
+            Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
+            USDF or BTS.
+        https_proxy: `str`, optional
+            URL of an https proxy if needed. Form should be: https://host:port
+        Raises
+            ConnectionError: When connection could not be stablished with
+                            S3 server
+
+        Returns
+        -------
+            S3 bucket ready to use for file transfer
+        """
         try:
-            self._session = S3_session(profile_name=bucket.value)
-            self._S3 = self._session.resource(
-                "s3", endpoint_url=end_point.value["data_point"]
-            )  # type: ServiceResource
-            self._bucket_s3 = self._S3.Bucket(bucket.value)  # type: ignore
+            proxy_dict = {"http": proxy_url, "https": proxy_url}
+            adapter = HTTPAdapter(max_retries=3, pool_connections=5, pool_maxsize=5, proxy_manager=proxy_dict)
+
+            # Create a custom botocore session with the proxy adapter
+            botocore_session = S3_session(profile_name=bucket_info.profile_name)
+            botocore_session.session.mount("http://", adapter)
+            botocore_session.session.mount("https://", adapter)
+
+            # Create an S3 resource with the custom botocore session
+            s3_resource = S3_session.resource('s3', endpoint_url=end_point.value["data_point"],
+                                              botocore_session=botocore_session)
+            s3_resource = self._session.resource("s3", )  # type: ServiceResource
+            return s3_resource.Bucket(bucket_info.bucket_name)
         except ClientError:
-            self._log.exception(f"Failed client connection: {bucket.value}")
-            raise ConnectionError(f"Failed client connection: {bucket.value}")
+            self._log.exception(f"Failed client connection: {bucket_info.profile_name}")
+            raise ConnectionError(f"Failed client connection: {bucket_info.profile_name}")
 
     @override
     def uploadPerSeqNumPlot(
@@ -323,7 +385,7 @@ class S3Uploader(IUploader):
             Raised if uploading the file to the Bucket was no possible
         """
         try:
-            self._bucket_s3.upload_file(
+            self._s3_bucket.upload_file(
                 Filename=source_filename, Key=destiny_filename
             )
         except ClientError as e:
@@ -331,6 +393,12 @@ class S3Uploader(IUploader):
             raise UploadError(
                 f"Failed uploadig file {source_filename} as Key: {destiny_filename}"
             )
+
+    def __repr__(self):
+        return f"S3 uploader endpoint: {self._end_point} bucket: {self._bucket_info.bucket_name}"
+
+    def __str__(self):
+        return self.__repr__()
 
 
 class Uploader:
