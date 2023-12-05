@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import boto3
 import json
 import logging
 import os
@@ -26,7 +27,6 @@ import time
 
 from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
-from boto3 import Bucket
 from botocore.exceptions import ClientError
 from dataclasses import dataclass
 from enum import Enum
@@ -153,7 +153,7 @@ class IUploader(ABC):
         raise NotImplementedError()
 
 
-class ConnectBucket(Enum):
+class Bucket(Enum):
     USDF = 1
     SUMMIT = 2
     TTS = 3
@@ -185,7 +185,7 @@ class EndPoint(Enum):
 class S3Uploader(IUploader):
 
     def __init__(self, end_point: EndPoint = EndPoint.USDF,
-                 bucket: Bucket = ConnectBucket.USDF,
+                 bucket: Bucket = Bucket.USDF,
                  https_proxy: str = "") -> None:
         """
         S3 Uploader initialization. Here the connection with the remote S3
@@ -217,7 +217,7 @@ class S3Uploader(IUploader):
                                                          https_proxy=https_proxy)
 
     def _create_bucket_connection(self, end_point: str,
-                                  bucket_info: BucketInformation, proxy_url: str) -> Bucket:
+                                  bucket_info: BucketInformation, proxy_url: str) -> boto3.Bucket:
         """
         create bucket connection used to upload files
 
