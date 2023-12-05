@@ -241,13 +241,12 @@ class S3Uploader(IUploader):
         try:
             proxy_dict = {"http": proxy_url, "https": proxy_url}
 
-            # Create a custom botocore session with the proxy adapter
-            botocore_session = S3_session(profile_name=bucket_info.profile_name)
+            # Create a custom botocore session
+            session = S3_session(profile_name=bucket_info.profile_name)
 
             # Create an S3 resource with the custom botocore session
-            s3_resource = S3_session.resource('s3', endpoint_url=end_point,
-                                              botocore_session=botocore_session,
-                                              config=Config(proxies=proxy_dict))
+            s3_resource = session.resource('s3', endpoint_url=end_point,
+                                           config=Config(proxies=proxy_dict))
             return s3_resource.Bucket(bucket_info.bucket_name)
         except ClientError:
             self._log.exception(f"Failed client connection: {bucket_info.profile_name}")
