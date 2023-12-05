@@ -245,7 +245,7 @@ class S3Uploader(IUploader):
             botocore_session = S3_session(profile_name=bucket_info.profile_name)
 
             # Create an S3 resource with the custom botocore session
-            s3_resource = S3_session.resource('s3', endpoint_url=end_point.value["data_point"],
+            s3_resource = S3_session.resource('s3', endpoint_url=end_point,
                                               botocore_session=botocore_session,
                                               config=Config(proxies=proxy_dict))
             return s3_resource.Bucket(bucket_info.bucket_name)
