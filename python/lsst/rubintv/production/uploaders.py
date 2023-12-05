@@ -19,7 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import boto3
 import json
 import logging
 import os
@@ -27,6 +26,7 @@ import time
 
 from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
+from boto3.resources.base import ServiceResource
 from botocore.exceptions import ClientError
 from dataclasses import dataclass
 from enum import Enum
@@ -217,7 +217,7 @@ class S3Uploader(IUploader):
                                                          https_proxy=https_proxy)
 
     def _create_bucket_connection(self, end_point: str,
-                                  bucket_info: BucketInformation, proxy_url: str) -> boto3.Bucket:
+                                  bucket_info: BucketInformation, proxy_url: str) -> ServiceResource:
         """
         create bucket connection used to upload files
 
