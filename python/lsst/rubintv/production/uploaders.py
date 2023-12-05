@@ -210,8 +210,8 @@ class S3Uploader(IUploader):
         self._log = _LOG.getChild("S3Uploader")
         if bucket not in end_point.value['buckets_available'].keys():
             raise ValueError('Invalid bucket')
-        self._end_point = EndPoint.value["end_point"]
-        self._bucket_info = EndPoint.value["buckets_available"][bucket]  # type: BucketInformation
+        self._end_point = end_point.value["end_point"]
+        self._bucket_info = end_point.value["buckets_available"][bucket]  # type: BucketInformation
         self._s3_bucket = self._create_bucket_connection(end_point=self._end_point,
                                                          bucket_info=self._bucket_info,
                                                          https_proxy=https_proxy)
@@ -250,7 +250,6 @@ class S3Uploader(IUploader):
             # Create an S3 resource with the custom botocore session
             s3_resource = S3_session.resource('s3', endpoint_url=end_point.value["data_point"],
                                               botocore_session=botocore_session)
-            s3_resource = self._session.resource("s3", )  # type: ServiceResource
             return s3_resource.Bucket(bucket_info.bucket_name)
         except ClientError:
             self._log.exception(f"Failed client connection: {bucket_info.profile_name}")
