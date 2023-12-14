@@ -181,6 +181,9 @@ class EndPoint(Enum):
     SUMMIT = {"end_point": "https://s3.rubintv.cp.lsst.org",
               "buckets_available": {Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")}}
 
+    BASE = {"end_point": "https://s3.rubintv.ls.lsst.org",
+            "buckets_available": {Bucket.BTS: BucketInformation("base-data-base", "rubintv")}}
+
 
 class S3Uploader(IUploader):
 
