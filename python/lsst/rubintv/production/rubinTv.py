@@ -394,7 +394,12 @@ class MonitorChannel(BaseButlerChannel):
 
             self.log.info("Uploading monitor image to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
-            self.s3Uploader.upload(tempFilename, uploadFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                channel=self.channelName,
+                observation_day=expRecord.day_obs,
+                sequence_number=expRecord.seq_num,
+                filename=tempFilename,
+            )
             self.log.info('Upload complete')
 
         except Exception as e:
