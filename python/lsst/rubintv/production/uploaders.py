@@ -52,6 +52,13 @@ __all__ = ["Heartbeater", "Uploader", "S3Uploader", "UploadError"]
 
 
 def createS3UploaderForSite():
+    """Create the S3Uploader with the correct config for the site automatically
+
+    Returns
+    -------
+    uploader : `S3Uploader`
+        The S3Uploader for the site.
+    """
     site = getSite()
     match site:
         case "base":
@@ -321,7 +328,7 @@ class S3Uploader(IUploader):
         upload_as = f"{channel}/{plot_prefix}_dayObs_{date_observation_str}_seqNum_{sequence_number}.png"
 
         try:
-            self.upload(channel=upload_as, source_filename=filename)
+            self.upload(destiny_filename=upload_as, source_filename=filename)
             self._log.info(f"Uploaded {filename} to {upload_as}")
         except Exception as ex:
             self._log.exception(
