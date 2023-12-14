@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing_extensions import Optional, override
 
-from lsst.summit.utils.utils import dayObsIntToString
+from lsst.summit.utils.utils import dayObsIntToString, getSite
 
 from .channels import CHANNELS
 
@@ -49,6 +49,21 @@ except ImportError:
 
 
 __all__ = ["Heartbeater", "Uploader", "S3Uploader", "UploadError"]
+
+
+def createS3UploaderForSite():
+    site = getSite()
+    match site:
+        case "base":
+            return S3Uploader(end_point=EndPoint.BASE, bucket=Bucket.BTS)
+        case "summit":
+            return S3Uploader(end_point=EndPoint.SUMMIT, bucket=Bucket.SUMMIT)
+        case "usdf":
+            return S3Uploader(end_point=EndPoint.USDF, bucket=Bucket.USDF)
+        case "tucson":
+            return S3Uploader(end_point=EndPoint.TUCSON, bucket=Bucket.USDF)
+        case _:
+            raise ValueError(f"Unknown site: {site}")
 
 
 class ConnectionError(Exception):
@@ -183,6 +198,9 @@ class EndPoint(Enum):
 
     BASE = {"end_point": "https://s3.rubintv.ls.lsst.org",
             "buckets_available": {Bucket.BTS: BucketInformation("base-data-base", "rubintv")}}
+
+    TUCSON = {"end_point": "https://s3.rubintv.tu.lsst.org",
+              "buckets_available": {Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")}}
 
 
 class S3Uploader(IUploader):

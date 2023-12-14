@@ -66,7 +66,7 @@ from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IM
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
 from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDayRolledOver, catchPrintOutput
-from .uploaders import Uploader, Heartbeater
+from .uploaders import Uploader, Heartbeater, createS3UploaderForSite
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
@@ -352,6 +352,7 @@ class MonitorChannel(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
+        self.s3Uploader = createS3UploaderForSite()
         self.fig = plt.figure(figsize=(12, 12))
         self.detector = 0
 
@@ -393,6 +394,7 @@ class MonitorChannel(BaseButlerChannel):
 
             self.log.info("Uploading monitor image to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
+            self.s3Uploader.upload(tempFilename, uploadFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
