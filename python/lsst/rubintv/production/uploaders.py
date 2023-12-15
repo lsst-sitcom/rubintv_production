@@ -423,6 +423,39 @@ class S3Uploader(IUploader):
                 f"Failed uploadig file {source_filename} as Key: {destiny_filename}"
             )
 
+    def uploadMetdata(self, channel: str, source_filename: str) -> None:
+        """Upload a file to an storage bucket.
+
+        Parameters
+        ----------
+        destiny_filename : `str`
+            The destiny filename including channel location
+        source_filename : `str`
+            The full path and filename of the file to upload.
+        Raises
+        ------
+        UploadError
+            Raised if uploading the file to the Bucket was no possible
+        """
+
+        camera, plotName = getCameraAndPlotName(channel)
+        if plotName != "metadata":
+            raise ValueError("Tried to upload non-metadata file to metadata channel:"
+                             f"{channel}, {source_filename}")
+
+        filename = os.path.basename(source_filename)
+        destiny_filename = f"{camera}_metadata/{filename}"
+
+        try:
+            self._s3_bucket.upload_file(
+                Filename=source_filename, Key=destiny_filename
+            )
+        except ClientError as e:
+            logging.error(e)
+            raise UploadError(
+                f"Failed uploadig file {source_filename} as Key: {destiny_filename}"
+            )
+
     def __repr__(self):
         return f"S3 uploader endpoint: {self._end_point} bucket: {self._bucket_info.bucket_name}"
 

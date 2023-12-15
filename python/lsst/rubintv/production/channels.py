@@ -63,6 +63,19 @@ def getCameraAndPlotName(channel):
         "fake_summit_specexam": ("fake_auxtel", "specexam"),
         "fake_auxtel_mount_torques": ("fake_auxtel", "mount"),
         "fake_auxtel_movies": ("fake_auxtel", "movies"),
-        "tma_mount_motion_profile": ("tma", "mount")
+        "tma_mount_motion_profile": ("tma", "mount"),
+        "auxtel_metadata": ('auxtel', 'metadata'),
+        "auxtel_night_reports": ("auxtel", "night_reports"),
+        "startracker_night_reports": ("startracker", "night_reports"),
+        "startracker_metadata": ('startracker', 'metadata'),
+        "ts8_metadata": ('ts8', 'metadata'),
+        "comcam_metadata": ('comcam', 'metadata'),
+        "slac_lsstcam_metadata": ('slac_lsstcam', 'metadata'),
+        "tma_metadata": ('tma', 'metadata'),
+
+        # channels which should never upload, so return None to make things
+        # raise
+        "auxtel_metadata_creator": None,
+        "auxtel_isr_runner": ("auxtel", "isr_runner"),
     }
     return channelLookup[channel]
