@@ -35,7 +35,7 @@ from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 
-from .channels import CHANNELS
+from .channels import CHANNELS, getCameraAndPlotName
 
 _LOG = logging.getLogger(__name__)
 
@@ -320,12 +320,17 @@ class S3Uploader(IUploader):
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        date_observation_str = dayObsIntToString(observation_day)
-        # TODO: sort out this prefix nonsense as part of the plot organization
-        # fixup in the new year?
-        plot_prefix = channel.replace("_", "-")
-
-        upload_as = f"{channel}/{plot_prefix}_dayObs_{date_observation_str}_seqNum_{sequence_number}.png"
+        dayObsStr = dayObsIntToString(observation_day)
+        paddedSeqNum = f"{sequence_number:06}"
+        extension = os.path.splitext(filename)[1]  # contains the period so don't add back later
+        camera, plotName = getCameraAndPlotName(channel)
+        upload_as = (
+            f"{camera}"
+            f"/{dayObsStr}"
+            f"/{plotName}"
+            f"/{paddedSeqNum}"
+            f"/{camera}_{plotName}_{dayObsStr}_{paddedSeqNum}{extension}"
+        )
 
         try:
             self.upload(destiny_filename=upload_as, source_filename=filename)
