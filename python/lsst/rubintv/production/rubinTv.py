@@ -766,6 +766,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
         # TODO DM-37426 add some more overrides to speed up runtime
         config.doApCorr = False
         config.doDeblend = False
+        config.astrometry.sourceSelector["science"].doRequirePrimary = False
+        config.astrometry.sourceSelector["science"].doIsolated = False
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
