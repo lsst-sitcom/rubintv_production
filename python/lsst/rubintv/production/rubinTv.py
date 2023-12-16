@@ -744,11 +744,25 @@ class CalibrateCcdRunner(BaseButlerChannel):
         self.charImage = CharacterizeImageTask(config=config)
 
         config = CalibrateConfig()
-        basicConfig = CalibrateConfig()
         config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
-        config.measurement = basicConfig.measurement
 
+        # restrict to basic set of plugins
+        config.measurement.plugins.names = ['base_CircularApertureFlux',
+                                            'base_PsfFlux',
+                                            'base_NaiveCentroid',
+                                            'base_CompensatedGaussianFlux',
+                                            'base_LocalBackground',
+                                            'base_SdssCentroid',
+                                            'base_SdssShape',
+                                            'base_Variance',
+                                            'base_Jacobian',
+                                            'base_PixelFlags',
+                                            'base_GaussianFlux',
+                                            'base_SkyCoord',
+                                            'base_FPPosition']
+        config.measurement.slots.shape = "base_SdssShape"
+        config.measurement.slots.psfShape = "base_SdssShape_psf"
         # TODO DM-37426 add some more overrides to speed up runtime
         config.doApCorr = False
         config.doDeblend = False
