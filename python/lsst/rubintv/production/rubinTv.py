@@ -76,7 +76,8 @@ from .utils import (
     catchPrintOutput,
     NumpyEncoder,
 )
-from .uploaders import Uploader, Heartbeater
+from .uploaders import Uploader, Heartbeater, createS3UploaderForSite
+
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
@@ -362,6 +363,7 @@ class MonitorChannel(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
+        self.s3Uploader = createS3UploaderForSite()
         self.fig = plt.figure(figsize=(12, 12))
         self.detector = 0
 
@@ -403,6 +405,12 @@ class MonitorChannel(BaseButlerChannel):
 
             self.log.info("Uploading monitor image to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                channel=self.channelName,
+                observation_day=expRecord.day_obs,
+                sequence_number=expRecord.seq_num,
+                filename=tempFilename,
+            )
             self.log.info('Upload complete')
 
         except Exception as e:
