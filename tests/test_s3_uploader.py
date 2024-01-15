@@ -86,7 +86,7 @@ class TestS3Uploader(unittest.TestCase):
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
     def test_uploadMetdata(self):
-        """"""
+        """test uploadMetdata method from S3Uploader"""
         channels = ["startracker_metadata",
                     "ts8_metadata",
                     "comcam_metadata",
@@ -101,14 +101,15 @@ class TestS3Uploader(unittest.TestCase):
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
     def test_uploadMetdata_fails_on_not_metadata_channel(self):
-        """"""
+        """test uploadMetdata method from S3Uploader when using a not metadata channel
+        causes an exception"""
         channel = "auxtel_monitor"
         filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
         with self.assertRaises(ValueError) as context:
             self._s3_uploader.uploadMetdata(channel, filename)
-        self.assertEqual(str(context.exception), "Tried to upload non-metadata file to metadata channel:"
-                                                  f"{channel}, {filename}")
+        self.assertEqual(str(context.exception), "Tried to upload non-metadata file to metadata channel:" +
+                                                 f"{channel}, {filename}")
 
     def is_correct_check_uploaded_file(self, uploadedFile, file_content):
         """Support method to check that the file uploaded is correct"""
