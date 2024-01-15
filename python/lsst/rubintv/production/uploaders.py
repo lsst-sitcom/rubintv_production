@@ -39,8 +39,6 @@ from .channels import CHANNELS, getCameraAndPlotName
 
 _LOG = logging.getLogger(__name__)
 
-_LOG = logging.getLogger(__name__)
-
 try:
     from google.cloud import storage
     from google.cloud.storage.retry import DEFAULT_RETRY
@@ -64,13 +62,13 @@ def createS3UploaderForSite():
     site = getSite()
     match site:
         case "base":
-            return S3Uploader(end_point=EndPoint.BASE, bucket=Bucket.BTS)
+            return S3Uploader.from_information(end_point=EndPoint.BASE, bucket=Bucket.BTS)
         case "summit":
-            return S3Uploader(end_point=EndPoint.SUMMIT, bucket=Bucket.SUMMIT)
+            return S3Uploader.from_information(end_point=EndPoint.SUMMIT, bucket=Bucket.SUMMIT)
         case "usdf":
-            return S3Uploader(end_point=EndPoint.USDF, bucket=Bucket.USDF)
+            return S3Uploader.from_information(end_point=EndPoint.USDF, bucket=Bucket.USDF)
         case "tucson":
-            return S3Uploader(end_point=EndPoint.TUCSON, bucket=Bucket.USDF)
+            return S3Uploader.from_information(end_point=EndPoint.TUCSON, bucket=Bucket.USDF)
         case _:
             raise ValueError(f"Unknown site: {site}")
 
@@ -99,23 +97,22 @@ class IUploader(ABC):
         isLiveFile: bool = False,
         isLargeFile: bool = False,
     ) -> str:
-        """
-        Upload a per-dayObs/seqNum plot to the bucket.
+        """Upload a per-dayObs/seqNum plot to the bucket.
 
         Parameters
         ----------
         channel : `str`
             The RubinTV channel to upload to.
-        observation_day : `int`
+        dayObsInt : `int`
             The dayObs of the plot.
-        sequence_number : `int`
+        seqNumInt : `int`
             The seqNum of the plot.
         filename : `str`
             The full path and filename of the file to upload.
-        is_live_file : `bool`, optional
+        isLiveFile : `bool`, optional
             The file is being updated constantly, and so caching should be
             disabled.
-        is_large_file : `bool`, optional
+        isLargeFile : `bool`, optional
             The file is large, so add a longer timeout to the upload.
 
         Raises
@@ -132,8 +129,7 @@ class IUploader(ABC):
     def uploadNightReportData(
         self, channel: str, dayObsInt: int, filename: str, plotGroup: Optional[str]
     ) -> str:
-        """
-        Upload night report type plot or json file to a night report channel
+        """Upload night report type plot or json file to a night report channel
 
         Parameters
         ----------
@@ -143,7 +139,7 @@ class IUploader(ABC):
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
-        plot_group : `str`, optional
+        plotGroup : `str`, optional
             The group to upload the plot to. The 'default' group is used if
             this is not specified. However, people are encouraged to supply
             groups for their plots, so the 'default' value is not put in the
@@ -160,14 +156,14 @@ class IUploader(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def upload(self, channel: str, source_filename: str) -> None:
+    def upload(self, destinyFilename: str, sourceFilename: str) -> None:
         """Upload a file to an storage bucket.
 
         Parameters
         ----------
-        channel : `str`
+        destinyFilename : `str`
             The RubinTV channel to upload to.
-        source_filename : `str`
+        sourceFilename : `str`
             The full path and filename of the file to upload.
         Raises
         ------
@@ -186,8 +182,8 @@ class Bucket(Enum):
 
 @dataclass(frozen=True)
 class BucketInformation:
-    profile_name: str
-    bucket_name: str
+    profileName: str
+    bucketName: str
 
 
 class EndPoint(Enum):
@@ -213,52 +209,71 @@ class EndPoint(Enum):
 
 
 class S3Uploader(IUploader):
+    """"""
+    def __init__(self, s3Bucket: ServiceResource) -> None:
+        super().__init__()
+        self._log = _LOG.getChild("S3Uploader")
+        self._s3Bucket = s3Bucket
 
-    def __init__(self, end_point: EndPoint = EndPoint.USDF,
-                 bucket: Bucket = Bucket.USDF,
-                 https_proxy: str = "") -> None:
-        """
-        S3 Uploader initialization. Here the connection with the remote S3
-        bucket is stablished.
-
+    @staticmethod
+    def from_bucket(s3Bucket: ServiceResource):
+        """S3 Uploader initialization from bucket information.
         Parameters
         ----------
-        end_point: `Enum EndPoint`
+        s3Bucket : `Enum AvailableBucket`
+            S3 Bucket to upload files to.
+        Returns
+        ------
+            S3Uploader instance ready to use for file transfer
+        """
+        assert isinstance(s3Bucket, ServiceResource), "Invalid s3Bucket type"
+        return S3Uploader(s3Bucket=s3Bucket)
+
+    @staticmethod
+    def from_information(endPoint: EndPoint = EndPoint.USDF,
+                         bucket: Bucket = Bucket.USDF,
+                         httpsProxy: str = ""):
+        """S3 Uploader initialization from bucket information.
+        Parameters
+        ----------
+        endPoint: `Enum EndPoint`
             The complete URL to use for to construct the S3 client
         bucket : `Enum AvailableBucket`
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
-        https_proxy: `str`, optional
+        httpsProxy: `str`, optional
             URL of an https proxy if needed. Form should be: host:port
         Raises
             ValueError: If bucket not valid for endpoint selected
             ConnectionError: When connection could not be stablished with
                                 S3 server
+        Returns
         ------
+            S3Uploader instance ready to use for file transfer
         """
-        super().__init__()
-        self._log = _LOG.getChild("S3Uploader")
-        if bucket not in end_point.value['buckets_available'].keys():
+        if bucket not in endPoint.value['buckets_available'].keys():
             raise ValueError('Invalid bucket')
-        self._end_point = end_point.value["end_point"]
-        self._bucket_info = end_point.value["buckets_available"][bucket]  # type: BucketInformation
-        self._s3_bucket = self._create_bucket_connection(end_point=self._end_point,
-                                                         bucket_info=self._bucket_info,
-                                                         proxy_url=https_proxy)
+        endPointValue = endPoint.value["end_point"]
+        bucketInfo = endPoint.value["buckets_available"][bucket]  # type: BucketInformation
+        bucket = S3Uploader._createBucketConnection(endPoint=endPointValue,
+                                                    bucketInfo=bucketInfo,
+                                                    proxyUrl=httpsProxy)
+        return S3Uploader(bucket)
 
-    def _create_bucket_connection(self, end_point: str,
-                                  bucket_info: BucketInformation, proxy_url: str) -> ServiceResource:
-        """
-        create bucket connection used to upload files
+    @staticmethod
+    def _createBucketConnection(endPoint: str,
+                                bucketInfo: BucketInformation,
+                                proxyUrl: str) -> ServiceResource:
+        """Create bucket connection used to upload files
 
         Parameters
         ----------
-        end_point: `Enum EndPoint`
+        endPoint: `Enum EndPoint`
             The complete URL to use for to construct the S3 client
         bucket : `Enum AvailableBucket`
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
-        https_proxy: `str`, optional
+        httpsProxy: `str`, optional
             URL of an https proxy if needed. Form should be: host:port
         Raises
             ConnectionError: When connection could not be stablished with
@@ -269,46 +284,45 @@ class S3Uploader(IUploader):
             S3 bucket ready to use for file transfer
         """
         try:
-            proxy_dict = {"http": proxy_url, "https": proxy_url}
+            proxyDict = {"http": proxyUrl, "https": proxyUrl}
 
             # Create a custom botocore session
-            session = S3_session(profile_name=bucket_info.profile_name)
+            session = S3_session(profile_name=bucketInfo.profileName)
 
             # Create an S3 resource with the custom botocore session
-            s3_resource = session.resource('s3', endpoint_url=end_point,
-                                           config=Config(proxies=proxy_dict))
-            return s3_resource.Bucket(bucket_info.bucket_name)
+            s3Resource = session.resource('s3', endpoint_url=endPoint,
+                                          config=Config(proxies=proxyDict))
+            return s3Resource.Bucket(bucketInfo.bucketName,
+                                     name=f"Name: {bucketInfo.bucketName} EndPoint: {endPoint}")
         except ClientError:
-            self._log.exception(f"Failed client connection: {bucket_info.profile_name}")
-            raise ConnectionError(f"Failed client connection: {bucket_info.profile_name}")
+            raise ConnectionError(f"Failed client connection: {bucketInfo.profileName}")
 
     @override
     def uploadPerSeqNumPlot(
         self,
         channel: str,
-        observation_day: int,
-        sequence_number: int,
+        observationDay: int,
+        sequenceNumber: int,
         filename: str,
-        is_live_file: bool = False,
-        is_large_file: bool = False,
+        isLiveFile: bool = False,
+        isLargeFile: bool = False,
     ) -> str:
-        """
-        Upload a per-dayObs/seqNum plot to the bucket.
+        """Upload a per-dayObs/seqNum plot to the bucket.
 
         Parameters
         ----------
         channel : `str`
             The RubinTV channel to upload to.
-        observation_day : `int`
+        observationDay : `int`
             The dayObs of the plot.
-        sequence_number : `int`
+        sequenceNumber : `int`
             The seqNum of the plot.
         filename : `str`
             The full path and filename of the file to upload.
-        is_live_file : `bool`, optional
+        isLiveFile : `bool`, optional
             The file is being updated constantly, and so caching should be
             disabled.
-        is_large_file : `bool`, optional
+        isLargeFile : `bool`, optional
             The file is large, so add a longer timeout to the upload.
 
         Raises
@@ -322,11 +336,11 @@ class S3Uploader(IUploader):
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        dayObsStr = dayObsIntToString(observation_day)
-        paddedSeqNum = f"{sequence_number:06}"
+        dayObsStr = dayObsIntToString(observationDay)
+        paddedSeqNum = f"{sequenceNumber:06}"
         extension = os.path.splitext(filename)[1]  # contains the period so don't add back later
         camera, plotName = getCameraAndPlotName(channel)
-        upload_as = (
+        uploadAs = (
             f"{camera}"
             f"/{dayObsStr}"
             f"/{plotName}"
@@ -335,15 +349,15 @@ class S3Uploader(IUploader):
         )
 
         try:
-            self.upload(destiny_filename=upload_as, source_filename=filename)
-            self._log.info(f"Uploaded {filename} to {upload_as}")
+            self.upload(destinyFilename=uploadAs, sourceFilename=filename)
+            self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
             self._log.exception(
-                f"Failed to upload {filename} as {upload_as} to {channel}"
+                f"Failed to upload {filename} as {uploadAs} to {channel}"
             )
             raise ex
 
-        return upload_as
+        return uploadAs
 
     @override
     def uploadNightReportData(
@@ -353,8 +367,7 @@ class S3Uploader(IUploader):
         filename: str,
         plotGroup: Optional[str] = None,
     ):
-        """
-        Upload night report type plot or json file to a night report channel
+        """Upload night report type plot or json file to a night report channel
 
         Parameters
         ----------
@@ -364,7 +377,7 @@ class S3Uploader(IUploader):
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
-        plot_group : `str`, optional
+        plotGroup : `str`, optional
             The group to upload the plot to. The 'default' group is used if
             this is not specified. However, people are encouraged to supply
             groups for their plots, so the 'default' value is not put in the
@@ -386,22 +399,22 @@ class S3Uploader(IUploader):
         # the plot filenames have the channel name saved into them in the form
         # path/channelName-plotName.png, so remove the channel name and dash
         basename = basename.replace(channel + "-", "")
-        upload_as = (
+        uploadAs = (
             f"{channel}/{dayObsInt}/{plotGroup if plotGroup else 'default'}/{basename}"
         )
         try:
-            self.upload(channel=upload_as, source_filename=filename)
-            self._log.info(f"Uploaded {filename} to {upload_as}")
+            self.upload(destinyFilename=uploadAs, sourceFilename=filename)
+            self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
             self._log.exception(
-                f"Failed to upload {filename} as {upload_as} to {channel}"
+                f"Failed to upload {filename} as {uploadAs} to {channel}"
             )
             raise ex
 
-        return upload_as
+        return uploadAs
 
     @override
-    def upload(self, destiny_filename: str, source_filename: str) -> None:
+    def upload(self, destinyFilename: str, sourceFilename: str) -> None:
         """Upload a file to an storage bucket.
 
         Parameters
@@ -416,23 +429,23 @@ class S3Uploader(IUploader):
             Raised if uploading the file to the Bucket was no possible
         """
         try:
-            self._s3_bucket.upload_file(
-                Filename=source_filename, Key=destiny_filename
+            self._s3Bucket.upload_file(
+                Filename=sourceFilename, Key=destinyFilename
             )
         except ClientError as e:
             logging.error(e)
             raise UploadError(
-                f"Failed uploadig file {source_filename} as Key: {destiny_filename}"
+                f"Failed uploadig file {sourceFilename} as Key: {destinyFilename}"
             )
 
-    def uploadMetdata(self, channel: str, source_filename: str) -> None:
+    def uploadMetdata(self, channel: str, sourceFilename: str):
         """Upload a file to an storage bucket.
 
         Parameters
         ----------
-        destiny_filename : `str`
+        destinyFilename : `str`
             The destiny filename including channel location
-        source_filename : `str`
+        sourceFilename : `str`
             The full path and filename of the file to upload.
         Raises
         ------
@@ -443,25 +456,19 @@ class S3Uploader(IUploader):
         camera, plotName = getCameraAndPlotName(channel)
         if plotName != "metadata":
             raise ValueError("Tried to upload non-metadata file to metadata channel:"
-                             f"{channel}, {source_filename}")
+                             f"{channel}, {sourceFilename}")
 
-        filename = os.path.basename(source_filename)
-        destiny_filename = f"{camera}_metadata/{filename}"
-
-        try:
-            self._s3_bucket.upload_file(
-                Filename=source_filename, Key=destiny_filename
-            )
-        except ClientError as e:
-            logging.error(e)
-            raise UploadError(
-                f"Failed uploadig file {source_filename} as Key: {destiny_filename}"
-            )
+        filename = os.path.basename(sourceFilename)
+        uploadAs = f"{camera}_metadata/{filename}"
+        self.upload(destinyFilename=uploadAs, sourceFilename=sourceFilename)
+        return uploadAs
 
     def __repr__(self):
-        return f"S3 uploader endpoint: {self._end_point} bucket: {self._bucket_info.bucket_name}"
+        """"""
+        return f"S3 uploader Bucket Information: {self._s3Bucket.name}"
 
     def __str__(self):
+        """"""
         return self.__repr__()
 
 
