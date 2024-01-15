@@ -57,7 +57,7 @@ class TestS3Uploader(unittest.TestCase):
         """Test uploadPerSeqNumPlot for S3 Uploader"""
         channel = random.choice(CHANNELS)
         observationDay = 20241515
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
         sequenceNumber = 1
 
@@ -68,7 +68,7 @@ class TestS3Uploader(unittest.TestCase):
                                                              filename)
 
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
-    
+
     def test_uploadNightReportData(self):
         """Test uploadNightReportData for S3 Uploader"""
         channel = random.choice(CHANNELS)
@@ -101,8 +101,8 @@ class TestS3Uploader(unittest.TestCase):
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
     def test_uploadMetdata_fails_on_not_metadata_channel(self):
-        """test uploadMetdata method from S3Uploader when using a not metadata channel
-        causes an exception"""
+        """test uploadMetdata method from S3Uploader
+        when using a not metadata channel causes an exception"""
         channel = "auxtel_monitor"
         filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
