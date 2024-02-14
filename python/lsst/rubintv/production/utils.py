@@ -29,6 +29,7 @@ import json
 import glob
 import time
 import math
+import numpy as np
 
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from .channels import PREFIXES
@@ -54,6 +55,7 @@ __all__ = ['writeDataIdFile',
            'sanitizeNans',
            'safeJsonOpen',
            'ALLOWED_DATASET_TYPES',
+           'NumpyEncoder',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -620,6 +622,17 @@ def sanitizeNans(obj):
         return obj
 
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
 def writeMetadataShard(path, dayObs, mdDict):
     """Write a piece of metadata for uploading to the main table.
 
@@ -651,7 +664,7 @@ def writeMetadataShard(path, dayObs, mdDict):
     filename = os.path.join(path, f'metadata-dayObs_{dayObs}_{suffix}.json')
 
     with open(filename, 'w') as f:
-        json.dump(mdDict, f)
+        json.dump(mdDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
@@ -699,7 +712,7 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
                                           )
 
     with open(filename, 'w') as f:
-        json.dump(dataDict, f)
+        json.dump(dataDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
