@@ -65,7 +65,14 @@ from lsst.summit.utils import NightReport
 from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
                                                   MOUNT_IMAGE_BAD_LEVEL)
 from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import writeMetadataShard, expRecordToUploadFilename, raiseIf, hasDayRolledOver, catchPrintOutput
+from .utils import (
+    writeMetadataShard,
+    expRecordToUploadFilename,
+    raiseIf,
+    hasDayRolledOver,
+    catchPrintOutput,
+    NumpyEncoder,
+)
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
@@ -1190,7 +1197,7 @@ class NightReportChannel(BaseButlerChannel):
                 # is used for the upload, and that's what the frontend expects
                 jsonFilename = os.path.join(self.locationConfig.nightReportPath, 'md.json')
                 with open(jsonFilename, 'w') as f:
-                    json.dump(md, f)
+                    json.dump(md, f, cls=NumpyEncoder)
                 self.uploader.uploadNightReportData(channel=self.channelName,
                                                     dayObsInt=self.dayObs,
                                                     filename=jsonFilename)

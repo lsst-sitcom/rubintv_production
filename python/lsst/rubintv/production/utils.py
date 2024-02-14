@@ -55,6 +55,7 @@ __all__ = ['writeDataIdFile',
            'sanitizeNans',
            'safeJsonOpen',
            'ALLOWED_DATASET_TYPES',
+           'NumpyEncoder',
            ]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
@@ -620,6 +621,7 @@ def sanitizeNans(obj):
     else:
         return obj
 
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -710,7 +712,7 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
                                           )
 
     with open(filename, 'w') as f:
-        json.dump(dataDict, f)
+        json.dump(dataDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
 
