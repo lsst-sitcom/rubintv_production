@@ -1266,6 +1266,15 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                         'lsst.sal.MTM1M3.command_clearSlewFlag',
                                         ]
 
+        # keeps track of which plots have been made on a given day
+        self.plotsMade = {'MountMotionAnalysis': set(),
+                          'M1M3HardpointAnalysis': set()}
+
+    def resetPlotsMade(self):
+        """Reset the tracking of made plots for day-rollover.
+        """
+        self.plotsMade = {k: set() for k in self.plotsMade}
+
     def runMountMotionAnalysis(self, event):
         # get the data separately so we can take some min/max on it etc
         dayObs = event.dayObs
@@ -1402,46 +1411,55 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                           isLiveFile=False
                                           )
 
-    def processDay(self, dayObs, skipEventNumbers={}):
+    def processDay(self, dayObs):
         """
         """
         events = self.eventMaker.getEvents(dayObs)
-        self.log.info(f'Found {len(events)} events for {dayObs=} of which'
-                      f' {len(skipEventNumbers)} have already been created')
-        mountMotionPlotted = set()
-        icsPlotted = set()
         for event in events:
-            if event.seqNum in skipEventNumbers:
-                continue
             assert event.dayObs == dayObs
+
+            nMountMotionPlots = len(self.plotsMade['MountMotionAnalysis'])
+            nM1M3HardpointPlots = len(self.plotsMade['M1M3HardpointAnalysis'])
+            # the interesting phrasing in the message is because these plots
+            # don't necessarily exist, due either to failures or M1M3 analyses
+            # only being valid for some events so this is to make it clear
+            # they've been processed.
+            self.log.info(f'Found {len(events)} events for {dayObs=} of which '
+                          f'{nMountMotionPlots} have been mount-motion plotted and '
+                          f'{nM1M3HardpointPlots} have been M1M3-hardpoint-analysed plots.')
+
+            # kind of worrying that this clear _is_ needed out here, but is
+            # _not_ needed inside each of the plotting parts... maybe either
+            # remove this or add it to the other parts?
             self.log.info(f'Plotting event {event.seqNum}')
             self.figure.clear()
             ax = self.figure.gca()
             ax.clear()
 
-            try:
-                rowData = self.runMountMotionAnalysis(event)
-            except Exception as e:
-                rowData = {event.seqNum: {'Plotting failed?': '😔'}}
-                self.log.exception(f'Failed to plot event {event.seqNum}')
-                raiseIf(self.doRaise, e, self.log)
-            finally:
-                mountMotionPlotted.add(event.seqNum)  # don't retry plotting on failure
+            if event.seqNum not in self.plotsMade['MountMotionAnalysis']:
+                try:
+                    rowData = self.runMountMotionAnalysis(event)
+                except Exception as e:
+                    rowData = {event.seqNum: {'Plotting failed?': '😔'}}
+                    self.log.exception(f'Failed to plot event {event.seqNum}')
+                    raiseIf(self.doRaise, e, self.log)
+                finally:  # don't retry plotting on failure
+                    self.plotsMade['MountMotionAnalysis'].add(event.seqNum)
 
-            try:
-                rowData = self.runM1M3HardpointAnalysis(event)
-            except Exception as e:
-                rowData = {event.seqNum: {'ICS processing error?': '😔'}}
-                self.log.exception(f'Failed to plot event {event.seqNum}')
-                raiseIf(self.doRaise, e, self.log)
-            finally:
-                icsPlotted.add(event.seqNum)  # don't retry plotting on failure
+            if event.seqNum not in self.plotsMade['M1M3HardpointAnalysis']:
+                try:
+                    rowData = self.runM1M3HardpointAnalysis(event)
+                except Exception as e:
+                    rowData = {event.seqNum: {'ICS processing error?': '😔'}}
+                    self.log.exception(f'Failed to plot event {event.seqNum}')
+                    raiseIf(self.doRaise, e, self.log)
+                finally:  # don't retry plotting on failure
+                    self.plotsMade['M1M3HardpointAnalysis'].add(event.seqNum)
 
             rowData = self.eventToMetadataRow(event)
             writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
-            # self.mergeShardsAndUpload()
 
-        return mountMotionPlotted, icsPlotted
+        return
 
     def eventToMetadataRow(self, event):
         rowData = {}
@@ -1463,20 +1481,15 @@ class TmaTelemetryChannel(TimedMetadataServer):
         """Run continuously, updating the plots and uploading the shards.
         """
         dayObs = getCurrentDayObs_int()
-        mountMotionPlotted = set()
-        icsPlotted = set()
         while True:
             try:
                 if hasDayRolledOver(dayObs):
                     dayObs = getCurrentDayObs_int()
-                    plotted = set()
+                    self.resetPlotsMade()
 
                 # TODO: need to work out a better way of dealing with pod
                 # restarts. At present this will just remake everything.
-                mountMotionJustPlotted, icsJustPlotted = self.processDay(dayObs, skipEventNumbers=plotted)
-                mountMotionPlotted.update(mountMotionJustPlotted)
-                icsPlotted.update(icsJustPlotted)
-
+                self.processDay(dayObs)
                 self.mergeShardsAndUpload()  # updates all shards everywhere
 
                 self.heartbeater.beat()
