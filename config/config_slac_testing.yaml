@@ -66,3 +66,8 @@ comCamBinning: 8
 # # paths for serving TS8 metadata at SLAC
 comCamMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards'
+
+
+# summit-like configs
+tmaMetadataPath: '/sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata'
+tmaMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards'

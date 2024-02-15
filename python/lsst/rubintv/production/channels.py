@@ -27,6 +27,7 @@ CHANNELS = ["summit_imexam",
             "slac_lsstcam_focal_plane_mosaic",
             "slac_lsstcam_metadata",
             "tma_mount_motion_profile",
+            "tma_m1m3_hardpoint_profile",
             "tma_metadata",
             ]
 
