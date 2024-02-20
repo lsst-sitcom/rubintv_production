@@ -1288,15 +1288,19 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         md = {}
         azStart = None
-        elStart = None
+        azStop = None
         azMove = None
+
+        elStart = None
+        elStop = None
         elMove = None
         maxElTorque = None
         maxAzTorque = None
 
         if len(clippedAz) > 0:
             azStart = clippedAz.iloc[0]['actualPosition']
-            azMove = clippedAz.iloc[-1]['actualPosition'] - azStart
+            azStop = clippedAz.iloc[-1]['actualPosition']
+            azMove = azStop - azStart
             # key=abs gets the item with the largest absolute value but
             # keeps the sign so we don't deal with min/max depending on
             # the direction of the move etc
@@ -1304,7 +1308,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         if len(clippedEl) > 0:
             elStart = clippedEl.iloc[0]['actualPosition']
-            elMove = clippedEl.iloc[-1]['actualPosition'] - elStart
+            elStop = clippedEl.iloc[-1]['actualPosition']
+            elMove = elStop - elStart
             maxElTorque = max(clippedEl['actualTorque'], key=abs)
 
         # values could be None by design, for when there is no data
@@ -1313,6 +1318,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
         md['Elevation start'] = elStart
         md['Azimuth move'] = azMove
         md['Elevation move'] = elMove
+        md['Azimuth stop'] = azStop
+        md['Elevation stop'] = elStop
         md['Largest azimuth torque'] = maxAzTorque
         md['Largest elevation torque'] = maxElTorque
 
