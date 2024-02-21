@@ -1339,6 +1339,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                   commands=commands,
                   azimuthData=azimuthData,
                   elevationData=elevationData,
+                  doFilterResiduals=True,
                   )
 
         plotName = 'tma_mount_motion_profile'
