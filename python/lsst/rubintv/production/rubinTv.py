@@ -1259,7 +1259,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
         self.eventMaker = TMAEventMaker(client=self.client)
         self.figure = plt.figure(figsize=(10, 8))
         self.prePadding = 1
-        self.postPadding = 2
+        self.postPadding = 0
         self.commandsToPlot = ['raDecTarget', 'moveToTarget', 'startTracking', 'stopTracking']
         self.hardpointCommandsToPlot = ['lsst.sal.MTM1M3.command_setSlewFlag',
                                         'lsst.sal.MTM1M3.command_enableHardpointCorrections',
