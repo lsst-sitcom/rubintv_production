@@ -1258,8 +1258,10 @@ class TmaTelemetryChannel(TimedMetadataServer):
         self.client = makeEfdClient()
         self.eventMaker = TMAEventMaker(client=self.client)
         self.figure = plt.figure(figsize=(10, 8))
-        self.prePadding = 1
-        self.postPadding = 0
+        self.slewPrePadding = 1
+        self.trackPrePadding = 1
+        self.slewPostPadding = 2
+        self.trackPostPadding = 0
         self.commandsToPlot = ['raDecTarget', 'moveToTarget', 'startTracking', 'stopTracking']
         self.hardpointCommandsToPlot = ['lsst.sal.MTM1M3.command_setSlewFlag',
                                         'lsst.sal.MTM1M3.command_enableHardpointCorrections',
@@ -1278,10 +1280,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
     def runMountMotionAnalysis(self, event):
         # get the data separately so we can take some min/max on it etc
         dayObs = event.dayObs
+        prePadding = self.slewPrePadding if event.type.name == 'SLEWING' else self.trackPrePadding
+        postPadding = self.slewPostPadding if event.type.name == 'SLEWING' else self.trackPostPadding
         azimuthData, elevationData = getAzimuthElevationDataForEvent(self.client,
                                                                      event,
-                                                                     prePadding=self.prePadding,
-                                                                     postPadding=self.postPadding)
+                                                                     prePadding=prePadding,
+                                                                     postPadding=postPadding)
 
         clippedAz = clipDataToEvent(azimuthData, event)
         clippedEl = clipDataToEvent(elevationData, event)
@@ -1334,8 +1338,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
         plotEvent(self.client,
                   event,
                   fig=self.figure,
-                  prePadding=self.prePadding,
-                  postPadding=self.postPadding,
+                  prePadding=prePadding,
+                  postPadding=postPadding,
                   commands=commands,
                   azimuthData=azimuthData,
                   elevationData=elevationData,
