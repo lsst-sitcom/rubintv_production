@@ -1427,6 +1427,14 @@ class TmaTelemetryChannel(TimedMetadataServer):
         """
         """
         events = self.eventMaker.getEvents(dayObs)
+
+        # check if every event seqNum is in both the M1M3HardpointAnalysis and
+        # MountMotionAnalysis sets, and if not, return immediately
+        if (all([event.seqNum in self.plotsMade['MountMotionAnalysis'] for event in events]) and
+                all([event.seqNum in self.plotsMade['M1M3HardpointAnalysis'] for event in events])):
+            self.log.info(f'No new events found for {dayObs} (currently {len(events)} events).')
+            return
+
         for event in events:
             assert event.dayObs == dayObs
 
@@ -1448,6 +1456,9 @@ class TmaTelemetryChannel(TimedMetadataServer):
             ax = self.figure.gca()
             ax.clear()
 
+            newEvent = (event.seqNum not in self.plotsMade['MountMotionAnalysis'] and
+                        event.seqNum not in self.plotsMade['M1M3HardpointAnalysis'])
+
             if event.seqNum not in self.plotsMade['MountMotionAnalysis']:
                 try:
                     rowData = self.runMountMotionAnalysis(event)
@@ -1468,8 +1479,9 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 finally:  # don't retry plotting on failure
                     self.plotsMade['M1M3HardpointAnalysis'].add(event.seqNum)
 
-            rowData = self.eventToMetadataRow(event)
-            writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+            if newEvent:
+                rowData = self.eventToMetadataRow(event)
+                writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
         return
 
