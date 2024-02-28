@@ -31,9 +31,9 @@ print('Running ComCam plotter...')
 
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all'])
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all'])
 plotter = Plotter(butler=butler,
                   locationConfig=locationConfig,
-                  instrument='LSSTComCam',
+                  instrument='LSSTComCamSim',
                   doRaise=True)
 plotter.run()

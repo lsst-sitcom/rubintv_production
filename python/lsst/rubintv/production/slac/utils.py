@@ -63,9 +63,13 @@ def getCamera(butler, instrument):
             return butler.get('camera', collections=['LSST-TS8/calib/unbounded'], instrument='LSST-TS8')
         case 'LSSTComCam':
             return butler.get('camera', collections=['LSSTComCam/calib/unbounded'], instrument='LSSTComCam')
+        case 'LSSTComCamSim':
+            return butler.get('camera',
+                              collections=['LSSTComCamSim/calib/unbounded'],
+                              instrument='LSSTComCamSim')
         case _:
-            raise ValueError("This utility function is just for getting LSST-TS8, LSSTCam, and LSSTComCam "
-                             f"instruments, got {instrument}")
+            raise ValueError("This utility function is just for getting LSST-TS8, LSSTCam, LSSTComCam and "
+                             f"LSSTComCamSim instruments, got {instrument}")
 
 
 def fullAmpDictToPerCcdDicts(fullDict):
@@ -240,6 +244,8 @@ def getGains(instrument):
         case 'LSSTCam':
             return _getLsstCamGains()
         case 'LSSTComCam':
+            return _getLsstComCamGains()
+        case 'LSSTComCamSim':  # for now, give the real ComCam gains. I think they're actually the same anyway
             return _getLsstComCamGains()
         case 'LSST-TS8':
             return _getTs8Gains()
