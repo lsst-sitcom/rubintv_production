@@ -1330,7 +1330,13 @@ class TmaTelemetryChannel(TimedMetadataServer):
         rowData = {event.seqNum: md}
         writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
-        commands = getCommandsDuringEvent(self.client, event, self.commandsToPlot, doLog=False)
+        commands = getCommandsDuringEvent(
+            self.client,
+            event,
+            self.commandsToPlot,
+            prePadding=prePadding,
+            postPadding=postPadding,
+            doLog=False)
         if not all([time is None for time in commands.values()]):
             rowData = {event.seqNum: {'Has commands?': '✅'}}
             writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
@@ -1409,7 +1415,11 @@ class TmaTelemetryChannel(TimedMetadataServer):
         plotName = 'tma_m1m3_hardpoint_profile'
         filename = self._getSaveFilename(plotName, event.dayObs, event)
 
-        commands = getCommandsDuringEvent(self.client, event, self.hardpointCommandsToPlot)
+        commands = getCommandsDuringEvent(
+            self.client,
+            event,
+            self.hardpointCommandsToPlot,
+            doLog=False)
 
         plot_hp_measured_data(m1m3IcsResult,
                               fig=self.figure,
