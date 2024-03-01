@@ -127,7 +127,7 @@ class BaseButlerChannel(BaseChannel):
     def callback(self, expRecord):
         raise NotImplementedError()
 
-    def _waitForDataProduct(self, dataId, timeout=20):
+    def _waitForDataProduct(self, dataId, timeout=20, gettingButler=None):
         """Wait for a dataProduct to land inside a repo.
 
         Wait for a maximum of ``timeout`` seconds for a dataProduct to land,
@@ -140,6 +140,9 @@ class BaseButlerChannel(BaseChannel):
         timeout : `float`
             The timeout, in seconds, to wait before giving up and returning
             ``None``.
+        gettingButler : `lsst.daf.butler.LimitedButler`
+            The butler to use. If ``None``, uses the butler attribute. Provided
+            so that a CachingLimitedButler can be used instead.
 
         Returns
         -------
@@ -151,7 +154,11 @@ class BaseButlerChannel(BaseChannel):
         start = time.time()
         while time.time() - start < timeout:
             if butlerUtils.datasetExists(self.butler, self.dataProduct, dataId):
-                return self.butler.get(self.dataProduct, dataId)
+                if gettingButler is None:
+                    return self.butler.get(self.dataProduct, dataId)
+                else:
+                    ref = self.butler.find_dataset(self.dataProduct, dataId)
+                    return gettingButler.get(ref)
             else:
                 sleep(cadence)
         self.log.warning(f'Waited {timeout}s for {self.dataProduct} for {dataId} to no avail')
