@@ -28,6 +28,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from time import sleep
+import datetime
+import sys
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -39,8 +41,11 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.pipe.base import Instrument
+from lsst.pipe.base import Instrument, Pipeline
+from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
+from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
+from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
@@ -1570,3 +1575,261 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
+
+
+class SingleFramePipelineRunner(BaseButlerChannel):
+    """Class for running simple pipelines, e.g. SFM.
+
+    Runs a pipeline using a CachingLimitedButler.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use.
+    instrument : `str`
+        The instrument name.
+    pipeline : `str`
+        The path to the pipeline yaml file.
+    detector : `int`
+        The detector number.
+    embargo : `bool`, optional
+        Use the embargo repo?
+    doRaise : `bool`, optional
+        If True, raise exceptions instead of logging them as warnings.
+    """
+
+    def __init__(
+        self,
+        locationConfig,
+        butler,
+        instrument,
+        pipeline,
+        detector,
+        *,
+        embargo=False,
+        doRaise=False
+    ):
+        super().__init__(locationConfig=locationConfig,
+                         instrument=instrument,
+                         # writeable true is required to define visits
+                         butler=butler,
+                         dataProduct='raw',
+                         channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
+                         doRaise=doRaise)
+        self.detector = detector
+        self.pipelineGraph = Pipeline.fromFile(pipeline).to_graph(registry=self.butler.registry)
+
+        cachedOnGet = set()
+        cachedOnPut = {'whatever_the_json_object_ends up being called'}  # XXX update this!
+        for name in self.pipelineGraph.dataset_types.keys():
+            if self.pipelineGraph.consumers_of(name):
+                if self.pipelineGraph.producer_of(name) is not None:
+                    cachedOnPut.add(name)
+                else:
+                    cachedOnGet.add(name)
+
+        noCopyOnCache = ('bias', 'dark', 'flat', 'defects')
+        self.limitedButler = CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+
+    def doProcessImage(self, expRecord):
+        """Determine if we should skip this image.
+
+        Should take responsibility for logging the reason for skipping.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        doProcess : `bool`
+            True if the image should be processed, False if we should skip it.
+        """
+        #         # TODO DM-37427 dispersed images do not have a filter and fail
+        # if isDispersedExp(exp):  # XXX will also need to work on an expRecord - see Josh's ticket
+        #     self.log.info(f'Skipping dispersed image: {dataId}')
+        #     return False
+        return True
+
+    def callback(self, expRecord):
+        """Method called on each new expRecord as it is found in the repo.
+
+        Runs on the quickLookExp and writes shards with various measured
+        quantities, as calculated by the CharacterizeImageTask and
+        CalibrateTask.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        try:
+            if not self.doProcessImage(expRecord):
+                return
+
+            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
+            tStart = time.time()
+
+            # XXX question for the future/KT: who should be defining visits on
+            # the summit? Jim confirmed it doesn't cause harm if only one
+            # detector is ingested as it iterates over the camera
+            visit = self.getVisitId(expRecord)
+            if not visit:  # define the visit if that hasn't been done
+                self.defineVisit(expRecord)
+                visit = self.getVisitId(expRecord)
+
+            where = 'detector=d AND exposure=e AND visit=v AND instrument=i'
+            bind = {'d': self.detector, 'e': dataId['exposure'], 'v': visit, 'i': self.instrument}
+            builder = AllDimensionsQuantumGraphBuilder(
+                self.pipelineGraph,
+                self.butler,
+                where=where,
+                bind=bind
+                # can pass in input/output collections, but will get from full
+                # butler if that was made with them
+            )
+
+            self.log.info(f'Running pipeline for {dataId}')
+            # this does the waiting, but stays in the cache so don't even catch
+            # the return
+            exp = self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
+            if not exp:
+                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+
+            qg = builder.build(
+                metadata={
+                    "input": self.butler.collections,
+                    "output_run": self.butler.run,
+                    "data_query": where,
+                    "bind": bind,
+                    "time": f"{datetime.datetime.now()}",
+                }
+            )
+
+            executor = SingleQuantumExecutor(
+                None,
+                taskFactor=TaskFactory(),
+                limited_butler_factory=lambda _: self.limitedButler,
+            )
+
+            for node in qg:
+                # XXX can also add timing info here
+                quantum = executor.execute(node.taskDef, node.quantum)
+                self.postProcessQuantum(quantum)
+
+            # XXX put the visit info summary stuff inside the pipeline itself
+            # and then the rollup over detectors in a gather-type process.
+
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
+
+    def postProcessQuantum(self, quantum):
+        """Write shards here, make sure to keep these bits quick!
+
+        Also, anything you self.limitedButler.get() make sure to add to
+        cache_on_put.
+        """
+        match quantum.taskClass:
+            case _:
+                # can match here and do fancy dispatch
+                return
+
+    def defineVisit(self, expRecord):
+        """Define a visit in the registry, given an expRecord.
+
+        Note that this takes about 9ms regardless of whether it exists, so it
+        is no quicker to check than just run the define call.
+
+        NB: butler must be writeable for this to work.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to define the visit for.
+        """
+        instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'],
+                                       self.butler.registry)
+        config = DefineVisitsConfig()
+        instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
+
+        task = DefineVisitsTask(config=config, butler=self.butler)
+
+        task.run([{'exposure': expRecord.id}], collections=self.butler.collections)
+
+    def getVisitId(self, expRecord):
+        """Lookup visitId for an expRecord or dataId containing an exposureId
+        or other uniquely identifying keys such as dayObs and seqNum.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for which to get the visit id.
+
+        Returns
+        -------
+        visitDataId : `int`
+            The visitId, as an int.
+        """
+        expIdDict = {'exposure': expRecord.id}
+        visitDataIds = self.butler.registry.queryDataIds(["visit"], dataId=expIdDict)
+        visitDataIds = list(set(visitDataIds))
+        if len(visitDataIds) == 1:
+            visitDataId = visitDataIds[0]
+            return visitDataId['visit']
+        else:
+            self.log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
+                             " define-visits?")
+            return None
+
+    def clobber(self, object, datasetType, visitDataId):
+        """Put object in the butler.
+
+        If there is one already there, remove it beforehand.
+
+        Parameters
+        ----------
+        object : `object`
+            Any object to put in the butler.
+        datasetType : `str`
+            Dataset type name to put it as.
+        visitDataId : `lsst.daf.butler.DataCoordinate`
+            The data coordinate record of the exposure to put. Must contain the
+            visit id.
+        """
+        self.butler.registry.registerRun(self.outputRunName)
+        if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
+            self.log.warning(f'Overwriting existing {datasetType} for {visitDataId}')
+            dRef = self.butler.registry.findDataset(datasetType, visitDataId)
+            self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
+        self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
+        self.log.info(f'Put {datasetType} for {visitDataId}')
+
+    def putVisitSummary(self, visitId):
+        """Create and butler.put the visitSummary for this visit.
+
+        Note that this only works like this while we have a single detector.
+
+        Note: the whole method takes ~0.25s so it is probably not worth
+        cluttering the class with the ConsolidateVisitSummaryTask at this
+        point, though it could be done.
+
+        Parameters
+        ----------
+        visitId : `lsst.daf.butler.DataCoordinate`
+            The visit id to create and put the visitSummary for.
+        """
+        dRefs = list(self.butler.registry.queryDatasets('calexp',
+                                                        dataId=visitId,
+                                                        collections=self.outputRunName).expanded())
+        if len(dRefs) != 1:
+            raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
+
+        ddRef = self.butler.getDirectDeferred(dRefs[0])
+        visit = ddRef.dataId.byName()['visit']  # this is a raw int
+        consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
+        expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
+        self.clobber(expCatalog, 'visitSummary', visitId)
+        return
