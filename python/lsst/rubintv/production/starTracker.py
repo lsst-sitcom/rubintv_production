@@ -343,7 +343,8 @@ class StarTrackerChannel(BaseChannel):
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
         self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
-                                        checkInParallel=True)
+                                        checkInParallel=True,
+                                        timeout=30)
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
