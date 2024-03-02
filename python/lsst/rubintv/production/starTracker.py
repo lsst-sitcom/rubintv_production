@@ -477,19 +477,27 @@ class StarTrackerChannel(BaseChannel):
         oldAz = geom.Angle(oldAz, geom.degrees)
         oldAlt = geom.Angle(oldAlt, geom.degrees)
 
-        # TODO: DM-38889: Remove overrides when weather station is publishing
-        # The override values being supplied here are the nominal values that
-        # the pointing component uses when there is no weather data available.
-        # Once the weather station is providing these and the visitInfo is
-        # being populated, these values should be removed, but only once
-        # they're confirmed to also be making it to the pointing component, in
-        # order that things remain consistent.
+        pressure = exp.visitInfo.weather.getAirPressure()
+        if not np.isfinite(pressure):
+            self.log.warning("Pressure not found in header, falling back nominal value=0.770 bar")
+            pressure = 0.770
+
+        temp = exp.visitInfo.weather.getAirTemperature()
+        if not np.isfinite(temp):
+            self.log.warning("Temperature not found in header, falling back nominal value=10 C")
+            temp = 10
+
+        humidity = exp.visitInfo.weather.getHumidity()
+        if not np.isfinite(humidity):
+            self.log.warning("Humidity not found in header, falling back nominal value=0.1")
+            humidity = 0.1
+
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
                                                 exp.visitInfo,
                                                 doCorrectRefraction=True,
-                                                pressureOverride=0.770,
-                                                temperatureOverride=10,
-                                                relativeHumidityOverride=0.1)
+                                                pressureOverride=pressure,
+                                                temperatureOverride=temp,
+                                                relativeHumidityOverride=humidity)
 
         deltaAlt = newAlt - oldAlt
         deltaAz = newAz - oldAz
