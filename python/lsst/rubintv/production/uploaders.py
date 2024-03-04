@@ -63,13 +63,13 @@ def createS3UploaderForSite():
     site = getSite()
     match site:
         case "base":
-            return S3Uploader.from_information(end_point=EndPoint.BASE, bucket=Bucket.BTS)
+            return S3Uploader.from_information(endPoint=EndPoint.BASE, bucket=Bucket.BTS)
         case "summit":
-            return S3Uploader.from_information(end_point=EndPoint.SUMMIT, bucket=Bucket.SUMMIT)
+            return S3Uploader.from_information(endPoint=EndPoint.SUMMIT, bucket=Bucket.SUMMIT)
         case "usdf":
-            return S3Uploader.from_information(end_point=EndPoint.USDF, bucket=Bucket.USDF)
+            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
         case "tucson":
-            return S3Uploader.from_information(end_point=EndPoint.TUCSON, bucket=Bucket.USDF)
+            return S3Uploader.from_information(endPoint=EndPoint.TUCSON, bucket=Bucket.USDF)
         case _:
             raise ValueError(f"Unknown site: {site}")
 
@@ -246,7 +246,8 @@ class S3Uploader(IUploader):
         return cls(s3Bucket=s3Bucket)
 
     @classmethod
-    def from_information(cls, endPoint: EndPoint = EndPoint.USDF,
+    def from_information(cls,
+                         endPoint: EndPoint = EndPoint.USDF,
                          bucket: Bucket = Bucket.USDF,
                          httpsProxy: str = ""):
         """S3 Uploader initialization from bucket information.
@@ -296,17 +297,17 @@ class S3Uploader(IUploader):
         bucket : `Bucket`
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
-        httpsProxy: `str`, optional
+        httpsProxy : `str`, optional
             URL of an https proxy if needed. Form should be: host:port.
 
         Raises
         ------
-        ConnectionError: When connection could not be stablished with
-                         S3 server.
+        ConnectionError
+            When connection could not be stablished with S3 server.
 
         Returns
         -------
-        s3bucket: `ServiceResource`
+        s3bucket : `ServiceResource`
             S3 bucket ready to use for file transfer
         """
         try:
