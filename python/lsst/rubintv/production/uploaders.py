@@ -319,8 +319,7 @@ class S3Uploader(IUploader):
             # Create an S3 resource with the custom botocore session
             s3Resource = session.resource('s3', endpoint_url=endPoint,
                                           config=Config(proxies=proxyDict))
-            return s3Resource.Bucket(bucketInfo.bucketName,
-                                     name=f"Name: {bucketInfo.bucketName} EndPoint: {endPoint}")
+            return s3Resource.Bucket(bucketInfo.bucketName)
         except ClientError:
             raise ConnectionError(f"Failed client connection: {bucketInfo.profileName}")
 
