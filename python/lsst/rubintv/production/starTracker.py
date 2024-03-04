@@ -130,8 +130,8 @@ def dayObsToDateTime(dayObs):
     return datetime.datetime.strptime(dayObsIntToString(dayObs), '%Y-%m-%d')
 
 
-def dayObsSeqNumFromFilename(filename):
-    """Get the dayObs and seqNum from a filename.
+def isStreamingModeFile(filename):
+    """Check if a filename is a streaming mode file.
 
     Parameters
     ----------
@@ -140,17 +140,44 @@ def dayObsSeqNumFromFilename(filename):
 
     Returns
     -------
-    dayObs : `int`
+    isStreaming : `bool`
+        Whether the file is a streaming mode file.
+    """
+    return len(os.path.basename(filename).split('_')) == 5
+
+
+def dayObsSeqNumFromFilename(filename):
+    """Get the dayObs and seqNum from a filename.
+
+    If the file is a streaming mode file (`None`, `None`) is returned.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename.
+
+    Returns
+    -------
+    dayObs : `int` or `None`
         The dayObs.
-    seqNum : `int`
+    seqNum : `int` or `None`
         The seqNum.
     """
     # filenames are like GC101_O_20221114_000005.fits
     filename = os.path.basename(filename)  # in case we're passed a full path
-    _, _, dayObs, seqNumAndSuffix = filename.split('_')
-    dayObs = int(dayObs)
-    seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
-    return dayObs, seqNum
+
+    # these must not be processed like normal files as they're a part of a long
+    # series, so return None, None even if that potentially causes problems
+    # elsewhere, that code needs to deal with that.
+    if isStreamingModeFile(filename):
+        return None, None
+
+    # this is a regular file
+    parts = filename.split('_')
+    _, _, dayObs, seqNumAndSuffix = parts
+    seqNum = seqNumAndSuffix.removesuffix('.fits')
+
+    return int(dayObs), int(seqNum)
 
 
 def getDataDir(camera, dayObs):
@@ -801,7 +828,9 @@ class StarTrackerCatchup:
         """
         dataPath = getDataDir(camera, dayObs)
         allFiles = sorted(glob(os.path.join(dataPath, '*.fits')))
-        seqNums = [dayObsSeqNumFromFilename(f)[1] for f in allFiles]
+        # filter before getting the seqNums as streaming mode must be excluded
+        nonStreamingFiles = [f for f in allFiles if not isStreamingModeFile(f)]
+        seqNums = [dayObsSeqNumFromFilename(f)[1] for f in nonStreamingFiles]
 
         processed = self.getFullyProcessedSeqNums(camera, dayObs)
         self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
