@@ -403,6 +403,8 @@ class StarTrackerChannel(BaseChannel):
             The filename.
         """
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        if seqNum is None:
+            return  # skip streaming mode files
         expMd = exp.getMetadata().toDict()
         expTime = exp.visitInfo.exposureTime
         contents = {}
@@ -575,6 +577,10 @@ class StarTrackerChannel(BaseChannel):
         filename : `str`
             The filename.
         """
+        if isStreamingModeFile(filename):  # sadly these go in the same directory
+            self.log.info(f"Skipping {filename} as it is a streaming mode file")
+            return
+
         exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
         self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
 
