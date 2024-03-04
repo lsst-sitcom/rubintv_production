@@ -750,7 +750,7 @@ class StarTrackerCatchup:
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
-        self.cameras = [regularCam, wideCam]
+        self.cameras = [regularCam, wideCam, fastCam]
 
         self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
