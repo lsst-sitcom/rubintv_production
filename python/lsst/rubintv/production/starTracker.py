@@ -153,6 +153,27 @@ def dayObsSeqNumFromFilename(filename):
     return dayObs, seqNum
 
 
+def getDataDir(camera, dayObs):
+    """Get the path to the data for a given camera and dayObs.
+
+    Parameters
+    -------
+    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        The camera.
+    dayObs : `int`
+        The dayObs.
+
+    Returns
+    -------
+    path : `str`
+        The path to the data.
+    """
+    rootPath = '/project/GenericCamera/'
+    datePath = dayObsIntToString(dayObs).replace('-', '/')
+    path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
+    return path
+
+
 def getFilename(camera, dayObs, seqNum):
     """Get the filename for a given camera, dayObs and seqNum.
 
@@ -170,9 +191,7 @@ def getFilename(camera, dayObs, seqNum):
     filename : `str`
         The filename.
     """
-    rootPath = '/project/GenericCamera/'
-    datePath = dayObsIntToString(dayObs).replace('-', '/')
-    path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
+    path = getDataDir(camera, dayObs)
     filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
     return os.path.join(path, filename)
 
@@ -739,16 +758,18 @@ class StarTrackerCatchup:
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
-    def getMissingImageSeqNums(self, camera):
-        """Get the seqNums for images which were not processed.
+    def getFullyProcessedSeqNums(self, camera, dayObs):
+        """Get the seqNums for images which were fully processed.
 
         Parameters
         ----------
         camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
             The camera to get the missing seqNums for.
+        dayObs : `int`
+            The dayObs to get the processed seqNums for.
         """
         sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
-                                       f'dayObs_{self.dayObs}.json')
+                                       f'dayObs_{dayObs}.json')
         if not os.path.isfile(sidecarFilename):
             self.log.info(f"No metadata table found for this night at {sidecarFilename}, "
                           "so nothing to catch up on (yet)")
@@ -764,10 +785,10 @@ class StarTrackerCatchup:
             # camera then the column won't exist and the process thrashes a bit
             return []
 
-        missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is np.nan]
+        missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is not np.nan]
         return missing
 
-    def catchupCamera(self, camera):
+    def catchupCamera(self, camera, dayObs):
         """Catch up a single camera.
 
         TODO: DM-38313 Add a way of recording fails and skipping them in future
@@ -778,12 +799,17 @@ class StarTrackerCatchup:
         camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
             The camera to catch up.
         """
-        seqNums = self.getMissingImageSeqNums(camera)
+        dataPath = getDataDir(camera, dayObs)
+        allFiles = sorted(glob(os.path.join(dataPath, '*.fits')))
+        seqNums = [dayObsSeqNumFromFilename(f)[1] for f in allFiles]
+
+        processed = self.getFullyProcessedSeqNums(camera, dayObs)
         self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
         if not seqNums:
             return
 
-        filenames = [getFilename(camera, self.dayObs, seqNum) for seqNum in seqNums]
+        toProcess = [s for s in seqNums if s not in processed]
+        filenames = [getFilename(camera, self.dayObs, seqNum) for seqNum in toProcess]
         filenames = [f for f in filenames if os.path.isfile(f)]
         self.log.info(f'of which {len(filenames)} had corresponding files')
 
@@ -821,7 +847,7 @@ class StarTrackerCatchup:
         """
         for camera in self.cameras:
             self.log.info(f'Starting catchup for the {camera.cameraType} camera')
-            self.catchupCamera(camera)
+            self.catchupCamera(camera, self.dayObs)
 
     def runEndOfDay(self):
         """Routine to run when the summit dayObs rolls over.
