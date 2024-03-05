@@ -48,6 +48,7 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
+from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
@@ -488,6 +489,19 @@ class MountTorqueChannel(BaseButlerChannel):
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
         return
 
+    def checkTimebaseErrors(self, expRecord):
+        """Write a metadata shard if an exposure has cRIO timebase errors.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        hasError = hasTimebaseErrors(expRecord, self.client)
+        if hasError:
+            md = {expRecord.seq_num: {'Mount timebase errors': '⚠️'}}
+            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, expRecord.day_obs, md)
+
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -516,6 +530,9 @@ class MountTorqueChannel(BaseButlerChannel):
             # write the mount error shard, including the cell coloring flag
             if errors:  # if the mount torque fails or skips it returns False
                 self.writeMountErrorShard(errors, expRecord)
+
+            # check for timebase errors and write a metadata shard if found
+            self.checkTimebaseErrors(expRecord)
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
