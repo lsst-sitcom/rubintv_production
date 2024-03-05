@@ -184,11 +184,13 @@ def dayObsSeqNumFromFilename(filename):
     return int(dayObs), int(seqNum)
 
 
-def getDataDir(camera, dayObs):
+def getDataDir(rootPath, camera, dayObs):
     """Get the path to the data for a given camera and dayObs.
 
     Parameters
     -------
+    rootPath : `str`
+        The root data path.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera.
     dayObs : `int`
@@ -199,17 +201,18 @@ def getDataDir(camera, dayObs):
     path : `str`
         The path to the data.
     """
-    rootPath = '/project/GenericCamera/'
     datePath = dayObsIntToString(dayObs).replace('-', '/')
     path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
     return path
 
 
-def getFilename(camera, dayObs, seqNum):
+def getFilename(rootPath, camera, dayObs, seqNum):
     """Get the filename for a given camera, dayObs and seqNum.
 
     Parameters
-    -------
+    ----------
+    rootPath : `str`
+        The root data path.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera.
     dayObs : `int`
@@ -222,7 +225,8 @@ def getFilename(camera, dayObs, seqNum):
     filename : `str`
         The filename.
     """
-    path = getDataDir(camera, dayObs)
+    rootPath = os.path.join(rootPath, 'GenericCamera')
+    path = getDataDir(rootPath, camera, dayObs)
     filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
     return os.path.join(path, filename)
 
@@ -836,7 +840,7 @@ class StarTrackerCatchup:
         camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
             The camera to catch up.
         """
-        dataPath = getDataDir(camera, dayObs)
+        dataPath = getDataDir(self.locationConfig.starTrackerDataPath, camera, dayObs)
         allFiles = sorted(glob(os.path.join(dataPath, '*.fits')))
         # filter before getting the seqNums as streaming mode must be excluded
         nonStreamingFiles = [f for f in allFiles if not isStreamingModeFile(f)]
@@ -848,7 +852,10 @@ class StarTrackerCatchup:
             return
 
         toProcess = [s for s in seqNums if s not in processed]
-        filenames = [getFilename(camera, self.dayObs, seqNum) for seqNum in toProcess]
+        filenames = [getFilename(self.locationConfig.starTrackerDataPath,
+                                 camera,
+                                 self.dayObs,
+                                 seqNum) for seqNum in toProcess]
         filenames = [f for f in filenames if os.path.isfile(f)]
         self.log.info(f'of which {len(filenames)} had corresponding files')
 
