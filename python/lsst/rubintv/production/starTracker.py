@@ -130,8 +130,8 @@ def dayObsToDateTime(dayObs):
     return datetime.datetime.strptime(dayObsIntToString(dayObs), '%Y-%m-%d')
 
 
-def dayObsSeqNumFromFilename(filename):
-    """Get the dayObs and seqNum from a filename.
+def isStreamingModeFile(filename):
+    """Check if a filename is a streaming mode file.
 
     Parameters
     ----------
@@ -140,24 +140,79 @@ def dayObsSeqNumFromFilename(filename):
 
     Returns
     -------
-    dayObs : `int`
+    isStreaming : `bool`
+        Whether the file is a streaming mode file.
+    """
+    # non-streaming filenames are like GC103_O_20240304_000009.fits
+    # streaming filenames are like GC103_O_20240304_000007_0001316.fits
+    # which is <camNum>_O_<dayObs>_<seqNum>_<streamSeqNum>.fits
+    # so 5 sections means streaming, 4 means normal
+    return len(os.path.basename(filename).split('_')) == 5
+
+
+def dayObsSeqNumFromFilename(filename):
+    """Get the dayObs and seqNum from a filename.
+
+    If the file is a streaming mode file (`None`, `None`) is returned.
+
+    Parameters
+    ----------
+    filename : `str`
+        The filename.
+
+    Returns
+    -------
+    dayObs : `int` or `None`
         The dayObs.
-    seqNum : `int`
+    seqNum : `int` or `None`
         The seqNum.
     """
     # filenames are like GC101_O_20221114_000005.fits
     filename = os.path.basename(filename)  # in case we're passed a full path
-    _, _, dayObs, seqNumAndSuffix = filename.split('_')
-    dayObs = int(dayObs)
-    seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
-    return dayObs, seqNum
+
+    # these must not be processed like normal files as they're a part of a long
+    # series, so return None, None even if that potentially causes problems
+    # elsewhere, that code needs to deal with that.
+    if isStreamingModeFile(filename):
+        return None, None
+
+    # this is a regular file
+    parts = filename.split('_')
+    _, _, dayObs, seqNumAndSuffix = parts
+    seqNum = seqNumAndSuffix.removesuffix('.fits')
+
+    return int(dayObs), int(seqNum)
 
 
-def getFilename(camera, dayObs, seqNum):
-    """Get the filename for a given camera, dayObs and seqNum.
+def getDataDir(rootPath, camera, dayObs):
+    """Get the path to the data for a given camera and dayObs.
 
     Parameters
     -------
+    rootPath : `str`
+        The root data path.
+    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
+        The camera.
+    dayObs : `int`
+        The dayObs.
+
+    Returns
+    -------
+    path : `str`
+        The path to the data.
+    """
+    datePath = dayObsIntToString(dayObs).replace('-', '/')
+    path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
+    return path
+
+
+def getFilename(rootPath, camera, dayObs, seqNum):
+    """Get the filename for a given camera, dayObs and seqNum.
+
+    Parameters
+    ----------
+    rootPath : `str`
+        The root data path.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera.
     dayObs : `int`
@@ -170,9 +225,8 @@ def getFilename(camera, dayObs, seqNum):
     filename : `str`
         The filename.
     """
-    rootPath = '/project/GenericCamera/'
-    datePath = dayObsIntToString(dayObs).replace('-', '/')
-    path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
+    rootPath = os.path.join(rootPath, 'GenericCamera')
+    path = getDataDir(rootPath, camera, dayObs)
     filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
     return os.path.join(path, filename)
 
@@ -343,7 +397,8 @@ class StarTrackerChannel(BaseChannel):
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
         self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
-                                        checkInParallel=True)
+                                        checkInParallel=True,
+                                        timeout=30)
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
@@ -356,6 +411,8 @@ class StarTrackerChannel(BaseChannel):
             The filename.
         """
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        if seqNum is None:
+            return  # skip streaming mode files
         expMd = exp.getMetadata().toDict()
         expTime = exp.visitInfo.exposureTime
         contents = {}
@@ -476,19 +533,27 @@ class StarTrackerChannel(BaseChannel):
         oldAz = geom.Angle(oldAz, geom.degrees)
         oldAlt = geom.Angle(oldAlt, geom.degrees)
 
-        # TODO: DM-38889: Remove overrides when weather station is publishing
-        # The override values being supplied here are the nominal values that
-        # the pointing component uses when there is no weather data available.
-        # Once the weather station is providing these and the visitInfo is
-        # being populated, these values should be removed, but only once
-        # they're confirmed to also be making it to the pointing component, in
-        # order that things remain consistent.
+        pressure = exp.visitInfo.weather.getAirPressure()
+        if not np.isfinite(pressure):
+            self.log.warning("Pressure not found in header, falling back nominal value=0.770 bar")
+            pressure = 0.770
+
+        temp = exp.visitInfo.weather.getAirTemperature()
+        if not np.isfinite(temp):
+            self.log.warning("Temperature not found in header, falling back nominal value=10 C")
+            temp = 10
+
+        humidity = exp.visitInfo.weather.getHumidity()
+        if not np.isfinite(humidity):
+            self.log.warning("Humidity not found in header, falling back nominal value=0.1")
+            humidity = 0.1
+
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
                                                 exp.visitInfo,
                                                 doCorrectRefraction=True,
-                                                pressureOverride=0.770,
-                                                temperatureOverride=10,
-                                                relativeHumidityOverride=0.1)
+                                                pressureOverride=pressure,
+                                                temperatureOverride=temp,
+                                                relativeHumidityOverride=humidity)
 
         deltaAlt = newAlt - oldAlt
         deltaAz = newAz - oldAz
@@ -520,6 +585,10 @@ class StarTrackerChannel(BaseChannel):
         filename : `str`
             The filename.
         """
+        if isStreamingModeFile(filename):  # sadly these go in the same directory
+            self.log.info(f"Skipping {filename} as it is a streaming mode file")
+            return
+
         exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
         self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
 
@@ -722,7 +791,7 @@ class StarTrackerCatchup:
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
-        self.cameras = [regularCam, wideCam]
+        self.cameras = [regularCam, wideCam, fastCam]
 
         self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
@@ -730,16 +799,18 @@ class StarTrackerCatchup:
                                        self.HEARTBEAT_UPLOAD_PERIOD,
                                        self.HEARTBEAT_FLATLINE_PERIOD)
 
-    def getMissingImageSeqNums(self, camera):
-        """Get the seqNums for images which were not processed.
+    def getFullyProcessedSeqNums(self, camera, dayObs):
+        """Get the seqNums for images which were fully processed.
 
         Parameters
         ----------
         camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
             The camera to get the missing seqNums for.
+        dayObs : `int`
+            The dayObs to get the processed seqNums for.
         """
         sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
-                                       f'dayObs_{self.dayObs}.json')
+                                       f'dayObs_{dayObs}.json')
         if not os.path.isfile(sidecarFilename):
             self.log.info(f"No metadata table found for this night at {sidecarFilename}, "
                           "so nothing to catch up on (yet)")
@@ -755,10 +826,10 @@ class StarTrackerCatchup:
             # camera then the column won't exist and the process thrashes a bit
             return []
 
-        missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is np.nan]
+        missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is not np.nan]
         return missing
 
-    def catchupCamera(self, camera):
+    def catchupCamera(self, camera, dayObs):
         """Catch up a single camera.
 
         TODO: DM-38313 Add a way of recording fails and skipping them in future
@@ -769,12 +840,22 @@ class StarTrackerCatchup:
         camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
             The camera to catch up.
         """
-        seqNums = self.getMissingImageSeqNums(camera)
+        dataPath = getDataDir(self.locationConfig.starTrackerDataPath, camera, dayObs)
+        allFiles = sorted(glob(os.path.join(dataPath, '*.fits')))
+        # filter before getting the seqNums as streaming mode must be excluded
+        nonStreamingFiles = [f for f in allFiles if not isStreamingModeFile(f)]
+        seqNums = [dayObsSeqNumFromFilename(f)[1] for f in nonStreamingFiles]
+
+        processed = self.getFullyProcessedSeqNums(camera, dayObs)
         self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
         if not seqNums:
             return
 
-        filenames = [getFilename(camera, self.dayObs, seqNum) for seqNum in seqNums]
+        toProcess = [s for s in seqNums if s not in processed]
+        filenames = [getFilename(self.locationConfig.starTrackerDataPath,
+                                 camera,
+                                 self.dayObs,
+                                 seqNum) for seqNum in toProcess]
         filenames = [f for f in filenames if os.path.isfile(f)]
         self.log.info(f'of which {len(filenames)} had corresponding files')
 
@@ -812,7 +893,7 @@ class StarTrackerCatchup:
         """
         for camera in self.cameras:
             self.log.info(f'Starting catchup for the {camera.cameraType} camera')
-            self.catchupCamera(camera)
+            self.catchupCamera(camera, self.dayObs)
 
     def runEndOfDay(self):
         """Routine to run when the summit dayObs rolls over.
