@@ -808,6 +808,11 @@ class StarTrackerCatchup:
             The camera to get the missing seqNums for.
         dayObs : `int`
             The dayObs to get the processed seqNums for.
+
+        Returns
+        -------
+        processed : `list` [`int`]
+            The processed seqNums.
         """
         sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
                                        f'dayObs_{dayObs}.json')
@@ -826,8 +831,8 @@ class StarTrackerCatchup:
             # camera then the column won't exist and the process thrashes a bit
             return []
 
-        missing = [s for s in seqNums if mdTable[successfulFitColumn][s] is not np.nan]
-        return missing
+        processed = [s for s in seqNums if mdTable[successfulFitColumn][s] is not np.nan]
+        return processed
 
     def catchupCamera(self, camera, dayObs):
         """Catch up a single camera.
