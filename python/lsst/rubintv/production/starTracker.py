@@ -26,6 +26,7 @@ from time import sleep
 import datetime
 import traceback
 from dataclasses import dataclass
+from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 import time
@@ -201,6 +202,7 @@ def getDataDir(rootPath, camera, dayObs):
     path : `str`
         The path to the data.
     """
+    rootPath = os.path.join(rootPath, 'GenericCamera')
     datePath = dayObsIntToString(dayObs).replace('-', '/')
     path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
     return path
@@ -225,7 +227,6 @@ def getFilename(rootPath, camera, dayObs, seqNum):
     filename : `str`
         The filename.
     """
-    rootPath = os.path.join(rootPath, 'GenericCamera')
     path = getDataDir(rootPath, camera, dayObs)
     filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
     return os.path.join(path, filename)
@@ -399,6 +400,7 @@ class StarTrackerChannel(BaseChannel):
         self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
                                         checkInParallel=True,
                                         timeout=30)
+        self.fig = plt.figure(figsize=(16, 16))
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
@@ -499,7 +501,14 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename, doSmooth=self.camera.doSmoothPlot)
+        plot(
+            exp,
+            sourceCatalog,
+            filteredSources,
+            saveAs=fittedPngFilename,
+            doSmooth=self.camera.doSmoothPlot,
+            fig=self.fig
+        )
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
@@ -595,12 +604,13 @@ class StarTrackerChannel(BaseChannel):
         # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix('.fits')
         rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
-        plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot)
+        plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
         uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
         self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
 
         if not exp.wcs:
             self.log.info(f"Skipping {filename} as it has no WCS")
+            del exp
             return
         if not exp.visitInfo.date.isValid():
             self.log.warning(f"exp.visitInfo.date is not valid. {filename} will still be fitted"
@@ -852,11 +862,12 @@ class StarTrackerCatchup:
         seqNums = [dayObsSeqNumFromFilename(f)[1] for f in nonStreamingFiles]
 
         processed = self.getFullyProcessedSeqNums(camera, dayObs)
-        self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
-        if not seqNums:
+        toProcess = [s for s in seqNums if s not in processed]
+        self.log.info(f'Found {len(processed)} processed files out of {len(nonStreamingFiles)} total,'
+                      f' leaving {len(toProcess)} left to process for {camera.cameraType}')
+        if not toProcess:
             return
 
-        toProcess = [s for s in seqNums if s not in processed]
         filenames = [getFilename(self.locationConfig.starTrackerDataPath,
                                  camera,
                                  self.dayObs,
