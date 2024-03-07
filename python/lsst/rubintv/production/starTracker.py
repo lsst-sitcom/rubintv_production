@@ -522,8 +522,8 @@ class StarTrackerChannel(BaseChannel):
         calculatedRa, calculatedDec = newWcs.getSkyOrigin()
         nominalRa, nominalDec = oldWcs.getSkyOrigin()
 
-        deltaRa = calculatedRa - nominalRa
-        deltaDec = calculatedDec - nominalDec
+        deltaRa = geom.Angle.separation(calculatedRa, nominalRa)
+        deltaDec = geom.Angle.separation(calculatedDec, nominalDec)
 
         # pull the alt/az from the header *not* by calculating from the ra/dec,
         # mjd and location. We want the difference between where the telescope
@@ -555,8 +555,8 @@ class StarTrackerChannel(BaseChannel):
                                                 temperatureOverride=temp,
                                                 relativeHumidityOverride=humidity)
 
-        deltaAlt = newAlt - oldAlt
-        deltaAz = newAz - oldAz
+        deltaAlt = geom.Angle.separation(newAlt, oldAlt)
+        deltaAz = geom.Angle.separation(newAz, oldAz)
 
         deltaRot = newWcs.getRelativeRotationToWcs(oldWcs).asArcseconds()
 
