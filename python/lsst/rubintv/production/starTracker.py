@@ -26,6 +26,7 @@ from time import sleep
 import datetime
 import traceback
 from dataclasses import dataclass
+from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 import time
@@ -399,6 +400,7 @@ class StarTrackerChannel(BaseChannel):
         self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
                                         checkInParallel=True,
                                         timeout=30)
+        self.fig = plt.figure(figsize=(16, 16))
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
         """Write a metadata shard for the given filename.
@@ -499,7 +501,14 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-        plot(exp, sourceCatalog, filteredSources, saveAs=fittedPngFilename, doSmooth=self.camera.doSmoothPlot)
+        plot(
+            exp,
+            sourceCatalog,
+            filteredSources,
+            saveAs=fittedPngFilename,
+            doSmooth=self.camera.doSmoothPlot,
+            fig=self.fig
+        )
         uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
@@ -595,7 +604,7 @@ class StarTrackerChannel(BaseChannel):
         # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix('.fits')
         rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
-        plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot)
+        plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
         uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
         self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
 
