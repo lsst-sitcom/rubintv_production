@@ -201,6 +201,7 @@ def getDataDir(rootPath, camera, dayObs):
     path : `str`
         The path to the data.
     """
+    rootPath = os.path.join(rootPath, 'GenericCamera')
     datePath = dayObsIntToString(dayObs).replace('-', '/')
     path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
     return path
@@ -225,7 +226,6 @@ def getFilename(rootPath, camera, dayObs, seqNum):
     filename : `str`
         The filename.
     """
-    rootPath = os.path.join(rootPath, 'GenericCamera')
     path = getDataDir(rootPath, camera, dayObs)
     filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
     return os.path.join(path, filename)
@@ -601,6 +601,7 @@ class StarTrackerChannel(BaseChannel):
 
         if not exp.wcs:
             self.log.info(f"Skipping {filename} as it has no WCS")
+            del exp
             return
         if not exp.visitInfo.date.isValid():
             self.log.warning(f"exp.visitInfo.date is not valid. {filename} will still be fitted"
@@ -852,11 +853,12 @@ class StarTrackerCatchup:
         seqNums = [dayObsSeqNumFromFilename(f)[1] for f in nonStreamingFiles]
 
         processed = self.getFullyProcessedSeqNums(camera, dayObs)
-        self.log.info(f'Found {len(seqNums)} missing from table for {camera.cameraType}')
-        if not seqNums:
+        toProcess = [s for s in seqNums if s not in processed]
+        self.log.info(f'Found {len(processed)} processed files out of {len(nonStreamingFiles)} total,'
+                      f' leaving {len(toProcess)} left to process for {camera.cameraType}')
+        if not toProcess:
             return
 
-        toProcess = [s for s in seqNums if s not in processed]
         filenames = [getFilename(self.locationConfig.starTrackerDataPath,
                                  camera,
                                  self.dayObs,
