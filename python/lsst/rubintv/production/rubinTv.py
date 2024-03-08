@@ -764,7 +764,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
                                             'base_PixelFlags',
                                             'base_GaussianFlux',
                                             'base_SkyCoord',
-                                            'base_FPPosition']
+                                            'base_FPPosition',
+                                            'base_ClassificationSizeExtendedness',
+                                            ]
         config.measurement.slots.shape = "base_SdssShape"
         config.measurement.slots.psfShape = "base_SdssShape_psf"
         # TODO DM-37426 add some more overrides to speed up runtime
