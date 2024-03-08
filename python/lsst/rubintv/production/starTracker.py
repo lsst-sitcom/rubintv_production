@@ -180,6 +180,9 @@ class StarTrackerWatcher:
             return None, None, None, None
 
         latestFile = files[0]
+        if isStreamingModeFile(latestFile):  # sadly these go in the same directory
+            self.log.info(f"Skipping {latestFile} as it is a streaming mode file")
+            return None, None, None, None
 
         # filenames are like GC101_O_20221114_000005.fits
         _, _, dayObs, seqNumAndSuffix = latestFile.split('_')
