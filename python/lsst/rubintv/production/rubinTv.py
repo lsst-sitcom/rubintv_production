@@ -1025,7 +1025,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         if len(dRefs) != 1:
             raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
 
-        ddRef = self.butler.getDirectDeferred(dRefs[0])
+        ddRef = self.butler.getDeferred(dRefs[0])
         visit = ddRef.dataId.byName()['visit']  # this is a raw int
         consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
         expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
