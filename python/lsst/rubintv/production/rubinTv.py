@@ -724,7 +724,11 @@ class CalibrateCcdRunner(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          # writeable true is required to define visits
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo, writeable=True),
+                         butler=butlerUtils.makeDefaultLatissButler(
+                             extraCollections=['refcats/DM-42295'],
+                             embargo=embargo,
+                             writeable=True
+                         ),
                          dataProduct='quickLookExp',
                          channelName='auxtel_calibrateCcd',
                          doRaise=doRaise)
@@ -744,14 +748,32 @@ class CalibrateCcdRunner(BaseButlerChannel):
         self.charImage = CharacterizeImageTask(config=config)
 
         config = CalibrateConfig()
-        basicConfig = CalibrateConfig()
         config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
-        config.measurement = basicConfig.measurement
 
+        # restrict to basic set of plugins
+        config.measurement.plugins.names = ['base_CircularApertureFlux',
+                                            'base_PsfFlux',
+                                            'base_NaiveCentroid',
+                                            'base_CompensatedGaussianFlux',
+                                            'base_LocalBackground',
+                                            'base_SdssCentroid',
+                                            'base_SdssShape',
+                                            'base_Variance',
+                                            'base_Jacobian',
+                                            'base_PixelFlags',
+                                            'base_GaussianFlux',
+                                            'base_SkyCoord',
+                                            'base_FPPosition',
+                                            'base_ClassificationSizeExtendedness',
+                                            ]
+        config.measurement.slots.shape = "base_SdssShape"
+        config.measurement.slots.psfShape = "base_SdssShape_psf"
         # TODO DM-37426 add some more overrides to speed up runtime
         config.doApCorr = False
         config.doDeblend = False
+        config.astrometry.sourceSelector["science"].doRequirePrimary = False
+        config.astrometry.sourceSelector["science"].doIsolated = False
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
@@ -1003,7 +1025,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         if len(dRefs) != 1:
             raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
 
-        ddRef = self.butler.getDirectDeferred(dRefs[0])
+        ddRef = self.butler.getDeferred(dRefs[0])
         visit = ddRef.dataId.byName()['visit']  # this is a raw int
         consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
         expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
