@@ -724,7 +724,11 @@ class CalibrateCcdRunner(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          # writeable true is required to define visits
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo, writeable=True),
+                         butler=butlerUtils.makeDefaultLatissButler(
+                             extraCollections=['refcats/DM-42295'],
+                             embargo=embargo,
+                             writeable=True
+                         ),
                          dataProduct='quickLookExp',
                          channelName='auxtel_calibrateCcd',
                          doRaise=doRaise)
