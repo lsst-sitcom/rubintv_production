@@ -43,7 +43,7 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 getAverageAzFromHeader,
                                                 getAverageElFromHeader,
                                                 )
-from lsst.summit.utils.astrometry.fastStarTrackerAnalysis import (
+from lsst.summit.utils.starTracker import (
     dayObsSeqNumFromFilename,
     getRawDataDirForDayObs,
     isStreamingModeFile,
