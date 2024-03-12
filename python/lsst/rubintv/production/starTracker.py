@@ -62,7 +62,11 @@ from .plotting import starTrackerNightReportPlots
 __all__ = (
     'StarTrackerWatcher',
     'StarTrackerChannel',
-    'StarTrackerNightReportChannel'
+    'StarTrackerNightReportChannel',
+    'StarTrackerCatchup',
+    'getCurrentRawDataDir',
+    'getDataDir',
+    'getFilename',
 )
 
 _LOG = logging.getLogger(__name__)
