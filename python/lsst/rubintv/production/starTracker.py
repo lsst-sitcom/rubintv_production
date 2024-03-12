@@ -43,7 +43,7 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 getAverageAzFromHeader,
                                                 getAverageElFromHeader,
                                                 )
-from lsst.summit.utils.astrometry.fastStarTrackerAnalysis import (
+from lsst.summit.utils.starTracker import (
     dayObsSeqNumFromFilename,
     getRawDataDirForDayObs,
     isStreamingModeFile,
@@ -60,9 +60,13 @@ from .plotting import starTrackerNightReportPlots
 
 
 __all__ = (
+    'getCurrentRawDataDir',
+    'getDataDir',
+    'getFilename',
     'StarTrackerWatcher',
     'StarTrackerChannel',
-    'StarTrackerNightReportChannel'
+    'StarTrackerNightReportChannel',
+    'StarTrackerCatchup',
 )
 
 _LOG = logging.getLogger(__name__)
@@ -252,7 +256,7 @@ class StarTrackerChannel(BaseChannel):
         if cameraType not in KNOWN_CAMERAS:
             raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
-        if cameraType == 'regular':
+        if cameraType == 'narrow':
             self.camera = narrowCam
         elif cameraType == 'wide':
             self.camera = wideCam
@@ -442,27 +446,26 @@ class StarTrackerChannel(BaseChannel):
         oldAz = geom.Angle(oldAz, geom.degrees)
         oldAlt = geom.Angle(oldAlt, geom.degrees)
 
+        atmosphericOverrides = {}
         pressure = exp.visitInfo.weather.getAirPressure()
         if not np.isfinite(pressure):
             self.log.warning("Pressure not found in header, falling back nominal value=0.770 bar")
-            pressure = 0.770
+            atmosphericOverrides['pressureOverride'] = 0.770
 
         temp = exp.visitInfo.weather.getAirTemperature()
         if not np.isfinite(temp):
             self.log.warning("Temperature not found in header, falling back nominal value=10 C")
-            temp = 10
+            atmosphericOverrides['temperatureOverride'] = 10
 
         humidity = exp.visitInfo.weather.getHumidity()
         if not np.isfinite(humidity):
             self.log.warning("Humidity not found in header, falling back nominal value=0.1")
-            humidity = 0.1
+            atmosphericOverrides['relativeHumidityOverride'] = 0.1
 
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
                                                 exp.visitInfo,
                                                 doCorrectRefraction=True,
-                                                pressureOverride=pressure,
-                                                temperatureOverride=temp,
-                                                relativeHumidityOverride=humidity)
+                                                **atmosphericOverrides)
 
         deltaAlt = geom.Angle.separation(newAlt, oldAlt)
         deltaAz = geom.Angle.separation(newAz, oldAz)

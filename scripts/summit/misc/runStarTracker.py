@@ -30,5 +30,5 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running star tracker channel at {location}...')
 starTracker = StarTrackerChannel(locationConfig=locationConfig,
-                                 cameraType='regular')
+                                 cameraType='narrow')
 starTracker.run()
