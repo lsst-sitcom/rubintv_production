@@ -446,16 +446,22 @@ class StarTrackerChannel(BaseChannel):
         if not np.isfinite(pressure):
             self.log.warning("Pressure not found in header, falling back nominal value=0.770 bar")
             pressure = 0.770
+        else:
+            pressure = None  # if it's valid, do not override it
 
         temp = exp.visitInfo.weather.getAirTemperature()
         if not np.isfinite(temp):
             self.log.warning("Temperature not found in header, falling back nominal value=10 C")
             temp = 10
+        else:
+            temp = None  # if it's valid, do not override it
 
         humidity = exp.visitInfo.weather.getHumidity()
         if not np.isfinite(humidity):
             self.log.warning("Humidity not found in header, falling back nominal value=0.1")
             humidity = 0.1
+        else:
+            humidity = None  # if it's valid, do not override it
 
         newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
                                                 exp.visitInfo,
