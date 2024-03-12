@@ -563,7 +563,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         # temp/hacky nature of this is fine for now.
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
                                      bucketName=locationConfig.bucketName,
-                                     camera=narrowCam)  # tie the night report to the regular cam for now
+                                     camera=narrowCam)  # tie the night report to the narrow cam for now
 
         super().__init__(locationConfig=locationConfig,
                          log=log,
