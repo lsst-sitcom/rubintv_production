@@ -23,9 +23,7 @@ import os
 import logging
 from glob import glob
 from time import sleep
-import datetime
 import traceback
-from dataclasses import dataclass
 from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
@@ -45,41 +43,29 @@ from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
                                                 getAverageAzFromHeader,
                                                 getAverageElFromHeader,
                                                 )
-
+from lsst.summit.utils.astrometry.fastStarTrackerAnalysis import (
+    dayObsSeqNumFromFilename,
+    getRawDataDirForDayObs,
+    isStreamingModeFile,
+    KNOWN_CAMERAS,
+    narrowCam,
+    wideCam,
+    fastCam,
+)
 from .channels import PREFIXES
 from .utils import writeMetadataShard, hasDayRolledOver, raiseIf
 from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseChannel
 from .plotting import starTrackerNightReportPlots
 
-__all__ = ('StarTrackerCamera',
-           'StarTrackerWatcher',
-           'StarTrackerChannel',
-           'StarTrackerNightReportChannel')
+
+__all__ = (
+    'StarTrackerWatcher',
+    'StarTrackerChannel',
+    'StarTrackerNightReportChannel'
+)
 
 _LOG = logging.getLogger(__name__)
-KNOWN_CAMERAS = ("regular", "wide", "fast")
-
-
-@dataclass(frozen=True)
-class StarTrackerCamera:
-    """A frozen dataclass for StarTracker camera configs
-    """
-    cameraType: str
-    suffix: str
-    suffixWithSpace: str
-    doAstrometry: bool
-    cameraNumber: int
-    snr: float
-    minPix: int
-    brightSourceFraction: float
-    scaleError: float
-    doSmoothPlot: bool
-
-
-regularCam = StarTrackerCamera('regular', '', '', True, 102, 5, 25, 0.95, 5, True)
-wideCam = StarTrackerCamera('wide', '_wide', ' wide', True, 101, 5, 25, 0.8, 5, True)
-fastCam = StarTrackerCamera('fast', '_fast', ' fast', True, 103, 2.5, 10, 0.95, 60, False)
 
 
 def getCurrentRawDataDir(rootDataPath, camera):
@@ -94,95 +80,6 @@ def getCurrentRawDataDir(rootDataPath, camera):
     """
     todayInt = getCurrentDayObs_int()
     return getRawDataDirForDayObs(rootDataPath, camera, todayInt)
-
-
-def getRawDataDirForDayObs(rootDataPath, camera, dayObs):
-    """Get the raw data dir for a given dayObs.
-
-    Parameters
-    ----------
-    rootDataPath : `str`
-        The root data path.
-    camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
-        The camera to get the raw data for.
-    dayObs : `int`
-        The dayObs.
-    """
-    camNum = camera.cameraNumber
-    dayObsDateTime = datetime.datetime.strptime(str(dayObs), '%Y%m%d')
-    dirSuffix = (f'GenericCamera/{camNum}/{dayObsDateTime.year}/'
-                 f'{dayObsDateTime.month:02}/{dayObsDateTime.day:02}/')
-    return os.path.join(rootDataPath, dirSuffix)
-
-
-def dayObsToDateTime(dayObs):
-    """Convert a dayObs to a datetime.
-
-    Parameters
-    ----------
-    dayObs : `int`
-        The dayObs.
-
-    Returns
-    -------
-    datetime : `datetime`
-        The datetime.
-    """
-    return datetime.datetime.strptime(dayObsIntToString(dayObs), '%Y-%m-%d')
-
-
-def isStreamingModeFile(filename):
-    """Check if a filename is a streaming mode file.
-
-    Parameters
-    ----------
-    filename : `str`
-        The filename.
-
-    Returns
-    -------
-    isStreaming : `bool`
-        Whether the file is a streaming mode file.
-    """
-    # non-streaming filenames are like GC103_O_20240304_000009.fits
-    # streaming filenames are like GC103_O_20240304_000007_0001316.fits
-    # which is <camNum>_O_<dayObs>_<seqNum>_<streamSeqNum>.fits
-    # so 5 sections means streaming, 4 means normal
-    return len(os.path.basename(filename).split('_')) == 5
-
-
-def dayObsSeqNumFromFilename(filename):
-    """Get the dayObs and seqNum from a filename.
-
-    If the file is a streaming mode file (`None`, `None`) is returned.
-
-    Parameters
-    ----------
-    filename : `str`
-        The filename.
-
-    Returns
-    -------
-    dayObs : `int` or `None`
-        The dayObs.
-    seqNum : `int` or `None`
-        The seqNum.
-    """
-    # filenames are like GC101_O_20221114_000005.fits
-    filename = os.path.basename(filename)  # in case we're passed a full path
-
-    # these must not be processed like normal files as they're a part of a long
-    # series, so return None, None even if that potentially causes problems
-    # elsewhere, that code needs to deal with that.
-    if isStreamingModeFile(filename):
-        return None, None
-
-    # this is a regular file
-    parts = filename.split('_')
-    _, _, dayObs, seqNumAndSuffix = parts
-    seqNum = seqNumAndSuffix.removesuffix('.fits')
-
-    return int(dayObs), int(seqNum)
 
 
 def getDataDir(rootPath, camera, dayObs):
@@ -283,6 +180,9 @@ class StarTrackerWatcher:
             return None, None, None, None
 
         latestFile = files[0]
+        if isStreamingModeFile(latestFile):  # sadly these go in the same directory
+            self.log.info(f"Skipping {latestFile} as it is a streaming mode file")
+            return None, None, None, None
 
         # filenames are like GC101_O_20221114_000005.fits
         _, _, dayObs, seqNumAndSuffix = latestFile.split('_')
@@ -353,7 +253,7 @@ class StarTrackerChannel(BaseChannel):
             raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
         if cameraType == 'regular':
-            self.camera = regularCam
+            self.camera = narrowCam
         elif cameraType == 'wide':
             self.camera = wideCam
         elif cameraType == 'fast':
@@ -663,7 +563,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         # temp/hacky nature of this is fine for now.
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
                                      bucketName=locationConfig.bucketName,
-                                     camera=regularCam)  # tie the night report to the regular cam for now
+                                     camera=narrowCam)  # tie the night report to the narrow cam for now
 
         super().__init__(locationConfig=locationConfig,
                          log=log,
@@ -801,7 +701,7 @@ class StarTrackerCatchup:
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
-        self.cameras = [regularCam, wideCam, fastCam]
+        self.cameras = [narrowCam, wideCam, fastCam]
 
         self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
         self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
