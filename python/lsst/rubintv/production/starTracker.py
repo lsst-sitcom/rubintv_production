@@ -256,7 +256,7 @@ class StarTrackerChannel(BaseChannel):
         if cameraType not in KNOWN_CAMERAS:
             raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
-        if cameraType == 'regular':
+        if cameraType == 'narrow':
             self.camera = narrowCam
         elif cameraType == 'wide':
             self.camera = wideCam
