@@ -94,25 +94,38 @@ class BucketInformation:
 
 
 class EndPoint(Enum):
-    USDF = {"end_point": "https://s3dfrgw.slac.stanford.edu",
-            "buckets_available": {
-                Bucket.SUMMIT: BucketInformation(
-                    "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
-                ),
-                Bucket.USDF: BucketInformation(
-                    "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
-                )
-            }
-            }
+    USDF = {
+        "end_point": "https://s3dfrgw.slac.stanford.edu",
+        "buckets_available": {
+            Bucket.SUMMIT: BucketInformation(
+                "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
+            ),
+            Bucket.USDF: BucketInformation(
+                "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
+            ),
+        },
+    }
 
-    SUMMIT = {"end_point": "https://s3.rubintv.cp.lsst.org",
-              "buckets_available": {Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")}}
+    SUMMIT = {
+        "end_point": "https://s3.rubintv.cp.lsst.org",
+        "buckets_available": {
+            Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")
+        },
+    }
 
-    BASE = {"end_point": "https://s3.rubintv.ls.lsst.org",
-            "buckets_available": {Bucket.BTS: BucketInformation("base-data-base", "rubintv")}}
+    BASE = {
+        "end_point": "https://s3.rubintv.ls.lsst.org",
+        "buckets_available": {
+            Bucket.BTS: BucketInformation("base-data-base", "rubintv")
+        },
+    }
 
-    TUCSON = {"end_point": "https://s3.rubintv.tu.lsst.org",
-              "buckets_available": {Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")}}
+    TUCSON = {
+        "end_point": "https://s3.rubintv.tu.lsst.org",
+        "buckets_available": {
+            Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")
+        },
+    }
 
 
 
