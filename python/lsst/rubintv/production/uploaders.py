@@ -80,6 +80,42 @@ def createLocalS3UploaderForSite():
             raise ValueError(f"Unknown site: {site}")
 
 
+class Bucket(Enum):
+    USDF = 1
+    SUMMIT = 2
+    TTS = 3
+    BTS = 4
+
+
+@dataclass(frozen=True)
+class BucketInformation:
+    profileName: str
+    bucketName: str
+
+
+class EndPoint(Enum):
+    USDF = {"end_point": "https://s3dfrgw.slac.stanford.edu",
+            "buckets_available": {
+                Bucket.SUMMIT: BucketInformation(
+                    "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
+                ),
+                Bucket.USDF: BucketInformation(
+                    "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
+                )
+            }
+            }
+
+    SUMMIT = {"end_point": "https://s3.rubintv.cp.lsst.org",
+              "buckets_available": {Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")}}
+
+    BASE = {"end_point": "https://s3.rubintv.ls.lsst.org",
+            "buckets_available": {Bucket.BTS: BucketInformation("base-data-base", "rubintv")}}
+
+    TUCSON = {"end_point": "https://s3.rubintv.tu.lsst.org",
+              "buckets_available": {Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")}}
+
+
+
 class ConnectionError(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
@@ -183,41 +219,6 @@ class IUploader(ABC):
             Raised if uploading the file to the Bucket was not possible.
         """
         raise NotImplementedError()
-
-
-class Bucket(Enum):
-    USDF = 1
-    SUMMIT = 2
-    TTS = 3
-    BTS = 4
-
-
-@dataclass(frozen=True)
-class BucketInformation:
-    profileName: str
-    bucketName: str
-
-
-class EndPoint(Enum):
-    USDF = {"end_point": "https://s3dfrgw.slac.stanford.edu",
-            "buckets_available": {
-                Bucket.SUMMIT: BucketInformation(
-                    "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
-                ),
-                Bucket.USDF: BucketInformation(
-                    "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
-                )
-            }
-            }
-
-    SUMMIT = {"end_point": "https://s3.rubintv.cp.lsst.org",
-              "buckets_available": {Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")}}
-
-    BASE = {"end_point": "https://s3.rubintv.ls.lsst.org",
-            "buckets_available": {Bucket.BTS: BucketInformation("base-data-base", "rubintv")}}
-
-    TUCSON = {"end_point": "https://s3.rubintv.tu.lsst.org",
-              "buckets_available": {Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")}}
 
 
 class S3Uploader(IUploader):
