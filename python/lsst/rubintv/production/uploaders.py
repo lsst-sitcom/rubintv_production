@@ -48,10 +48,16 @@ except ImportError:
     HAS_GOOGLE_STORAGE = False
 
 
-__all__ = ["Heartbeater", "Uploader", "S3Uploader", "UploadError"]
+__all__ = [
+    "createLocalS3UploaderForSite",
+    "Heartbeater",
+    "Uploader",
+    "S3Uploader",
+    "UploadError"
+]
 
 
-def createS3UploaderForSite():
+def createLocalS3UploaderForSite():
     """Create the S3Uploader with the correct config
        for the site automatically.
 
