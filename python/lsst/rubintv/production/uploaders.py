@@ -133,7 +133,7 @@ class EndPoint(Enum):
     SUMMIT = {
         "end_point": "https://s3.rubintv.cp.lsst.org",
         "buckets_available": {
-            Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")
+            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubintv")
         },
     }
 
