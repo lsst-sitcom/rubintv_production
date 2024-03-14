@@ -1149,7 +1149,7 @@ class NightReportChannel(BaseButlerChannel):
             self.log.warning(f'Found no visitSummaries for dayObs {dayObs}')
             return None
         self.log.info(f'Found {len(visitSummaries)} visitSummaries for dayObs {dayObs}')
-        ddRefs = [self.butler.getDirectDeferred(vs) for vs in visitSummaries]
+        ddRefs = [self.butler.getDeferred(vs) for vs in visitSummaries]
         task = MakeCcdVisitTableTask()
         table = task.run(ddRefs)
         return table.outputCatalog
