@@ -50,6 +50,7 @@ except ImportError:
 
 __all__ = [
     "createLocalS3UploaderForSite",
+    "createRemoteS3UploaderForSite",
     "Heartbeater",
     "Uploader",
     "S3Uploader",
@@ -76,6 +77,29 @@ def createLocalS3UploaderForSite():
             return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
         case "tucson":
             return S3Uploader.from_information(endPoint=EndPoint.TUCSON, bucket=Bucket.USDF)
+        case _:
+            raise ValueError(f"Unknown site: {site}")
+
+
+def createRemoteS3UploaderForSite():
+    """Create the S3Uploader with the correct config
+       for the site automatically.
+
+    Returns
+    -------
+    uploader : `S3Uploader`
+        The S3Uploader for the site.
+    """
+    site = getSite()
+    match site:
+        case "base":
+            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.BTS)
+        case "summit":
+            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.SUMMIT)
+        case "usdf":
+            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
+        case "tucson":
+            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
         case _:
             raise ValueError(f"Unknown site: {site}")
 

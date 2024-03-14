@@ -76,7 +76,7 @@ from .utils import (
     catchPrintOutput,
     NumpyEncoder,
 )
-from .uploaders import Uploader, Heartbeater, createS3UploaderForSite
+from .uploaders import Uploader, Heartbeater, createLocalS3UploaderForSite, createRemoteS3UploaderForSite
 
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
@@ -363,7 +363,8 @@ class MonitorChannel(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
-        self.s3Uploader = createS3UploaderForSite()
+        self.localS3Uploader = createLocalS3UploaderForSite()
+        self.remoteS3Uploader = createRemoteS3UploaderForSite()
         self.fig = plt.figure(figsize=(12, 12))
         self.detector = 0
 
