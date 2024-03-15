@@ -243,6 +243,10 @@ class PsfFwhmPlot(LatissPlot):
                 psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSr_65mm'))
             elif bands[i] == 'SDSSi_65mm':
                 psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSi_65mm'))
+            elif bands[i] == 'SDSSy_65mm':
+                psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSy_65mm'))
+            elif bands[i] == 'SDSSz_65mm':
+                psfFwhm[i] = (psfFwhm[i]*airMassCorr*getFilterSeeingCorrection('SDSSz_65mm'))
             else:
                 self.log.warning(f'Cannot correct unknown filter to 500nm seeing {bands[i]}')
                 psfFwhm[i] = psfFwhm[i]*airMassCorr
