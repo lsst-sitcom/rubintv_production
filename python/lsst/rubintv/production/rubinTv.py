@@ -45,7 +45,7 @@ from lsst.pipe.base import Instrument, Pipeline
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
-from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
+from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory, PreExecInit
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
@@ -1607,6 +1607,7 @@ class SingleFramePipelineRunner(BaseButlerChannel):
         instrument,
         pipeline,
         detector,
+        doPreExecInit=False,
         *,
         embargo=False,
         doRaise=False
@@ -1619,7 +1620,9 @@ class SingleFramePipelineRunner(BaseButlerChannel):
                          channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
                          doRaise=doRaise)
         self.detector = detector
+        self.instrument = instrument
         self.pipelineGraph = Pipeline.fromFile(pipeline).to_graph(registry=self.butler.registry)
+        self.doPreExecInit = doPreExecInit
 
         cachedOnGet = set()
         cachedOnPut = {'whatever_the_json_object_ends up being called'}  # XXX update this!
@@ -1648,10 +1651,7 @@ class SingleFramePipelineRunner(BaseButlerChannel):
         doProcess : `bool`
             True if the image should be processed, False if we should skip it.
         """
-        #         # TODO DM-37427 dispersed images do not have a filter and fail
-        # if isDispersedExp(exp):  # XXX will also need to work on an expRecord - see Josh's ticket
-        #     self.log.info(f'Skipping dispersed image: {dataId}')
-        #     return False
+        # XXX add any necessary data-drive logic here to choose if we process
         return True
 
     def callback(self, expRecord):
@@ -1687,7 +1687,8 @@ class SingleFramePipelineRunner(BaseButlerChannel):
                 self.pipelineGraph,
                 self.butler,
                 where=where,
-                bind=bind
+                bind=bind,
+                clobber=True,
                 # can pass in input/output collections, but will get from full
                 # butler if that was made with them
             )
@@ -1711,12 +1712,28 @@ class SingleFramePipelineRunner(BaseButlerChannel):
 
             executor = SingleQuantumExecutor(
                 None,
-                taskFactor=TaskFactory(),
+                taskFactory=TaskFactory(),
                 limited_butler_factory=lambda _: self.limitedButler,
+                clobberOutputs=True,  # XXX think about what to do wrt clobbering
             )
+
+            if self.doPreExecInit:
+                preExec = PreExecInit(
+                    butler=self.butler,
+                    taskFactory=TaskFactory(),
+                    extendRun=True,
+                )  # XXX this NEEDS to move to the head node and be run before it fans data out
+                # XXX we also need to work out how to make the head node detect
+                # that a new run collection is needed, and make one when that is
+                # the case, automatically
+                preExec.initialize(
+                    qg,
+                    registerDatasetTypes=True,
+                )
 
             for node in qg:
                 # XXX can also add timing info here
+                print(f'Starting to process {node.taskDef}')
                 quantum = executor.execute(node.taskDef, node.quantum)
                 self.postProcessQuantum(quantum)
 
