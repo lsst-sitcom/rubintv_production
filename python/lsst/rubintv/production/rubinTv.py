@@ -1644,8 +1644,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 raiseIf(self.doRaise, e, self.log)
 
 
-class SingleFramePipelineRunner(BaseButlerChannel):
-    """Class for running simple pipelines, e.g. SFM.
+class SingleCorePipelineRunner(BaseButlerChannel):
+    """Class for detector-parallel or single-core pipelines, e.g. SFM.
 
     Runs a pipeline using a CachingLimitedButler.
 
@@ -1762,7 +1762,13 @@ class SingleFramePipelineRunner(BaseButlerChannel):
 
             self.log.info(f'Running pipeline for {dataId}')
             # this does the waiting, but stays in the cache so don't even catch
-            # the return
+            # the return XXX this needs to be made more generic to deal with
+            # step2
+            # 1) it needs to wait for other data products, depending on what
+            #    the pipeline is, and
+            # 2) it needs to do the same thing the bot testing code does of
+            #    waiting up to the nominal timeout and then moving on with what
+            #    it got
             exp = self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
             if not exp:
                 raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
