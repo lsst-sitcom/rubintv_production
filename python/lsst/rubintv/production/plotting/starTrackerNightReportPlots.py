@@ -23,6 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .nightReportPlotBase import StarTrackerPlot
+from lsst.utils.plotting.limits import calculate_safe_plotting_limits
 
 # any classes added to PLOT_FACTORIES will automatically be added to the night
 # report channel, with each being replotted for each image taken.
@@ -484,24 +485,30 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
         ax[0][0].scatter(alt, deltaAltWide, color='red', marker='o', label='Wide')
         ax[0][0].scatter(alt, deltaAlt, color='blue', marker='x', label='Narrow')
         ax[0][0].set_ylabel("DeltaAlt (arcsec)", fontsize=13)
+        ymin, ymax = calculate_safe_plotting_limits([deltaAlt, deltaAltWide], \
+                                                    percentile=99.0)
+        ax[0][0].set_ylim(ymin, ymax)
         ax[0][0].legend()
 
         ax[0][1].scatter(az, deltaAltWide, color='red', marker='o', label='Wide')
         ax[0][1].scatter(az, deltaAlt, color='blue', marker='x', label='Narrow')
         ax[0][1].legend()
 
-        ax[1][0].scatter(alt, deltaAltWide, color='red', marker='o', label='Wide')
-        ax[1][0].scatter(alt, deltaAlt, color='blue', marker='x', label='Narrow')
+        ax[1][0].scatter(alt, deltaAzWide, color='red', marker='o', label='Wide')
+        ax[1][0].scatter(alt, deltaAz, color='blue', marker='x', label='Narrow')
+        ymin, ymax = calculate_safe_plotting_limits([deltaAz, deltaAzWide], \
+                                                    percentile=99.0)
+        ax[1][0].set_ylim(ymin, ymax)
         ax[1][0].set_xlim(0, 90)
         ax[1][0].set_xticks([10, 20, 30, 40, 50, 60, 70, 80])
         ax[1][0].set_xlabel("Alt (degrees)", fontsize=13)
         ax[1][0].set_ylabel("DeltaAz (arcsec)", fontsize=13)
         ax[1][0].legend()
 
-        ax[1][1].scatter(az, deltaAltWide, color='red', marker='o', label='Wide')
-        ax[1][1].scatter(az, deltaAlt, color='blue', marker='x', label='Narrow')
+        ax[1][1].scatter(az, deltaAzWide, color='red', marker='o', label='Wide')
+        ax[1][1].scatter(az, deltaAz, color='blue', marker='x', label='Narrow')
         ax[1][1].set_xlabel("Az (degrees)", fontsize=13)
-        ax[1][1].set_xlim(-150, 150)
+        ax[1][1].set_xlim(-180, 180)
         ax[1][1].legend()
 
         return True
