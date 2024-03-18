@@ -485,7 +485,7 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
         ax[0][0].scatter(alt, deltaAltWide, color='red', marker='o', label='Wide')
         ax[0][0].scatter(alt, deltaAlt, color='blue', marker='x', label='Narrow')
         ax[0][0].set_ylabel("DeltaAlt (arcsec)", fontsize=13)
-        ymin, ymax = calculate_safe_plotting_limits([deltaAlt, deltaAltWide], \
+        ymin, ymax = calculate_safe_plotting_limits([deltaAlt, deltaAltWide],
                                                     percentile=99.0)
         ax[0][0].set_ylim(ymin, ymax)
         ax[0][0].legend()
@@ -496,7 +496,7 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
 
         ax[1][0].scatter(alt, deltaAzWide, color='red', marker='o', label='Wide')
         ax[1][0].scatter(alt, deltaAz, color='blue', marker='x', label='Narrow')
-        ymin, ymax = calculate_safe_plotting_limits([deltaAz, deltaAzWide], \
+        ymin, ymax = calculate_safe_plotting_limits([deltaAz, deltaAzWide],
                                                     percentile=99.0)
         ax[1][0].set_ylim(ymin, ymax)
         ax[1][0].set_xlim(0, 90)
