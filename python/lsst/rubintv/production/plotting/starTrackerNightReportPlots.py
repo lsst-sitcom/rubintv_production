@@ -432,6 +432,7 @@ class CameraAzAltOffset(StarTrackerPlot):
         ax[1].set_ylabel("Arcsec", fontsize=13)
         return True
 
+
 class CameraAzAltOffsetPosition(StarTrackerPlot):
     _PlotName = 'CameraAzAltOffsetPosition'
     _PlotGroup = 'Analysis'
@@ -447,52 +448,60 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
                          uploader=uploader)
 
     def plot(self, metadata):
-        """Create a sample plot using data from the StarTracker page tables.                                                                    
-                                                                                                                                                
-        Parameters                                                                                                                              
-        ----------                                                                                                                              
-        metadata : `pandas.DataFrame`                                                                                                           
-            The data from all three StarTracker page tables, as a dataframe.                                                                    
-                                                                                                                                                
-        Returns                                                                                                                                 
-        -------                                                                                                                                 
-        success : `bool`                                                                                                                        
-            Did the plotting succeed, and thus upload should be performed?                                                                      
+        """Create a sample plot using data from the StarTracker page tables.
+
+        Parameters
+        ----------
+        metadata : `pandas.DataFrame`
+            The data from all three StarTracker page tables, as a dataframe.
+
+        Returns
+        -------
+        success : `bool`
+            Did the plotting succeed, and thus upload should be performed?
         """
         alt = metadata["Alt"]
         az = metadata["Az"]
         deltaAlt = metadata["Delta Alt Arcsec"]
         deltaAz = metadata["Delta Az Arcsec"]
+
         medDeltaAlt = np.nanmedian(deltaAlt)
         medDeltaAz = np.nanmedian(deltaAz)
         deltaAlt -= medDeltaAlt
         deltaAz -= medDeltaAz
+
         deltaAltWide = metadata["Delta Alt Arcsec wide"]
         deltaAzWide = metadata["Delta Az Arcsec wide"]
         medDeltaAltWide = np.nanmedian(deltaAltWide)
         medDeltaAzWide = np.nanmedian(deltaAzWide)
         deltaAltWide -= medDeltaAltWide
         deltaAzWide -= medDeltaAzWide
+
         fig, ax = plt.subplots(2, 2, figsize=(10, 8), sharex='col', sharey='row')
         fig.subplots_adjust(hspace=0, wspace=0)
         plt.suptitle(f"Median subtracted pointing errors vs position {self.dayObs}", fontsize=18)
+
         ax[0][0].scatter(alt, deltaAltWide, color='red', marker='o', label='Wide')
         ax[0][0].scatter(alt, deltaAlt, color='blue', marker='x', label='Narrow')
         ax[0][0].set_ylabel("DeltaAlt (arcsec)", fontsize=13)
         ax[0][0].legend()
+
         ax[0][1].scatter(az, deltaAltWide, color='red', marker='o', label='Wide')
         ax[0][1].scatter(az, deltaAlt, color='blue', marker='x', label='Narrow')
         ax[0][1].legend()
+
         ax[1][0].scatter(alt, deltaAltWide, color='red', marker='o', label='Wide')
         ax[1][0].scatter(alt, deltaAlt, color='blue', marker='x', label='Narrow')
-        ax[1][0].set_xlim(0,90)
-        ax[1][0].set_xticks([10,20,30,40,50,60,70,80])
+        ax[1][0].set_xlim(0, 90)
+        ax[1][0].set_xticks([10, 20, 30, 40, 50, 60, 70, 80])
         ax[1][0].set_xlabel("Alt (degrees)", fontsize=13)
         ax[1][0].set_ylabel("DeltaAz (arcsec)", fontsize=13)
         ax[1][0].legend()
+
         ax[1][1].scatter(az, deltaAltWide, color='red', marker='o', label='Wide')
         ax[1][1].scatter(az, deltaAlt, color='blue', marker='x', label='Narrow')
         ax[1][1].set_xlabel("Az (degrees)", fontsize=13)
-        ax[1][1].set_xlim(-150,150)
+        ax[1][1].set_xlim(-150, 150)
         ax[1][1].legend()
+
         return True
