@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from time import sleep
 import datetime
-import sys
+import io
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -41,7 +41,7 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.pipe.base import Instrument, Pipeline
+from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
@@ -97,6 +97,7 @@ __all__ = [
     'MetadataCreator',
     'Uploader',
     'Heartbeater',
+    'SingleCorePipelineRunner',
     'CalibrateCcdRunner',
     'NightReportChannel',
     'TmaTelemetryChannel',
@@ -1621,9 +1622,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          doRaise=doRaise)
         self.detector = detector
         self.instrument = instrument
+        self.butler = butler
         self.pipelineGraph = Pipeline.fromFile(pipeline).to_graph(registry=self.butler.registry)
+
+        with io.BytesIO() as f:
+            self.pipelineGraph._write_stream(f)
+            # the pipeline as gzip compressed json, don't worry about it, it's
+            # for comparison and nothing else
+            self.pipelineGraphBytes = f.getvalue()
+
+        self.limitedButler = self.makeLimitedButler(butler)
         self.doPreExecInit = doPreExecInit
 
+    def makeLimitedButler(self, butler):
         cachedOnGet = set()
         cachedOnPut = {'whatever_the_json_object_ends up being called'}  # XXX update this!
         for name in self.pipelineGraph.dataset_types.keys():
@@ -1634,7 +1645,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     cachedOnGet.add(name)
 
         noCopyOnCache = ('bias', 'dark', 'flat', 'defects')
-        self.limitedButler = CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+        return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
     def doProcessImage(self, expRecord):
         """Determine if we should skip this image.
@@ -1654,7 +1665,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # XXX add any necessary data-drive logic here to choose if we process
         return True
 
-    def callback(self, expRecord):
+    def callback(self, expRecord, pipelineGraphBytes=None, runCollection=None):
         """Method called on each new expRecord as it is found in the repo.
 
         Runs on the quickLookExp and writes shards with various measured
@@ -1672,6 +1683,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tStart = time.time()
+
+            if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
+                self.log.info('Pipeline graph has changed, updating')
+                with io.BytesIO(pipelineGraphBytes) as f:
+                    self.pipelineGraph = PipelineGraph._read_stream(f)  # to be public soon
+                    self.pipelineGraphBytes = pipelineGraphBytes
+                    self.limitedButler = self.makeLimitedButler(self.butler)
 
             # XXX question for the future/KT: who should be defining visits on
             # the summit? Jim confirmed it doesn't cause harm if only one
