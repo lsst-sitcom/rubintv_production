@@ -520,7 +520,7 @@ class S3Uploader(IUploader):
                 f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
             )
 
-    def uploadMetdata(self, channel: str, sourceFilename: str):
+    def uploadMetdata(self, channel: str, dayObs: int, sourceFilename: str):
         """Upload a file to a storage bucket.
 
         Parameters
@@ -536,13 +536,13 @@ class S3Uploader(IUploader):
             Raised if uploading the file to the Bucket was not possible.
         """
 
+        dayObsStr = dayObsIntToString(dayObs)
         camera, plotName = getCameraAndPlotName(channel)
         if plotName != "metadata":
             raise ValueError("Tried to upload non-metadata file to metadata channel:"
                              f"{channel}, {sourceFilename}")
 
-        filename = os.path.basename(sourceFilename)
-        uploadAs = f"{camera}_metadata/{filename}"
+        uploadAs = f"{camera}/{dayObsStr}/metadata.json"
         self.upload(destinationFilename=uploadAs, sourceFilename=sourceFilename)
         return uploadAs
 
