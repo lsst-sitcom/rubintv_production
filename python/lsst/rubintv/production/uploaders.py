@@ -174,8 +174,8 @@ class IUploader(ABC):
     def uploadPerSeqNumPlot(
         self,
         channel: str,
-        dayObsInt: int,
-        seqNumInt: int,
+        dayObs: int,
+        seqNum: int,
         filename: str,
         isLiveFile: bool = False,
         isLargeFile: bool = False,
@@ -616,8 +616,8 @@ class Uploader:
     def uploadPerSeqNumPlot(
         self,
         channel,
-        dayObsInt,
-        seqNumInt,
+        dayObs,
+        seqNum,
         filename,
         isLiveFile=False,
         isLargeFile=False,
