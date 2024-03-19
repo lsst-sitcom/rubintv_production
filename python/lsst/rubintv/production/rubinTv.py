@@ -41,7 +41,7 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
+from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
@@ -1675,7 +1675,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         instrument,
         pipeline,
         detector,
-        doPreExecInit=False,
+        run,
         *,
         embargo=False,
         doRaise=False
@@ -1691,6 +1691,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.instrument = instrument
         self.butler = butler
         self.pipelineGraph = Pipeline.fromFile(pipeline).to_graph(registry=self.butler.registry)
+        self.runCollection = run
 
         with io.BytesIO() as f:
             self.pipelineGraph._write_stream(f)
@@ -1699,7 +1700,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.pipelineGraphBytes = f.getvalue()
 
         self.limitedButler = self.makeLimitedButler(butler)
-        self.doPreExecInit = doPreExecInit
 
     def makeLimitedButler(self, butler):
         cachedOnGet = set()
@@ -1711,7 +1711,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 else:
                     cachedOnGet.add(name)
 
-        noCopyOnCache = ('bias', 'dark', 'flat', 'defects')
+        noCopyOnCache = ('bias', 'dark', 'flat', 'defects', 'camera')
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
     def doProcessImage(self, expRecord):
@@ -1732,6 +1732,32 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # XXX add any necessary data-drive logic here to choose if we process
         return True
 
+    @staticmethod
+    def runPreExecInit(butler, pipelineGraph, runCollection, registerDatasetTypes=False):
+        """This will be called on the head node, and won't be called by the
+        worker.
+        """
+        assert butler.run is None
+
+        emptyQg = QuantumGraph(
+            dict.fromkeys(pipelineGraph._iter_task_defs(), set()),
+            universe=butler.dimensions
+        )
+
+        butler = dafButler.Butler(butler=butler, run=runCollection)
+
+        preExec = PreExecInit(
+            butler=butler,
+            taskFactory=TaskFactory(),
+        )  # XXX this NEEDS to move to the head node and be run before it fans data out
+        # XXX we also need to work out how to make the head node detect
+        # that a new run collection is needed, and make one when that is
+        # the case, automatically
+        preExec.initialize(
+            emptyQg,
+            registerDatasetTypes=registerDatasetTypes,
+        )
+
     def callback(self, expRecord, pipelineGraphBytes=None, runCollection=None):
         """Method called on each new expRecord as it is found in the repo.
 
@@ -1744,12 +1770,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
-        try:
-            if not self.doProcessImage(expRecord):
-                return
+        if not self.doProcessImage(expRecord):
+            return
 
+        if runCollection is not None:
+            self.runCollection = runCollection
+
+        try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            tStart = time.time()
+            # tStart = time.time()
 
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
                 self.log.info('Pipeline graph has changed, updating')
@@ -1774,8 +1803,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 where=where,
                 bind=bind,
                 clobber=True,
-                # can pass in input/output collections, but will get from full
-                # butler if that was made with them
+                output_run=self.runCollection,
             )
 
             self.log.info(f'Running pipeline for {dataId}')
@@ -1794,7 +1822,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             qg = builder.build(
                 metadata={
                     "input": self.butler.collections,
-                    "output_run": self.butler.run,
+                    "output_run": self.runCollection,
                     "data_query": where,
                     "bind": bind,
                     "time": f"{datetime.datetime.now()}",
@@ -1807,20 +1835,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 limited_butler_factory=lambda _: self.limitedButler,
                 clobberOutputs=True,  # XXX think about what to do wrt clobbering
             )
-
-            if self.doPreExecInit:
-                preExec = PreExecInit(
-                    butler=self.butler,
-                    taskFactory=TaskFactory(),
-                    extendRun=True,
-                )  # XXX this NEEDS to move to the head node and be run before it fans data out
-                # XXX we also need to work out how to make the head node detect
-                # that a new run collection is needed, and make one when that is
-                # the case, automatically
-                preExec.initialize(
-                    qg,
-                    registerDatasetTypes=True,
-                )
 
             for node in qg:
                 # XXX can also add timing info here
