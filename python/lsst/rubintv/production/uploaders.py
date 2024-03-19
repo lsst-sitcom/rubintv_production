@@ -58,7 +58,7 @@ __all__ = [
 ]
 
 
-def createLocalS3UploaderForSite():
+def createLocalS3UploaderForSite(httpsProxy=''):
     """Create the S3Uploader with the correct config
        for the site automatically.
 
@@ -70,18 +70,34 @@ def createLocalS3UploaderForSite():
     site = getSite()
     match site:
         case "base":
-            return S3Uploader.from_information(endPoint=EndPoint.BASE, bucket=Bucket.BTS)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.BASE,
+                bucket=Bucket.BTS,
+                httpsProxy=httpsProxy
+                )
         case "summit":
-            return S3Uploader.from_information(endPoint=EndPoint.SUMMIT, bucket=Bucket.SUMMIT)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.SUMMIT,
+                bucket=Bucket.SUMMIT,
+                httpsProxy=httpsProxy
+                )
         case "usdf":
-            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.USDF,
+                httpsProxy=httpsProxy
+                )
         case "tucson":
-            return S3Uploader.from_information(endPoint=EndPoint.TUCSON, bucket=Bucket.USDF)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.TUCSON,
+                bucket=Bucket.USDF,
+                httpsProxy=httpsProxy
+                )
         case _:
             raise ValueError(f"Unknown site: {site}")
 
 
-def createRemoteS3UploaderForSite():
+def createRemoteS3UploaderForSite(httpsProxy=''):
     """Create the S3Uploader with the correct config
        for the site automatically.
 
@@ -93,13 +109,29 @@ def createRemoteS3UploaderForSite():
     site = getSite()
     match site:
         case "base":
-            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.BTS)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.BTS,
+                httpsProxy=httpsProxy
+                )
         case "summit":
-            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.SUMMIT)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.SUMMIT,
+                httpsProxy=httpsProxy
+                )
         case "usdf":
-            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.USDF,
+                httpsProxy=httpsProxy
+                )
         case "tucson":
-            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.USDF,
+                httpsProxy=httpsProxy
+                )
         case _:
             raise ValueError(f"Unknown site: {site}")
 
