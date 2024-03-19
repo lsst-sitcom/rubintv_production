@@ -26,6 +26,8 @@ from datetime import timedelta
 import os
 import time
 
+from lsst.summit.utils.utils import getSite
+
 from .utils import expRecordFromJson
 
 # Check if the environment is a notebook
@@ -130,14 +132,42 @@ def decode_zset(value_zset):
     return [(item[0].decode('utf-8'), item[1]) for item in value_zset]
 
 
+def getRedisSecret(filename='$HOME/.lsst/redis_secret.ini'):
+    filename = os.path.expandvars(filename)
+    with open(filename) as f:
+        return f.read().strip()
+
+
 class RedisHelper:
     def __init__(self, isHeadNode=False):
         self.isHeadNode = isHeadNode
-        self.redis = redis.Redis()
+        self.redis = self._makeRedis()
         self._testRedisConnection()
         self.log = logging.getLogger('lsst.rubintv.production.redisUtils.RedisHelper')
 
         self._mostRecents = {}
+
+    def _makeRedis(self):
+        """Create a redis connection.
+
+        Returns
+        -------
+        redis.Redis
+            The redis connection.
+        """
+        site = getSite()
+        match site:
+            case 'rubin-devl':
+                return redis.Redis(host='172.24.5.216', password=getRedisSecret())
+            case 'summit':
+                password = os.getenv('REDIS_SECRET')  # XXX is this the right env var?
+                return redis.Redis(password=password)
+            case 'base':
+                raise NotImplementedError('Merlin needs to configure redis connection for base')
+            case 'tucson':
+                raise NotImplementedError('Merlin needs to configure redis connection for TTS')
+            case _:
+                raise RuntimeError('Unknown site, cannot connect to redis')
 
     def _testRedisConnection(self):
         """Check that redis is online and can be contacted.
@@ -270,7 +300,6 @@ class RedisHelper:
                 seqNum = expRecord.seq_num
                 self.log.exception(f'Error putting expRecord for {dayObs=}, {seqNum=}: {e}')
                 break
-
 
         self.updateMostRecent(dataProduct, expRecord)
 
