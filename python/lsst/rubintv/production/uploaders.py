@@ -58,8 +58,8 @@ __all__ = [
 
 
 def createLocalS3UploaderForSite(httpsProxy=''):
-    """Create the S3Uploader with the correct config
-       for the site automatically.
+    """Create the S3Uploader with the correct config for the site
+    automatically.
 
     Returns
     -------
@@ -120,11 +120,8 @@ def createRemoteS3UploaderForSite(httpsProxy=''):
                 httpsProxy=httpsProxy
             )
         case "usdf":
-            return S3Uploader.from_information(
-                endPoint=EndPoint.USDF,
-                bucket=Bucket.USDF,
-                httpsProxy=httpsProxy
-            )
+            logging.getLogger(__name__).info('No remote uploader is necessary for USDF')
+            return None
         case "tucson":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
