@@ -90,7 +90,7 @@ def createLocalS3UploaderForSite(httpsProxy=''):
         case "tucson":
             return S3Uploader.from_information(
                 endPoint=EndPoint.TUCSON,
-                bucket=Bucket.USDF,
+                bucket=Bucket.TTS,
                 httpsProxy=httpsProxy
                 )
         case _:
@@ -129,7 +129,7 @@ def createRemoteS3UploaderForSite(httpsProxy=''):
         case "tucson":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
-                bucket=Bucket.USDF,
+                bucket=Bucket.TTS,
                 httpsProxy=httpsProxy
                 )
         case _:
@@ -154,10 +154,12 @@ class EndPoint(Enum):
         "end_point": "https://s3dfrgw.slac.stanford.edu",
         "buckets_available": {
             Bucket.SUMMIT: BucketInformation(
-                "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
+                "rubin-rubintv-data-summit",
+                "rubin-rubintv-data-summit"
             ),
             Bucket.USDF: BucketInformation(
-                "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
+                "rubin-rubintv-data-usdf",
+                "rubin-rubintv-data-usdf"
             ),
         },
     }
@@ -165,21 +167,24 @@ class EndPoint(Enum):
     SUMMIT = {
         "end_point": "https://s3.rubintv.cp.lsst.org",
         "buckets_available": {
-            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubintv")
+            Bucket.SUMMIT: BucketInformation("summit-data-summit",
+                                             "rubintv")
         },
     }
 
     BASE = {
         "end_point": "https://s3.rubintv.ls.lsst.org",
         "buckets_available": {
-            Bucket.BTS: BucketInformation("base-data-base", "rubintv")
+            Bucket.BTS: BucketInformation("base-data-base",
+                                          "rubintv")
         },
     }
 
     TUCSON = {
         "end_point": "https://s3.rubintv.tu.lsst.org",
         "buckets_available": {
-            Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")
+            Bucket.TTS: BucketInformation("tucson-data-tucson",
+                                          "rubintv")
         },
     }
 
