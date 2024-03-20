@@ -24,13 +24,14 @@ import logging
 import os
 import time
 
+from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from dataclasses import dataclass
 from enum import Enum
-from typing_extensions import Optional
+from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 
@@ -120,7 +121,7 @@ def createRemoteS3UploaderForSite(httpsProxy=''):
                 httpsProxy=httpsProxy
             )
         case "usdf":
-            logging.getLogger(__name__).info('No remote uploader is necessary for USDF')
+            _LOG.info('No remote uploader is necessary for USDF')
             return None
         case "tucson":
             return S3Uploader.from_information(
@@ -288,6 +289,49 @@ class IUploader(ABC):
             Raised if uploading the file to the Bucket was not possible.
         """
         raise NotImplementedError()
+
+
+class MultiUploader(IUploader):
+    def __init__(self, httpsProxy=''):
+        # TODO: thread the remote upload
+        self.localUploader = createLocalS3UploaderForSite()
+
+        try:
+            self.remoteUploader = createRemoteS3UploaderForSite(httpsProxy=httpsProxy)
+        except Exception:
+            self.remoteUploader = None
+
+        self.log = _LOG.getChild("MultiUploader")
+
+    @property
+    def hasRemote(self):
+        return self.remoteUploader is not None
+
+    def uploadPerSeqNumPlot(self, *args, **kwargs):
+        self.localUploader.uploadPerSeqNumPlot(*args, **kwargs)
+        self.log.info('uploaded to local')
+
+        if self.hasRemote:
+            self.remoteUploader.uploadPerSeqNumPlot(*args, **kwargs)
+            self.log.info('uploaded to remote')
+
+    def uploadNightReportData(self, *args, **kwargs):
+        self.localUploader.uploadNightReportData(*args, **kwargs)
+
+        if self.hasRemote:
+            self.remoteUploader.uploadNightReportData(*args, **kwargs)
+
+    def upload(self, *args, **kwargs):
+        self.localUploader.upload(*args, **kwargs)
+
+        if self.hasRemote:
+            self.remoteUploader.upload(*args, **kwargs)
+
+    def uploadMetdata(self, *args, **kwargs):
+        self.localUploader.uploadMetdata(*args, **kwargs)
+
+        if self.hasRemote:
+            self.remoteUploader.uploadMetdata(*args, **kwargs)
 
 
 class S3Uploader(IUploader):
