@@ -411,8 +411,6 @@ class S3Uploader(IUploader):
         dayObs: int,
         seqNum: int,
         filename: str,
-        isLiveFile: bool = False,
-        isLargeFile: bool = False,
     ) -> str:
         """Upload a per-dayObs/seqNum plot to the bucket.
 
@@ -688,12 +686,12 @@ class Uploader:
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
-        dayObsStr = dayObsIntToString(dayObsInt)
+        dayObsStr = dayObsIntToString(dayObs)
         # TODO: sort out this prefix nonsense as part of the plot organization
         # fixup in the new year?
         plotPrefix = channel.replace("_", "-")
 
-        uploadAs = f"{channel}/{plotPrefix}_dayObs_{dayObsStr}_seqNum_{seqNumInt}.png"
+        uploadAs = f"{channel}/{plotPrefix}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
 
         blob = self.bucket.blob(uploadAs)
         if isLiveFile:
