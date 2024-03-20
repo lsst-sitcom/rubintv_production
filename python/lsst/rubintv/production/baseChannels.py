@@ -27,7 +27,7 @@ from abc import ABC, abstractmethod
 import lsst.summit.utils.butlerUtils as butlerUtils
 
 from .watchers import FileWatcher
-from .uploaders import Uploader
+from .uploaders import Uploader, MultiUploader
 
 __all__ = [
     'BaseChannel',
@@ -60,6 +60,7 @@ class BaseChannel(ABC):
         self.log = log
         self.watcher = watcher
         self.uploader = Uploader(self.locationConfig.bucketName)
+        self.s3Uploader = MultiUploader()
         self.doRaise = doRaise
 
     @abstractmethod

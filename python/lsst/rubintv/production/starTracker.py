@@ -54,7 +54,7 @@ from lsst.summit.utils.starTracker import (
 )
 from .channels import PREFIXES
 from .utils import writeMetadataShard, hasDayRolledOver, raiseIf
-from .uploaders import Uploader, Heartbeater
+from .uploaders import Uploader, Heartbeater, MultiUploader
 from .baseChannels import BaseChannel
 from .plotting import starTrackerNightReportPlots
 
@@ -159,6 +159,7 @@ class StarTrackerWatcher:
         self.rootDataPath = rootDataPath
         self.camera = camera
         self.uploader = Uploader(bucketName)
+        self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("watcher")
         self.heartbeater = None
 
@@ -358,7 +359,7 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-    def _getUploadFilename(self, channel, filename):
+    def _getGoogleUploadFilename(self, channel, filename):
         """Calculate the filename to use for uploading.
 
         Parameters
@@ -368,6 +369,7 @@ class StarTrackerChannel(BaseChannel):
         filename : `str`
             The filename.
         """
+        # TODO: remove in DM-43413
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         dayObsStr = dayObsIntToString(dayObs)
         filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
@@ -413,8 +415,19 @@ class StarTrackerChannel(BaseChannel):
             doSmooth=self.camera.doSmoothPlot,
             fig=self.fig
         )
-        uploadAs = self._getUploadFilename(self.channelAnalysis, filename)
+
+        # TODO: remove in DM-43413
+        uploadAs = self._getGoogleUploadFilename(self.channelAnalysis, filename)
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
+
+        dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        self.s3Uploader.uploadStarTrackerPlot(
+            camera=self.camera,
+            dayObs=dayObs,
+            seqNum=seqNum,
+            filename=fittedPngFilename,
+            isFitted=True,
+        )
 
         scaleError = self.camera.scaleError
         # hard coding to the wide field solver seems to be much faster even for
@@ -508,8 +521,19 @@ class StarTrackerChannel(BaseChannel):
         basename = os.path.basename(filename).removesuffix('.fits')
         rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
         plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
-        uploadFilename = self._getUploadFilename(self.channelRaw, filename)  # get the filename for the bucket
-        self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)
+
+        # TODO: remove in DM-43413
+        uploadFilename = self._getGoogleUploadFilename(self.channelRaw, filename)
+        self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)  # TODO: DM-43413
+
+        dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        self.s3Uploader.uploadStarTrackerPlot(
+            camera=self.camera,
+            dayObs=dayObs,
+            seqNum=seqNum,
+            filename=rawPngFilename,
+            isFitted=False,
+        )
 
         if not exp.wcs:
             self.log.info(f"Skipping {filename} as it has no WCS")
@@ -625,6 +649,8 @@ class StarTrackerNightReportChannel(BaseChannel):
                 plotFactory = getattr(starTrackerNightReportPlots, plotName)
                 plot = plotFactory(dayObs=self.dayObs,
                                    locationConfig=self.locationConfig,
+                                   # TODO: DM-43413 switch to MultiUploader and
+                                   # remove GCS
                                    uploader=self.uploader)
                 plot.createAndUpload(md)
             except Exception:
