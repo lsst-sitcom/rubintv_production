@@ -97,7 +97,7 @@ def createLocalS3UploaderForSite(httpsProxy=''):
             raise ValueError(f"Unknown site: {site}")
 
 
-def createRemoteS3UploaderForSite(httpsProxy=''):
+def createRemoteS3UploaderForSite():
     """Create the S3Uploader with the correct config
        for the site automatically.
 
@@ -112,9 +112,9 @@ def createRemoteS3UploaderForSite(httpsProxy=''):
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
-                httpsProxy=httpsProxy
             )
         case "summit":
+            httpsProxy = 'http://ocio-gpu03.slac.stanford.edu:3128'
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.SUMMIT,
@@ -127,7 +127,6 @@ def createRemoteS3UploaderForSite(httpsProxy=''):
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.TTS,
-                httpsProxy=httpsProxy
             )
         case _:
             raise ValueError(f"Unknown site: {site}")
@@ -292,16 +291,18 @@ class IUploader(ABC):
 
 
 class MultiUploader(IUploader):
-    def __init__(self, httpsProxy=''):
+    def __init__(self):
         # TODO: thread the remote upload
         self.localUploader = createLocalS3UploaderForSite()
 
         try:
-            self.remoteUploader = createRemoteS3UploaderForSite(httpsProxy=httpsProxy)
+            self.remoteUploader = createRemoteS3UploaderForSite()
         except Exception:
             self.remoteUploader = None
 
         self.log = _LOG.getChild("MultiUploader")
+        self.log.info(f"Created MultiUploader with local: {self.localUploader}"
+                      f" and remote: {self.remoteUploader}")
 
     @property
     def hasRemote(self):
@@ -546,6 +547,12 @@ class S3Uploader(IUploader):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
+        # XXX check this function
+
+        # this is called from createAndUpload() in nightReportPlotBase.py so if
+        # you change the args here (like renaming the channel to be the
+        # instrument) then make sure to catch it everywhere
+
         if channel not in CHANNELS:
             raise ValueError(f"Error: {channel} not in {CHANNELS}")
 
@@ -593,6 +600,22 @@ class S3Uploader(IUploader):
             raise UploadError(
                 f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
             )
+
+    def uploadMovie(self, instrument, dayObs, movieFilename):
+        # XXX write this
+        raise NotImplementedError()
+
+    def uploadStarTrackerPlot(self, camera, dayObs, seqNum, filename, isFitted):
+        # XXX write this
+        raise NotImplementedError()
+
+    def uploadAllSkyMovie(self, dayObs, seqNum, filename):
+        # XXX write this
+        raise NotImplementedError()
+
+    def uploadAllSkyStill(self, dayObs, seqNum, filename):
+        # XXX write this
+        raise NotImplementedError()
 
     def uploadMetdata(self, channel: str, dayObs: int, sourceFilename: str):
         """Upload a file to a storage bucket.

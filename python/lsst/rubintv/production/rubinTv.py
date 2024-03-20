@@ -76,8 +76,7 @@ from .utils import (
     catchPrintOutput,
     NumpyEncoder,
 )
-from .uploaders import Uploader, Heartbeater, createLocalS3UploaderForSite, createRemoteS3UploaderForSite
-
+from .uploaders import Heartbeater
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
@@ -91,7 +90,6 @@ __all__ = [
     'MonitorChannel',
     'MountTorqueChannel',
     'MetadataCreator',
-    'Uploader',
     'Heartbeater',
     'CalibrateCcdRunner',
     'NightReportChannel',
@@ -265,6 +263,11 @@ class ImExaminerChannel(BaseButlerChannel):
 
             self.log.info("Uploading imExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                self.channelName,
+                expRecord.day_obs,
+                expRecord.seq_num,
+                tempFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
@@ -337,6 +340,11 @@ class SpecExaminerChannel(BaseButlerChannel):
 
             self.log.info("Uploading specExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                self.channelName,
+                expRecord.day_obs,
+                expRecord.seq_num,
+                tempFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
@@ -363,8 +371,6 @@ class MonitorChannel(BaseButlerChannel):
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
-        self.localS3Uploader = createLocalS3UploaderForSite()
-        self.remoteS3Uploader = createRemoteS3UploaderForSite()
         self.fig = plt.figure(figsize=(12, 12))
         self.detector = 0
 
@@ -534,6 +540,12 @@ class MountTorqueChannel(BaseButlerChannel):
             if os.path.exists(tempFilename):  # skips many image types and short exps
                 self.log.info("Uploading mount torque plot to storage bucket")
                 self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    self.channelName,
+                    expRecord.day_obs,
+                    expRecord.seq_num,
+                    tempFilename
+                )
                 self.log.info('Upload complete')
 
             # write the mount error shard, including the cell coloring flag
@@ -570,8 +582,10 @@ class MetadataCreator(BaseButlerChannel):
                          doRaise=doRaise)
         self.detector = 0  # can be removed once we have the requisite summit DBs
 
-        # We inherit an uploader, so be explicit about the fact we don't use it
+        # We inherit the uploaders, so be explicit about the fact we don't use
+        # them.
         self.uploader = None
+        self.s3Uploader = None
 
     def expRecordToMetadataDict(self, expRecord, keysToRemove):
         """Create a dictionary of metadata for an expRecord.
@@ -1184,6 +1198,8 @@ class NightReportChannel(BaseButlerChannel):
                 plotFactory = getattr(latissNightReportPlots, plotName)
                 plot = plotFactory(dayObs=self.dayObs,
                                    locationConfig=self.locationConfig,
+                                   # TODO: DM-43413 switch this to be the
+                                   # s3Uploader
                                    uploader=self.uploader)
                 plot.createAndUpload(report, md, ccdVisitTable)
             except Exception:
@@ -1223,17 +1239,29 @@ class NightReportChannel(BaseButlerChannel):
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmass.png')
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObsInt=self.dayObs,
+                                                    dayObs=self.dayObs,
                                                     filename=airMassPlotFile,
                                                     plotGroup='Coverage')
+                self.s3Uploader.uploadNightReportData(
+                    self.channelName,
+                    self.dayObs,
+                    filename=airMassPlotFile,
+                    plotGroup='Coverage'
+                )
 
                 # the alt/az coverage polar plot
                 altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, 'alt-az.png')
                 self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
                 self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObsInt=self.dayObs,
+                                                    dayObs=self.dayObs,
                                                     filename=altAzCoveragePlotFile,
                                                     plotGroup='Coverage')
+                self.s3Uploader.uploadNightReportData(
+                    self.channelName,
+                    self.dayObs,
+                    filename=altAzCoveragePlotFile,
+                    plotGroup='Coverage'
+                )
 
                 # Add text items here
                 shutterTimes = catchPrintOutput(self.report.printShutterTimes)
@@ -1249,8 +1277,13 @@ class NightReportChannel(BaseButlerChannel):
                 with open(jsonFilename, 'w') as f:
                     json.dump(md, f, cls=NumpyEncoder)
                 self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObsInt=self.dayObs,
+                                                    dayObs=self.dayObs,
                                                     filename=jsonFilename)
+                self.s3Uploader.uploadNightReportData(
+                    self.channelName,
+                    self.dayObs,
+                    filename=jsonFilename,
+                )
 
                 self.log.info(f'Finished updating plots and table for {dataId}')
 
@@ -1404,11 +1437,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
         filename = self._getSaveFilename(plotName, dayObs, event)
         self.figure.savefig(filename)
         self.uploader.uploadPerSeqNumPlot(plotName,
-                                          dayObsInt=dayObs,
-                                          seqNumInt=event.seqNum,
+                                          dayObs=dayObs,
+                                          seqNum=event.seqNum,
                                           filename=filename,
                                           isLiveFile=False
                                           )
+        self.s3Uploader.uploadPerSeqNumPlot(plotName, dayObs, event.seqNum, filename)
 
     def runM1M3HardpointAnalysis(self, event):
         m1m3ICSHPMaxForces = {}
@@ -1475,11 +1509,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
                               log=self.log)
         self.figure.savefig(filename)
         self.uploader.uploadPerSeqNumPlot(plotName,
-                                          dayObsInt=event.dayObs,
-                                          seqNumInt=event.seqNum,
+                                          dayObs=event.dayObs,
+                                          seqNum=event.seqNum,
                                           filename=filename,
                                           isLiveFile=False
                                           )
+        self.s3Uploader.uploadPerSeqNumPlot(plotName, event.dayObs, event.seqNum, filename)
 
     def processDay(self, dayObs):
         """

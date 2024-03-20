@@ -25,7 +25,7 @@ import logging
 from glob import glob
 from time import sleep
 
-from .uploaders import Heartbeater, Uploader, createLocalS3UploaderForSite, createRemoteS3UploaderForSite
+from .uploaders import Heartbeater, Uploader, MultiUploader
 
 from .utils import (isFileWorldWritable,
                     raiseIf,
@@ -84,8 +84,7 @@ class TimedMetadataServer:
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
         self.uploader = Uploader(self.locationConfig.bucketName)
-        self.localS3Uploader = createLocalS3UploaderForSite()
-        self.remoteS3Uploader = createRemoteS3UploaderForSite()
+        self.s3Uploader = MultiUploader()
         self.heartbeater = Heartbeater(self.channelName,
                                        self.locationConfig.bucketName,
                                        self.HEARTBEAT_UPLOAD_PERIOD,
@@ -149,8 +148,7 @@ class TimedMetadataServer:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
             for file in filesTouched:
                 self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
-                self.localS3Uploader.uploadMetdata(self.channelName, file)
-                self.remoteS3Uploader.uploadMetdata(self.channelName, file)
+                self.s3Uploader.uploadMetdata(self.channelName, file)
         return
 
     def getSidecarFilename(self, dayObs):

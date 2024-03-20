@@ -376,6 +376,13 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
         test images being pushed to it, or is the requested duration for the
         test image to remain is too long (max of 60s).
     """
+    # TODO: DM-43413 think about how you want the alternative to this to work
+    # for S3 uploads, given there's a local and remote and many locations.
+    # probably just want to use the MultiUploader auto magic, and then manually
+    # set one of them to None if we don't want to use it, or something like
+    # that. Will always have to be the remote which gets set to none, as local
+    # is currently mandatory for the MultiUploader (though you could swap them)
+    # in here if you wanted to sneakily use the same object.
     logger = logging.getLogger(__name__)
 
     from google.cloud import storage

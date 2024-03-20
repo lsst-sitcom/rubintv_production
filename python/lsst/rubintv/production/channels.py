@@ -68,6 +68,7 @@ def getCameraAndPlotName(channel):
         "fake_auxtel_mount_torques": ("fake_auxtel", "mount"),
         "fake_auxtel_movies": ("fake_auxtel", "movies"),
         "tma_mount_motion_profile": ("tma", "mount"),
+        "tma_m1m3_hardpoint_profile": ("tma", "m1m3_hardpoint"),
         "auxtel_metadata": ('auxtel', 'metadata'),
         "auxtel_night_reports": ("auxtel", "night_reports"),
         "startracker_night_reports": ("startracker", "night_reports"),

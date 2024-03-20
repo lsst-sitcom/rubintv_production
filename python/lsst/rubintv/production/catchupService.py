@@ -34,7 +34,7 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 from lsst.summit.extras.animation import animateDay
 
 from .rubinTv import MetadataCreator
-from .uploaders import Uploader, Heartbeater
+from .uploaders import Uploader, Heartbeater, MultiUploader
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
 from .utils import raiseIf, hasDayRolledOver
@@ -90,6 +90,7 @@ class RubinTvBackgroundService:
         self.locationConfig = locationConfig
         self.instrument = instrument
         self.uploader = Uploader(self.locationConfig.bucketName)
+        self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("backgroundService")
         self.allSkyPngRoot = self.locationConfig.allSkyOutputPath
         self.moviePngRoot = self.locationConfig.moviePngPath
@@ -321,6 +322,7 @@ class RubinTvBackgroundService:
                 channel = 'auxtel_movies'
                 uploadAs = f'dayObs_{self.dayObs}.mp4'
                 self.uploader.googleUpload(channel, writtenMovie, uploadAs, isLargeFile=True)
+                self.s3Uploader.uploadMovie('auxtel', self.dayObs, writtenMovie)
             else:
                 self.log.warning(f'Failed to find movie for {self.dayObs}')
             # clean up animation pngs here?
