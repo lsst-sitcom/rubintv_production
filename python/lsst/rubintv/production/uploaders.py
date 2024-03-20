@@ -24,14 +24,13 @@ import logging
 import os
 import time
 
-from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from dataclasses import dataclass
 from enum import Enum
-from typing_extensions import Optional, override
+from typing_extensions import Optional
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 
@@ -74,25 +73,25 @@ def createLocalS3UploaderForSite(httpsProxy=''):
                 endPoint=EndPoint.BASE,
                 bucket=Bucket.BTS,
                 httpsProxy=httpsProxy
-                )
+            )
         case "summit":
             return S3Uploader.from_information(
                 endPoint=EndPoint.SUMMIT,
                 bucket=Bucket.SUMMIT,
                 httpsProxy=httpsProxy
-                )
+            )
         case "usdf":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.USDF,
                 httpsProxy=httpsProxy
-                )
+            )
         case "tucson":
             return S3Uploader.from_information(
                 endPoint=EndPoint.TUCSON,
                 bucket=Bucket.TTS,
                 httpsProxy=httpsProxy
-                )
+            )
         case _:
             raise ValueError(f"Unknown site: {site}")
 
@@ -113,25 +112,25 @@ def createRemoteS3UploaderForSite(httpsProxy=''):
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
                 httpsProxy=httpsProxy
-                )
+            )
         case "summit":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.SUMMIT,
                 httpsProxy=httpsProxy
-                )
+            )
         case "usdf":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.USDF,
                 httpsProxy=httpsProxy
-                )
+            )
         case "tucson":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.TTS,
                 httpsProxy=httpsProxy
-                )
+            )
         case _:
             raise ValueError(f"Unknown site: {site}")
 
@@ -187,7 +186,6 @@ class EndPoint(Enum):
                                           "rubintv")
         },
     }
-
 
 
 class ConnectionError(Exception):
