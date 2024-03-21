@@ -507,6 +507,8 @@ class DayAnimator:
         lastfile = files[-1]
         seqNum = _seqNumFromFilename(lastfile)
         if isFinal:
+            # TODO: remove this with DM-43413 as final is dealt with by the
+            # new uploader. SEQNUM_MAX can probably go entirely
             seqNum = SEQNUM_MAX
 
         channel = 'all_sky_movies'
@@ -523,7 +525,12 @@ class DayAnimator:
 
         if not self.DRY_RUN:
             self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
-            self.s3Uploader.uploadAllSkyMovie(self.dayObsInt, seqNum, creationFilename)
+            self.s3Uploader.uploadMovie(
+                instrument='allsky',
+                dayObs=self.dayObsInt,
+                filename=creationFilename,
+                seqNum=seqNum if not isFinal else None,
+            )
             try:
                 self.epoUploader.googleUpload(self.channel,
                                               creationFilename,
@@ -555,7 +562,13 @@ class DayAnimator:
             self.uploader.googleUpload(channel=channel,
                                        sourceFilename=sourceFilename,
                                        uploadAsFilename=uploadAsFilename)
-            self.s3Uploader.uploadAllSkyStill(self.dayObsInt, seqNum, sourceFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument='allsky',
+                plotName='stills',
+                dayObs=self.dayObsInt,
+                seqNum=seqNum,
+                filename=sourceFilename,
+            )
             try:
                 self.epoUploader.googleUpload(channel=channel,
                                               sourceFilename=sourceFilename,

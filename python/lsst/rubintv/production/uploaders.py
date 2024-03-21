@@ -592,7 +592,6 @@ class S3Uploader(IUploader):
     ) -> str:
         checkInstrument(instrument)
 
-        basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
         ext = os.path.splitext(filename)[1]  # contains the perdiod
 
@@ -607,9 +606,7 @@ class S3Uploader(IUploader):
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
-            self._log.exception(
-                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
-            )
+            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
             raise ex
 
         return uploadAs
@@ -621,15 +618,6 @@ class S3Uploader(IUploader):
         seqNum: int,
         filename: str,
         isFitted: bool,
-    ) -> str:
-        # XXX write this
-        raise NotImplementedError()
-
-    def uploadAllSkyStill(
-        self,
-        dayObs: int,
-        seqNum: int,
-        filename: str,
     ) -> str:
         # XXX write this
         raise NotImplementedError()
