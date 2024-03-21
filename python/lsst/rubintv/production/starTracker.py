@@ -278,8 +278,8 @@ class StarTrackerChannel(BaseChannel):
                          watcher=watcher,
                          doRaise=doRaise)
 
-        self.channelRaw = f"startracker{self.camera.suffix}_raw"
-        self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"
+        self.channelRaw = f"startracker{self.camera.suffix}_raw"  # TODO: DM-43413 remove?
+        self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"  # TODO: DM-43413 remove?
 
         self.outputRoot = self.locationConfig.starTrackerOutputPath
         self.metadataRoot = self.locationConfig.starTrackerMetadataPath
@@ -421,12 +421,12 @@ class StarTrackerChannel(BaseChannel):
         self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        self.s3Uploader.uploadStarTrackerPlot(
-            camera=self.camera,
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument='startracker' + self.camera.suffix,
+            plotName='analysis',
             dayObs=dayObs,
             seqNum=seqNum,
             filename=fittedPngFilename,
-            isFitted=True,
         )
 
         scaleError = self.camera.scaleError
@@ -527,12 +527,12 @@ class StarTrackerChannel(BaseChannel):
         self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)  # TODO: DM-43413
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        self.s3Uploader.uploadStarTrackerPlot(
-            camera=self.camera,
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument='startracker' + self.camera.suffix,
+            plotName='analysis',
             dayObs=dayObs,
             seqNum=seqNum,
             filename=rawPngFilename,
-            isFitted=False,
         )
 
         if not exp.wcs:
