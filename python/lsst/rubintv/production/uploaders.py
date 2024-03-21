@@ -470,19 +470,19 @@ class S3Uploader(IUploader):
     @override
     def uploadNightReportData(
         self,
-        channel: str,
-        dayObsInt: int,
+        instrument: str,
+        dayObs: int,
         filename: str,
-        plotGroup: Optional[str] = None,
-    ):
+        plotGroup: str = None,
+    ) -> str:
         """Upload night report type plot or json file
            to a night report channel.
 
         Parameters
         ----------
-        channel : `str`
-            The RubinTV channel to upload to.
-        observation_day : `int`
+        instrument : `str`
+            The instrument.
+        dayObs : `int`
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
@@ -505,36 +505,38 @@ class S3Uploader(IUploader):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
-        # XXX check this function
-
+        # XXX fix use in nightReportPlotBase
         # this is called from createAndUpload() in nightReportPlotBase.py so if
         # you change the args here (like renaming the channel to be the
         # instrument) then make sure to catch it everywhere
 
-        if channel not in CHANNELS:
-            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+        if instrument not in KNOWN_INSTRUMENTS:
+            raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
 
-        basename = os.path.basename(filename)  # deals with png vs jpeg
+        if plotGroup is None:
+            plotGroup = 'default'
+
+        basename = os.path.basename(filename)
+        dayObsStr = dayObsIntToString(dayObs)
 
         # the plot filenames have the channel name saved into them in the form
         # path/channelName-plotName.png, so remove the channel name and dash
-        basename = basename.replace(channel + "-", "")
-        uploadAs = (
-            f"{channel}/{dayObsInt}/{plotGroup if plotGroup else 'default'}/{basename}"
-        )
+        plotName = basename.replace(instrument + '_night_reports' + "-", "")
+        plotFilename = f'{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}'
+        uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}")
         try:
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
             self._log.exception(
-                f"Failed to upload {filename} as {uploadAs} to {channel}"
+                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
             )
             raise ex
 
         return uploadAs
 
     @override
-    def upload(self, destinationFilename: str, sourceFilename: str) -> None:
+    def upload(self, destinationFilename: str, sourceFilename: str) -> str | None:
         """Upload a file to a storage bucket.
 
         Parameters
@@ -558,12 +560,14 @@ class S3Uploader(IUploader):
             raise UploadError(
                 f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
             )
+        return destinationFilename
 
     def uploadMovie(
         self,
-        instrument,
-        dayObs,movieFilename
-    ):
+        instrument: str,
+        dayObs: int,
+        movieFilename: str,
+    ) -> str:
         # XXX write this
         raise NotImplementedError()
 
@@ -573,8 +577,8 @@ class S3Uploader(IUploader):
         dayObs: int,
         seqNum: int,
         filename: str,
-        isFitted: bool
-    ):
+        isFitted: bool,
+    ) -> str:
         # XXX write this
         raise NotImplementedError()
 
@@ -583,7 +587,7 @@ class S3Uploader(IUploader):
         dayObs: int,
         seqNum: int,
         filename: str,
-    ):
+    ) -> str:
         # XXX write this
         raise NotImplementedError()
 
@@ -592,11 +596,16 @@ class S3Uploader(IUploader):
         dayObs: int,
         seqNum: int,
         filename: str,
-    ):
+    ) -> str:
         # XXX write this
         raise NotImplementedError()
 
-    def uploadMetdata(self, channel: str, dayObs: int, sourceFilename: str):
+    def uploadMetdata(
+        self,
+        channel: str,
+        dayObs: int,
+        sourceFilename: str
+    ) -> str:
         """Upload a file to a storage bucket.
 
         Parameters
