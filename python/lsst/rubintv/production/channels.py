@@ -49,6 +49,7 @@ KNOWN_INSTRUMENTS = (
     "tma",
 )
 
+
 def getCameraAndPlotName(channel):
     """Return the camera name for a given channel name.
     """
