@@ -723,13 +723,25 @@ class Plotter:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
             channel = f'{instPrefix}_noise_map'
             self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
-            self.s3Uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=instPrefix,
+                plotName='noise_map',
+                dayObs=dayObs,
+                seqNum=seqNum,
+                filename=noiseMapFile
+            )
 
         if doPlotMosaic:
             focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
             channel = f'{instPrefix}_focal_plane_mosaic'
             self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
-            self.s3Uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=instPrefix,
+                plotName='focal_plane_mosaic',
+                dayObs=dayObs,
+                seqNum=seqNum,
+                filename=focalPlaneFile
+            )
 
     def run(self):
         """Run continuously, calling the callback method with the latest

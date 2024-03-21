@@ -35,7 +35,7 @@ from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 
-from .channels import CHANNELS, getCameraAndPlotName
+from .channels import CHANNELS, KNOWN_INSTRUMENTS, getCameraAndPlotName
 
 _LOG = logging.getLogger(__name__)
 
@@ -201,44 +201,6 @@ class IUploader(ABC):
 
     def __init__(self):
         super().__init__()
-
-    @abstractmethod
-    def uploadPerSeqNumPlot(
-        self,
-        channel: str,
-        dayObs: int,
-        seqNum: int,
-        filename: str,
-        isLiveFile: bool = False,
-        isLargeFile: bool = False,
-    ) -> str:
-        """Upload a per-dayObs/seqNum plot to the bucket.
-
-        Parameters
-        ----------
-        channel : `str`
-            The RubinTV channel to upload to.
-        dayObsInt : `int`
-            The dayObs of the plot.
-        seqNumInt : `int`
-            The seqNum of the plot.
-        filename : `str`
-            The full path and filename of the file to upload.
-        isLiveFile : `bool`, optional
-            The file is being updated constantly, and so caching should be
-            disabled.
-        isLargeFile : `bool`, optional
-            The file is large, so add a longer timeout to the upload.
-
-        Raises
-        ------
-        ValueError
-            Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS.
-        UploadError
-            Raised if uploading the file to the Bucket was not possible.
-        """
-        raise NotImplementedError()
 
     @abstractmethod
     def uploadNightReportData(
@@ -444,10 +406,10 @@ class S3Uploader(IUploader):
         except ClientError:
             raise ConnectionError(f"Failed client connection: {bucketInfo.profileName}")
 
-    @override
     def uploadPerSeqNumPlot(
         self,
-        channel: str,
+        instrument: str,
+        plotName: str,
         dayObs: int,
         seqNum: int,
         filename: str,
@@ -456,19 +418,16 @@ class S3Uploader(IUploader):
 
         Parameters
         ----------
-        channel : `str`
-            The RubinTV channel to upload to.
+        instrument : `str`
+            The instrument the plot is for.
+        plotName : `str`
+            The name of the plot.
         dayObs : `int`
             The dayObs of the plot.
         seqNum : `int`
             The seqNum of the plot.
         filename : `str`
             The full path and filename of the file to upload.
-        isLiveFile : `bool`, optional
-            The file is being updated constantly, and so caching should be
-            disabled.
-        isLargeFile : `bool`, optional
-            The file is large, so add a longer timeout to the upload.
 
         Raises
         ------
@@ -483,19 +442,18 @@ class S3Uploader(IUploader):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
-        if channel not in CHANNELS:
-            raise ValueError(f"Error: {channel} not in {CHANNELS}")
+        if instrument not in KNOWN_INSTRUMENTS:
+            raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
 
         dayObsStr = dayObsIntToString(dayObs)
         paddedSeqNum = f"{seqNum:06}"
         extension = os.path.splitext(filename)[1]  # contains the period so don't add back later
-        camera, plotName = getCameraAndPlotName(channel)
         uploadAs = (
-            f"{camera}"
+            f"{instrument}"
             f"/{dayObsStr}"
             f"/{plotName}"
             f"/{paddedSeqNum}"
-            f"/{camera}_{plotName}_{dayObsStr}_{paddedSeqNum}{extension}"
+            f"/{instrument}_{plotName}_{dayObsStr}_{paddedSeqNum}{extension}"
         )
 
         try:
@@ -503,7 +461,7 @@ class S3Uploader(IUploader):
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
             self._log.exception(
-                f"Failed to upload {filename} as {uploadAs} to {channel}"
+                f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}"
             )
             raise e
 
@@ -601,19 +559,40 @@ class S3Uploader(IUploader):
                 f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
             )
 
-    def uploadMovie(self, instrument, dayObs, movieFilename):
+    def uploadMovie(
+        self,
+        instrument,
+        dayObs,movieFilename
+    ):
         # XXX write this
         raise NotImplementedError()
 
-    def uploadStarTrackerPlot(self, camera, dayObs, seqNum, filename, isFitted):
+    def uploadStarTrackerPlot(
+        self,
+        camera,
+        dayObs: int,
+        seqNum: int,
+        filename: str,
+        isFitted: bool
+    ):
         # XXX write this
         raise NotImplementedError()
 
-    def uploadAllSkyMovie(self, dayObs, seqNum, filename):
+    def uploadAllSkyMovie(
+        self,
+        dayObs: int,
+        seqNum: int,
+        filename: str,
+    ):
         # XXX write this
         raise NotImplementedError()
 
-    def uploadAllSkyStill(self, dayObs, seqNum, filename):
+    def uploadAllSkyStill(
+        self,
+        dayObs: int,
+        seqNum: int,
+        filename: str,
+    ):
         # XXX write this
         raise NotImplementedError()
 

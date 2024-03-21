@@ -264,10 +264,11 @@ class ImExaminerChannel(BaseButlerChannel):
             self.log.info("Uploading imExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
-                self.channelName,
-                expRecord.day_obs,
-                expRecord.seq_num,
-                tempFilename)
+                instrument='auxtel',
+                plotName='imexam',
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=tempFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
@@ -341,10 +342,11 @@ class SpecExaminerChannel(BaseButlerChannel):
             self.log.info("Uploading specExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
-                self.channelName,
-                expRecord.day_obs,
-                expRecord.seq_num,
-                tempFilename)
+                instrument='auxtel',
+                plotName='specexam',
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=tempFilename)
             self.log.info('Upload complete')
 
         except Exception as e:
@@ -413,9 +415,10 @@ class MonitorChannel(BaseButlerChannel):
             self.log.info("Uploading monitor image to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
-                channel=self.channelName,
-                observation_day=expRecord.day_obs,
-                sequence_number=expRecord.seq_num,
+                instrument='auxtel',
+                plotName='monitor',
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
                 filename=tempFilename,
             )
             self.log.info('Upload complete')
@@ -541,10 +544,11 @@ class MountTorqueChannel(BaseButlerChannel):
                 self.log.info("Uploading mount torque plot to storage bucket")
                 self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
                 self.s3Uploader.uploadPerSeqNumPlot(
-                    self.channelName,
-                    expRecord.day_obs,
-                    expRecord.seq_num,
-                    tempFilename
+                    instrument='auxtel',
+                    plotName='mount',
+                    dayObs=expRecord.day_obs,
+                    seqNum=expRecord.seq_num,
+                    filename=tempFilename
                 )
                 self.log.info('Upload complete')
 
@@ -1442,7 +1446,13 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                           filename=filename,
                                           isLiveFile=False
                                           )
-        self.s3Uploader.uploadPerSeqNumPlot(plotName, dayObs, event.seqNum, filename)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument='tma',
+            plotName='mount_motion_profile',
+            dayObs=event.dayObs,
+            seqNum=event.seqNum,
+            filename=filename
+        )
 
     def runM1M3HardpointAnalysis(self, event):
         m1m3ICSHPMaxForces = {}
@@ -1508,13 +1518,20 @@ class TmaTelemetryChannel(TimedMetadataServer):
                               commands=commands,
                               log=self.log)
         self.figure.savefig(filename)
-        self.uploader.uploadPerSeqNumPlot(plotName,
-                                          dayObs=event.dayObs,
-                                          seqNum=event.seqNum,
-                                          filename=filename,
-                                          isLiveFile=False
-                                          )
-        self.s3Uploader.uploadPerSeqNumPlot(plotName, event.dayObs, event.seqNum, filename)
+        self.uploader.uploadPerSeqNumPlot(
+            plotName,
+            dayObs=event.dayObs,
+            seqNum=event.seqNum,
+            filename=filename,
+            isLiveFile=False
+        )
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument='tma',
+            plotName='m1m3_hardpoint_profile',
+            dayObs=event.dayObs,
+            seqNum=event.seqNum,
+            filename=filename,
+        )
 
     def processDay(self, dayObs):
         """

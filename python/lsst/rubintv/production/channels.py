@@ -36,6 +36,18 @@ CHANNELS = ["summit_imexam",
 
 PREFIXES = {chan: chan.replace('_', '-') for chan in CHANNELS}
 
+KNOWN_INSTRUMENTS = (
+    "auxtel",
+    "startracker",
+    "startracker_wide",
+    "startracker_fast",
+    "allsky",
+    "comcam",
+    "slac_lsstcam",
+    "slac_ts8",
+    "fake_auxtel",
+    "tma",
+)
 
 def getCameraAndPlotName(channel):
     """Return the camera name for a given channel name.
@@ -73,7 +85,7 @@ def getCameraAndPlotName(channel):
         "auxtel_night_reports": ("auxtel", "night_reports"),
         "startracker_night_reports": ("startracker", "night_reports"),
         "startracker_metadata": ('startracker', 'metadata'),
-        "ts8_metadata": ('ts8', 'metadata'),
+        "ts8_metadata": ('slac_ts8', 'metadata'),
         "comcam_metadata": ('comcam', 'metadata'),
         "slac_lsstcam_metadata": ('slac_lsstcam', 'metadata'),
         "tma_metadata": ('tma', 'metadata'),
