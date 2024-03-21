@@ -296,6 +296,24 @@ class MultiUploader(IUploader):
         if self.hasRemote:
             self.remoteUploader.uploadMetdata(*args, **kwargs)
 
+    def uploadMovie(self, *args, **kwargs):
+        self.localUploader.uploadMovie(*args, **kwargs)
+
+        if self.hasRemote:
+            self.remoteUploader.uploadMovie(*args, **kwargs)
+
+    def uploadStarTrackerPlot(self, *args, **kwargs):
+        self.localUploader.uploadStarTrackerPlot(*args, **kwargs)
+
+        if self.hasRemote:
+            self.remoteUploader.uploadStarTrackerPlot(*args, **kwargs)
+
+    def uploadAllSkyStill(self, *args, **kwargs):
+        self.localUploader.uploadAllSkyStill(*args, **kwargs)
+
+        if self.hasRemote:
+            self.remoteUploader.uploadAllSkyStill(*args, **kwargs)
+
 
 class S3Uploader(IUploader):
     """
@@ -536,7 +554,7 @@ class S3Uploader(IUploader):
         return uploadAs
 
     @override
-    def upload(self, destinationFilename: str, sourceFilename: str) -> str | None:
+    def upload(self, destinationFilename: str, sourceFilename: str) -> str:
         """Upload a file to a storage bucket.
 
         Parameters
@@ -566,10 +584,33 @@ class S3Uploader(IUploader):
         self,
         instrument: str,
         dayObs: int,
-        movieFilename: str,
+        filename: str,
+        seqNum: int | None = None,
     ) -> str:
-        # XXX write this
-        raise NotImplementedError()
+        if instrument not in KNOWN_INSTRUMENTS:
+            raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
+
+        basename = os.path.basename(filename)
+        dayObsStr = dayObsIntToString(dayObs)
+        ext = os.path.splitext(filename)[1]  # contains the perdiod
+
+        if seqNum is None:
+            seqNum = 'final'
+        else:
+            seqNum = f"{seqNum:06}"
+
+        uploadAs = f"{instrument}/{dayObsStr}/movies/{seqNum}/{instrument}_movies_{dayObsStr}_{seqNum}{ext}"
+
+        try:
+            self.upload(destinationFilename=uploadAs, sourceFilename=filename)
+            self._log.info(f"Uploaded {filename} to {uploadAs}")
+        except Exception as ex:
+            self._log.exception(
+                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
+            )
+            raise ex
+
+        return uploadAs
 
     def uploadStarTrackerPlot(
         self,
@@ -578,15 +619,6 @@ class S3Uploader(IUploader):
         seqNum: int,
         filename: str,
         isFitted: bool,
-    ) -> str:
-        # XXX write this
-        raise NotImplementedError()
-
-    def uploadAllSkyMovie(
-        self,
-        dayObs: int,
-        seqNum: int,
-        filename: str,
     ) -> str:
         # XXX write this
         raise NotImplementedError()
