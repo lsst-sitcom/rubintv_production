@@ -132,6 +132,11 @@ def createRemoteS3UploaderForSite():
             raise ValueError(f"Unknown site: {site}")
 
 
+def checkInstrument(instrument):
+    if instrument not in KNOWN_INSTRUMENTS:
+        raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
+
+
 class Bucket(Enum):
     USDF = 1
     SUMMIT = 2
@@ -460,8 +465,7 @@ class S3Uploader(IUploader):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
-        if instrument not in KNOWN_INSTRUMENTS:
-            raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
+        checkInstrument(instrument)
 
         dayObsStr = dayObsIntToString(dayObs)
         paddedSeqNum = f"{seqNum:06}"
@@ -528,8 +532,7 @@ class S3Uploader(IUploader):
         # you change the args here (like renaming the channel to be the
         # instrument) then make sure to catch it everywhere
 
-        if instrument not in KNOWN_INSTRUMENTS:
-            raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
+        checkInstrument(instrument)
 
         if plotGroup is None:
             plotGroup = 'default'
@@ -587,8 +590,7 @@ class S3Uploader(IUploader):
         filename: str,
         seqNum: int | None = None,
     ) -> str:
-        if instrument not in KNOWN_INSTRUMENTS:
-            raise ValueError(f"Error: {instrument} not in {KNOWN_INSTRUMENTS}")
+        checkInstrument(instrument)
 
         basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
