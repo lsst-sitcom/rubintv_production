@@ -624,7 +624,7 @@ class S3Uploader(IUploader):
 
     def uploadMetdata(
         self,
-        channel: str,
+        channel: str,  # TODO: DM-43413 change this to instrument
         dayObs: int,
         sourceFilename: str
     ) -> str:
@@ -642,7 +642,10 @@ class S3Uploader(IUploader):
         UploadError
             Raised if uploading the file to the Bucket was not possible.
         """
-
+        # TODO: DM-43413 this could be tidied up to not call
+        # getCameraAndPlotName by renaming the "channel" on the
+        # TimedMetadataServer instances to just give the instrument without
+        # _metadata
         dayObsStr = dayObsIntToString(dayObs)
         camera, plotName = getCameraAndPlotName(channel)
         if plotName != "metadata":

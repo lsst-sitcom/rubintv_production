@@ -1247,8 +1247,8 @@ class NightReportChannel(BaseButlerChannel):
                                                     filename=airMassPlotFile,
                                                     plotGroup='Coverage')
                 self.s3Uploader.uploadNightReportData(
-                    self.channelName,
-                    self.dayObs,
+                    instrument='auxtel',
+                    dayObs=self.dayObs,
                     filename=airMassPlotFile,
                     plotGroup='Coverage'
                 )
@@ -1261,8 +1261,8 @@ class NightReportChannel(BaseButlerChannel):
                                                     filename=altAzCoveragePlotFile,
                                                     plotGroup='Coverage')
                 self.s3Uploader.uploadNightReportData(
-                    self.channelName,
-                    self.dayObs,
+                    instrument='auxtel',
+                    dayObs=self.dayObs,
                     filename=altAzCoveragePlotFile,
                     plotGroup='Coverage'
                 )
@@ -1283,9 +1283,9 @@ class NightReportChannel(BaseButlerChannel):
                 self.uploader.uploadNightReportData(channel=self.channelName,
                                                     dayObs=self.dayObs,
                                                     filename=jsonFilename)
-                self.s3Uploader.uploadNightReportData(
-                    self.channelName,
-                    self.dayObs,
+                self.s3Uploader.uploadNightReportData(  # XXX need to check this actually works
+                    instrument='auxtel',
+                    dayObs=self.dayObs,
                     filename=jsonFilename,
                 )
 
