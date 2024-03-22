@@ -55,34 +55,36 @@ class TestS3Uploader(unittest.TestCase):
 
     def test_uploadPerSeqNumPlot(self):
         """Test uploadPerSeqNumPlot for S3 Uploader"""
-        channel = random.choice(CHANNELS)
         observationDay = 20241515
         filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
         sequenceNumber = 1
 
         fileContent = TestS3Uploader.get_file_content(filename)
-        uploadedFile = self._s3_uploader.uploadPerSeqNumPlot(channel,
-                                                             observationDay,
-                                                             sequenceNumber,
-                                                             filename)
+        uploadedFile = self._s3_uploader.uploadPerSeqNumPlot(
+            instrument='auxtel',
+            plotName='testPlot',
+            dayObs=observationDay,
+            seqNum=sequenceNumber,
+            filename=filename
+        )
 
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
     def test_uploadNightReportData(self):
         """Test uploadNightReportData for S3 Uploader"""
-        channel = random.choice(CHANNELS)
         observationDay = 20241515
         filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
         plotGroup = "group_01"
 
         fileContent = TestS3Uploader.get_file_content(filename)
-        uploadedFile = self._s3_uploader.uploadNightReportData(channel,
-                                                               observationDay,
-                                                               filename,
-                                                               plotGroup
-                                                               )
+        uploadedFile = self._s3_uploader.uploadNightReportData(
+            instrument='auxtel',
+            dayObs=observationDay,
+            filename=filename,
+            plotGroup=plotGroup,
+        )
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
     def test_uploadMetdata(self):
@@ -92,22 +94,24 @@ class TestS3Uploader(unittest.TestCase):
                     "comcam_metadata",
                     "slac_lsstcam_metadata",
                     "tma_metadata"]
+        observationDay = 20241515
         channel = random.choice(channels)
         filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
 
         fileContent = TestS3Uploader.get_file_content(filename)
-        uploadedFile = self._s3_uploader.uploadMetdata(channel, filename)
+        uploadedFile = self._s3_uploader.uploadMetdata(channel, dayObs=observationDay, filename=filename)
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
     def test_uploadMetdata_fails_on_not_metadata_channel(self):
         """test uploadMetdata method from S3Uploader
         when using a not metadata channel causes an exception"""
         channel = "auxtel_monitor"
+        observationDay = 20241515
         filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "files/test_file_0001.txt")
         with self.assertRaises(ValueError) as context:
-            self._s3_uploader.uploadMetdata(channel, filename)
+            self._s3_uploader.uploadMetdata(channel, dayObs=observationDay, filename=filename)
         self.assertEqual(str(context.exception), "Tried to upload non-metadata file to metadata channel:" +
                                                  f"{channel}, {filename}")
 

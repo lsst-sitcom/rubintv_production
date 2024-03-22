@@ -626,7 +626,7 @@ class S3Uploader(IUploader):
         self,
         channel: str,  # TODO: DM-43413 change this to instrument
         dayObs: int,
-        sourceFilename: str
+        filename: str
     ) -> str:
         """Upload a file to a storage bucket.
 
@@ -650,10 +650,10 @@ class S3Uploader(IUploader):
         camera, plotName = getCameraAndPlotName(channel)
         if plotName != "metadata":
             raise ValueError("Tried to upload non-metadata file to metadata channel:"
-                             f"{channel}, {sourceFilename}")
+                             f"{channel}, {filename}")
 
         uploadAs = f"{camera}/{dayObsStr}/metadata.json"
-        self.upload(destinationFilename=uploadAs, sourceFilename=sourceFilename)
+        self.upload(destinationFilename=uploadAs, sourceFilename=filename)
         return uploadAs
 
     def __repr__(self):
