@@ -148,8 +148,24 @@ class TimedMetadataServer:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
             for file in filesTouched:
                 self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
-                self.s3Uploader.uploadMetdata(self.channelName, file)
+                dayObs = self.dayObsFromFilename(file)
+                self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
         return
+
+    def dayObsFromFilename(self, filename):
+        """Get the dayObs from a metadata sidecar filename.
+
+        Parameters
+        ----------
+        filename : `str`
+            The filename.
+
+        Returns
+        -------
+        dayObs : `int`
+            The dayObs.
+        """
+        return int(os.path.basename(filename).split("_")[1].split(".")[0])
 
     def getSidecarFilename(self, dayObs):
         """Get the name of the metadata sidecar file for the dayObs.
