@@ -43,11 +43,11 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, QuantumGraph
+from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
-from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory, PreExecInit
+from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
