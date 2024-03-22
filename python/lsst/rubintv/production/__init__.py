@@ -33,3 +33,4 @@ from .uploaders import *
 from .allSky import *
 from .baseChannels import *
 from .starTracker import *
+from .pipelineRunning import *
