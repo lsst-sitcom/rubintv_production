@@ -80,13 +80,16 @@ def prepRunCollection(butler, pipelineGraph, run):
     for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
 
         inputRefs = [butler.find_dataset(readEdge.dataset_type_name, collections=[run])
-                     if readEdge.dataset_type_name not in readEdge.dataset_type_name else initRefs[readEdge.dataset_type_name]
+                     if readEdge.dataset_type_name not in readEdge.dataset_type_name
+                     else initRefs[readEdge.dataset_type_name]
                      for readEdge in taskNode.init.inputs.values()]
         task = taskFactory.makeTask(taskDef, butler, inputRefs)
 
         for writeEdge in taskNode.init.outputs.values():
             datasetTypeName = writeEdge.dataset_type_name
-            initRefs[datasetTypeName] = butler.put(getattr(task, writeEdge.connection_name), datasetTypeName, run=run)
+            initRefs[datasetTypeName] = butler.put(
+                getattr(task, writeEdge.connection_name), datasetTypeName, run=run
+            )
 
 
 class HeadProcessController:
