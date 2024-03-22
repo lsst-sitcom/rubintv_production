@@ -25,9 +25,13 @@ import enum
 import logging
 from ast import literal_eval
 from time import sleep
+import io
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
+from lsst.daf.butler import MissingCollectionError, CollectionType
+from lsst.pipe.base import Pipeline
+from lsst.ctrl.mpexec import TaskFactory
 from .redisUtils import RedisHelper
 
 
@@ -60,6 +64,27 @@ class VisitProcessingMode(enum.IntEnum):
     ALTERNATING_BY_TWOS = 2
 
 
+def prepRunCollection(butler, pipelineGraph, run):
+    """This should only be run once with a particular combination of
+    pipelinegraph and run.
+
+    This writes the schemas (and the configs? to check). It does *not* write
+    the software versions!
+    """
+    initRefs = {}
+    taskFactory = TaskFactory()
+    for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
+
+        inputRefs = [butler.find_dataset(readEdge.dataset_type_name, collections=[run])
+                     if readEdge.dataset_type_name not in readEdge.dataset_type_name else initRefs[readEdge.dataset_type_name]
+                     for readEdge in taskNode.init.inputs.values()]
+        task = taskFactory.makeTask(taskDef, butler, inputRefs)
+
+        for writeEdge in taskNode.init.outputs.values():
+            datasetTypeName = writeEdge.dataset_type_name
+            initRefs[datasetTypeName] = butler.put(getattr(task, writeEdge.connection_name), datasetTypeName, run=run)
+
+
 class HeadProcessController:
     """The head node, which controls which pods process which images.
 
@@ -69,7 +94,7 @@ class HeadProcessController:
     remotely controlled by a RemoteController, for example to change the
     processing strategy from a notebook or from LOVE.
     """
-    def __init__(self):
+    def __init__(self, outputChain=None, forceNewRun=False):
         self.instrument = 'LSSTCam'
         self.name = f'headNode-{self.instrument}'
         self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
@@ -79,6 +104,43 @@ class HeadProcessController:
         self.visitMode = VisitProcessingMode.CONSTANT
         self.remoteController = RemoteController()
         self.nDispatched = 0
+
+        self.sfmPipelineUri = '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/RA-ops-rehearsal-3.yaml'
+        self.sfmPipelineGraph = Pipeline.fromFile(self.sfmPipelineUri).to_graph(registry=self.butler.registry)
+        with io.BytesIO() as f:
+            self.sfmPipelineGraph._write_stream(f)
+            self.sfmPipelineGraphBytes = f.getvalue()
+
+        self.outputChain = f'{self.instument}/quickLook' if not outputChain else outputChain
+        self.run = self.getLatestRun(forceNewRun=forceNewRun)
+
+    def getLatestRun(self, forceNewRun):
+        try:
+            allRuns = self.butler.registry.getCollectionChain(self.outputChain)
+        except MissingCollectionError:
+            self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
+            allRuns = []
+
+        if not allRuns:
+            lastRun = f'{self.outputChain}/0'
+            self.butler.registerCollection(lastRun, CollectionType.RUN)
+            prepRunCollection(self.butler, self.sfmPipelineGraph, lastRun)
+            self.butler.setCollectionChain(self.outputChain, [lastRun])
+        elif forceNewRun:
+            lastRun = int(allRuns[-1]) + 1
+            self.butler.registerCollection(lastRun, CollectionType.RUN)
+            prepRunCollection(self.butler, self.sfmPipelineGraph, lastRun)
+            self.butler.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
+        else:
+            lastRun = allRuns[-1]
+            # XXX check here if we need a new run, and if so, push it and prep
+            # it
+        return lastRun
+
+    def checkIfNewRunNeeded(self):
+        """Check if a new run is needed, and if so, create it and prep it.
+        """
+        pass
 
     def doFanout(self, expRecord):
         """Send the expRecord out for processing based on current selection.
