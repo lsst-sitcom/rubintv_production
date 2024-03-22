@@ -71,6 +71,10 @@ def prepRunCollection(butler, pipelineGraph, run):
     This writes the schemas (and the configs? to check). It does *not* write
     the software versions!
     """
+    newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
+    if not newRun:
+        return newRun
+
     initRefs = {}
     taskFactory = TaskFactory()
     for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
