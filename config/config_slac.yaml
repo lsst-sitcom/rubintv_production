@@ -1,5 +1,5 @@
 # Required items:
-dataIdScanPath: '/scratch/rubintv/dataIds'
+dataIdScanPath: '/sdf/scratch/rubin/rapid-analysis/dataIds'
 bucketName: 'rubintv_data_slac'
 
 # Butler paths - use full paths not aliases here as path existence is checked
@@ -7,17 +7,17 @@ ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
 botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
 
 # # data paths
-scratchPath: '/scratch/rubintv'
-plotPath: '/scratch/rubintv/plots'
-calculatedDataPath: '/scratch/rubintv/calculatedData'
+scratchPath: ''
+plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
+calculatedDataPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData'
 
 # # paths for serving TS8 metadata at SLAC
-ts8MetadataPath: '/scratch/rubintv/ts8/sidecar_metadata'
-ts8MetadataShardPath: '/scratch/rubintv/ts8/sidecar_metadata/shards'
+ts8MetadataPath: '/sdf/scratch/rubin/rapid-analysis/ts8/sidecar_metadata'
+ts8MetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/ts8/sidecar_metadata/shards'
 
 # # paths for serving BOT metadata at SLAC
-botMetadataPath: '/scratch/rubintv/LSSTCam/sidecar_metadata'
-botMetadataShardPath: '/scratch/rubintv/LSSTCam/sidecar_metadata'
+botMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata'
+botMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata'
 
 # configuration
 binning: 8
