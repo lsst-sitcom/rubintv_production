@@ -36,6 +36,7 @@ from astro_metadata_translator import ObservationInfo
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
 from lsst.utils import getPackageDir
+from lsst.utils.iteration import ensure_iterable
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
@@ -1690,6 +1691,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          instrument=instrument,
                          # writeable true is required to define visits
                          butler=butler,
+                         watcherType='file',  # XXX remove this hard coding
+                         detectors=ensure_iterable(detector),
                          dataProduct='raw',
                          channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
                          doRaise=doRaise)
@@ -1737,33 +1740,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         # XXX add any necessary data-drive logic here to choose if we process
         return True
-
-    @staticmethod
-    def runPreExecInit(butler, pipelineGraph, runCollection, registerDatasetTypes=False):
-        """This will be called on the head node, and won't be called by the
-        worker.
-        """
-
-        assert butler.run is None
-
-        emptyQg = QuantumGraph(
-            dict.fromkeys(pipelineGraph._iter_task_defs(), set()),
-            universe=butler.dimensions
-        )
-
-        butler = dafButler.Butler(butler=butler, run=runCollection)
-
-        preExec = PreExecInit(
-            butler=butler,
-            taskFactory=TaskFactory(),
-        )  # XXX this NEEDS to move to the head node and be run before it fans data out
-        # XXX we also need to work out how to make the head node detect
-        # that a new run collection is needed, and make one when that is
-        # the case, automatically
-        preExec.initialize(
-            emptyQg,
-            registerDatasetTypes=registerDatasetTypes,
-        )
 
     def callback(self, expRecord, pipelineGraphBytes=None, runCollection=None):
         """Method called on each new expRecord as it is found in the repo.
