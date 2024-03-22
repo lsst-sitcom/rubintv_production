@@ -1581,6 +1581,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
 
+# from .processingControl import WorkerHead
+# class SomeClass(WorkerHead):
+#     pipelineUri: str
+#     pipelineGraphByte: bytes
+    # softwareVersionHash: str
+
 
 class SingleCorePipelineRunner(BaseButlerChannel):
     """Class for detector-parallel or single-core pipelines, e.g. SFM.
@@ -1674,6 +1680,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """This will be called on the head node, and won't be called by the
         worker.
         """
+
         assert butler.run is None
 
         emptyQg = QuantumGraph(
