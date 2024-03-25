@@ -101,8 +101,9 @@ class HeadProcessController:
     remotely controlled by a RemoteController, for example to change the
     processing strategy from a notebook or from LOVE.
     """
-    def __init__(self, outputChain=None, forceNewRun=False):
-        self.instrument = 'LSSTCam'
+    def __init__(self, butler, instrument, outputChain=None, forceNewRun=False):
+        self.butler = butler
+        self.instrument = instrument
         self.name = f'headNode-{self.instrument}'
         self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
         self.redisHelper = RedisHelper(isHeadNode=True)
@@ -112,13 +113,15 @@ class HeadProcessController:
         self.remoteController = RemoteController()
         self.nDispatched = 0
 
-        self.sfmPipelineUri = '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/RA-ops-rehearsal-3.yaml'
+        steps = ('step1', 'step2a', 'nightlyRollup')
+        stepStr = '#' + ','.join(steps)
+        self.sfmPipelineUri = '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook-ops-rehearsal-3.yaml' + stepStr
         self.sfmPipelineGraph = Pipeline.fromFile(self.sfmPipelineUri).to_graph(registry=self.butler.registry)
         with io.BytesIO() as f:
             self.sfmPipelineGraph._write_stream(f)
             self.sfmPipelineGraphBytes = f.getvalue()
 
-        self.outputChain = f'{self.instument}/quickLook' if not outputChain else outputChain
+        self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
         self.run = self.getLatestRun(forceNewRun=forceNewRun)
 
     def getLatestRun(self, forceNewRun):
@@ -130,14 +133,14 @@ class HeadProcessController:
 
         if not allRuns:
             lastRun = f'{self.outputChain}/0'
-            self.butler.registerCollection(lastRun, CollectionType.RUN)
+            self.butler.registry.registerCollection(lastRun, CollectionType.RUN)
             prepRunCollection(self.butler, self.sfmPipelineGraph, lastRun)
-            self.butler.setCollectionChain(self.outputChain, [lastRun])
+            self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
         elif forceNewRun:
             lastRun = int(allRuns[-1]) + 1
-            self.butler.registerCollection(lastRun, CollectionType.RUN)
+            self.butler.registry.registerCollection(lastRun, CollectionType.RUN)
             prepRunCollection(self.butler, self.sfmPipelineGraph, lastRun)
-            self.butler.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
+            self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
         else:
             lastRun = allRuns[-1]
             # XXX check here if we need a new run, and if so, push it and prep
