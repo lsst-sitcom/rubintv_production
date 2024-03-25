@@ -278,6 +278,12 @@ class LocationConfig:
         return getSiteConfig(self.location)
 
     @cached_property
+    def butlerPath(self):
+        file = self._config['butlerPath']
+        self._checkFile(file)
+        return file
+
+    @cached_property
     def ts8ButlerPath(self):
         file = self._config['ts8ButlerPath']
         self._checkFile(file)
@@ -296,8 +302,20 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def metadataPath(self):
+        directory = self._config['metadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def auxTelMetadataPath(self):
         directory = self._config['auxTelMetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def metadataShardPath(self):
+        directory = self._config['metadataShardPath']
         self._checkDir(directory)
         return directory
 
