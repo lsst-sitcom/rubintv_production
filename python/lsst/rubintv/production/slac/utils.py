@@ -373,4 +373,8 @@ def gainsToPtcDataset(gains):
         def gain(self):
             return self.gains
 
+        @property
+        def ptcTurnoff(self):
+            return {ampName: 2e19 for ampName in self.gains.keys()}
+
     return FakePtcDataset(gains)

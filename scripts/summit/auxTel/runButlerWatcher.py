@@ -24,6 +24,7 @@ import sys
 from lsst.rubintv.production import ButlerWatcher
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.watchers import writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -32,6 +33,7 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running butler watcher at {location}...')
 butler = butlerUtils.makeDefaultLatissButler()
+writeDimensionUniverseFile(butler, locationConfig)
 dataProducts = ['raw', 'quickLookExp']
 butlerWatcher = ButlerWatcher(locationConfig=locationConfig,
                               instrument='LATISS',
