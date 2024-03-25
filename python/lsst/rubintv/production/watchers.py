@@ -21,10 +21,12 @@
 
 import logging
 import os
+import json
 from glob import glob
 from time import sleep
 
 import lsst.daf.butler as dafButler
+from lsst.daf.butler import DimensionUniverse, DimensionConfig
 from lsst.utils.iteration import ensure_iterable
 
 from .uploaders import Heartbeater
@@ -38,6 +40,18 @@ from .utils import (raiseIf,
                     )
 
 _LOG = logging.getLogger(__name__)
+
+
+def writeDimensionUniverseFile(butler, locationConfig):
+    """Run on butler watcher startup.
+    """
+    with open(locationConfig.dimensionUniverseFile, 'w') as f:
+        f.write(json.dumps(butler.dimensions.dimensionConfig.toDict()))
+
+
+def getDimensionUniverse(locationConfig):
+    duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
+    return DimensionUniverse(DimensionConfig(duJson))
 
 
 class FileWatcher:
@@ -118,8 +132,10 @@ class FileWatcher:
 
         expRecordJson = safeJsonOpen(filename)
         # TODO: DM-39225 pretty sure this line breaks the old behavior
-        expRecord = dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
-                                                                   universe=dafButler.DimensionUniverse())
+        expRecord = dafButler.dimensions.DimensionRecord.from_json(
+            expRecordJson,
+            universe=getDimensionUniverse(self.locationConfig)
+        )
         return expRecord
 
     def run(self, callback, **kwargs):
