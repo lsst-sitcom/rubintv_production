@@ -718,30 +718,31 @@ class Plotter:
         seqNum = expRecord.seq_num
         instPrefix = self.getInstrumentChannelName(self.instrument)
 
-        # TODO: Need some kind of wait mechanism for each of these
         if doPlotNoises:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_noise_map'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=instPrefix,
-                plotName='noise_map',
-                dayObs=dayObs,
-                seqNum=seqNum,
-                filename=noiseMapFile
-            )
+            if noiseMapFile:  # only upload on plot success
+                channel = f'{instPrefix}_noise_map'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument=instPrefix,
+                    plotName='noise_map',
+                    dayObs=dayObs,
+                    seqNum=seqNum,
+                    filename=noiseMapFile
+                )
 
         if doPlotMosaic:
             focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_focal_plane_mosaic'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=instPrefix,
-                plotName='focal_plane_mosaic',
-                dayObs=dayObs,
-                seqNum=seqNum,
-                filename=focalPlaneFile
-            )
+            if focalPlaneFile:  # only upload on plot success
+                channel = f'{instPrefix}_focal_plane_mosaic'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument=instPrefix,
+                    plotName='focal_plane_mosaic',
+                    dayObs=dayObs,
+                    seqNum=seqNum,
+                    filename=focalPlaneFile
+                )
 
     def run(self):
         """Run continuously, calling the callback method with the latest
