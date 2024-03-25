@@ -419,6 +419,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def comCamSimMetadataPath(self):
+        directory = self._config['comCamSimMetadataPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamSimMetadataShardPath(self):
+        directory = self._config['comCamSimMetadataShardPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self):
         directory = self._config['botMetadataPath']
         self._checkDir(directory)

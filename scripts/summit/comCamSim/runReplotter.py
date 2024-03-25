@@ -27,7 +27,7 @@ from lsst.rubintv.production.utils import LocationConfig
 import lsst.daf.butler as dafButler
 
 setupLogging()
-print('Running ComCam replotter...')
+print('Running ComCamSim replotter...')
 
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)

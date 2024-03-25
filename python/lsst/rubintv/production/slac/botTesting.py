@@ -202,8 +202,8 @@ class RawProcesser:
                 metadataShardPath = locationConfig.ts8MetadataShardPath
             case 'LSSTComCam':
                 metadataShardPath = locationConfig.comCamMetadataShardPath
-            case 'LSSTComCamSim':  # treat it as the same instrument for now
-                metadataShardPath = locationConfig.comCamMetadataShardPath
+            case 'LSSTComCamSim':
+                metadataShardPath = locationConfig.comCamSimMetadataShardPath
             case 'LSSTCam':
                 metadataShardPath = locationConfig.botMetadataShardPath
             case _:
@@ -684,7 +684,7 @@ class Plotter:
             case 'LSSTComCam':
                 return 'comcam'
             case 'LSSTComCamSim':  # treat as same as ComCam for now
-                return 'comcam'
+                return 'comcam_sim'
             case 'LSSTCam':
                 return 'slac_lsstcam'
             case _:

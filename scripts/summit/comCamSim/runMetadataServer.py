@@ -31,9 +31,9 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f'Running ComCam metadata server at {location}...')
 
-metadataDirectory = locationConfig.comCamMetadataPath
-shardsDirectory = locationConfig.comCamMetadataShardPath
-channelName = 'comcam_metadata'
+metadataDirectory = locationConfig.comCamSimMetadataPath
+shardsDirectory = locationConfig.comCamSimMetadataShardPath
+channelName = 'comcam_sim_metadata'
 
 ts8MetadataServer = TimedMetadataServer(locationConfig=locationConfig,
                                         metadataDirectory=metadataDirectory,
