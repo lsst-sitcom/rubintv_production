@@ -31,7 +31,7 @@ print('Running LSSTComCamSim butler watcher...')
 
 location = 'usdf_comcamsim' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTComCamSim/raw/all',
+butler = dafButler.Butler(locationConfig.butlerPath, collections=['LSSTComCamSim/raw/all',
                                                                      'LSSTComCamSim/calib'])
 butlerWatcher = ButlerWatcher(butler=butler,
                               locationConfig=locationConfig,
