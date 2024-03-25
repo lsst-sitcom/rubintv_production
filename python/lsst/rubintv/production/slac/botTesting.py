@@ -111,7 +111,7 @@ def isOneRaft(instrument):
     instrument : `str`
         The instrument.
     """
-    return instrument in ['LSST-TS8', 'LSSTComCam']
+    return instrument in ['LSST-TS8', 'LSSTComCam', 'LSSTComCamSim']
 
 
 def getNumExpectedItems(expRecord, logger=None):
@@ -142,7 +142,7 @@ def getNumExpectedItems(expRecord, logger=None):
         fallbackValue = 1
     elif instrument == "LSSTCam":
         fallbackValue = 201
-    elif instrument in ["LSST-TS8", "LSSTComCam"]:
+    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
         fallbackValue = 9
     else:
         raise ValueError(f"Unknown instrument {instrument}")
@@ -192,7 +192,7 @@ class RawProcesser:
         If True, raise exceptions instead of logging them.
     """
     def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
-        if instrument not in ['LSST-TS8', 'LSSTCam', 'LSSTComCam']:
+        if instrument not in ['LSST-TS8', 'LSSTCam', 'LSSTComCam', 'LSSTComCamSim']:
             raise ValueError(f'Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam')
         self.locationConfig = locationConfig
         self.butler = butler
@@ -202,6 +202,8 @@ class RawProcesser:
                 metadataShardPath = locationConfig.ts8MetadataShardPath
             case 'LSSTComCam':
                 metadataShardPath = locationConfig.comCamMetadataShardPath
+            case 'LSSTComCamSim':
+                metadataShardPath = locationConfig.comCamSimMetadataShardPath
             case 'LSSTCam':
                 metadataShardPath = locationConfig.botMetadataShardPath
             case _:
@@ -273,6 +275,8 @@ class RawProcesser:
                     detNameForGains = raw.detector.getName().split('_')[1]
                 case 'LSSTComCam':
                     # the dict is keyed by the detector's short name like TS8
+                    detNameForGains = raw.detector.getName().split('_')[1]
+                case 'LSSTComCamSim':  # treat as same as ComCam for now
                     detNameForGains = raw.detector.getName().split('_')[1]
                 case 'LSSTCam':
                     # the dict is keyed by the detector's full name e.g R01_S21
@@ -401,7 +405,7 @@ class RawProcesser:
             detectorList = TS8_REB_HEADER_DETECTORS
             rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
             itemName = f'REB{rebNumber} Header'
-        elif self.instrument == 'LSSTComCam':
+        elif self.instrument in ['LSSTComCam', 'LSSTComCamSim']:
             detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
             rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
             itemName = f'REB{rebNumber} Header'
@@ -679,6 +683,8 @@ class Plotter:
                 return 'ts8'
             case 'LSSTComCam':
                 return 'comcam'
+            case 'LSSTComCamSim':  # treat as same as ComCam for now
+                return 'comcam_sim'
             case 'LSSTCam':
                 return 'slac_lsstcam'
             case _:
