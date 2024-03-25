@@ -43,6 +43,7 @@ KNOWN_INSTRUMENTS = (
     "startracker_fast",
     "allsky",
     "comcam",
+    "comcam_sim",
     "slac_lsstcam",
     "slac_ts8",
     "fake_auxtel",
@@ -88,6 +89,7 @@ def getCameraAndPlotName(channel):
         "startracker_metadata": ('startracker', 'metadata'),
         "ts8_metadata": ('slac_ts8', 'metadata'),
         "comcam_metadata": ('comcam', 'metadata'),
+        "comcam_sim_metadata": ('comcam_sim', 'metadata'),
         "slac_lsstcam_metadata": ('slac_lsstcam', 'metadata'),
         "tma_metadata": ('tma', 'metadata'),
 
