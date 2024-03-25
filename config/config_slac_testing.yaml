@@ -1,3 +1,5 @@
+dimensionUniverseFile: '/sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json'
+
 # AuxTel metadata
 auxTelMetadataPath: '/sdf/home/m/mfl/u/rubintv/sidecar_metadata'
 auxTelMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards'

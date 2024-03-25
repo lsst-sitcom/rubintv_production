@@ -1,3 +1,5 @@
+dimensionUniverseFile: '/sdf/group/rubin/u/mfl/rubintv/butlerDimensionUniverse.json'
+
 # metadata
 metadataOutputRoot: "/sdf/group/rubin/u/mfl/rubintv/sidecar_metadata/"
 

@@ -1,20 +1,21 @@
 # Required items:
-dataIdScanPath: '/home/mfisherlevine/rubintv/rubintv/dataIds'
+dataIdScanPath: '/home/mfl/rubintv/rubintv/dataIds'
 bucketName: 'rubintv_data'
+dimensionUniverseFile: '/home/mfl/rubintv/rubintv/butlerDimensionUniverse.json'
 
 # Summit items:
-nightReportPath:     '/home/mfisherlevine/rubintv/rubintv/nightReportData'
+nightReportPath:     '/home/mfl/rubintv/rubintv/nightReportData'
 
 # AuxTel metadata
-auxTelMetadataPath: '/home/mfisherlevine/rubintv/rubintv/sidecar_metadata'
-auxTelMetadataShardPath: '/home/mfisherlevine/rubintv/rubintv/sidecar_metadata/shards'
+auxTelMetadataPath: '/home/mfl/rubintv/rubintv/sidecar_metadata'
+auxTelMetadataShardPath: '/home/mfl/rubintv/rubintv/sidecar_metadata/shards'
 
 # all sky
 allSkyRootDataPath: '/project/rubintv/allsky/raw'
-allSkyOutputPath: '/home/mfisherlevine/rubintv/rubintv/allsky'
+allSkyOutputPath: '/home/mfl/rubintv/rubintv/allsky'
 
 # animation
-moviePngPath: '/home/mfisherlevine/rubintv/rubintv/auxTel_animation'
+moviePngPath: '/home/mfl/rubintv/rubintv/auxTel_animation'
 
 # Star Trackers paths:
 # The path at which to find the data on disk. Does not include the
@@ -22,11 +23,11 @@ moviePngPath: '/home/mfisherlevine/rubintv/rubintv/auxTel_animation'
 starTrackerDataPath: '/project'
 
 # for writing the per-day json files and shards to for the star tracker channels
-starTrackerMetadataPath: '/home/mfisherlevine/rubintv/rubintv/starTracker/sidecar_metadata'
-starTrackerMetadataShardPath: '/home/mfisherlevine/rubintv/rubintv/starTracker/sidecar_metadata/shards'
+starTrackerMetadataPath: '/home/mfl/rubintv/rubintv/starTracker/sidecar_metadata'
+starTrackerMetadataShardPath: '/home/mfl/rubintv/rubintv/starTracker/sidecar_metadata/shards'
 
 # for writing the rendered pngs of the a.net fits out to
-starTrackerOutputPath: '/home/mfisherlevine/rubintv/rubintv/starTracker/output'
+starTrackerOutputPath: '/home/mfl/rubintv/rubintv/starTracker/output'
 
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
