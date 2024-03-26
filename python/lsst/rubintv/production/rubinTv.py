@@ -34,7 +34,6 @@ from astro_metadata_translator import ObservationInfo
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
 from lsst.utils import getPackageDir
-from lsst.utils.iteration import ensure_iterable
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import ReferenceObjectLoader

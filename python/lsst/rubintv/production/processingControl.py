@@ -30,8 +30,10 @@ import io
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
 from lsst.daf.butler import MissingCollectionError, CollectionType
-from lsst.pipe.base import Pipeline, PipelineGraph
+from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
+from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.ctrl.mpexec import TaskFactory
+
 from .redisUtils import RedisHelper
 
 
@@ -67,7 +69,8 @@ class VisitProcessingMode(enum.IntEnum):
 def prepRunCollection(
     butler,
     pipelineGraph: PipelineGraph,
-    run):
+    run
+):
     """This should only be run once with a particular combination of
     pipelinegraph and run.
 
@@ -113,7 +116,7 @@ def defineVisit(butler, expRecord):
         The exposure record to define the visit for.
     """
     instr = Instrument.from_string(butler.registry.defaults.dataId['instrument'],
-                                    butler.registry)
+                                   butler.registry)
     config = DefineVisitsConfig()
     instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
@@ -144,9 +147,11 @@ def getVisitId(butler, expRecord):
         return visitDataId['visit']
     else:
         # XXX fix self here
-        self.log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
-                            " define-visits?")
+        log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
+        log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
+                    " define-visits?")
         return None
+
 
 class HeadProcessController:
     """The head node, which controls which pods process which images.

@@ -37,7 +37,6 @@ from .utils import (raiseIf,
                     getGlobPatternForDataProduct,
                     getGlobPatternForShardedData,
                     safeJsonOpen,
-                    expRecordFromJson,
                     ALLOWED_DATASET_TYPES,
                     )
 

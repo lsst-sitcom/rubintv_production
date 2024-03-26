@@ -27,8 +27,7 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 
 from lsst.utils.iteration import ensure_iterable
 
-from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
+from lsst.pipe.base import Pipeline, PipelineGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask
