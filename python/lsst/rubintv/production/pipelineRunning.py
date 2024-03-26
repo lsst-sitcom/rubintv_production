@@ -72,8 +72,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         butler,
         instrument,
         pipeline,
-        detector,  # XXX NEEDS to not be here so that gather type steps work
         run,
+        awaitsDataProduct,
         *,
         embargo=False,
         doRaise=False
@@ -83,11 +83,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          # writeable true is required to define visits
                          butler=butler,
                          watcherType='file',  # XXX remove this hard coding
-                         detectors=ensure_iterable(detector),
-                         dataProduct='raw',
+                         detectors=ensure_iterable([]),  # XXX deal with this on the base class
+                         dataProduct=awaitsDataProduct,  # XXX consider renaming this on baseclass post OR3
                          channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
                          doRaise=doRaise)
-        self.detector = detector
         self.instrument = instrument
         self.butler = butler
         self.pipelineGraph = Pipeline.fromFile(pipeline).to_graph(registry=self.butler.registry)
@@ -114,15 +113,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         noCopyOnCache = ('bias', 'dark', 'flat', 'defects', 'camera')
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
-    def doProcessImage(self, expRecord):
+    def doProcessImage(self, dataId):
         """Determine if we should skip this image.
 
         Should take responsibility for logging the reason for skipping.
 
         Parameters
         ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
+        dataId : `lsst.daf.butler.DataCoordinate`
+            The data coordinate.
 
         Returns
         -------
@@ -132,7 +131,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # XXX add any necessary data-drive logic here to choose if we process
         return True
 
-    def callback(self, expRecord, pipelineGraphBytes=None, runCollection=None):
+    def callback(self, dataId, pipelineGraphBytes=None, runCollection=None):
         """Method called on each new expRecord as it is found in the repo.
 
         Runs on the quickLookExp and writes shards with various measured
@@ -144,14 +143,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
-        if not self.doProcessImage(expRecord):
+        # XXX dataId, awaitsDatasetTypeName will both be in the payload so
+        # unpack here.
+
+        if not self.doProcessImage(dataId):
             return
 
         if runCollection is not None:
             self.runCollection = runCollection
 
         try:
-            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             # tStart = time.time()
 
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
@@ -161,22 +162,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.pipelineGraphBytes = pipelineGraphBytes
                     self.limitedButler = self.makeLimitedButler(self.butler)
 
-            # XXX question for the future/KT: who should be defining visits on
-            # the summit? Jim confirmed it doesn't cause harm if only one
-            # detector is ingested as it iterates over the camera
-            visit = self.getVisitId(expRecord)
-            if not visit:  # define the visit if that hasn't been done
-                self.defineVisit(expRecord)
-                visit = self.getVisitId(expRecord)
-
-            where = 'detector=d AND exposure=e AND visit=v AND instrument=i'
-            bind = {'d': self.detector, 'e': dataId['exposure'], 'v': visit, 'i': self.instrument}
+            where = " AND ".join(f'{k}=_{k}' for k in dataId.mapping)
+            bind = {f'_{k}': v for k, v in dataId.mapping.items()}
             builder = AllDimensionsQuantumGraphBuilder(
                 self.pipelineGraph,
                 self.butler,
                 where=where,
                 bind=bind,
                 clobber=True,
+                input_collections=self.butler.collections + (self.runCollection, ),
                 output_run=self.runCollection,
             )
 
@@ -189,9 +183,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # 2) it needs to do the same thing the bot testing code does of
             #    waiting up to the nominal timeout and then moving on with what
             #    it got
-            exp = self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
-            if not exp:
-                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+
+            # this waits for it to land and caches on the butler but don't
+            # bother to even catch it. Then check for empty qg and raise is
+            # that is the case.
+            self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
 
             qg = builder.build(
                 metadata={
@@ -202,6 +198,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     "time": f"{datetime.datetime.now()}",
                 }
             )
+
+            if not qg:
+                raise RuntimeError(f"No work found for {dataId}")
 
             executor = SingleQuantumExecutor(
                 None,
@@ -246,53 +245,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             binSize=self.locationConfig.binning
         )
         self.log.info(f'Wrote binned image for {dRef.dataId}')
-
-    def defineVisit(self, expRecord):
-        """Define a visit in the registry, given an expRecord.
-
-        Note that this takes about 9ms regardless of whether it exists, so it
-        is no quicker to check than just run the define call.
-
-        NB: butler must be writeable for this to work.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record to define the visit for.
-        """
-        instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'],
-                                       self.butler.registry)
-        config = DefineVisitsConfig()
-        instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
-
-        task = DefineVisitsTask(config=config, butler=self.butler)
-
-        task.run([{'exposure': expRecord.id}], collections=self.butler.collections)
-
-    def getVisitId(self, expRecord):
-        """Lookup visitId for an expRecord or dataId containing an exposureId
-        or other uniquely identifying keys such as dayObs and seqNum.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record for which to get the visit id.
-
-        Returns
-        -------
-        visitDataId : `int`
-            The visitId, as an int.
-        """
-        expIdDict = {'exposure': expRecord.id}
-        visitDataIds = self.butler.registry.queryDataIds(["visit"], dataId=expIdDict)
-        visitDataIds = list(set(visitDataIds))
-        if len(visitDataIds) == 1:
-            visitDataId = visitDataIds[0]
-            return visitDataId['visit']
-        else:
-            self.log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
-                             " define-visits?")
-            return None
 
     def clobber(self, object, datasetType, visitDataId):
         """Put object in the butler.
