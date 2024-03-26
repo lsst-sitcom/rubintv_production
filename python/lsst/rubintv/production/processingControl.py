@@ -30,7 +30,7 @@ import io
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
 from lsst.daf.butler import MissingCollectionError, CollectionType
-from lsst.pipe.base import Pipeline
+from lsst.pipe.base import Pipeline, PipelineGraph
 from lsst.ctrl.mpexec import TaskFactory
 from .redisUtils import RedisHelper
 
@@ -64,7 +64,10 @@ class VisitProcessingMode(enum.IntEnum):
     ALTERNATING_BY_TWOS = 2
 
 
-def prepRunCollection(butler, pipelineGraph, run):
+def prepRunCollection(
+    butler,
+    pipelineGraph: PipelineGraph,
+    run):
     """This should only be run once with a particular combination of
     pipelinegraph and run.
 
@@ -74,6 +77,10 @@ def prepRunCollection(butler, pipelineGraph, run):
     newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
     if not newRun:
         return newRun
+
+    for datasetTypeNode in pipelineGraph.dataset_types.values():
+        if pipelineGraph.producer_of(datasetTypeNode.name) is not None:
+            butler.registry.registerDatasetType(datasetTypeNode.dataset_type)
 
     initRefs = {}
     taskFactory = TaskFactory()
@@ -88,7 +95,7 @@ def prepRunCollection(butler, pipelineGraph, run):
         for writeEdge in taskNode.init.outputs.values():
             datasetTypeName = writeEdge.dataset_type_name
             initRefs[datasetTypeName] = butler.put(
-                getattr(task, writeEdge.connection_name), datasetTypeName, run=run
+                getattr(task, writeEdge.connection_name), datasetTypeName, run=run,
             )
 
 
