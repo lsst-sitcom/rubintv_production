@@ -131,7 +131,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # XXX add any necessary data-drive logic here to choose if we process
         return True
 
-    def callback(self, dataId, pipelineGraphBytes=None, runCollection=None):
+    def callback(self, payload, runCollection=None):
         """Method called on each new expRecord as it is found in the repo.
 
         Runs on the quickLookExp and writes shards with various measured
@@ -145,6 +145,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         # XXX dataId, awaitsDatasetTypeName will both be in the payload so
         # unpack here.
+        dataId = payload.dataId
+        pipelineGraphBytes = payload.pipelineGraphBytes
 
         if not self.doProcessImage(dataId):
             return

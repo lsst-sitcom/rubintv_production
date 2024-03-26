@@ -19,10 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
+import base64
 from dataclasses import dataclass
 import json
 
-from lsst.daf.butler.dimensions import DimensionRecord
+from lsst.daf.butler import DataCoordinate, Butler
 from lsst.rubintv.production.utils import expRecordFromJson
 
 
@@ -31,35 +34,29 @@ class Payload:
     """
     A dataclass representing a payload.
     """
-    expRecord: DimensionRecord
-    detector: int
-    pipeline: str
+    dataId: DataCoordinate
+    pipelineGraphBytes: bytes
 
     @classmethod
-    def from_json(cls, json_str: str) -> 'Payload':
+    def from_json(
+        cls,
+        json_str: str,
+        butler: Butler,
+    ) -> Payload:
         json_dict = json.loads(json_str)
-        expRecordJson = json_dict.pop('expRecord')  # must pop so it doesn't get passed to cls
-        expRecord = expRecordFromJson(expRecordJson)
-        return cls(expRecord=expRecord, **json_dict)
+        dataId = butler.registry.expandDataId(json_dict['dataId'])
+        pipelineGraphBytes = base64.b64decode(json_dict['pipelineGraphBytes'].encode())
+        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes)
 
     def to_json(self) -> str:
-        json_dict = self.__dict__.copy()  # need a copy in order to mutate expRecord item safely
-        json_dict['expRecord'] = json_dict['expRecord'].to_simple().json()
+        json_dict = {
+            'dataId': dict(self.dataId.mapping),
+            'pipelineGraphBytes': base64.b64encode(self.pipelineGraphBytes).decode()
+        }
         return json.dumps(json_dict)
 
-    def __eq__(self, __value: object) -> bool:
-        """Check that two payloads are equal.
-
-        Note that internally, the expRecords are only compared on their dataId,
-        not their full contents.
-        """
-        if isinstance(__value, Payload):
-            return (
-                self.expRecord == __value.expRecord
-                and self.detector == __value.detector
-                and self.pipeline == __value.pipeline
-            )
-        return False
+    def __repr__(self):
+        return f"Payload(dataId={self.dataId}, pipelineGraphBytes=<the bytes>)"
 
 
 @dataclass(frozen=True)
