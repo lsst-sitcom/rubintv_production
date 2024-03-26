@@ -26,7 +26,6 @@ from dataclasses import dataclass
 import json
 
 from lsst.daf.butler import DataCoordinate, Butler
-from lsst.rubintv.production.utils import expRecordFromJson
 
 
 @dataclass(frozen=True)
