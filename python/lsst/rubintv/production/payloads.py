@@ -71,10 +71,10 @@ class PayloadResult(Payload):
 
     def __eq__(self, __value: object) -> bool:
         return (
-            super().__eq__(__value)
-            and self.startTime == __value.startTime
-            and self.endTime == __value.endTime
-            and self.splitTimings == __value.splitTimings
-            and self.success == __value.success
-            and self.message == __value.message
+            super().__eq__(__value) and
+            self.startTime == __value.startTime and
+            self.endTime == __value.endTime and
+            self.splitTimings == __value.splitTimings and
+            self.success == __value.success and
+            self.message == __value.message
         )
