@@ -86,7 +86,7 @@ def getCameraAndPlotName(channel):
         "auxtel_metadata": ('auxtel', 'metadata'),
         "auxtel_night_reports": ("auxtel", "night_reports"),
         "startracker_night_reports": ("startracker", "night_reports"),
-        "startracker_metadata": ('startracker', 'metadata'),
+        "startracker_metadata": ('startracker_narrow', 'metadata'),
         "ts8_metadata": ('slac_ts8', 'metadata'),
         "comcam_metadata": ('comcam', 'metadata'),
         "comcam_sim_metadata": ('comcam_sim', 'metadata'),
