@@ -99,6 +99,55 @@ def prepRunCollection(
             )
 
 
+def defineVisit(butler, expRecord):
+    """Define a visit in the registry, given an expRecord.
+
+    Note that this takes about 9ms regardless of whether it exists, so it
+    is no quicker to check than just run the define call.
+
+    NB: butler must be writeable for this to work.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to define the visit for.
+    """
+    instr = Instrument.from_string(butler.registry.defaults.dataId['instrument'],
+                                    butler.registry)
+    config = DefineVisitsConfig()
+    instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
+
+    task = DefineVisitsTask(config=config, butler=butler)
+
+    task.run([{'exposure': expRecord.id}], collections=butler.collections)
+
+
+def getVisitId(butler, expRecord):
+    """Lookup visitId for an expRecord or dataId containing an exposureId
+    or other uniquely identifying keys such as dayObs and seqNum.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record for which to get the visit id.
+
+    Returns
+    -------
+    visitDataId : `int`
+        The visitId, as an int.
+    """
+    expIdDict = {'exposure': expRecord.id}
+    visitDataIds = butler.registry.queryDataIds(["visit"], dataId=expIdDict)
+    visitDataIds = list(set(visitDataIds))
+    if len(visitDataIds) == 1:
+        visitDataId = visitDataIds[0]
+        return visitDataId['visit']
+    else:
+        # XXX fix self here
+        self.log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
+                            " define-visits?")
+        return None
+
 class HeadProcessController:
     """The head node, which controls which pods process which images.
 
