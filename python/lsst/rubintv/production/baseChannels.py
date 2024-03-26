@@ -160,6 +160,9 @@ class BaseButlerChannel(BaseChannel):
             Either the dataProduct being waited for, or ``None`` if timeout was
             exceeded.
         """
+        if self.dataProduct is None:
+            return
+
         cadence = 0.25
         start = time.time()
         while time.time() - start < timeout:
