@@ -44,6 +44,7 @@ KNOWN_INSTRUMENTS = (
     "allsky",
     "comcam",
     "comcam_sim",
+    "comcam_sim_prep",
     "slac_lsstcam",
     "slac_ts8",
     "fake_auxtel",
@@ -90,6 +91,7 @@ def getCameraAndPlotName(channel):
         "ts8_metadata": ('slac_ts8', 'metadata'),
         "comcam_metadata": ('comcam', 'metadata'),
         "comcam_sim_metadata": ('comcam_sim', 'metadata'),
+        "comcam_sim_prep_metadata": ('comcam_sim_prep', 'metadata'),
         "slac_lsstcam_metadata": ('slac_lsstcam', 'metadata'),
         "tma_metadata": ('tma', 'metadata'),
 
