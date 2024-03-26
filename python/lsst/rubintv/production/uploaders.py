@@ -81,7 +81,7 @@ def createLocalS3UploaderForSite(httpsProxy=''):
                 bucket=Bucket.SUMMIT,
                 httpsProxy=httpsProxy
             )
-        case "usdf":
+        case site if site in ['usdf', 'rubin-devl']:
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.USDF,
