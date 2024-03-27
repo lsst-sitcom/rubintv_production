@@ -1505,14 +1505,16 @@ class TmaTelemetryChannel(TimedMetadataServer):
             ax = self.figure.gca()
             ax.clear()
 
-            newEvent = (event.seqNum not in self.plotsMade['MountMotionAnalysis'] and
+            newEvent = (event.seqNum not in self.plotsMade['MountMotionAnalysis'] or
                         event.seqNum not in self.plotsMade['M1M3HardpointAnalysis'])
 
+            rowData = {}
             if event.seqNum not in self.plotsMade['MountMotionAnalysis']:
                 try:
-                    rowData = self.runMountMotionAnalysis(event)
+                    self.runMountMotionAnalysis(event)  # writes its own shard
                 except Exception as e:
-                    rowData = {event.seqNum: {'Plotting failed?': '😔'}}
+                    data = {event.seqNum: {'Plotting failed?': '😔'}}
+                    rowData.update(data)
                     self.log.exception(f'Failed to plot event {event.seqNum}')
                     raiseIf(self.doRaise, e, self.log)
                 finally:  # don't retry plotting on failure
@@ -1520,16 +1522,18 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
             if event.seqNum not in self.plotsMade['M1M3HardpointAnalysis']:
                 try:
-                    rowData = self.runM1M3HardpointAnalysis(event)
+                    self.runM1M3HardpointAnalysis(event)  # writes its own shard
                 except Exception as e:
-                    rowData = {event.seqNum: {'ICS processing error?': '😔'}}
+                    data = {event.seqNum: {'ICS processing error?': '😔'}}
+                    rowData.update(data)
                     self.log.exception(f'Failed to plot event {event.seqNum}')
                     raiseIf(self.doRaise, e, self.log)
                 finally:  # don't retry plotting on failure
                     self.plotsMade['M1M3HardpointAnalysis'].add(event.seqNum)
 
             if newEvent:
-                rowData = self.eventToMetadataRow(event)
+                data = self.eventToMetadataRow(event)
+                rowData.update(data)
                 writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
         return
