@@ -540,10 +540,17 @@ class S3Uploader(IUploader):
         basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
 
-        # the plot filenames have the channel name saved into them in the form
-        # path/channelName-plotName.png, so remove the channel name and dash
-        plotName = basename.replace(instrument + '_night_reports' + "-", "")
-        uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotName}")
+        if basename == 'md.json':  # it's not a plot, so special case this one case
+            uploadAs = (
+                f"{instrument}/{dayObsStr}/night_report/{instrument}_night_report_{dayObsStr}_{basename}"
+            )
+        else:
+            # the plot filenames have the channel name saved into them in the form
+            # path/channelName-plotName.png, so remove the channel name and dash
+            plotName = basename.replace(instrument + '_night_reports' + "-", "")
+            plotFilename = f'{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}'
+            uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}")
+
         try:
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
