@@ -174,7 +174,7 @@ class LatissPlot(BasePlot):
         plt.close()
 
         self.uploader.uploadNightReportData(channel=self.channelName,
-                                            dayObsInt=self.dayObs,
+                                            dayObs=self.dayObs,
                                             filename=saveFile,
                                             plotGroup=self.plotGroup)
 
@@ -239,7 +239,7 @@ class StarTrackerPlot(BasePlot):
         plt.close()
 
         self.uploader.uploadNightReportData(channel=self.channelName,
-                                            dayObsInt=self.dayObs,
+                                            dayObs=self.dayObs,
                                             filename=saveFile,
                                             plotGroup=self.plotGroup)
 

@@ -209,7 +209,7 @@ class IUploader(ABC):
 
     @abstractmethod
     def uploadNightReportData(
-        self, channel: str, dayObsInt: int, filename: str, plotGroup: Optional[str]
+        self, channel: str, dayObs: int, filename: str, plotGroup: Optional[str]
     ) -> str:
         """Upload night report type plot or json file to a night
            report channel.
@@ -795,7 +795,7 @@ class Uploader:
     def uploadNightReportData(
         self,
         channel,
-        dayObsInt,
+        dayObs,
         filename,
         plotGroup="",
     ):
@@ -830,7 +830,7 @@ class Uploader:
         # path/channelName-plotName.png, so remove the channel name and dash
         basename = basename.replace(channel + "-", "")
         uploadAs = (
-            f"{channel}/{dayObsInt}/{plotGroup if plotGroup else 'default'}/{basename}"
+            f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
         )
 
         blob = self.bucket.blob(uploadAs)
