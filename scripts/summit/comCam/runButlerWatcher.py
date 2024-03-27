@@ -31,10 +31,10 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 print(f'Running ComCam butler watcher at {location}...')
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all'])
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all'])
 butlerWatcher = ButlerWatcher(butler=butler,
                               locationConfig=locationConfig,
-                              instrument='LSSTComCam',
+                              instrument='LSSTComCamSim',
                               dataProducts='raw',
                               doRaise=True)
 butlerWatcher.run()

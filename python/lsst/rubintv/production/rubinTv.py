@@ -76,7 +76,6 @@ from .utils import (
     catchPrintOutput,
     NumpyEncoder,
 )
-from .uploaders import Uploader, Heartbeater
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
 from .plotting import latissNightReportPlots
@@ -90,8 +89,6 @@ __all__ = [
     'MonitorChannel',
     'MountTorqueChannel',
     'MetadataCreator',
-    'Uploader',
-    'Heartbeater',
     'CalibrateCcdRunner',
     'NightReportChannel',
     'TmaTelemetryChannel',

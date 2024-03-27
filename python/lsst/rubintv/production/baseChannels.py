@@ -26,7 +26,7 @@ from abc import ABC, abstractmethod
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
-from .watchers import FileWatcher
+from .watchers import FileWatcher, RedisWatcher
 from .uploaders import Uploader
 
 __all__ = [
@@ -106,28 +106,38 @@ class BaseButlerChannel(BaseChannel):
                  instrument,
                  butler,
                  dataProduct,
+                 detectors,
                  channelName,
+                 watcherType,
                  doRaise,
                  ):
-        fileWatcher = FileWatcher(locationConfig=locationConfig,
+        if watcherType == 'file':
+            watcher = FileWatcher(locationConfig=locationConfig,
                                   instrument=instrument,
                                   dataProduct=dataProduct,
                                   heartbeatChannelName=channelName,
                                   doRaise=doRaise)
+        elif watcherType == 'redis':
+            watcher = RedisWatcher(detectors=detectors, dataProduct=dataProduct)
+        else:
+            raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
         log = logging.getLogger(f'lsst.rubintv.production.{channelName}')
         super().__init__(locationConfig=locationConfig,
                          log=log,
-                         watcher=fileWatcher,
+                         watcher=watcher,
                          doRaise=doRaise)
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
+        # XXX will keeping detectors in the class be necessary, or does it only
+        # need to go in the RedisWatcher
+        self.detectors = detectors
 
     @abstractmethod
     def callback(self, expRecord):
         raise NotImplementedError()
 
-    def _waitForDataProduct(self, dataId, timeout=20):
+    def _waitForDataProduct(self, dataId, timeout=20, gettingButler=None):
         """Wait for a dataProduct to land inside a repo.
 
         Wait for a maximum of ``timeout`` seconds for a dataProduct to land,
@@ -140,6 +150,9 @@ class BaseButlerChannel(BaseChannel):
         timeout : `float`
             The timeout, in seconds, to wait before giving up and returning
             ``None``.
+        gettingButler : `lsst.daf.butler.LimitedButler`
+            The butler to use. If ``None``, uses the butler attribute. Provided
+            so that a CachingLimitedButler can be used instead.
 
         Returns
         -------
@@ -147,11 +160,18 @@ class BaseButlerChannel(BaseChannel):
             Either the dataProduct being waited for, or ``None`` if timeout was
             exceeded.
         """
+        if self.dataProduct is None:
+            return
+
         cadence = 0.25
         start = time.time()
         while time.time() - start < timeout:
             if butlerUtils.datasetExists(self.butler, self.dataProduct, dataId):
-                return self.butler.get(self.dataProduct, dataId)
+                if gettingButler is None:
+                    return self.butler.get(self.dataProduct, dataId)
+                else:
+                    ref = self.butler.find_dataset(self.dataProduct, dataId)
+                    return gettingButler.get(ref)
             else:
                 sleep(cadence)
         self.log.warning(f'Waited {timeout}s for {self.dataProduct} for {dataId} to no avail')

@@ -30,11 +30,11 @@ location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 print(f'Running raw processor for detector 3 at {location}...')
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all',
-                                                                        'LSSTComCam/calib'])
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
+                                                                        'LSSTComCamSim/calib'])
 rawProcessor = RawProcesser(butler=butler,
                             locationConfig=locationConfig,
-                            instrument='LSSTComCam',
+                            instrument='LSSTComCamSim',
                             detectors=3,
                             doRaise=True)
 rawProcessor.run()

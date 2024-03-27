@@ -30,6 +30,7 @@ from lsst.daf.butler import DimensionUniverse, DimensionConfig
 from lsst.utils.iteration import ensure_iterable
 
 from .uploaders import Heartbeater
+from .redisUtils import RedisHelper
 
 from .utils import (raiseIf,
                     writeDataIdFile,
@@ -38,6 +39,12 @@ from .utils import (raiseIf,
                     safeJsonOpen,
                     ALLOWED_DATASET_TYPES,
                     )
+
+__all__ = (
+    'FileWatcher',
+    'RedisWatcher',
+    'ButlerWatcher'
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -114,6 +121,12 @@ class FileWatcher:
         ----------
         previousExpId : `int`, optional
             The previous exposure id.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.DimensionRecord` or `None`
+            The most recent exposure record, or `None` if no new record was
+            found.
         """
         pattern = getGlobPatternForDataProduct(dataIdPath=self.locationConfig.dataIdScanPath,
                                                dataProduct=self.dataProduct,
@@ -166,6 +179,39 @@ class FileWatcher:
                 raiseIf(self.doRaise, e, self.log)
 
 
+class RedisWatcher():
+    """A redis-based watcher, looking for work in a redis queue from the
+    HeadProcessController.
+
+    Parameters
+    ----------
+    detectors : `int` or `list` [`int`]
+        The detector, or detectors, to process data for.
+    """
+    def __init__(self, detectors, dataProduct):
+        self.redisHelper = RedisHelper()
+        self.detectors = list(ensure_iterable(detectors))
+        self.queues = [f'{detector}-{dataProduct}' for detector in self.detectors]
+        self.heartbeater = None  # TODO once we have websockets to the front end
+        self.cadence = 0.1  # seconds - this is fine, redis likes a beating
+
+    def run(self, callback, **kwargs):
+        """Run forever, calling ``callback`` on each most recent expRecord.
+
+        Parameters
+        ----------
+        callback : `callable`
+            The callback to run, with the most recent expRecord as the
+            argument.
+        """
+        while True:
+            sleep(self.cadence)
+            for detector, queue in zip(self.detectors, self.queues):
+                expRecord = self.redisHelper.getWork(queue)
+                if expRecord is not None:
+                    callback(expRecord, detector=detector, **kwargs)
+
+
 class ButlerWatcher:
     """A main watcher, which polls the butler for new data.
 
@@ -200,6 +246,7 @@ class ButlerWatcher:
         self.dataProducts = list(ensure_iterable(dataProducts))  # must call list or we get a generator back
         self.doRaise = doRaise
         self.log = _LOG.getChild("butlerWatcher")
+        self.redisHelper = RedisHelper(isHeadNode=True)
 
     def _getLatestExpRecords(self):
         """Get the most recent expRecords from the butler.
@@ -299,6 +346,7 @@ class ButlerWatcher:
                         self._deleteExistingData(found['raw'])
 
                     for product, expRecord in found.items():
+                        self.redisHelper.pushDataId(product, expRecord)
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
                     # beat after the callback so as not to delay processing
