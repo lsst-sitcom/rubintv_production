@@ -651,7 +651,9 @@ class StarTrackerNightReportChannel(BaseChannel):
                                    locationConfig=self.locationConfig,
                                    # TODO: DM-43413 switch to MultiUploader and
                                    # remove GCS
-                                   uploader=self.uploader)
+                                   uploader=self.uploader,
+                                   s3Uploader=self.s3Uploader,
+                                   )
                 plot.createAndUpload(md)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotName}")

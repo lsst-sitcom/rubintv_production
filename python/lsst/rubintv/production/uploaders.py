@@ -543,8 +543,7 @@ class S3Uploader(IUploader):
         # the plot filenames have the channel name saved into them in the form
         # path/channelName-plotName.png, so remove the channel name and dash
         plotName = basename.replace(instrument + '_night_reports' + "-", "")
-        plotFilename = f'{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}'
-        uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}")
+        uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotName}")
         try:
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")

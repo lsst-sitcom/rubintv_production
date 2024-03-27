@@ -1204,7 +1204,9 @@ class NightReportChannel(BaseButlerChannel):
                                    locationConfig=self.locationConfig,
                                    # TODO: DM-43413 switch this to be the
                                    # s3Uploader
-                                   uploader=self.uploader)
+                                   uploader=self.uploader,
+                                   s3Uploader=self.s3Uploader
+                                   )
                 plot.createAndUpload(report, md, ccdVisitTable)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotName}")
