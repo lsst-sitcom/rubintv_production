@@ -1448,7 +1448,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                                           )
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument='tma',
-            plotName='mount_motion_profile',
+            plotName='mount',
             dayObs=event.dayObs,
             seqNum=event.seqNum,
             filename=filename
@@ -1527,7 +1527,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
         )
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument='tma',
-            plotName='m1m3_hardpoint_profile',
+            plotName='m1m3_hardpoint',
             dayObs=event.dayObs,
             seqNum=event.seqNum,
             filename=filename,
