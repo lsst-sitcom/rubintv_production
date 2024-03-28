@@ -25,7 +25,6 @@ import enum
 import logging
 from ast import literal_eval
 from time import sleep
-import io
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
@@ -34,8 +33,8 @@ from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.ctrl.mpexec import TaskFactory
 
-from .redisUtils import RedisHelper, getNewDataQueueName
-from .payloads import Payload
+from .redisUtils import RedisHelper
+from .payloads import Payload, pipelineGraphToBytes
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -167,26 +166,41 @@ class HeadProcessController:
     remotely controlled by a RemoteController, for example to change the
     processing strategy from a notebook or from LOVE.
     """
-    def __init__(self, butler, instrument, locationConfig, outputChain=None, forceNewRun=False):
+    def __init__(self, butler, instrument, locationConfig, pipelineFile, outputChain=None, forceNewRun=False):
         self.butler = butler
         self.instrument = instrument
         self.locationConfig = locationConfig
+        self.basePipeline = pipelineFile
         self.name = getHeadNodeName(instrument)
         self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
         self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
-        self.remoteController = RemoteController(butler=butler , locationConfig=locationConfig)
+        self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
         self.nDispatched = 0
 
         steps = ('step1', 'step2a', 'nightlyRollup')
-        stepStr = '#' + ','.join(steps)
-        self.sfmPipelineUri = '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook-ops-rehearsal-3.yaml' + stepStr
-        self.sfmPipelineGraph = Pipeline.fromFile(self.sfmPipelineUri).to_graph(registry=self.butler.registry)
-        with io.BytesIO() as f:
-            self.sfmPipelineGraph._write_stream(f)
-            self.sfmPipelineGraphBytes = f.getvalue()
+        allStepString = '#' + ','.join(steps)
+
+        self.pipelineGraphUris = {}
+        self.pipelineGraphs = {}
+        self.pipelineGraphsBytes = {}
+
+        for step in steps:
+            stepStr = '#' + step
+            self.pipelineGraphUris[step] = self.basePipeline + stepStr
+            self.pipelineGraphs[step] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
+                registry=self.butler.registry
+            )
+            self.pipelineGraphsBytes[step] = pipelineGraphToBytes(self.pipelineGraphs[step])
+
+        allStepString = '#' + ','.join(steps)
+        self.pipelineGraphUris['full'] = self.basePipeline + allStepString
+        self.pipelineGraphs['full'] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
+            registry=self.butler.registry
+        )
+        self.pipelineGraphsBytes['full'] = pipelineGraphToBytes(self.pipelineGraphs['full'])
 
         self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
         self.outputRun = self.getLatestRun(forceNewRun=forceNewRun)  # XXX currently unused?
@@ -201,12 +215,12 @@ class HeadProcessController:
         if not allRuns:
             lastRun = f'{self.outputChain}/0'
             self.butler.registry.registerCollection(lastRun, CollectionType.RUN)
-            prepRunCollection(self.butler, self.sfmPipelineGraph, lastRun)
+            prepRunCollection(self.butler, self.pipelineGraphsBytes['full'], lastRun)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
         elif forceNewRun:
             lastRun = int(allRuns[-1]) + 1
             self.butler.registry.registerCollection(lastRun, CollectionType.RUN)
-            prepRunCollection(self.butler, self.sfmPipelineGraph, lastRun)
+            prepRunCollection(self.butler, self.pipelineGraphsBytes['full'], lastRun)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
         else:
             lastRun = allRuns[-1]
@@ -247,7 +261,7 @@ class HeadProcessController:
             # queueName = self.getFreeWorkerQueue(detectorId)  # XXX need to work this part out
             workerDepth = 0  # get this from the function above
             queueName = f'SFM-WORKER-{detectorId:02}-{workerDepth:02}'
-            payload = Payload(dataId, self.sfmPipelineGraphBytes)
+            payload = Payload(dataId, self.pipelineGraphsBytes['step1'])
             self.redisHelper.enqueuePayload(payload, queueName)
 
         self.nDispatched += 1  # required for the alternating by twos mode

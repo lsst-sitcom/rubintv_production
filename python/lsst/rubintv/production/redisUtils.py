@@ -362,6 +362,9 @@ class RedisHelper:
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
         keys = sorted(r.keys('*'))
+        if not keys:
+            print("Nothing in the Redis database.")
+            return
 
         for key in keys:
             key = decode_string(key)
