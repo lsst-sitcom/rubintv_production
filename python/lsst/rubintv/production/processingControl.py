@@ -204,6 +204,7 @@ class HeadProcessController:
 
         self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
         self.outputRun = self.getLatestRun(forceNewRun=forceNewRun)  # XXX currently unused?
+        prepRunCollection(butler, self.pipelineGraphs['full'], run=self.outputRun)
 
     def getLatestRun(self, forceNewRun):
         try:
@@ -231,7 +232,7 @@ class HeadProcessController:
     def checkIfNewRunNeeded(self):
         """Check if a new run is needed, and if so, create it and prep it.
         """
-        pass
+        raise NotImplementedError
 
     def doFanout(self, expRecord):
         """Send the expRecord out for processing based on current selection.
