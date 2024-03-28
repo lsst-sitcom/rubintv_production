@@ -171,12 +171,12 @@ class RedisWatcher:
     detectors : `int` or `list` [`int`]
         The detector, or detectors, to process data for.
     """
-    def __init__(self, butler, locationConfig, detectors, dataProduct):
+    def __init__(self, butler, locationConfig, queueName):
         self.redisHelper = RedisHelper(butler, locationConfig)
-        self.detectors = list(ensure_iterable(detectors))  # XXX should this still be iterable?
-        self.queues = [f'{detector}-{dataProduct}' for detector in self.detectors]
+        self.queueName = queueName
         self.heartbeater = None  # TODO once we have websockets to the front end
         self.cadence = 0.1  # seconds - this is fine, redis likes a beating
+        self.log = _LOG.getChild("redisWatcher")
 
     def run(self, callback, **kwargs):
         """Run forever, calling ``callback`` on each most recent expRecord.
@@ -184,15 +184,22 @@ class RedisWatcher:
         Parameters
         ----------
         callback : `callable`
-            The callback to run, with the most recent expRecord as the
+            The callback to run, with the most recent ``Payload`` as the
             argument.
         """
         while True:
-            sleep(self.cadence)
-            for detector, queue in zip(self.detectors, self.queues):
-                expRecord = self.redisHelper.getWork(queue)
-                if expRecord is not None:
-                    callback(expRecord, detector=detector, **kwargs)
+            self.redisHelper.announceFree(self.queueName)
+            payload = self.redisHelper.dequeuePayload(self.queueName)
+            if payload is not None:
+                try:
+                    self.redisHelper.announceBusy(self.queueName)
+                    callback(payload)
+                except Exception as e:
+                    self.log.error(f"Error processing payload {payload}: {e}")
+                finally:
+                    self.redisHelper.announceFree(self.queueName)
+            else:  # only sleep when no work is found
+                sleep(self.cadence)
 
 
 class ButlerWatcher:
