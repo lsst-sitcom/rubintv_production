@@ -21,12 +21,9 @@
 
 import logging
 import os
-import json
 from glob import glob
 from time import sleep
 
-import lsst.daf.butler as dafButler
-from lsst.daf.butler import DimensionUniverse, DimensionConfig
 from lsst.utils.iteration import ensure_iterable
 
 from .uploaders import Heartbeater
@@ -38,6 +35,7 @@ from .utils import (raiseIf,
                     getGlobPatternForShardedData,
                     safeJsonOpen,
                     ALLOWED_DATASET_TYPES,
+                    expRecordFromJson,
                     )
 
 __all__ = (
@@ -47,18 +45,6 @@ __all__ = (
 )
 
 _LOG = logging.getLogger(__name__)
-
-
-def writeDimensionUniverseFile(butler, locationConfig):
-    """Run on butler watcher startup.
-    """
-    with open(locationConfig.dimensionUniverseFile, 'w') as f:
-        f.write(json.dumps(butler.dimensions.dimensionConfig.toDict()))
-
-
-def getDimensionUniverse(locationConfig):
-    duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
-    return DimensionUniverse(DimensionConfig(duJson))
 
 
 class FileWatcher:
@@ -145,10 +131,7 @@ class FileWatcher:
 
         expRecordJson = safeJsonOpen(filename)
         # TODO: DM-39225 pretty sure this line breaks the old behavior
-        expRecord = dafButler.dimensions.DimensionRecord.from_json(
-            expRecordJson,
-            universe=getDimensionUniverse(self.locationConfig)
-        )
+        expRecord = expRecordFromJson(expRecordJson, self.locationConfig)
         return expRecord
 
     def run(self, callback, **kwargs):
@@ -179,7 +162,7 @@ class FileWatcher:
                 raiseIf(self.doRaise, e, self.log)
 
 
-class RedisWatcher():
+class RedisWatcher:
     """A redis-based watcher, looking for work in a redis queue from the
     HeadProcessController.
 
@@ -188,9 +171,9 @@ class RedisWatcher():
     detectors : `int` or `list` [`int`]
         The detector, or detectors, to process data for.
     """
-    def __init__(self, detectors, dataProduct):
-        self.redisHelper = RedisHelper()
-        self.detectors = list(ensure_iterable(detectors))
+    def __init__(self, butler, locationConfig, detectors, dataProduct):
+        self.redisHelper = RedisHelper(butler, locationConfig)
+        self.detectors = list(ensure_iterable(detectors))  # XXX should this still be iterable?
         self.queues = [f'{detector}-{dataProduct}' for detector in self.detectors]
         self.heartbeater = None  # TODO once we have websockets to the front end
         self.cadence = 0.1  # seconds - this is fine, redis likes a beating
@@ -246,7 +229,7 @@ class ButlerWatcher:
         self.dataProducts = list(ensure_iterable(dataProducts))  # must call list or we get a generator back
         self.doRaise = doRaise
         self.log = _LOG.getChild("butlerWatcher")
-        self.redisHelper = RedisHelper(isHeadNode=True)
+        self.redisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
 
     def _getLatestExpRecords(self):
         """Get the most recent expRecords from the butler.
@@ -346,7 +329,8 @@ class ButlerWatcher:
                         self._deleteExistingData(found['raw'])
 
                     for product, expRecord in found.items():
-                        self.redisHelper.pushDataId(product, expRecord)
+                        if product == 'raw':  # only push raws to redis
+                            self.redisHelper.pushNewExposureToHeadNode(expRecord)
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
                     # beat after the callback so as not to delay processing
