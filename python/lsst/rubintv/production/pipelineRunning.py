@@ -36,6 +36,7 @@ from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from .utils import raiseIf
 from .baseChannels import BaseButlerChannel
 from .slac.mosaicing import writeBinnedImage
+from .payloads import pipelineGraphToBytes
 
 __all__ = [
     'SingleCorePipelineRunner',
@@ -70,34 +71,33 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         locationConfig,
         butler,
         instrument,
-        pipeline,
-        run,
+        pipeline,  # not pulled from the locationConfig to allow notebook/debug usage
+        step,
         awaitsDataProduct,
+        queueName,
         *,
-        embargo=False,
         doRaise=False
     ):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          # writeable true is required to define visits
                          butler=butler,
-                         watcherType='file',  # XXX remove this hard coding
+                         watcherType='redis',  # XXX remove this hard coding
                          detectors=ensure_iterable([]),  # XXX deal with this on the base class
                          dataProduct=awaitsDataProduct,  # XXX consider renaming this on baseclass post OR3
                          channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
-                         doRaise=doRaise)
+                         queueName=queueName,
+                         doRaise=doRaise,
+                         )
         self.instrument = instrument
         self.butler = butler
-        self.pipelineGraph = Pipeline.fromFile(pipeline).to_graph(registry=self.butler.registry)
-        self.runCollection = run
+        self.pipeline = pipeline + f"#{step}"
+        self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
+        self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
 
-        with io.BytesIO() as f:
-            self.pipelineGraph._write_stream(f)
-            # the pipeline as gzip compressed json, don't worry about it, it's
-            # for comparison and nothing else
-            self.pipelineGraphBytes = f.getvalue()
-
+        self.runCollection = None
         self.limitedButler = self.makeLimitedButler(butler)
+        # self.redisHelper.announceFree(self.queueName)
 
     def makeLimitedButler(self, butler):
         cachedOnGet = set()
@@ -130,7 +130,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # XXX add any necessary data-drive logic here to choose if we process
         return True
 
-    def callback(self, payload, runCollection=None):
+    def callback(self, payload):
         """Method called on each new expRecord as it is found in the repo.
 
         Runs on the quickLookExp and writes shards with various measured
@@ -146,18 +146,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # unpack here.
         dataId = payload.dataId
         pipelineGraphBytes = payload.pipelineGraphBytes
+        self.runCollection = payload.run
 
         if not self.doProcessImage(dataId):
             return
 
-        if runCollection is not None:
-            self.runCollection = runCollection
-
         try:
-            # tStart = time.time()
-
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
-                self.log.info('Pipeline graph has changed, updating')
+                self.log.warning('Pipeline graph has changed, updating')
                 with io.BytesIO(pipelineGraphBytes) as f:
                     self.pipelineGraph = PipelineGraph._read_stream(f)  # to be public soon
                     self.pipelineGraphBytes = pipelineGraphBytes

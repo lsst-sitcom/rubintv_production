@@ -77,6 +77,7 @@ def prepRunCollection(
     This writes the schemas (and the configs? to check). It does *not* write
     the software versions!
     """
+    import ipdb as pdb; pdb.set_trace()
     newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
     if not newRun:
         return newRun
@@ -170,7 +171,7 @@ class HeadProcessController:
         self.butler = butler
         self.instrument = instrument
         self.locationConfig = locationConfig
-        self.basePipeline = pipelineFile
+        self._basePipeline = pipelineFile
         self.name = getHeadNodeName(instrument)
         self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
@@ -189,14 +190,14 @@ class HeadProcessController:
 
         for step in steps:
             stepStr = '#' + step
-            self.pipelineGraphUris[step] = self.basePipeline + stepStr
+            self.pipelineGraphUris[step] = self._basePipeline + stepStr
             self.pipelineGraphs[step] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
                 registry=self.butler.registry
             )
             self.pipelineGraphsBytes[step] = pipelineGraphToBytes(self.pipelineGraphs[step])
 
         allStepString = '#' + ','.join(steps)
-        self.pipelineGraphUris['full'] = self.basePipeline + allStepString
+        self.pipelineGraphUris['full'] = self._basePipeline + allStepString
         self.pipelineGraphs['full'] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
             registry=self.butler.registry
         )
@@ -204,7 +205,7 @@ class HeadProcessController:
 
         self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
         self.outputRun = self.getLatestRun(forceNewRun=forceNewRun)  # XXX currently unused?
-        prepRunCollection(butler, self.pipelineGraphs['full'], run=self.outputRun)
+        prepRunCollection(butler, self.pipelineGraphs['step1'], run=self.outputRun)
 
     def getLatestRun(self, forceNewRun):
         try:
@@ -265,7 +266,11 @@ class HeadProcessController:
             # queueName = self.getFreeWorkerQueue(detectorId)  # XXX need to work this part out
             workerDepth = 0  # get this from the function above
             queueName = f'SFM-WORKER-{detectorId:02}-{workerDepth:02}'
-            payload = Payload(dataId, self.pipelineGraphsBytes['step1'])
+            payload = Payload(
+                dataId=dataId,
+                pipelineGraphBytes=self.pipelineGraphsBytes['step1'],
+                run=self.outputRun
+            )
             self.redisHelper.enqueuePayload(payload, queueName)
 
         self.nDispatched += 1  # required for the alternating by twos mode
