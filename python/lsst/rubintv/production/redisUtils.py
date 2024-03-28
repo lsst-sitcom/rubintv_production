@@ -394,6 +394,24 @@ class RedisHelper:
             else:
                 print(f"Unsupported type for key: {key}")
 
+    def clearRedis(self, force=False):
+        """Clear all keys in the Redis database.
+
+        Parameters
+        ----------
+        force : `bool`, optional
+            Whether to clear the Redis database without user confirmation.
+            Default is ``False``.
+        """
+        if not force:
+            print("Are you sure you want to clear the Redis database? This action cannot be undone.")
+            print("Type 'yes' to confirm.")
+            response = input()
+            if response != 'yes':
+                print("Clearing aborted.")
+                return
+        self.redis.flushdb()
+
     def monitorRedis(self, interval=1):
         """Continuously display the contents of Redis database in the console.
 
