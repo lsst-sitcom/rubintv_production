@@ -20,21 +20,34 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
+
+instrument = 'LSSTComCamSim'
 
 setupLogging()
 location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 print(f'Running raw processor for detector 0 at {location}...')
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                        'LSSTComCamSim/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTComCamSim',
-                            detectors=0,
-                            doRaise=True)
-rawProcessor.run()
+butler = dafButler.Butler(
+    locationConfig.comCamButlerPath,
+    collections=[
+        'LSSTComCamSim/defaults',
+    ],
+    writeable=True
+)
+
+sfmRunner = SingleCorePipelineRunner(
+    butler=butler,
+    locationConfig=locationConfig,
+    instrument=instrument,
+    pipeline=locationConfig.sfmPipelineFile,
+    step='step1',
+    awaitsDataProduct='raw',
+    doRaise=True,
+    queueName='SFM-WORKER-00-00'
+)
+sfmRunner.run()
