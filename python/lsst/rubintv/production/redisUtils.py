@@ -28,6 +28,7 @@ import time
 
 from lsst.summit.utils.utils import getSite
 
+from .payloads import Payload
 from .utils import expRecordFromJson
 
 # Check if the environment is a notebook
@@ -138,14 +139,18 @@ def getRedisSecret(filename='$HOME/.lsst/redis_secret.ini'):
         return f.read().strip()
 
 
+def getNewDataQueueName(instrument):
+    return f'INCOMING-{instrument}-raw'
+
+
 class RedisHelper:
-    def __init__(self, isHeadNode=False):
+    def __init__(self, butler, locationConfig, isHeadNode=False):
+        self.butler = butler  # needed to expand dataIds when dequeuing payloads
+        self.locationConfig = locationConfig
         self.isHeadNode = isHeadNode
         self.redis = self._makeRedis()
         self._testRedisConnection()
         self.log = logging.getLogger('lsst.rubintv.production.redisUtils.RedisHelper')
-
-        self._mostRecents = {}
 
     def _makeRedis(self):
         """Create a redis connection.
@@ -158,6 +163,7 @@ class RedisHelper:
         site = getSite()
         match site:
             case 'rubin-devl':
+                # XXX put this IP in the locationConfig instead?
                 return redis.Redis(host='172.24.5.216', password=getRedisSecret())
             case 'summit':
                 password = os.getenv('REDIS_SECRET')  # XXX is this the right env var?
@@ -184,15 +190,6 @@ class RedisHelper:
             raise RuntimeError('Could not connect to redis - is it running?') from e
         except Exception as e:
             raise RuntimeError(f'Unexpected error connecting to redis: {e}')
-
-    def updateMostRecent(self, dataProduct, expRecord):
-        if dataProduct not in self._mostRecents:
-            self._mostRecents[dataProduct] = expRecord.timespan.end
-        else:
-            if self._mostRecents[dataProduct] > expRecord.timespan.end:
-                self._mostRecents[dataProduct] = expRecord.timespan.end
-            else:
-                return
 
     def affirmRunning(self, podName, timePeriod):
         """Affirm that the named pod is running OK and should not be considered
@@ -227,111 +224,6 @@ class RedisHelper:
         if not self.isHeadNode:
             raise RuntimeError('This function is only for the head node - consume your queue, worker!')
 
-    def pushDataId(self, dataProduct, expRecord):
-        """Put an exposure on the `current` stack for immediate processing.
-
-        If there is an unprocessed item on the current stack when the new item
-        is pushed (and there can only ever be only one) the previous item is
-        moved to the top of the backlog stack.
-
-        Each data product has its own `current` stack, and putting an exposure
-        record onto its stack indicates that it is time to start processing
-        that data product for that exposure. Note that the dataProduct can be
-        any string - it need not be restricted to dafButler dataProducts.
-
-        Note, his function may only be called from the head node or a
-        ``ButlerWatcher``. If this function is called from elsewhere a
-        ``RuntimeError`` is raised.
-
-        Parameters
-        ----------
-        dataProduct : `str`
-            The data product to write the dataId file for.
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record to write the dataId file for.
-        log : `logging.Logger`, optional
-            The logger to use. If provided, and info-level message is logged
-            about where what file was written.
-
-        Raises
-        ------
-        RuntimeError
-            Raised if called from a worker node.
-        """
-        self._checkIsHeadNode()
-
-        expRecordJson = expRecord.to_simple().json()
-        while True:
-            try:
-                with self.redis.pipeline() as pipe:
-                    pipe.watch(dataProduct)
-
-                    # Get the length and current value before the transactional
-                    # block.
-                    currentLength = pipe.llen(dataProduct)
-                    currentValue = pipe.lindex(dataProduct, 0) if currentLength == 1 else None
-
-                    pipe.multi()
-                    # Decide action based on currentLength and currentValue.
-                    if currentLength == 0:
-                        pipe.lpush(dataProduct, expRecordJson)
-                    elif currentLength == 1:
-                        if currentValue:
-                            pipe.lpush(dataProduct + "_backlog", currentValue)
-                        # Remove the old item before adding the new one
-                        pipe.lpop(dataProduct)
-                        pipe.lpush(dataProduct, expRecordJson)
-                    else:
-                        # In an ideal scenario, this shouldn't happen since
-                        # your list should always have 0 or 1 items.
-                        self.log.warning('Found more than one item on the current queue! This should never'
-                                         ' happen, check the redisHelper logic')
-                        pipe.lpush(dataProduct + "_backlog", expRecordJson)
-
-                    pipe.execute()
-                    break  # success!
-
-            except redis.WatchError:
-                dayObs = expRecord.day_obs
-                seqNum = expRecord.seq_num
-                self.log.info(f'redis.WatchError putting expRecord for {dayObs=}, {seqNum=}, retrying...')
-            except Exception as e:
-                dayObs = expRecord.day_obs
-                seqNum = expRecord.seq_num
-                self.log.exception(f'Error putting expRecord for {dayObs=}, {seqNum=}: {e}')
-                break
-
-        self.updateMostRecent(dataProduct, expRecord)
-
-    def popDataId(self, dataProduct):
-        """Get the most recent image from the top of the stack.
-
-        If includeBacklog is set, items which were not the most recently put
-        will also be returned. Otherwise, an exposure record will only be
-        returned if it's the most recently landed image.
-        """
-        self._checkIsHeadNode()
-        expRecordJson = self.redis.lpop(f'{dataProduct}')
-        if expRecordJson is None:
-            return
-        return expRecordFromJson(expRecordJson.decode('utf-8'))
-
-    def insertDataId(self, dataProduct, expRecord, index=1):
-        """Insert an exposure into the queue.
-
-        By default, this will go at the top of the backlog queue. If the
-        exposure should instead be processed only once the backlog is cleared,
-        set index=-1 to put at the very end of the queue.
-        """
-        self._checkIsHeadNode()
-        if index == -1:
-            expRecordJson = expRecord.to_simple().json()
-            self.redis.rpush(f'{dataProduct}', expRecordJson)
-        else:
-            # Need to work out how to do this, LINSERT seemed to need the value
-            # to push it next to rather than an index, which feels a bit tricky
-            raise NotImplementedError
-
     def getRemoteCommands(self):
         """Get any remote commands that have been sent to the head node.
 
@@ -359,38 +251,63 @@ class RedisHelper:
 
         return commands
 
-    def enqueueCurrentWork(self, expRecord, detector):
+    def pushNewExposureToHeadNode(self, expRecord):
+        """Call to send an expRecord for processing.
+
+        This queue is consumed by the head node, which fans it out for
+        processing by the workers.
+
+        The queue can have any length, and will be consumed last-in-first-out.
+
+        Parameters
+        ----------
+        XXX
+        """
+        instrument = expRecord.instrument
+        queueName = getNewDataQueueName(instrument)
+        expRecordJson = expRecord.to_simple().json()
+        self.redis.lpush(queueName, expRecordJson)
+
+    def getExposureForFanout(self, instrument):
+        """Get the next exposure to process for the specified instrument.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument to get the next exposure for.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure to process for the specified detector, or
+            ``None`` if the queue is empty.
+        """
+        self._checkIsHeadNode()
+        queueName = getNewDataQueueName(instrument)
+        expRecordJson = self.redis.lpop(queueName)
+        if expRecordJson is None:
+            return None
+        return expRecordFromJson(expRecordJson, self.locationConfig)
+
+    def enqueuePayload(self, payload, queueName, top=True):
         """Send a unit of work to a specific worker-queue.
 
         Parameters
         ----------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector.
-        detector : `int`
-            The detector to enqueue the work for.
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to enqueue.
+        queueName : `str`
+            The name of the queue to enqueue the payload to.
+        top : `bool`, optional
+            Whether to add the payload to the top of the queue. Default is
+            ``True``.
         """
-        # XXX I think this should work the same as the main pushDataId function
-        # so that there can only ever be a single item on the current queue per
-        # detector, and then the workers themselves can decide whether to
-        # consume from their backlog queues depending on their
-        # WorkerProcessingMode
-        expRecordJson = expRecord.to_simple().json()
-        self.redis.lpush(f'current-{detector}', expRecordJson)
+        if top:
+            self.redis.lpush(queueName, payload.to_json())
+        else:
+            self.redis.rpush(queueName, payload.to_json())
 
-    def enqueueBacklogWork(self, expRecord, detector):
-        """Send a unit of work to a specific worker-queue.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector.
-        detector : `int`
-            The detector to enqueue the work for.
-        """
-        expRecordJson = expRecord.to_simple().json()
-        self.redis.lpush(f'backlog-{detector}', expRecordJson)
-
-    def getWork(self, detector, includeBacklog=False):
+    def dequeuePayload(self, queueName):
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -399,12 +316,10 @@ class RedisHelper:
             The next exposure to process for the specified detector, or
             ``None`` if the queue is empty.
         """
-        expRecordJson = self.redis.lpop(f'current-{detector}')
-        if expRecordJson is None and includeBacklog:
-            expRecordJson = self.redis.lpop(f'backlog-{detector}')
-        if expRecordJson is None:
+        payLoadJson = self.redis.lpop(queueName)
+        if payLoadJson is None:
             return None
-        return expRecordFromJson(expRecordJson.decode('utf-8'))
+        return Payload.from_json(payLoadJson, self.butler)
 
     def displayRedisContents(self):
         """Get the next unit of work from a specific worker queue.
@@ -415,9 +330,37 @@ class RedisHelper:
             The next exposure to process for the specified detector, or
             ``None`` if the queue is empty.
         """
+        def _isPayload(jsonData):
+            try:
+                loaded = json.loads(jsonData)
+                _ = loaded['dataId']
+                return True
+            except (KeyError, json.JSONDecodeError):
+                pass
+            return False
+
+        def _isExpRecord(jsonData):
+            try:
+                loaded = json.loads(jsonData)
+                _ = loaded['definition']
+                return True
+            except (KeyError, json.JSONDecodeError):
+                pass
+            return False
+
+        def getPayloadDataId(jsonData):
+            loaded = json.loads(jsonData)
+            return loaded['dataId']
+
+        def getExpRecordDataId(jsonData):
+            loaded = json.loads(jsonData)
+            expRecordStr = f"{loaded['record']['instrument']}, {loaded['record']['id']}"
+            return expRecordStr
+
         r = self.redis
 
         # Get all keys in the database
+        # TODO: .keys is a blocking operation - consider using .scan instead
         keys = r.keys('*')
 
         for key in keys:
@@ -433,7 +376,15 @@ class RedisHelper:
                 print(f"{key}: {values}")
             elif type_of_key == 'list':
                 values = decode_list(r.lrange(key, 0, -1))
-                print(f"{key}: {values}")
+                print(f"{key}:")
+                indent = 2 * ' '
+                for item in values:
+                    if _isPayload(item):
+                        print(f"{indent}{getPayloadDataId(item)}")
+                    elif _isExpRecord(item):
+                        print(f"{indent}{getExpRecordDataId(item)}")
+                    else:
+                        print(f"{indent}{item}")
             elif type_of_key == 'set':
                 values = decode_set(r.smembers(key))
                 print(f"{key}: {values}")

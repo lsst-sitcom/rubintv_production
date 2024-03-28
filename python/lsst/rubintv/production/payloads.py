@@ -24,14 +24,46 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 import json
+import io
 
 from lsst.daf.butler import DataCoordinate, Butler
+from lsst.pipe.base import PipelineGraph
+
+__all__ = [
+    'pipelineGraphToBytes',
+    'pipelineGraphFromBytes',
+    'Payload',
+    'PayloadResult',
+]
+
+
+def pipelineGraphToBytes(pipelineGraph):
+    """
+    Convert a pipelineGraph to bytes.
+
+    Upstream this to pipe_base after OR3.
+    """
+    with io.BytesIO() as f:
+        pipelineGraph._write_stream(f)
+        return f.getvalue()
+
+
+def pipelineGraphFromBytes(pipelineGraphBytes):
+    """
+    Get a pipelineGraph from bytes.
+
+    Upstream this to pipe_base after OR3 as a PipelineGraph classmethod.
+    """
+    with io.BytesIO(pipelineGraphBytes) as f:
+        return PipelineGraph._read_stream(f)  # to be public soon
 
 
 @dataclass(frozen=True)
 class Payload:
     """
     A dataclass representing a payload.
+
+    These go in minimal, but come out full, by using the butler.
     """
     dataId: DataCoordinate
     pipelineGraphBytes: bytes
