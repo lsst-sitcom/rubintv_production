@@ -203,7 +203,7 @@ class RedisHelper:
             The amount of time after which the pod would be considered dead if
             not reaffirmed by.
         """
-        self.redis.setex(podName, timedelta(seconds=timePeriod), value=1)
+        self.redis.setex(f'{podName}_IS-RUNNING', timedelta(seconds=timePeriod), value=1)
 
     def confirmRunning(self, podName):
         """Check whether the named pod is running or should be considered dead.
@@ -213,8 +213,29 @@ class RedisHelper:
         podName : `str`
             The name of the pod.
         """
-        isRunning = self.redis.get(podName)
+        isRunning = self.redis.get(f'{podName}_IS-RUNNING')
         return bool(isRunning)  # 0 and None both bool() to False
+
+    def announceBusy(self, queueName):
+        """Announce that a worker is busy processing a queue.
+
+        Parameters
+        ----------
+        queueName : `str`
+            The name of the queue the worker is processing.
+        """
+        self.redis.set(f'{queueName}_IS-BUSY', value=1)
+        # self.redis.setex(f'{queueName}_EXISTS', timedelta(seconds=300), value=time.time())
+
+    def announceFree(self, queueName):
+        """Announce that a worker is free to process a queue.
+
+        Parameters
+        ----------
+        queueName : `str`
+            The name of the queue the worker is processing.
+        """
+        self.redis.delete(f'{queueName}_IS-BUSY')
 
     def _checkIsHeadNode(self):
         """Note: this isn't how atomicity of transactions is ensured, this is
@@ -350,7 +371,7 @@ class RedisHelper:
 
         def getPayloadDataId(jsonData):
             loaded = json.loads(jsonData)
-            return loaded['dataId']
+            return f"{loaded['dataId']}, run={loaded['run']}"
 
         def getExpRecordDataId(jsonData):
             loaded = json.loads(jsonData)
@@ -414,6 +435,27 @@ class RedisHelper:
                 print("Clearing aborted.")
                 return
         self.redis.flushdb()
+
+    def clearWorkerQueues(self, force=False):
+        """Clear all keys in the Redis database.
+
+        Parameters
+        ----------
+        force : `bool`, optional
+            Whether to clear the Redis database without user confirmation.
+            Default is ``False``.
+        """
+        if not force:
+            print("Are you sure you want to clear the worker queues?")
+            print("Type 'yes' to confirm.")
+            response = input()
+            if response != 'yes':
+                print("Clearing aborted.")
+                return
+
+        keys = self.redis.keys('*WORKER*')  # XXX check if this is OK to use .keys() here
+        for key in keys:
+            self.redis.delete(key)
 
     def monitorRedis(self, interval=1):
         """Continuously display the contents of Redis database in the console.
