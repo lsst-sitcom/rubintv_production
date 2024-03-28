@@ -43,6 +43,10 @@ butler = dafButler.Butler(
     writeable=True  # needed for defineVisits
 )
 
-pipelineFile = '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook-ops-rehearsal-3.yaml'
-controller = HeadProcessController(butler, instrument, locationConfig, pipelineFile)
+controller = HeadProcessController(
+    butler=butler,
+    instrument=instrument,
+    locationConfig=locationConfig,
+    pipelineFile=locationConfig.sfmPipelineFile
+)
 controller.run()
