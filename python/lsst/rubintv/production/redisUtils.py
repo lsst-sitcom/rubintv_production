@@ -361,7 +361,7 @@ class RedisHelper:
 
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
-        keys = r.keys('*')
+        keys = sorted(r.keys('*'))
 
         for key in keys:
             key = decode_string(key)
