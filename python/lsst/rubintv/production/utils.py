@@ -31,7 +31,7 @@ import time
 import math
 import numpy as np
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import DimensionUniverse, DimensionConfig, DimensionRecord
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from .channels import PREFIXES
 
@@ -41,23 +41,26 @@ from functools import cached_property
 from dataclasses import dataclass
 
 
-__all__ = ['writeDataIdFile',
-           'getGlobPatternForDataProduct',
-           'expRecordToUploadFilename',
-           'getSiteConfig',
-           'checkRubinTvExternalPackages',
-           'raiseIf',
-           'isDayObsContiguous',
-           'writeMetadataShard',
-           'writeDataShard',
-           'getShardedData',
-           'isFileWorldWritable',
-           'LocationConfig',
-           'sanitizeNans',
-           'safeJsonOpen',
-           'ALLOWED_DATASET_TYPES',
-           'NumpyEncoder',
-           ]
+__all__ = [
+    'writeDimensionUniverseFile',
+    'getDimensionUniverse',
+    'writeDataIdFile',
+    'getGlobPatternForDataProduct',
+    'expRecordToUploadFilename',
+    'getSiteConfig',
+    'checkRubinTvExternalPackages',
+    'raiseIf',
+    'isDayObsContiguous',
+    'writeMetadataShard',
+    'writeDataShard',
+    'getShardedData',
+    'isFileWorldWritable',
+    'LocationConfig',
+    'sanitizeNans',
+    'safeJsonOpen',
+    'ALLOWED_DATASET_TYPES',
+    'NumpyEncoder',
+]
 
 EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
                           '    pip install lsst-efd-client')
@@ -83,6 +86,21 @@ SHARDED_DATA_TEMPLATE = os.path.join("{path}",
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
 # only.
+
+
+def writeDimensionUniverseFile(butler, locationConfig):
+    """Run on butler watcher startup.
+
+    This assumes that all repos in a give location are on the same version, but
+    we will make sure to keep that always true.
+    """
+    with open(locationConfig.dimensionUniverseFile, 'w') as f:
+        f.write(json.dumps(butler.dimensions.dimensionConfig.toDict()))
+
+
+def getDimensionUniverse(locationConfig):
+    duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
+    return DimensionUniverse(DimensionConfig(duJson))
 
 
 def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
@@ -178,11 +196,17 @@ class FakeExposureRecord:
         return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
 
 
-def expRecordFromJson(expRecordJson):
+def expRecordFromJson(expRecordJson, locationConfig):
+    """Deserialize a DimensionRecord from a JSON string.
+
+    XXX Docs
+    """
     if not expRecordJson:
         return None
-    return dafButler.dimensions.DimensionRecord.from_json(expRecordJson,
-                                                          universe=dafButler.DimensionUniverse())
+    return DimensionRecord.from_json(
+        expRecordJson,
+        universe=getDimensionUniverse(locationConfig)
+    )
 
 
 def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
