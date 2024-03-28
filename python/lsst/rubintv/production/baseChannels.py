@@ -110,6 +110,7 @@ class BaseButlerChannel(BaseChannel):
                  channelName,
                  watcherType,
                  doRaise,
+                 queueName=None,  # only needed for redis watcher. Not the neatest but will do for now
                  ):
         if watcherType == 'file':
             watcher = FileWatcher(locationConfig=locationConfig,
@@ -118,7 +119,11 @@ class BaseButlerChannel(BaseChannel):
                                   heartbeatChannelName=channelName,
                                   doRaise=doRaise)
         elif watcherType == 'redis':
-            watcher = RedisWatcher(detectors=detectors, dataProduct=dataProduct)
+            watcher = RedisWatcher(
+                butler=butler,
+                locationConfig=locationConfig,
+                queueName=queueName,
+            )
         else:
             raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
         log = logging.getLogger(f'lsst.rubintv.production.{channelName}')
