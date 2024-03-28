@@ -52,3 +52,6 @@ calculatedDataPath: '/project/rubintv/calculatedData'
 # TMA config:
 tmaMetadataPath: '/project/rubintv/tma/sidecar_metadata'
 tmaMetadataShardPath: '/project/rubintv/tma/sidecar_metadata/shards'
+
+# Redis work distribution configs
+sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook-ops-rehearsal-3.yaml'

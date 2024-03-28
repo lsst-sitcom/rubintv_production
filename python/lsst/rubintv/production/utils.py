@@ -302,8 +302,9 @@ class LocationConfig:
         Raises
             RuntimeError: raised if the file does not exist.
         """
-        if not os.path.isfile(filename):
-            raise RuntimeError(f'Could not find file {filename}')
+        expanded = os.path.expandvars(filename)
+        if not os.path.isfile(expanded):
+            raise RuntimeError(f'Could not find file {filename} at {expanded}')
 
     @cached_property
     def _config(self):
@@ -312,6 +313,12 @@ class LocationConfig:
     @cached_property
     def dimensionUniverseFile(self):
         file = self._config['dimensionUniverseFile']
+        return file
+
+    @cached_property
+    def sfmPipelineFile(self):
+        file = self._config['sfmPipelineFile']
+        self._checkFile(file)
         return file
 
     @cached_property

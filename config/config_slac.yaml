@@ -22,3 +22,6 @@ botMetadataShardPath: '/scratch/rubintv/LSSTCam/sidecar_metadata'
 
 # configuration
 binning: 8
+
+# Redis work distribution configs
+sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation-ops-rehearsal-3.yaml'
