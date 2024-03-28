@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Iterable
 import numpy as np
 import json
 import enum
@@ -32,6 +33,7 @@ from lsst.daf.butler import MissingCollectionError, CollectionType, DataCoordina
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.ctrl.mpexec import TaskFactory
+from lsst.utils.iteration import ensure_iterable
 
 from .redisUtils import RedisHelper
 from .payloads import Payload, pipelineGraphToBytes
@@ -68,7 +70,7 @@ class VisitProcessingMode(enum.IntEnum):
 
 def prepRunCollection(
     butler,
-    pipelineGraph: PipelineGraph,
+    pipelineGraphs: PipelineGraph | Iterable[PipelineGraph],
     run
 ):
     """This should only be run once with a particular combination of
@@ -76,31 +78,40 @@ def prepRunCollection(
 
     This writes the schemas (and the configs? to check). It does *not* write
     the software versions!
+
+    Return
+    ------
+    created : `bool`
+        Was a new run created? ``True`` if so, ``False`` if it already existed.
     """
-    import ipdb as pdb; pdb.set_trace()
+    log = logging.getLogger('lsst.rubintv.production.processControl.prepRunCollection')
     newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
     if not newRun:
         return newRun
 
-    for datasetTypeNode in pipelineGraph.dataset_types.values():
-        if pipelineGraph.producer_of(datasetTypeNode.name) is not None:
-            butler.registry.registerDatasetType(datasetTypeNode.dataset_type)
+    pipelineGraphs = list(ensure_iterable(pipelineGraphs))
+    log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
 
-    initRefs = {}
-    taskFactory = TaskFactory()
-    for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
+    for pipelineGraph in pipelineGraphs:
+        for datasetTypeNode in pipelineGraph.dataset_types.values():
+            if pipelineGraph.producer_of(datasetTypeNode.name) is not None:
+                butler.registry.registerDatasetType(datasetTypeNode.dataset_type)
 
-        inputRefs = [butler.find_dataset(readEdge.dataset_type_name, collections=[run])
-                     if readEdge.dataset_type_name not in readEdge.dataset_type_name
-                     else initRefs[readEdge.dataset_type_name]
-                     for readEdge in taskNode.init.inputs.values()]
-        task = taskFactory.makeTask(taskDef, butler, inputRefs)
+        initRefs = {}
+        taskFactory = TaskFactory()
+        for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
 
-        for writeEdge in taskNode.init.outputs.values():
-            datasetTypeName = writeEdge.dataset_type_name
-            initRefs[datasetTypeName] = butler.put(
-                getattr(task, writeEdge.connection_name), datasetTypeName, run=run,
-            )
+            inputRefs = [butler.find_dataset(readEdge.dataset_type_name, collections=[run])
+                         if readEdge.dataset_type_name not in readEdge.dataset_type_name
+                         else initRefs[readEdge.dataset_type_name]
+                         for readEdge in taskNode.init.inputs.values()]
+            task = taskFactory.makeTask(taskDef, butler, inputRefs)
+
+            for writeEdge in taskNode.init.outputs.values():
+                datasetTypeName = writeEdge.dataset_type_name
+                initRefs[datasetTypeName] = butler.put(
+                    getattr(task, writeEdge.connection_name), datasetTypeName, run=run,
+                )
 
 
 def defineVisit(butler, expRecord):
@@ -204,30 +215,36 @@ class HeadProcessController:
         self.pipelineGraphsBytes['full'] = pipelineGraphToBytes(self.pipelineGraphs['full'])
 
         self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
-        self.outputRun = self.getLatestRun(forceNewRun=forceNewRun)  # XXX currently unused?
-        prepRunCollection(butler, self.pipelineGraphs['step1'], run=self.outputRun)
+        self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)  # XXX currently unused?
+        self.log.info(f"Head node ready. Data will be writen data to {self.outputRun}")
 
-    def getLatestRun(self, forceNewRun):
+    def getLatestRunAndPrep(self, forceNewRun):
+        allRuns = []
         try:
             allRuns = self.butler.registry.getCollectionChain(self.outputChain)
         except MissingCollectionError:
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
-            allRuns = []
-
-        if not allRuns:
             lastRun = f'{self.outputChain}/0'
-            self.butler.registry.registerCollection(lastRun, CollectionType.RUN)
-            prepRunCollection(self.butler, self.pipelineGraphsBytes['full'], lastRun)
+            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
-        elif forceNewRun:
-            lastRun = int(allRuns[-1]) + 1
-            self.butler.registry.registerCollection(lastRun, CollectionType.RUN)
-            prepRunCollection(self.butler, self.pipelineGraphsBytes['full'], lastRun)
+            self.log.info(f"Started brand new collection at {lastRun}")
+            return lastRun
+
+        allRunNums = [int(run.removeprefix(self.outputChain + '/')) for run in allRuns]
+        lastRunNum = max(allRunNums)
+
+        if forceNewRun:  # or self.checkIfNewRunNeeded():
+            lastRunNum += 1
+            lastRun = f'{self.outputChain}/{lastRunNum}'
+
+            # prepRunCollection is called instead of registerCollection
+            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
-        else:
-            lastRun = allRuns[-1]
-            # XXX check here if we need a new run, and if so, push it and prep
-            # it
+            self.log.info(f"Started new run collection at {lastRun}")
+
+        lastRun = f'{self.outputChain}/{lastRunNum}'
+        prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
+
         return lastRun
 
     def checkIfNewRunNeeded(self):
