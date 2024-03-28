@@ -264,7 +264,7 @@ class HeadProcessController:
         # run from a notebook with a normal butler when not needing to define
         # visits
         self.log.info(f"Defining visit (if needed) for {expRecord.id}")
-        # defineVisit(self.butler, expRecord)
+        defineVisit(self.butler, expRecord)
         return expRecord
 
     def repattern(self):
