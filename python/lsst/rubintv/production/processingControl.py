@@ -29,12 +29,13 @@ import io
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.obs.lsst import LsstCam
-from lsst.daf.butler import MissingCollectionError, CollectionType
+from lsst.daf.butler import MissingCollectionError, CollectionType, DataCoordinate
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.ctrl.mpexec import TaskFactory
 
-from .redisUtils import RedisHelper
+from .redisUtils import RedisHelper, getNewDataQueueName
+from .payloads import Payload
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -153,6 +154,10 @@ def getVisitId(butler, expRecord):
         return None
 
 
+def getHeadNodeName(instrument):
+    return f'headNode-{instrument}'
+
+
 class HeadProcessController:
     """The head node, which controls which pods process which images.
 
@@ -162,16 +167,17 @@ class HeadProcessController:
     remotely controlled by a RemoteController, for example to change the
     processing strategy from a notebook or from LOVE.
     """
-    def __init__(self, butler, instrument, outputChain=None, forceNewRun=False):
+    def __init__(self, butler, instrument, locationConfig, outputChain=None, forceNewRun=False):
         self.butler = butler
         self.instrument = instrument
-        self.name = f'headNode-{self.instrument}'
+        self.locationConfig = locationConfig
+        self.name = getHeadNodeName(instrument)
         self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
-        self.redisHelper = RedisHelper(isHeadNode=True)
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
         self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
-        self.remoteController = RemoteController()
+        self.remoteController = RemoteController(butler=butler , locationConfig=locationConfig)
         self.nDispatched = 0
 
         steps = ('step1', 'step2a', 'nightlyRollup')
@@ -183,7 +189,7 @@ class HeadProcessController:
             self.sfmPipelineGraphBytes = f.getvalue()
 
         self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
-        self.run = self.getLatestRun(forceNewRun=forceNewRun)
+        self.outputRun = self.getLatestRun(forceNewRun=forceNewRun)  # XXX currently unused?
 
     def getLatestRun(self, forceNewRun):
         try:
@@ -221,12 +227,45 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        for detector in self.focalPlaneControl.getEnabledDetIds():
-            self.redisHelper.enqueueCurrentWork(expRecord, detector)
-        self.nDispatched += 1
+        # XXX is this what we should use for all tasks, or should this be SFM
+        # only? Probably for now SFM only, and hardcode the pipeline here
+        match self.instrument:
+            case 'LATISS':
+                detectorIds = [0]
+            case instrument if instrument in ('LSSTComCam', 'LSSTComCamSim'):
+                detectorIds = range(9)  # at least for OR3, always process all ComCam chips
+            case 'LSSTCom':
+                detectorIds = self.focalPlaneControl.getEnabledDetIds()
+            case _:
+                raise ValueError(f'Unknown instrument {self.instrument=}')
 
-    def getWork(self):
-        return self.redisHelper.popDataId('raw')
+        dataIds = {}
+        for detectorId in detectorIds:
+            dataIds[detectorId] = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+
+        for detectorId, dataId in dataIds.items():
+            # queueName = self.getFreeWorkerQueue(detectorId)  # XXX need to work this part out
+            workerDepth = 0  # get this from the function above
+            queueName = f'SFM-WORKER-{detectorId:02}-{workerDepth:02}'
+            payload = Payload(dataId, self.sfmPipelineGraphBytes)
+            self.redisHelper.enqueuePayload(payload, queueName)
+
+        self.nDispatched += 1  # required for the alternating by twos mode
+
+    def getNewExposureAndDefineVisit(self):
+        expRecord = self.redisHelper.getExposureForFanout(self.instrument)
+        if expRecord is None:
+            return
+
+        # first time touching the new expRecord so run define visits
+
+        # butler must be writeable for the task to run, but don't check here
+        # and let the DefineVisitsTaskraise, because it is useful to be able to
+        # run from a notebook with a normal butler when not needing to define
+        # visits
+        self.log.info(f"Defining visit (if needed) for {expRecord.id}")
+        # defineVisit(self.butler, expRecord)
+        return expRecord
 
     def repattern(self):
         """Apply the VisitProcessingMode to the focal plane sensor selection.
@@ -246,12 +285,13 @@ class HeadProcessController:
         while True:
             self.redisHelper.affirmRunning(self.name, 10)  # push the expiry out 10s
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
-            work = self.getWork()
-            if work is None:
+            expRecord = self.getNewExposureAndDefineVisit()
+            if expRecord is None:
                 sleep(0.1)
                 continue
 
-            self.doFanout(work)
+            self.log.info(f"Fanning {expRecord.id} out")
+            self.doFanout(expRecord)
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
             # do we toggle
@@ -259,9 +299,9 @@ class HeadProcessController:
 
 
 class RemoteController:
-    def __init__(self):
+    def __init__(self, butler, locationConfig):
         self.log = logging.getLogger('lsst.rubintv.production.processControl.RemoteController')
-        self.redisHelper = RedisHelper()
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
 
     def sendCommand(self, method, **kwargs):
         """Execute the specified method on the head node with the specified
@@ -400,14 +440,13 @@ class RemoteController:
 
 
 class PodProcessController:
+    # XXX remove this completely? This is just the redisHelper now, right?
     def __init__(self, detectors):
         self.redisHelper = RedisHelper()
 
     def isHeadNodeRuning(self, instrument):
         isRunning = self.redisHelper.redis.get(f'butlerWatcher-{instrument}')
         return bool(isRunning)  # 0 and None both bool() to False
-
-    # def run():
 
 
 class CameraControlConfig:
