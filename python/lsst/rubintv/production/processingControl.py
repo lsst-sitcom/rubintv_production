@@ -257,6 +257,9 @@ class HeadProcessController:
         for detectorId in detectorIds:
             dataIds[detectorId] = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
 
+        self.log.info(f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
+                      f" out to {len(detectorIds)} detectors.")
+
         for detectorId, dataId in dataIds.items():
             # queueName = self.getFreeWorkerQueue(detectorId)  # XXX need to work this part out
             workerDepth = 0  # get this from the function above
@@ -304,7 +307,6 @@ class HeadProcessController:
                 sleep(0.1)
                 continue
 
-            self.log.info(f"Fanning {expRecord.id} out")
             self.doFanout(expRecord)
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
