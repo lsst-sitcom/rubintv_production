@@ -56,6 +56,7 @@ class BasePlot(ABC):
                  channelName=None,
                  locationConfig=None,
                  uploader=None,
+                 s3Uploader=None,
                  ):
         self.dayObs = dayObs
         self.plotName = plotName
@@ -63,6 +64,7 @@ class BasePlot(ABC):
         self.channelName = channelName
         self.locationConfig = locationConfig
         self.uploader = uploader
+        self.s3Uploader = s3Uploader
         self.log = logging.getLogger(f'lsst.rubintv.production.nightReportPlots.{plotName}')
 
     def getSaveFilename(self):
@@ -136,7 +138,9 @@ class LatissPlot(BasePlot):
                  plotName,
                  plotGroup,
                  locationConfig,
-                 uploader):
+                 uploader,
+                 s3Uploader,
+                 ):
 
         super().__init__(dayObs=dayObs,
                          plotName=plotName,
@@ -144,6 +148,7 @@ class LatissPlot(BasePlot):
                          channelName="auxtel_night_reports",
                          locationConfig=locationConfig,
                          uploader=uploader,
+                         s3Uploader=s3Uploader,
                          )
 
     def createAndUpload(self, nightReport, metadata, ccdVisitTable):
@@ -174,10 +179,13 @@ class LatissPlot(BasePlot):
         plt.close()
 
         self.uploader.uploadNightReportData(channel=self.channelName,
-                                            dayObsInt=self.dayObs,
+                                            dayObs=self.dayObs,
                                             filename=saveFile,
                                             plotGroup=self.plotGroup)
-
+        self.s3Uploader.uploadNightReportData(instrument='auxtel',
+                                              dayObs=self.dayObs,
+                                              filename=saveFile,
+                                              plotGroup=self.plotGroup)
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
         os.remove(saveFile)
@@ -205,7 +213,9 @@ class StarTrackerPlot(BasePlot):
                  plotName,
                  plotGroup,
                  locationConfig,
-                 uploader):
+                 uploader,
+                 s3Uploader,
+                 ):
 
         super().__init__(dayObs=dayObs,
                          plotName=plotName,
@@ -213,6 +223,7 @@ class StarTrackerPlot(BasePlot):
                          channelName="startracker_night_reports",
                          locationConfig=locationConfig,
                          uploader=uploader,
+                         s3Uploader=s3Uploader,
                          )
 
     def createAndUpload(self, tableData):
@@ -239,10 +250,13 @@ class StarTrackerPlot(BasePlot):
         plt.close()
 
         self.uploader.uploadNightReportData(channel=self.channelName,
-                                            dayObsInt=self.dayObs,
+                                            dayObs=self.dayObs,
                                             filename=saveFile,
                                             plotGroup=self.plotGroup)
-
+        self.s3Uploader.uploadNightReportData(instrument='startracker',
+                                              dayObs=self.dayObs,
+                                              filename=saveFile,
+                                              plotGroup=self.plotGroup)
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
         os.remove(saveFile)

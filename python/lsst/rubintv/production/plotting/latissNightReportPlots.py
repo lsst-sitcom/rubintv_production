@@ -59,12 +59,16 @@ class ZeroPointPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the zeropoint plot.
@@ -125,12 +129,16 @@ class SkyMeanPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the zeropoint plot.
@@ -192,12 +200,16 @@ class PsfFwhmPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot filter and airmass corrected PSF FWHM and DIMM seeing for the
@@ -279,12 +291,16 @@ class PsfE1Plot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the PSF ellipticity e1 values for the current report.
@@ -348,12 +364,16 @@ class PsfE2Plot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the PSF ellipticity e2 values for the current report.
@@ -417,12 +437,16 @@ class SourceCountsPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot source counts for sources detected above 5-sigma and sources
@@ -481,12 +505,16 @@ class TelescopeAzElPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot Telescope Azimuth and Elevation with Wind Direction and
@@ -575,12 +603,16 @@ class MountMotionPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Plot the RMS mount motion vs time.
@@ -635,12 +667,16 @@ class AstrometricOffsetMeanPlot(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the astometric offset mean plot.
@@ -708,12 +744,16 @@ class MountMotionVsZenith(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the Mt Motion vs Zenith angle plot.
@@ -769,12 +809,16 @@ class SkyMeanVsSkyRms(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the Sky mean vs SkyRMS plot.
@@ -830,12 +874,16 @@ class PsfVsSkyRms(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the PSF vs SkyRMS plot.
@@ -891,12 +939,16 @@ class PsfVsZenith(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the PSF vs Zenith angle plot.
@@ -952,12 +1004,16 @@ class PsfVsMountMotion(LatissPlot):
     def __init__(self,
                  dayObs,
                  locationConfig=None,
-                 uploader=None):
+                 uploader=None,
+                 s3Uploader=None,
+                 ):
         super().__init__(dayObs=dayObs,
                          plotName=self._PlotName,
                          plotGroup=self._PlotGroup,
                          locationConfig=locationConfig,
-                         uploader=uploader)
+                         uploader=uploader,
+                         s3Uploader=s3Uploader,
+                         )
 
     def plot(self, nightReport, metadata, ccdVisitTable):
         """Create the PSF vs mount motion ploot.
