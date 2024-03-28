@@ -67,6 +67,7 @@ class Payload:
     """
     dataId: DataCoordinate
     pipelineGraphBytes: bytes
+    run: str
 
     @classmethod
     def from_json(
@@ -77,17 +78,18 @@ class Payload:
         json_dict = json.loads(json_str)
         dataId = butler.registry.expandDataId(json_dict['dataId'])
         pipelineGraphBytes = base64.b64decode(json_dict['pipelineGraphBytes'].encode())
-        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes)
+        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes, run=json_dict['run'])
 
     def to_json(self) -> str:
         json_dict = {
             'dataId': dict(self.dataId.mapping),
-            'pipelineGraphBytes': base64.b64encode(self.pipelineGraphBytes).decode()
+            'pipelineGraphBytes': base64.b64encode(self.pipelineGraphBytes).decode(),
+            'run': self.run,
         }
         return json.dumps(json_dict)
 
     def __repr__(self):
-        return f"Payload(dataId={self.dataId}, pipelineGraphBytes=<the bytes>)"
+        return f"Payload(dataId={self.dataId}, run={self.run}, pipelineGraphBytes=<the bytes>)"
 
 
 @dataclass(frozen=True)
