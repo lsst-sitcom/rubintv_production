@@ -356,7 +356,13 @@ class ButlerWatcher:
 
                     for product, expRecord in found.items():
                         if product == 'raw':  # only push raws to redis
-                            self.redisHelper.pushNewExposureToHeadNode(expRecord)
+                            seenBefore = self.redisHelper.checkButlerWatcherList(self.instrument, expRecord)
+                            if not seenBefore:
+                                self.redisHelper.pushNewExposureToHeadNode(expRecord)
+                                self.redisHelper.pushToButlerWatcherList(self.instrument, expRecord)
+                            else:
+                                self.log.info(f'Skipping dispatching {expRecord.instrument}-{expRecord.id} as'
+                                              ' it was dispatched by a ButlerWatcher in a previous life')
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
                     # beat after the callback so as not to delay processing
