@@ -23,8 +23,7 @@
 import sys
 from lsst.rubintv.production import ButlerWatcher
 import lsst.summit.utils.butlerUtils as butlerUtils
-from lsst.rubintv.production.utils import LocationConfig
-from lsst.rubintv.production.watchers import writeDimensionUniverseFile
+from lsst.rubintv.production.utils import LocationConfig, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
