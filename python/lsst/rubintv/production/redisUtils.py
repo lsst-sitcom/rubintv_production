@@ -485,9 +485,23 @@ class RedisHelper:
             print("Nothing in the Redis database.")
             return
 
+        # any keys containing these strings will just have their lengths
+        # printed, not the full contents of the lists
+        lengthKeyPatterns = [
+            'fromButlerWacher',
+        ]
+
+        def handleLengthKeys(key):
+            # just print the key and the length of the list
+            print(f"{key}: {r.llen(key)} items")
+
         for key in keys:
             key = decode_string(key)
             type_of_key = r.type(key).decode('utf-8')
+
+            if any(pattern in key for pattern in lengthKeyPatterns):
+                handleLengthKeys(key)
+                continue
 
             # Handle different Redis data types
             if type_of_key == 'string':
