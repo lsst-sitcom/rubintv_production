@@ -1,7 +1,7 @@
 # Required items:
 dataIdScanPath: '/sdf/scratch/rubin/rapid-analysis/dataIds'
 bucketName: 'rubintv_data_slac'
-dimensionUniverseFile: '/scratch/rubintv/rapid-analysis/butlerDimensionUniverse.json'
+dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUniverse.json'
 
 # Butler paths - use full paths not aliases here as path existence is checked
 ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
