@@ -41,7 +41,7 @@ from lsst.resources import ResourcePath
 
 from .utils import waitForDataProduct, getAmplifierRegions
 from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
-from ..uploaders import Uploader
+from ..uploaders import Uploader, MultiUploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
 from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
@@ -556,6 +556,7 @@ class Plotter:
         self.camera = getCamera(self.butler, instrument)
         self.instrument = instrument
         self.uploader = Uploader(self.locationConfig.bucketName)
+        self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
         self.watcher = FileWatcher(locationConfig=locationConfig,
@@ -717,16 +718,31 @@ class Plotter:
         seqNum = expRecord.seq_num
         instPrefix = self.getInstrumentChannelName(self.instrument)
 
-        # TODO: Need some kind of wait mechanism for each of these
         if doPlotNoises:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_noise_map'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+            if noiseMapFile:  # only upload on plot success
+                channel = f'{instPrefix}_noise_map'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument=instPrefix,
+                    plotName='noise_map',
+                    dayObs=dayObs,
+                    seqNum=seqNum,
+                    filename=noiseMapFile
+                )
 
         if doPlotMosaic:
             focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
-            channel = f'{instPrefix}_focal_plane_mosaic'
-            self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+            if focalPlaneFile:  # only upload on plot success
+                channel = f'{instPrefix}_focal_plane_mosaic'
+                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument=instPrefix,
+                    plotName='focal_plane_mosaic',
+                    dayObs=dayObs,
+                    seqNum=seqNum,
+                    filename=focalPlaneFile
+                )
 
     def run(self):
         """Run continuously, calling the callback method with the latest
@@ -738,7 +754,7 @@ class Plotter:
 class Replotter(Plotter):
 
     @dataclass
-    class ReplotterWorkload(Uploader):
+    class ReplotterWorkload(Uploader):  # XXX why does this inherit from Uploader?!
         finderFunction: Callable
         workerFunction: Callable
         name: str

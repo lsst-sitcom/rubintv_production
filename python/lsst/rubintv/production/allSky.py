@@ -34,7 +34,7 @@ from lsst.summit.utils.utils import (dayObsIntToString,
                                      getCurrentDayObs_datetime,
                                      )
 from .utils import expRecordToUploadFilename, raiseIf, FakeExposureRecord, hasDayRolledOver
-from .uploaders import Uploader, Heartbeater
+from .uploaders import Uploader, Heartbeater, MultiUploader
 
 try:
     from google.cloud import storage
@@ -402,6 +402,8 @@ class DayAnimator:
         The uploader for sending images and movies to GCS.
     epoUploader : `lsst.rubintv.production.Uploader`
         The uploader for sending images and movies to the EPO bucket.
+    s3Uploader : `lsst.rubintv.production.MultiUploader`
+        The uploader for sending images and movies to S3.
     channel : `str`
         The name of the channel. Must match a channel name in rubinTv.py.
     bucketName : `str`
@@ -424,6 +426,7 @@ class DayAnimator:
                  outputMovieDir,
                  uploader,
                  epoUploader,
+                 s3Uploader,
                  channel,
                  bucketName,
                  historical=False):
@@ -433,6 +436,7 @@ class DayAnimator:
         self.outputMovieDir = outputMovieDir
         self.uploader = uploader
         self.epoUploader = epoUploader
+        self.s3Uploader = s3Uploader
         self.channel = channel
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
@@ -503,6 +507,8 @@ class DayAnimator:
         lastfile = files[-1]
         seqNum = _seqNumFromFilename(lastfile)
         if isFinal:
+            # TODO: remove this with DM-43413 as final is dealt with by the
+            # new uploader. SEQNUM_MAX can probably go entirely
             seqNum = SEQNUM_MAX
 
         channel = 'all_sky_movies'
@@ -519,6 +525,12 @@ class DayAnimator:
 
         if not self.DRY_RUN:
             self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
+            self.s3Uploader.uploadMovie(
+                instrument='allsky',
+                dayObs=self.dayObsInt,
+                filename=creationFilename,
+                seqNum=seqNum if not isFinal else None,
+            )
             try:
                 self.epoUploader.googleUpload(self.channel,
                                               creationFilename,
@@ -550,6 +562,13 @@ class DayAnimator:
             self.uploader.googleUpload(channel=channel,
                                        sourceFilename=sourceFilename,
                                        uploadAsFilename=uploadAsFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument='allsky',
+                plotName='stills',
+                dayObs=self.dayObsInt,
+                seqNum=seqNum,
+                filename=sourceFilename,
+            )
             try:
                 self.epoUploader.googleUpload(channel=channel,
                                               sourceFilename=sourceFilename,
@@ -662,6 +681,7 @@ class AllSkyMovieChannel:
     def __init__(self, locationConfig, doRaise=False):
         self.locationConfig = locationConfig
         self.uploader = Uploader(self.locationConfig.bucketName)
+        self.s3Uploader = MultiUploader()
         self.epoUploader = Uploader('epo_rubintv_data')
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = 'all_sky_movies'
@@ -707,6 +727,7 @@ class AllSkyMovieChannel:
                                outputMovieDir=outputMovieDir,
                                uploader=self.uploader,
                                epoUploader=self.epoUploader,
+                               s3Uploader=self.s3Uploader,
                                channel=self.channel,
                                bucketName=self.locationConfig.bucketName,)
         animator.run()
