@@ -516,6 +516,9 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    def getOutputChain(self, instrument):
+        return self._config['outputChains'][instrument]
+
 
 def getSiteConfig(site='summit'):
     """Get the site configuration, given a site name.

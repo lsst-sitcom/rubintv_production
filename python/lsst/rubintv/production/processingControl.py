@@ -34,6 +34,7 @@ from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.ctrl.mpexec import TaskFactory
 from lsst.utils.iteration import ensure_iterable
+from lsst.utils.packages import Packages
 
 from .redisUtils import RedisHelper
 from .payloads import Payload, pipelineGraphToBytes
@@ -71,7 +72,8 @@ class VisitProcessingMode(enum.IntEnum):
 def prepRunCollection(
     butler,
     pipelineGraphs: PipelineGraph | Iterable[PipelineGraph],
-    run
+    run,
+    packages: Packages,
 ):
     """This should only be run once with a particular combination of
     pipelinegraph and run.
@@ -87,10 +89,13 @@ def prepRunCollection(
     log = logging.getLogger('lsst.rubintv.production.processControl.prepRunCollection')
     newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
     if not newRun:
-        return newRun
+        raise RuntimeError(f'New {run=} already exists, so either there is a logic error in the head node'
+                           ' init/getLatestRunAndPrep() or someone manually created collections with that'
+                           ' prefix.')
 
     pipelineGraphs = list(ensure_iterable(pipelineGraphs))
     log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
+    butler.put(packages, 'packages', run=run)
 
     for pipelineGraph in pipelineGraphs:
         for datasetTypeNode in pipelineGraph.dataset_types.values():
@@ -213,42 +218,64 @@ class HeadProcessController:
         # )
         # self.pipelineGraphsBytes['full'] = pipelineGraphToBytes(self.pipelineGraphs['full'])
 
-        self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
+        if outputChain is None:
+            # allows it to be user specified, or use the default from the site
+            # config, but e.g. slac_testing doesn't use the real quickLook
+            # collection, but the k8s configs do.
+            outputChain = locationConfig.getOutputChain(self.instrument)
+        self.outputChain = outputChain
+
         self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)
         self.log.info(f"Head node ready. Data will be writen data to {self.outputRun}")
 
     def getLatestRunAndPrep(self, forceNewRun):
+        packages = Packages.fromSystem()
+
         allRuns = []
         try:
             allRuns = self.butler.registry.getCollectionChain(self.outputChain)
         except MissingCollectionError:
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
             lastRun = f'{self.outputChain}/0'
-            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
+            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
 
         allRunNums = [int(run.removeprefix(self.outputChain + '/')) for run in allRuns]
         lastRunNum = max(allRunNums)
+        lastRun = f'{self.outputChain}/{lastRunNum}'
 
-        if forceNewRun or self.checkIfNewRunNeeded():
+        if forceNewRun or self.checkIfNewRunNeeded(lastRun, packages):
             lastRunNum += 1
             lastRun = f'{self.outputChain}/{lastRunNum}'
 
             # prepRunCollection is called instead of registerCollection
-            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
+            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
             self.log.info(f"Started new run collection at {lastRun}")
-        else:
-            lastRun = f'{self.outputChain}/{lastRunNum}'
 
         return lastRun
 
-    def checkIfNewRunNeeded(self):
+    def checkIfNewRunNeeded(self, lastRun, packages):
         """Check if a new run is needed, and if so, create it and prep it.
+
+        Needed if the configs change, or if the software versions change, or if
+        the pipelines changes, but that's mostly likely going to happen via
+        config changes anyway.
+
+        Note that this is safe for checking config versions so long as the
+        configs only come from packages in git, so DRP_PIPE and obs_packages.
+        The only way of this going wrong would be either running wiht -c on the
+        command line, which isn't relevant here, or pushing straight to the
+        head node from a notebook *and* using the same outputChain. As long as
+        notebook users always set a manual outputChain and don't squat on
+        quickLook this is sufficient.
         """
-        raise NotImplementedError
+        oldPackages = self.butler.get('packages', collections=[lastRun])
+        if packages.difference(oldPackages):  # checks if any of the versions are different
+            return True
+        return False
 
     def doFanout(self, expRecord):
         """Send the expRecord out for processing based on current selection.
