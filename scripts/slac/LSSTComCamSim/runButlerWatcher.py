@@ -22,17 +22,18 @@
 
 import sys
 from lsst.rubintv.production import ButlerWatcher
+from lsst.rubintv.production.watchers import writeDimensionUniverseFile
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running LSSTComCamSim butler watcher...')
+location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
+print(f'Running ComCam butler watcher at {location}...')
 
-location = 'usdf_comcamsim' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.butlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                     'LSSTComCamSim/calib'])
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all'])
+writeDimensionUniverseFile(butler, locationConfig)
 butlerWatcher = ButlerWatcher(butler=butler,
                               locationConfig=locationConfig,
                               instrument='LSSTComCamSim',
