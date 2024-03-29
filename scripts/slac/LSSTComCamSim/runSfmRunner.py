@@ -29,11 +29,12 @@ instrument = 'LSSTComCamSim'
 
 setupLogging()
 
-if len(sys.argv) < 2:
-    print("Must supply worker number as a command line argument")
-    sys.exit(1)
-
-workerNum = int(sys.argv[1])
+workerNum = os.getenv("WORKER_NUMBER")
+if not workerNum:
+    if len(sys.argv) < 2:
+        print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
+        sys.exit(1)
+    workerNum = int(sys.argv[1])
 
 detectorNum = workerNum % 9
 detectorDepth = workerNum//9
