@@ -181,6 +181,8 @@ class RedisWatcher:
         self.payload = None
 
     # @atexit.register
+    # # I don't think this can work on instance methods, so think about this
+    # # and whether it's even useful
     # def _deleteWorkerFromPool(self):
     #     """This is not robust at all, definitely not to OOM messages, but
     #     gives workers a chance of removing themselves, at least.
