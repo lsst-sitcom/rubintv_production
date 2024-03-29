@@ -76,3 +76,8 @@ tmaMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards'
 
 # Redis work distribution configs
 sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook-ops-rehearsal-3.yaml'
+
+outputChains:
+  LSSTComCam: LSSTComCam/quickLookTesting
+  LSSTComCamSim: LSSTComCamSim/quickLookTesting
+  LSSTCam: LSSTCam/quickLookTesting

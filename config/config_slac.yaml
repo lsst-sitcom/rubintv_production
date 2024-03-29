@@ -31,3 +31,8 @@ comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_m
 
 # Redis work distribution configs
 sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation-ops-rehearsal-3.yaml'
+
+outputChains:
+  LSSTComCam: LSSTComCam/quickLook
+  LSSTComCamSim: LSSTComCamSim/quickLook
+  LSSTCam: LSSTCam/quickLook
