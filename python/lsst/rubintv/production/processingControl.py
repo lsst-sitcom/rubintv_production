@@ -192,9 +192,7 @@ class HeadProcessController:
         self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
         self.nDispatched = 0
 
-        steps = ('step1', 'step2a', 'nightlyRollup')
-        allStepString = '#' + ','.join(steps)
-
+        steps = ('step1', 'step2a', 'nightlyRollup')  # NB: these need to be in order for prepRunCollection!
         self.pipelineGraphUris = {}
         self.pipelineGraphs = {}
         self.pipelineGraphsBytes = {}
@@ -207,15 +205,16 @@ class HeadProcessController:
             )
             self.pipelineGraphsBytes[step] = pipelineGraphToBytes(self.pipelineGraphs[step])
 
-        allStepString = '#' + ','.join(steps)
-        self.pipelineGraphUris['full'] = self._basePipeline + allStepString
-        self.pipelineGraphs['full'] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
-            registry=self.butler.registry
-        )
-        self.pipelineGraphsBytes['full'] = pipelineGraphToBytes(self.pipelineGraphs['full'])
+        #  XXX remove this if we never need full
+        # allStepString = '#' + ','.join(steps)
+        # self.pipelineGraphUris['full'] = self._basePipeline + allStepString
+        # self.pipelineGraphs['full'] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
+        #     registry=self.butler.registry
+        # )
+        # self.pipelineGraphsBytes['full'] = pipelineGraphToBytes(self.pipelineGraphs['full'])
 
         self.outputChain = f'{self.instrument}/quickLook' if not outputChain else outputChain
-        self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)  # XXX currently unused?
+        self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)
         self.log.info(f"Head node ready. Data will be writen data to {self.outputRun}")
 
     def getLatestRunAndPrep(self, forceNewRun):
@@ -233,7 +232,7 @@ class HeadProcessController:
         allRunNums = [int(run.removeprefix(self.outputChain + '/')) for run in allRuns]
         lastRunNum = max(allRunNums)
 
-        if forceNewRun:  # or self.checkIfNewRunNeeded():
+        if forceNewRun or self.checkIfNewRunNeeded():
             lastRunNum += 1
             lastRun = f'{self.outputChain}/{lastRunNum}'
 
@@ -241,9 +240,8 @@ class HeadProcessController:
             prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
             self.log.info(f"Started new run collection at {lastRun}")
-
-        lastRun = f'{self.outputChain}/{lastRunNum}'
-        prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun)
+        else:
+            lastRun = f'{self.outputChain}/{lastRunNum}'
 
         return lastRun
 
