@@ -89,8 +89,6 @@ __all__ = [
     'MonitorChannel',
     'MountTorqueChannel',
     'MetadataCreator',
-    'Heartbeater',
-    'SingleCorePipelineRunner',
     'CalibrateCcdRunner',
     'NightReportChannel',
     'TmaTelemetryChannel',
