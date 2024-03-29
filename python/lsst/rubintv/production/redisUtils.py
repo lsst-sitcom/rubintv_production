@@ -294,6 +294,47 @@ class RedisHelper:
                 workers.append(worker)
         return workers
 
+    def pushToButlerWatcherList(self, instrument, expRecord):
+        """Keep a record of what's been found by the butler watcher for all
+        time.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord`
+            The exposure record to push to the list.
+        """
+        expRecordJson = expRecord.to_simple().json()
+        self.redis.lpush(f'{instrument}-fromButlerWacher', expRecordJson)
+
+    def checkButlerWatcherList(self, instrument, expRecord):
+        """Check if an exposure record has already been processed because it
+        was seen by the ButlerWatcher.
+
+        This is because, when a butler watcher restarts, it will always find
+        the most recent exposure record in the repo. We don't want to always
+        issue these for processing, so we keep a list of what's been seen.
+
+        Note that this is checked by the ButlerWatcher itself, and thus,
+        *intentionally*, a general RedisHelper can still call
+        `helper.pushNewExposureToHeadNode(record)` in order to send anything
+        for processing, as this will be pulled in and fanned out as usual.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord`
+            The exposure record to check.
+
+        Returns
+        -------
+        bool
+            Whether the exposure record has already been processed.
+        """
+        expRecordJson = expRecord.to_simple().json()
+
+        data = self.redis.lrange(f'{instrument}-fromButlerWacher', 0, -1)
+        recordStrings = [item.decode('utf-8') for item in data]
+        return expRecordJson in recordStrings
+
     def _checkIsHeadNode(self):
         """Note: this isn't how atomicity of transactions is ensured, this is
         just to make sure workers don't accidentally try to pop straight from
