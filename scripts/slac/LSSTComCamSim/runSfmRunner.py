@@ -28,9 +28,19 @@ from lsst.summit.utils.utils import setupLogging
 instrument = 'LSSTComCamSim'
 
 setupLogging()
-location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running raw processor for detector 0 at {location}...')
 
+if len(sys.argv) < 2:
+    print("Must supply worker number as a command line argument")
+    sys.exit(1)
+
+workerNum = int(sys.argv[1])
+
+detectorNum = workerNum//9
+detectorDepth = workerNum % 9
+queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
+print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
+
+location = 'slac'
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
@@ -48,6 +58,6 @@ sfmRunner = SingleCorePipelineRunner(
     step='step1',
     awaitsDataProduct='raw',
     doRaise=True,
-    queueName='SFM-WORKER-00-00'
+    queueName=queueName
 )
 sfmRunner.run()
