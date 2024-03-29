@@ -277,6 +277,26 @@ class HeadProcessController:
             return True
         return False
 
+    def getFreeWorkerQueue(self, detectorId):
+        # TODO: this really should take all the detectorIds that we need a free
+        # worker for and return them all at once so that we only have to call
+        # redisHelper.getFreeWorkers() once but I'm too low on time right now.
+
+        sfmWorkers = self.redisHelper.getFreeWorkers(workerType='SFM')
+        sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
+
+        # get ones which match the detectorId. We'll make this smarter later.
+        idMatchedWorkers = [queue for queue in sfmWorkers if f'-{detectorId:02}-' in queue]
+        if idMatchedWorkers == []:
+            # TODO: until we have a real backlog queue just put it on the last
+            # worker in the stack.
+            busyWorkers = self.redisHelper.getAllWorkers(workerType='SFM')
+            idMatchedWorkers = [queue for queue in busyWorkers if f'-{detectorId:02}-' in queue]
+            busyWorker = idMatchedWorkers[-1]
+            self.log.warning(f'No free workers available for {detectorId=}, sending work to {busyWorker=}')
+            return busyWorker
+        return idMatchedWorkers[0]
+
     def doFanout(self, expRecord):
         """Send the expRecord out for processing based on current selection.
 
@@ -305,9 +325,8 @@ class HeadProcessController:
                       f" out to {len(detectorIds)} detectors.")
 
         for detectorId, dataId in dataIds.items():
-            # queueName = self.getFreeWorkerQueue(detectorId)  # XXX need to work this part out
-            workerDepth = 0  # get this from the function above
-            queueName = f'SFM-WORKER-{detectorId:02}-{workerDepth:02}'
+            queueName = self.getFreeWorkerQueue(detectorId)
+            self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
                 dataId=dataId,
                 pipelineGraphBytes=self.pipelineGraphsBytes['step1'],
