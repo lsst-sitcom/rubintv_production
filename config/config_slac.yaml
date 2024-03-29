@@ -1,7 +1,7 @@
 # Required items:
 dataIdScanPath: '/sdf/scratch/rubin/rapid-analysis/dataIds'
 bucketName: 'rubintv_data_slac'
-dimensionUniverseFile: '/scratch/rubintv/rubintv/butlerDimensionUniverse.json'
+dimensionUniverseFile: '/scratch/rubintv/rapid-analysis/butlerDimensionUniverse.json'
 
 # Butler paths - use full paths not aliases here as path existence is checked
 ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
@@ -22,6 +22,12 @@ botMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadat
 
 # configuration
 binning: 8
+
+# ComCam configuration:
+comCamButlerPath: '/sdf/group/rubin/repo/embargo/butler.yaml'
+# # paths for serving TS8 metadata at SLAC
+comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
+comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
 # Redis work distribution configs
 sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation-ops-rehearsal-3.yaml'
