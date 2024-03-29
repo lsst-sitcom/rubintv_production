@@ -348,7 +348,9 @@ class HeadProcessController:
 
     def run(self):
         while True:
-            self.redisHelper.affirmRunning(self.name, 10)  # push the expiry out 10s
+            # affirmRunning should be longer than longest loop but no longer
+            self.redisHelper.affirmRunning(self.name, 5)
+
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is None:
