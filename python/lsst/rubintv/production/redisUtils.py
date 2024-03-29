@@ -229,7 +229,6 @@ class RedisHelper:
             The name of the queue the worker is processing.
         """
         self.redis.set(f'{queueName}_IS-BUSY', value=1)
-        # self.redis.setex(f'{queueName}_EXISTS', timedelta(seconds=300), value=time.time())
 
     def announceFree(self, queueName):
         """Announce that a worker is free to process a queue.
@@ -240,6 +239,21 @@ class RedisHelper:
             The name of the queue the worker is processing.
         """
         self.redis.delete(f'{queueName}_IS-BUSY')
+
+    def announceExistence(self, queueName, remove=False):
+        """Announce that a worker is present in the pool.
+
+        Parameters
+        ----------
+        queueName : `str`
+            The name of the queue the worker is processing.
+        remove : `bool`, optional
+            Remove the worker from pool. Default is ``True``.
+        """
+        if not remove:
+            self.redis.setex(f'{queueName}_EXISTS', timedelta(seconds=30), value=1)
+        else:
+            self.redis.delete(f'{queueName}_EXISTS')
 
     def _checkIsHeadNode(self):
         """Note: this isn't how atomicity of transactions is ensured, this is
