@@ -23,6 +23,7 @@ import logging
 import os
 from glob import glob
 from time import sleep
+import atexit
 
 from lsst.utils.iteration import ensure_iterable
 
@@ -177,6 +178,20 @@ class RedisWatcher:
         self.heartbeater = None  # TODO once we have websockets to the front end
         self.cadence = 0.1  # seconds - this is fine, redis likes a beating
         self.log = _LOG.getChild("redisWatcher")
+        self.payload = None
+
+    @atexit.register
+    def _deleteWorkerFromPool(self):
+        """This is not robust at all, definitely not to OOM messages, but
+        gives workers a chance of removing themselves, at least.
+        """
+        self.redisHelper.announceExistence(self.queueName, remove=True)
+        if self.payload is not None:
+            # XXX send this to failed queue here
+            # Here we have not come from a task error, but from
+            # SIGINT or KeyboardInterrupt, so push the failed payload to the
+            # failed stack
+            return
 
     def run(self, callback, **kwargs):
         """Run forever, calling ``callback`` on each most recent expRecord.
@@ -192,9 +207,11 @@ class RedisWatcher:
             payload = self.redisHelper.dequeuePayload(self.queueName)
             if payload is not None:
                 try:
+                    self.payload = payload
                     self.redisHelper.announceBusy(self.queueName)
                     callback(payload)
-                except Exception as e:
+                    self.payload = None
+                except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
                     self.log.error(f"Error processing payload {payload}: {e}")
                 finally:
                     self.redisHelper.announceFree(self.queueName)
