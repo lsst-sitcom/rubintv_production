@@ -162,11 +162,15 @@ class RedisHelper:
         """
         site = getSite()
         match site:
-            case 'rubin-devl':
+            case site if site in ('rubin-devl', 'staff-rsp'):
                 # XXX put this IP in the locationConfig instead?
                 return redis.Redis(host='172.24.5.216', password=getRedisSecret())
+            case 'usdf-k8s':
+                password = os.getenv('REDIS_PASSWORD')
+                host = os.getenv('REDIS_HOST')
+                return redis.Redis(host=host, password=password)
             case 'summit':
-                password = os.getenv('REDIS_SECRET')  # XXX is this the right env var?
+                password = os.getenv('REDIS_PASSWORD')
                 return redis.Redis(password=password)
             case 'base':
                 raise NotImplementedError('Merlin needs to configure redis connection for base')
