@@ -372,6 +372,13 @@ class StarTrackerChannel(BaseChannel):
         # TODO: remove in DM-43413
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         dayObsStr = dayObsIntToString(dayObs)
+
+        # this is horrible but temporary and all goes away in DM-4341
+        if channel == 'startracker_narrow_raw':  # this is horrible but temporary
+            channel = 'startracker_raw'
+        if channel == 'startracker_narrow_analysis':
+            channel = 'startracker_analysis'
+
         filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
         return filename
 
