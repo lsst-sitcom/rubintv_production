@@ -97,8 +97,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.runCollection = None
         self.limitedButler = self.makeLimitedButler(butler)
-        self.log.info(f"Pipeline running configured to consume from {self.queueName}")
-        self.redisHelper.announceFree(queueName)
+        self.log.info(f"Pipeline running configured to consume from {queueName}")
 
     def makeLimitedButler(self, butler):
         cachedOnGet = set()
