@@ -233,15 +233,26 @@ class RedisHelper:
     def announceFree(self, queueName):
         """Announce that a worker is free to process a queue.
 
+        Implies a call to `announceExistence` as you have to exist to be free.
+
         Parameters
         ----------
         queueName : `str`
             The name of the queue the worker is processing.
         """
+        self.announceExistence(queueName)
         self.redis.delete(f'{queueName}_IS-BUSY')
 
     def announceExistence(self, queueName, remove=False):
         """Announce that a worker is present in the pool.
+
+        Currently this is set to 30s expiry, and is reasserted with each call
+        to `announceFree`. This is to ensure that if a worker dies, the queue
+        will be freed up for another worker to take over. It shouldn't matter
+        much if this expires during processing, so this doesn't need to be
+        greater than the longest SFM pipeline execution, which would be ~200s.
+        If we were to pick that, then work could land on a dead queue and sit
+        around for quite some time.
 
         Parameters
         ----------
@@ -254,6 +265,34 @@ class RedisHelper:
             self.redis.setex(f'{queueName}_EXISTS', timedelta(seconds=30), value=1)
         else:
             self.redis.delete(f'{queueName}_EXISTS')
+
+    def getAllWorkers(self):
+        """Get the list of workers that are currently active.
+
+        Returns
+        -------
+        workers : `list` of `str`
+            The list of workers that are currently active.
+        """
+        workers = []
+        for key in self.redis.keys('*_EXISTS'):
+            workers.append(key.decode('utf-8').replace('_EXISTS', ''))
+        return workers
+
+    def getFreeWorkers(self):
+        """Get the list of workers that are currently free.
+
+        Returns
+        -------
+        workers : `list` of `str`
+            The list of workers that are currently free.
+        """
+        workers = []
+        allWorkers = self.getAllWorkers()
+        for worker in allWorkers:
+            if not self.redis.get(f'{worker}_IS-BUSY'):
+                workers.append(worker)
+        return workers
 
     def _checkIsHeadNode(self):
         """Note: this isn't how atomicity of transactions is ensured, this is
