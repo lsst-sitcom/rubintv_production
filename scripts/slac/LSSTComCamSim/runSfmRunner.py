@@ -35,8 +35,8 @@ if len(sys.argv) < 2:
 
 workerNum = int(sys.argv[1])
 
-detectorNum = workerNum//9
-detectorDepth = workerNum % 9
+detectorNum = workerNum % 9
+detectorDepth = workerNum//9
 queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
