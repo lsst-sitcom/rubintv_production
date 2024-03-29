@@ -170,8 +170,9 @@ class RedisHelper:
                 host = os.getenv('REDIS_HOST')
                 return redis.Redis(host=host, password=password)
             case 'summit':
+                host = os.getenv('REDIS_HOST')
                 password = os.getenv('REDIS_PASSWORD')
-                return redis.Redis(password=password)
+                return redis.Redis(host=host, password=password)
             case 'base':
                 raise NotImplementedError('Merlin needs to configure redis connection for base')
             case 'tucson':
