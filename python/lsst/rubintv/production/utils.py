@@ -747,6 +747,38 @@ def writeMetadataShard(path, dayObs, mdDict):
     return
 
 
+def writeExpRecordMetadataShard(expRecord, metadataShardPath):
+    """Write the exposure record metedata to a shard.
+
+    Only fires once, based on the value of TS8_METADATA_DETECTOR or
+    LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record.
+    """
+    md = {}
+    md['Exposure time'] = expRecord.exposure_time
+    md['Image type'] = expRecord.observation_type
+    md['Reason'] = expRecord.observation_reason
+    md['Date begin'] = expRecord.timespan.begin.isot
+    md['Program'] = expRecord.science_program
+    md['Group name'] = expRecord.group_name
+    md['Filter'] = expRecord.physical_filter
+    md['Target'] = expRecord.target_name
+    md['RA'] = expRecord.tracking_ra
+    md['Dec'] = expRecord.tracking_dec
+    md['Sky angle'] = expRecord.sky_angle
+    md['Azimuth'] = expRecord.azimuth
+    md['Elevation'] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
+
+    seqNum = expRecord.seq_num
+    dayObs = expRecord.day_obs
+    shardData = {seqNum: md}
+    writeMetadataShard(metadataShardPath, dayObs, shardData)
+
+
 def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
     """Write some per-image data for merging later.
 
