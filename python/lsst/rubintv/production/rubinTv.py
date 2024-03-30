@@ -155,6 +155,8 @@ class IsrRunner(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=self.bestEffort.butler,
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='raw',
                          channelName='auxtel_isr_runner',
                          doRaise=doRaise)
@@ -195,6 +197,8 @@ class ImExaminerChannel(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='quickLookExp',
                          channelName='summit_imexam',
                          doRaise=doRaise)
@@ -291,6 +295,8 @@ class SpecExaminerChannel(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='quickLookExp',
                          channelName='summit_specexam',
                          doRaise=doRaise)
@@ -369,6 +375,8 @@ class MonitorChannel(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='quickLookExp',
                          channelName='auxtel_monitor',
                          doRaise=doRaise)
@@ -447,6 +455,8 @@ class MountTorqueChannel(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='raw',
                          channelName='auxtel_mount_torques',
                          doRaise=doRaise)
@@ -580,6 +590,8 @@ class MetadataCreator(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='raw',
                          channelName='auxtel_metadata_creator',
                          doRaise=doRaise)
@@ -755,6 +767,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
                              embargo=embargo,
                              writeable=True
                          ),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='quickLookExp',
                          channelName='auxtel_calibrateCcd',
                          doRaise=doRaise)
@@ -1081,6 +1095,8 @@ class NightReportChannel(BaseButlerChannel):
         super().__init__(locationConfig=locationConfig,
                          instrument=instrument,
                          butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+                         detectors=0,
+                         watcherType='file',
                          dataProduct='quickLookExp',
                          channelName='auxtel_night_reports',
                          doRaise=doRaise)
