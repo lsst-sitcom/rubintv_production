@@ -147,6 +147,9 @@ def getNumExpectedItems(expRecord, logger=None):
     else:
         raise ValueError(f"Unknown instrument {instrument}")
 
+    if instrument == "LSSTComCamSim":
+        return fallbackValue  # it's always nine (it's simulated), and this will all be redone soon anyway
+
     try:
         resourcePath = (f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
                         f"{expRecord.obs_id}_expectedSensors.json")
