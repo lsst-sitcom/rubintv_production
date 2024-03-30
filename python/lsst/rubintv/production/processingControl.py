@@ -40,6 +40,7 @@ from .redisUtils import RedisHelper
 from .payloads import Payload, pipelineGraphToBytes
 from .utils import writeExpRecordMetadataShard
 
+
 class WorkerProcessingMode(enum.IntEnum):
     """Defines the mode in which worker nodes process images.
 
