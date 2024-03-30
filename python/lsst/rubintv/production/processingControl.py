@@ -38,7 +38,7 @@ from lsst.utils.packages import Packages
 
 from .redisUtils import RedisHelper
 from .payloads import Payload, pipelineGraphToBytes
-
+from .utils import writeExpRecordMetadataShard
 
 class WorkerProcessingMode(enum.IntEnum):
     """Defines the mode in which worker nodes process images.
@@ -375,6 +375,12 @@ class HeadProcessController:
             if expRecord is None:
                 sleep(0.1)
                 continue
+
+            # XXX This ABSOLUTELY must be changed from being hard coded to use
+            # comCamSimMetadataShardPath before merging
+            # XXX
+            writeExpRecordMetadataShard(expRecord, self.locationConfig.comCamSimMetadataShardPath)
+            # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
 
             self.doFanout(expRecord)
             # note the repattern comes after the fanout so that any commands
