@@ -549,8 +549,9 @@ class S3Uploader(IUploader):
                 f"{instrument}/{dayObsStr}/night_report/{instrument}_night_report_{dayObsStr}_{basename}"
             )
         else:
-            # the plot filenames have the channel name saved into them in the form
-            # path/channelName-plotName.png, so remove the channel name and dash
+            # the plot filenames have the channel name saved into them in the
+            # form path/channelName-plotName.png, so remove the channel name
+            # and dash
             plotName = basename.replace(instrument + '_night_reports' + "-", "")
             plotFilename = f'{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}'
             uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}")

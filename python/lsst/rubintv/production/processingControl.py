@@ -176,27 +176,55 @@ def getHeadNodeName(instrument):
 
 
 def getStep2aTriggerTask(pipelineFile):
-    """Get the task which triggers the step2a processing.
+    """Get the last task in a step1 which runs, to know when to trigger step2a.
 
-    This is the task which is run when an image is complete, and which
-    triggers the step2a processing.
+    This is the task which is run when a decetor-exposure is complete, and
+    which therefore means it's time to trigger the step2a processing if all
+    quanta are complete.
 
     Parameters
     ----------
-    pipelineGraphs : `dict`
-        The pipelineGraphs to search for the task.
+    pipelineFile : `str`
+        The pipelineFile defining the pipeline. Hopefully we can use the real
+        pipeline in the future and thus avoid the hard-coding of strings below.
 
     Returns
     -------
-    task : `lsst.pipe.base.Task`
+    taskName : `str`
         The task which triggers step2a processing.
     """
     if 'nightly-validation' in pipelineFile:
-        return 'lsst.pipe.tasks.calibrate.CalibrateTask'
+        return 'lsst.pipe.tasks.postprocess.TransformSourceTableTask'
     elif 'quickLook' in pipelineFile:
-        return 'lsst.pipe.tasks.processCcd.ProcessCcdTask'
+        return 'lsst.pipe.tasks.calibrate.CalibrateTask'
     else:
         raise ValueError(f'Unsure how to trigger step2a when {pipelineFile=}')
+
+
+def getNightlyRollupTriggerTask(pipelineFile):
+    """Get the last task in a step1 which runs, to know when to trigger step2a.
+
+    This is the task which is run when a decetor-exposure is complete, and
+    which therefore means it's time to trigger the step2a processing if all
+    quanta are complete.
+
+    Parameters
+    ----------
+    pipelineFile : `str`
+        The pipelineFile defining the pipeline. Hopefully we can use the real
+        pipeline in the future and thus avoid the hard-coding of strings below.
+
+    Returns
+    -------
+    taskName : `str`
+        The task which triggers step2a processing.
+    """
+    if 'nightly-validation' in pipelineFile:
+        return 'lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask'
+    elif 'quickLook' in pipelineFile:
+        return 'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask'
+    else:
+        raise ValueError(f'Unsure how to trigger nightly rollup when {pipelineFile=}')
 
 
 class HeadProcessController:
@@ -234,14 +262,6 @@ class HeadProcessController:
                 registry=self.butler.registry
             )
             self.pipelineGraphsBytes[step] = pipelineGraphToBytes(self.pipelineGraphs[step])
-
-        #  XXX remove this if we never need full
-        # allStepString = '#' + ','.join(steps)
-        # self.pipelineGraphUris['full'] = self._basePipeline + allStepString
-        # self.pipelineGraphs['full'] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
-        #     registry=self.butler.registry
-        # )
-        # self.pipelineGraphsBytes['full'] = pipelineGraphToBytes(self.pipelineGraphs['full'])
 
         if outputChain is None:
             # allows it to be user specified, or use the default from the site
@@ -425,12 +445,13 @@ class HeadProcessController:
 
         Returns
         -------
+        # XXX this is currently unused, but hopefully will be later
         dispatchedWork : bool
             Was anything sent out?
         """
         # allIds is all the incomplete or just-completed exp/visit ids for
-        # gather processing. Completed ids are removed once thei gather step
-        # has been reun.
+        # gather processing. Completed ids are removed once the gather step
+        # has been run.
         allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
         completeIds = [_id for _id in allIds if
                        self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
@@ -449,8 +470,9 @@ class HeadProcessController:
             else:
                 if dispatchIncomplete:
                     self._dispatch2a(dataCoord)
-                    # NB do not remove the counter key as this will be redispatched
-                    # and removed once complete
+                    # NB do not remove the counter key here, as this will be
+                    # redispatched once complete, and should only be removed
+                    # then
 
         if completeIds or (dispatchIncomplete and allIds):
             return True  # we sent something out
@@ -464,8 +486,8 @@ class HeadProcessController:
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
-                # XXX This ABSOLUTELY must be changed from being hard coded to use
-                # comCamSimMetadataShardPath before merging
+                # XXX This ABSOLUTELY must be changed from being hard coded to
+                # use comCamSimMetadataShardPath before merging
                 # XXX
                 # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
                 writeExpRecordMetadataShard(expRecord, self.locationConfig.comCamSimMetadataShardPath)
