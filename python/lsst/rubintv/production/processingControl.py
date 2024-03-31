@@ -175,6 +175,30 @@ def getHeadNodeName(instrument):
     return f'headNode-{instrument}'
 
 
+def getStep2aTriggerTask(pipelineFile):
+    """Get the task which triggers the step2a processing.
+
+    This is the task which is run when an image is complete, and which
+    triggers the step2a processing.
+
+    Parameters
+    ----------
+    pipelineGraphs : `dict`
+        The pipelineGraphs to search for the task.
+
+    Returns
+    -------
+    task : `lsst.pipe.base.Task`
+        The task which triggers step2a processing.
+    """
+    if 'nightly-validation' in pipelineFile:
+        return 'lsst.pipe.tasks.calibrate.CalibrateTask'
+    elif 'quickLook' in pipelineFile:
+        return 'lsst.pipe.tasks.processCcd.ProcessCcdTask'
+    else:
+        raise ValueError(f'Unsure how to trigger step2a when {pipelineFile=}')
+
+
 class HeadProcessController:
     """The head node, which controls which pods process which images.
 
@@ -448,7 +472,11 @@ class HeadProcessController:
             # with tracking that and dispatching only if the number has gone up
             # *and* there are 2+ free workers, because it's not worth
             # re-dispatching for every single new CCD exposure which finishes.
-            self.dispatchGatherSteps('step2a', dispatchIncomplete=False)
+            self.dispatchGatherSteps(
+                triggeringTask=getStep2aTriggerTask(self._basePipeline),
+                step='step2a',
+                dispatchIncomplete=False
+            )
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then

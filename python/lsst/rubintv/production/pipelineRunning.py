@@ -42,6 +42,13 @@ __all__ = [
     'SingleCorePipelineRunner',
 ]
 
+# record when these tasks finish per-quantum so we can trigger off the counts
+TASK_ENDPOINTS_TO_TRACK = (
+    'lsst.ip.isr.isrTask.IsrTask',
+    'lsst.pipe.tasks.calibrate.CalibrateTask',
+    'lsst.pipe.tasks.postprocess.TransformSourceTableTask',
+)
+
 
 class SingleCorePipelineRunner(BaseButlerChannel):
     """Class for detector-parallel or single-core pipelines, e.g. SFM.
@@ -212,8 +219,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 quantum = executor.execute(node.taskDef, node.quantum)
                 self.postProcessQuantum(quantum)
 
-                expId = payload.dataId['exposure']  # this works for step1 and step2a
-                self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
+                # don't track all the intermediate tasks, only points used
+                # for triggering other workflows
+                if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
+                    expId = payload.dataId['exposure']  # this works for step1 and step2a
+                    self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
 
             # XXX put the visit info summary stuff inside the pipeline itself
             # and then the rollup over detectors in a gather-type process.
