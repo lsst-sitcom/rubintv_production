@@ -402,7 +402,7 @@ class HeadProcessController:
         # allIds is all the incomplete or just-completed exp/visit ids for
         # gather processing. Completed ids are removed once thei gather step
         # has been reun.
-        allIds = set(self.helper.getIdsForTask(self.instrument, triggeringTask))
+        allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
         completeIds = [_id for _id in allIds if
                        self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
                        self.getNumExpected(self.instrument)]
