@@ -330,6 +330,66 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(f'{instrument}-fromButlerWacher', expRecordJson)
 
+    def reportFinished(self, instrument, taskName, processingId):
+        """Report that a task has finished.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        taskName : `str`
+            The name of the task that has finished processing.
+        processingId : `int`
+            Either the exposureId or visitId of the payload that has finished
+            being processed for the specified task.
+        """
+        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+
+    def getNumFinished(self, instrument, taskName, processingId):
+        """Get the number of items finished for a given task and id.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        taskName : `str`
+            The name of the task that has finished processing.
+        processingId : `int`
+            Either the exposureId or visitId of the payload that has finished
+            being processed for the specified task.
+
+        Returns
+        -------
+        numFinished : `int`
+            The number of times the task has finished.
+        """
+        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        return int(self.redis.hget(key, processingId))
+
+    def getIdsForTask(self, instrument, taskName):
+        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        idList = self.redis.hgetall(key).keys()  # list of bytes
+        return [int(procId) for procId in idList]
+
+    def removeTaskCounter(self, instrument, taskName, processId):
+        """Once a gather step is finished with all the expected data present,
+        remove the counter from the tracking dictionary to save reprocessing it
+        each time.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        taskName : `str`
+            The name of the task that has finished processing.
+        processingId : `int`
+            Either the exposureId or visitId of the payload that has finished
+            being processed for the specified task.
+        """
+        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        self.redis.hdel(key, processId)
+
     def checkButlerWatcherList(self, instrument, expRecord):
         """Check if an exposure record has already been processed because it
         was seen by the ButlerWatcher.

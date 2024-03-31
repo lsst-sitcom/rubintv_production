@@ -278,7 +278,7 @@ class HeadProcessController:
             return True
         return False
 
-    def getFreeWorkerQueue(self, detectorId):
+    def getFreeSFMWorkerQueue(self, detectorId):
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
@@ -298,7 +298,21 @@ class HeadProcessController:
             return busyWorker
         return idMatchedWorkers[0]
 
-    def doFanout(self, expRecord):
+    def getFreeGatherWorkerQueue(self, workerType):
+        freeWorkers = self.redisHelper.getFreeWorkers(workerType=workerType)
+        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
+        if freeWorkers:
+            return freeWorkers[0]
+
+        # We have no free workers of this type, so send to a busy work and warn
+        # TODO: until we have a real backlog queue just put it on the last
+        # worker in the stack.
+        busyWorkers = self.redisHelper.getAllWorkers(workerType=workerType)
+        busyWorker = busyWorkers[-1]
+        self.log.warning(f'No free workers available for {workerType=}, sending work to {busyWorker=}')
+        return busyWorker
+
+    def doStep1Fanout(self, expRecord):
         """Send the expRecord out for processing based on current selection.
 
         Parameters
@@ -326,7 +340,7 @@ class HeadProcessController:
                       f" out to {len(detectorIds)} detectors.")
 
         for detectorId, dataId in dataIds.items():
-            queueName = self.getFreeWorkerQueue(detectorId)
+            queueName = self.getFreeSFMWorkerQueue(detectorId)
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
                 dataId=dataId,
@@ -366,6 +380,47 @@ class HeadProcessController:
             case _:
                 raise ValueError(f'Unknown visit processing mode {self.visitMode=}')
 
+    def getNumExpected(self, instrument):
+        if instrument in ('LSSTComCam', 'LSSTComCamSim'):
+            return 9
+        raise NotImplementedError(f'Need to extend dispatch for non-single-raft instruments {instrument=}')
+
+    def _dispatch2a(self, dataCoordinate):
+        payload = Payload(
+            dataId=dataCoordinate,
+            pipelineGraphBytes=self.pipelineGraphsBytes['step2a'],
+            run=self.outputRun
+        )
+        # caps for the queue name. Maybe should reconsider how that's dealt wit
+        # post OR3
+        queueName = self.getFreeGatherWorkerQueue('STEP2A')
+        self.redisHelper.enqueuePayload(payload, queueName)
+
+    def dispatchGatherSteps(self, triggeringTask, step='step2a', dispatchIncomplete=False):
+        """
+        """
+        # allIds is all the incomplete or just-completed exp/visit ids for
+        # gather processing. Completed ids are removed once thei gather step
+        # has been reun.
+        allIds = set(self.helper.getIdsForTask(self.instrument, triggeringTask))
+        completeIds = [_id for _id in allIds if
+                       self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
+                       self.getNumExpected(self.instrument)]
+
+        for _id in allIds:
+            isComplete = _id in completeIds
+            dataCoord = DataCoordinate.standardize(
+                instrument=self.instrument, exposure=_id, universe=self.butler.dimensions
+            )
+            if isComplete:
+                self._dispatch2a(dataCoord)
+                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, _id)
+            else:
+                if dispatchIncomplete:
+                    self._dispatch2a(dataCoord)
+                    # NB do not remove the counter key as this will be redispatched
+                    # and removed once complete
+
     def run(self):
         while True:
             # affirmRunning should be longer than longest loop but no longer
@@ -383,7 +438,18 @@ class HeadProcessController:
             writeExpRecordMetadataShard(expRecord, self.locationConfig.comCamSimMetadataShardPath)
             # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
 
-            self.doFanout(expRecord)
+            self.doStep1Fanout(expRecord)
+
+            # for now, only dispatch to step2a once things are complete because
+            # there is some subtlety in the dispatching incomplete things
+            # because they will be dispatched again and again until they are
+            # complete, and that will happen not when another completes, but at
+            # the speed of this loop, which would be bad, so we need to deal
+            # with tracking that and dispatching only if the number has gone up
+            # *and* there are 2+ free workers, because it's not worth
+            # re-dispatching for every single new CCD exposure which finishes.
+            self.dispatchGatherSteps('step2a', dispatchIncomplete=False)
+
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
             # do we toggle

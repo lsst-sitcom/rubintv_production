@@ -208,9 +208,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             for node in qg:
                 # XXX can also add timing info here
-                print(f'Starting to process {node.taskDef}')
+                self.log.info(f'Starting to process {node.taskDef}')
                 quantum = executor.execute(node.taskDef, node.quantum)
                 self.postProcessQuantum(quantum)
+
+                expId = payload.dataId['exposure']  # this works for step1 and step2a
+                self.watcher.reportFinished(self.instrument, quantum.taskName, expId)
 
             # XXX put the visit info summary stuff inside the pipeline itself
             # and then the rollup over detectors in a gather-type process.
@@ -241,6 +244,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             outputPath=self.locationConfig.calculatedDataPath,
             binSize=self.locationConfig.binning
         )
+        # XXX This MUST be replaced with a redis based signal post OR3!
+        # TODO: reviewer, do not let Merlin get away with this!)
+        # expId = dRef.dataId.id ??
+        # class FakeExpRecord:
+        #     dataId = dRef.dataId
+        # writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord)
+
         self.log.info(f'Wrote binned image for {dRef.dataId}')
 
     def clobber(self, object, datasetType, visitDataId):
