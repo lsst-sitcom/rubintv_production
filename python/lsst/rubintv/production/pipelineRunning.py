@@ -230,9 +230,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
                 # don't track all the intermediate tasks, only points used
                 # for triggering other workflows
-                if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
-                    expId = payload.dataId['exposure']  # this works for step1 and step2a
-                    self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
+                # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
+                expId = payload.dataId['exposure']  # this works for step1 and step2a
+                self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
 
             # XXX put the visit info summary stuff inside the pipeline itself
             # and then the rollup over detectors in a gather-type process.
@@ -344,30 +344,3 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f'Put {datasetType} for {visitDataId}')
-
-    def putVisitSummary(self, visitId):
-        """Create and butler.put the visitSummary for this visit.
-
-        Note that this only works like this while we have a single detector.
-
-        Note: the whole method takes ~0.25s so it is probably not worth
-        cluttering the class with the ConsolidateVisitSummaryTask at this
-        point, though it could be done.
-
-        Parameters
-        ----------
-        visitId : `lsst.daf.butler.DataCoordinate`
-            The visit id to create and put the visitSummary for.
-        """
-        dRefs = list(self.butler.registry.queryDatasets('calexp',
-                                                        dataId=visitId,
-                                                        collections=self.outputRunName).expanded())
-        if len(dRefs) != 1:
-            raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
-
-        ddRef = self.butler.getDirectDeferred(dRefs[0])
-        visit = ddRef.dataId.byName()['visit']  # this is a raw int
-        consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
-        expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
-        self.clobber(expCatalog, 'visitSummary', visitId)
-        return
