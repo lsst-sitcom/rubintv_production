@@ -26,7 +26,6 @@ import unittest
 
 from moto import mock_s3
 from lsst.rubintv.production import S3Uploader
-from lsst.rubintv.production import CHANNELS
 
 
 class TestS3Uploader(unittest.TestCase):

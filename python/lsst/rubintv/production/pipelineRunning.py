@@ -42,11 +42,19 @@ __all__ = [
     'SingleCorePipelineRunner',
 ]
 
+# TODO: post OR3 maybe get this from the pipeline graph?
+# TODO: post OR3 add something to allow us to trigger steps based on time or
+# something that allows us to still run when a task fails. Could even maybe
+# just be a finally block in the quantum execution code to allow us to count
+# fails. Only downside there is that it won't be robust to OOM kills.
+
 # record when these tasks finish per-quantum so we can trigger off the counts
 TASK_ENDPOINTS_TO_TRACK = (
-    'lsst.ip.isr.isrTask.IsrTask',
-    'lsst.pipe.tasks.calibrate.CalibrateTask',
-    'lsst.pipe.tasks.postprocess.TransformSourceTableTask',
+    'lsst.ip.isr.isrTask.IsrTask',  # for focal plane mosaics
+    'lsst.pipe.tasks.calibrate.CalibrateTask',  # end of step1 for quickLook pipeline
+    'lsst.pipe.tasks.postprocess.TransformSourceTableTask',  # end of step1 for nightly pipeline
+    'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask',  # end of step2a for quickLook pipeline
+    'lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask',  # end of step2a for nightly
 )
 
 

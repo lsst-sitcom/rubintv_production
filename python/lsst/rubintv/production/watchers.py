@@ -23,7 +23,6 @@ import logging
 import os
 from glob import glob
 from time import sleep
-import atexit
 
 from lsst.utils.iteration import ensure_iterable
 
