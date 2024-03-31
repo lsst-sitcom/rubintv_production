@@ -421,7 +421,12 @@ class HeadProcessController:
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchGatherSteps(self, triggeringTask, step='step2a', dispatchIncomplete=False):
-        """
+        """Dispatch any gather steps as needed
+
+        Returns
+        -------
+        dispatchedWork : bool
+            Was anything sent out?
         """
         # allIds is all the incomplete or just-completed exp/visit ids for
         # gather processing. Completed ids are removed once thei gather step
@@ -430,6 +435,8 @@ class HeadProcessController:
         completeIds = [_id for _id in allIds if
                        self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
                        self.getNumExpected(self.instrument)]
+
+        self.log.info(f'Gather dispatch for {step=} found {len(allIds)} total, {len(completeIds)} complete')
 
         for _id in allIds:
             isComplete = _id in completeIds
@@ -445,6 +452,10 @@ class HeadProcessController:
                     # NB do not remove the counter key as this will be redispatched
                     # and removed once complete
 
+        if completeIds or (dispatchIncomplete and allIds):
+            return True  # we sent something out
+        return False  # nothing was sent
+
     def run(self):
         while True:
             # affirmRunning should be longer than longest loop but no longer
@@ -452,17 +463,13 @@ class HeadProcessController:
 
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
             expRecord = self.getNewExposureAndDefineVisit()
-            if expRecord is None:
-                sleep(0.1)
-                continue
-
-            # XXX This ABSOLUTELY must be changed from being hard coded to use
-            # comCamSimMetadataShardPath before merging
-            # XXX
-            writeExpRecordMetadataShard(expRecord, self.locationConfig.comCamSimMetadataShardPath)
-            # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
-
-            self.doStep1Fanout(expRecord)
+            if expRecord is not None:
+                # XXX This ABSOLUTELY must be changed from being hard coded to use
+                # comCamSimMetadataShardPath before merging
+                # XXX
+                # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
+                writeExpRecordMetadataShard(expRecord, self.locationConfig.comCamSimMetadataShardPath)
+                self.doStep1Fanout(expRecord)
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things
@@ -482,6 +489,11 @@ class HeadProcessController:
             # executed are present for the next image to follow and only then
             # do we toggle
             self.repattern()
+
+            # don't run *too* fast if we're spinning our wheels. Probably want
+            # to do something a little more intelligent here, but this is fine
+            # until after OR3.
+            sleep(0.05)
 
 
 class RemoteController:
