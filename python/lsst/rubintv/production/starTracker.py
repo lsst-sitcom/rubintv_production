@@ -536,7 +536,7 @@ class StarTrackerChannel(BaseChannel):
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument='startracker' + self.camera.suffix,
-            plotName='analysis',
+            plotName='raw',
             dayObs=dayObs,
             seqNum=seqNum,
             filename=rawPngFilename,
