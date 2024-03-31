@@ -36,3 +36,6 @@ outputChains:
   LSSTComCam: LSSTComCam/quickLook
   LSSTComCamSim: LSSTComCamSim/quickLook
   LSSTCam: LSSTCam/quickLook
+
+comCamSimMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata'
+comCamSimMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata/shards'
