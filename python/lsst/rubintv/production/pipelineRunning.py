@@ -22,6 +22,7 @@
 
 import datetime
 import io
+import numpy as np
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
@@ -33,7 +34,7 @@ from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 
-from .utils import raiseIf
+from .utils import raiseIf, writeMetadataShard
 from .baseChannels import BaseButlerChannel
 from .slac.mosaicing import writeBinnedImage
 from .payloads import pipelineGraphToBytes
@@ -248,6 +249,20 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         match quantum.taskName:
             case 'lsst.ip.isr.isrTask.IsrTask':
                 self.postProcessIsr(quantum)
+            case 'lsst.pipe.tasks.calibrate.CalibrateTask':
+                # XXX I wonder if we could make dicts of some of the per-CCD
+                # quantities like PSF and 50 sigma source counts etc. Would
+                # probably mean changes to mergeShardsAndUpload in order to
+                # merge dict-like items into their corresponding dicts.
+
+                # XXX post OR3 also have this write binned images so we can
+                # update the focal plane mosaic with a calexp-based on.
+                return
+            case item if item in (
+                'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask',
+                'lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask',
+            ):
+                self.postProcesStep2a(quantum)
             case _:
                 # can match here and do fancy dispatch
                 return
@@ -270,6 +285,42 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord)
 
         self.log.info(f'Wrote binned image for {dRef.dataId}')
+
+    def postProcesStep2a(self, quantum):
+        dRef = quantum.outputs['visitSummary'][0]
+        vs = self.limitedButler.get(dRef)
+        (expRecord, ) = self.butler.registry.queryDimensionRecords('exposure', dataId=dRef.dataId)
+
+        pixToArcseconds = np.nanmean([row.wcs.getPixelScale().asArcseconds() for row in vs])
+        SIGMA2FWHM = np.sqrt(8 * np.log(2))
+
+        e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
+        e2 = 2*vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
+
+        outputDict = {
+            'PSF FWHM': np.nanmean(vs["psfSigma"]) * SIGMA2FWHM * pixToArcseconds,
+            'PSF e1': np.nanmean(e1),
+            'PSF e2': np.nanmean(e2),
+            'Sky mean': np.nanmean(vs["skyBg"]),
+            'Sky RMS': np.nanmean(vs["skyNoise"]),
+            'Variance plane mean': np.nanmean(vs["meanVar"]),
+            'PSF star count': np.nanmean(vs["nPsfStar"]),
+            'Astrometric bias': np.nanmean(vs["astromOffsetMean"]),
+            'Astrometric scatter': np.nanmean(vs["astromOffsetStd"]),
+            'Zeropoint': np.nanmean(vs["zeroPoint"]),
+        }
+
+        # flag all these as measured items to color the cell
+        labels = {"_" + k: "measured" for k in outputDict.keys()}
+        outputDict.update(labels)
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+        # XXX This ABSOLUTELY must be changed from being hard coded to
+        # use comCamSimMetadataShardPath before merging
+        # XXX
+        # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
+        writeMetadataShard(self.locationConfig.comCamSimMetadataShardPath, dayObs, rowData)
 
     def clobber(self, object, datasetType, visitDataId):
         """Put object in the butler.
