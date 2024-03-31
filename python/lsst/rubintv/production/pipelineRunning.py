@@ -213,7 +213,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.postProcessQuantum(quantum)
 
                 expId = payload.dataId['exposure']  # this works for step1 and step2a
-                self.watcher.reportFinished(self.instrument, quantum.taskName, expId)
+                self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
 
             # XXX put the visit info summary stuff inside the pipeline itself
             # and then the rollup over detectors in a gather-type process.
