@@ -528,6 +528,12 @@ class RedisHelper:
             return None
         return Payload.from_json(payLoadJson, self.butler)
 
+    def clearTaskCounters(self):
+        # XXX is keys OK here?
+        keys = self.redis.keys('*EDCOUNTER*')  # FINISHEDCOUNTER and FAILEDCOUNTER
+        for key in keys:
+            self.redis.delete(key)
+
     def displayRedisContents(self):
         """Get the next unit of work from a specific worker queue.
 

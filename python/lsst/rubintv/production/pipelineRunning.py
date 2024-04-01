@@ -222,14 +222,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 clobberOutputs=True,  # XXX think about what to do wrt clobbering
             )
 
+            if 'exposure' in payload.dataId:
+                processingId = payload.dataId['exposure']  # this works for step1 and step2a
+            else:  # for nightlyRollup this should use the trigger counter or something
+                processingId = 1  # XXX this REALLY need to be different BEFORE OR3!
+
             for node in qg:
                 try:
                     # XXX can also add timing info here
                     self.log.info(f'Starting to process {node.taskDef}')
                     quantum = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum)
-                    expId = payload.dataId['exposure']  # this works for step1 and step2a
-                    self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
+                    self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, processingId)
 
                 except Exception as e:
                     # Track when the tasks finish, regardless of whether they
@@ -240,7 +244,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
                     self.log.exception(f'Task {quantum.taskName} failed: {e}')
                     self.watcher.redisHelper.reportFinished(
-                        self.instrument, quantum.taskName, expId, failed=True
+                        self.instrument, quantum.taskName, processingId, failed=True
                     )
 
             # XXX put the visit info summary stuff inside the pipeline itself
