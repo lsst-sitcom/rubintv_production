@@ -228,16 +228,17 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.log.info(f'Starting to process {node.taskDef}')
                     quantum = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum)
+                    expId = payload.dataId['exposure']  # this works for step1 and step2a
                     self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
 
-                except:
+                except Exception as e:
                     # Track when the tasks finish, regardless of whether they
                     # succeeded.
 
                     # Don't track all the intermediate tasks, only
                     # points used for triggering other workflows.
                     # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
-                    expId = payload.dataId['exposure']  # this works for step1 and step2a
+                    self.log.exception(f'Task {quantum.taskName} failed: {e}')
                     self.watcher.redisHelper.reportFinished(
                         self.instrument, quantum.taskName, expId, failed=True
                     )
