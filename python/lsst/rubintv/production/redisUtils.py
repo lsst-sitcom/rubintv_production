@@ -371,6 +371,56 @@ class RedisHelper:
         key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
         return int(self.redis.hget(key, processingId))
 
+    def reportVisitLevelFinished(self, instrument, step, failed=False):
+        """Count the number of times a visit-level pipeline has finished.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        step : `str`
+            The name of the step which finished processing.
+        failed : `bool`
+            True if the processing did not fail to complete
+        """
+        key = f'{instrument}-{step}-FINISHEDCOUNTER'
+        self.redis.incr(key, 1)  # creates the key if it doesn't exist
+
+        if failed:  # fails have finished too, so increment finished and failed
+            key = key.replace('FINISHEDCOUNTER', 'FAILEDCOUNTER')
+            self.redis.incr(key, 1)  # creates the key if it doesn't exist
+
+    def getNumVisitLevelFinished(self, instrument, step):
+        """Get the number of times a visit-level pipeline has finished.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        step : `str`
+            The name of the step which finished processing.
+
+        Returns
+        -------
+        numFinished : `int`
+            The number of times the step has finished.
+        """
+        key = f'{instrument}-{step}-FINISHEDCOUNTER'
+        return int(self.redis.get(key) or 0)
+
+    def reportNightLevelFinished(self, instrument, failed=False):
+        """Count the number of times a night-level pipeline has finished.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        failed : `bool`
+            True if the processing did not fail to complete
+        """
+        key = f'{instrument}-NIGHTLYROLLUP-FINISHEDCOUNTER'
+        self.redis.incr(key, 1)
+
     def getIdsForTask(self, instrument, taskName):
         key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
         idList = self.redis.hgetall(key).keys()  # list of bytes
