@@ -249,6 +249,7 @@ class HeadProcessController:
         self.visitMode = VisitProcessingMode.CONSTANT
         self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
         self.nDispatched = 0
+        self.nNightlyRollups = 0
 
         steps = ('step1', 'step2a', 'nightlyRollup')  # NB: these need to be in order for prepRunCollection!
         self.pipelineGraphUris = {}
@@ -440,7 +441,7 @@ class HeadProcessController:
         queueName = self.getFreeGatherWorkerQueue('STEP2A')
         self.redisHelper.enqueuePayload(payload, queueName)
 
-    def dispatchGatherSteps(self, triggeringTask, step='step2a', dispatchIncomplete=False):
+    def dispatchGatherSteps(self, triggeringTask, step, dispatchIncomplete=False):
         """Dispatch any gather steps as needed
 
         Returns
@@ -457,6 +458,8 @@ class HeadProcessController:
                        self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
                        self.getNumExpected(self.instrument)]
 
+        if len(allIds) == 0:
+            return False
         self.log.info(f'Gather dispatch for {step=} found {len(allIds)} total, {len(completeIds)} complete')
 
         for _id in allIds:
@@ -477,6 +480,35 @@ class HeadProcessController:
         if completeIds or (dispatchIncomplete and allIds):
             return True  # we sent something out
         return False  # nothing was sent
+
+    def dispatchRollupIfNecessary(self):
+        """Check if we should do another rollup, and if so, dispatch it.
+
+        Returns
+        -------
+        doRollup : `bool`
+            Should we do another rollup?
+        """
+        # get completed number for rollupTriggerTask here
+        # check if greater than last dispath
+        # rollupTriggerTask
+        lastDispatched = self.nNightlyRollups
+
+        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, 'step2a')
+        if numComplete > lastDispatched:
+            self.log.info(f"Found {numComplete - lastDispatched} more completed step2a's"
+                          " dispatching nightly rollup")
+            self.nNightlyRollups = numComplete
+            self._dispatchNightlyRollup()
+            return True
+        return False
+
+    def _dispatchNightlyRollup(self):
+        dataId = {'instrument': self.instrument, 'skymap': 'ops_rehersal_prep_2k_v1'}
+        dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
+        payload = Payload(dataCoord, self.pipelineGraphsBytes['step2a'], run=self.outputRun)
+        queueName = self.getFreeGatherWorkerQueue('STEP2A')  # XXX MAKE NEW WORKERS FOR THIS!! --------------------------------------- flake8 error to make sure this isn't lost!
+        self.redisHelper.enqueuePayload(payload, queueName)
 
     def run(self):
         while True:
@@ -506,6 +538,9 @@ class HeadProcessController:
                 step='step2a',
                 dispatchIncomplete=False
             )
+
+            rollupTriggerTask = getNightlyRollupTriggerTask(self._basePipeline)
+            self.dispatchRollupIfNecessary()
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then

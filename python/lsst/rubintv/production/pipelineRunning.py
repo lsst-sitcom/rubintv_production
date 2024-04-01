@@ -31,7 +31,6 @@ from lsst.utils.iteration import ensure_iterable
 from lsst.pipe.base import Pipeline, PipelineGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
-from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 
 from .utils import raiseIf, writeMetadataShard
@@ -107,6 +106,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          )
         self.instrument = instrument
         self.butler = butler
+        self.step = step
         self.pipeline = pipeline + f"#{step}"
         self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
         self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
@@ -247,10 +247,17 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         self.instrument, quantum.taskName, processingId, failed=True
                     )
 
-            # XXX put the visit info summary stuff inside the pipeline itself
-            # and then the rollup over detectors in a gather-type process.
+            # finished looping over nodes
+            if self.step == 'step2a':
+                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, 'step2a')
+            if self.step == 'nightlyRollup':
+                self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
 
         except Exception as e:
+            if self.step == 'step2a':
+                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, 'step2a', failed=True)
+            if self.step == 'nightlyRollup':
+                self.watcher.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
     def postProcessQuantum(self, quantum):
