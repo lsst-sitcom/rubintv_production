@@ -223,16 +223,24 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
 
             for node in qg:
-                # XXX can also add timing info here
-                self.log.info(f'Starting to process {node.taskDef}')
-                quantum = executor.execute(node.taskDef, node.quantum)
-                self.postProcessQuantum(quantum)
+                try:
+                    # XXX can also add timing info here
+                    self.log.info(f'Starting to process {node.taskDef}')
+                    quantum = executor.execute(node.taskDef, node.quantum)
+                    self.postProcessQuantum(quantum)
+                    self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
 
-                # don't track all the intermediate tasks, only points used
-                # for triggering other workflows
-                # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
-                expId = payload.dataId['exposure']  # this works for step1 and step2a
-                self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, expId)
+                except:
+                    # Track when the tasks finish, regardless of whether they
+                    # succeeded.
+
+                    # Don't track all the intermediate tasks, only
+                    # points used for triggering other workflows.
+                    # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
+                    expId = payload.dataId['exposure']  # this works for step1 and step2a
+                    self.watcher.redisHelper.reportFinished(
+                        self.instrument, quantum.taskName, expId, failed=True
+                    )
 
             # XXX put the visit info summary stuff inside the pipeline itself
             # and then the rollup over detectors in a gather-type process.
