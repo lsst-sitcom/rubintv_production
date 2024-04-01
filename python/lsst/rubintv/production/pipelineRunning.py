@@ -278,11 +278,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # XXX post OR3 also have this write binned images so we can
                 # update the focal plane mosaic with a calexp-based on.
                 return
-            case item if item in (
-                'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask',
-                'lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask',
-            ):
-                self.postProcesStep2a(quantum)
+            case 'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask':
+                # ConsolidateVisitSummaryTask regardless of quickLook or NV
+                # pipeline, because this is the quantum that holds the
+                # visitSummary
+                self.postProcessVisitSummary(quantum)
             case _:
                 # can match here and do fancy dispatch
                 return
@@ -306,7 +306,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.log.info(f'Wrote binned image for {dRef.dataId}')
 
-    def postProcesStep2a(self, quantum):
+    def postProcessVisitSummary(self, quantum):
         dRef = quantum.outputs['visitSummary'][0]
         vs = self.limitedButler.get(dRef)
         (expRecord, ) = self.butler.registry.queryDimensionRecords('exposure', dataId=dRef.dataId)
