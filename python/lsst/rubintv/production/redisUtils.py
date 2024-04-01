@@ -330,7 +330,7 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(f'{instrument}-fromButlerWacher', expRecordJson)
 
-    def reportFinished(self, instrument, taskName, processingId):
+    def reportFinished(self, instrument, taskName, processingId, failed=False):
         """Report that a task has finished.
 
         Parameters
@@ -345,6 +345,10 @@ class RedisHelper:
         """
         key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
         self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+
+        if failed:  # fails have finished too, so increment finished and failed
+            key = key.replace('FINISHEDCOUNTER', 'FAILEDCOUNTER')
+            self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
     def getNumFinished(self, instrument, taskName, processingId):
         """Get the number of items finished for a given task and id.
