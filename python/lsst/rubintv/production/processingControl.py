@@ -460,7 +460,6 @@ class HeadProcessController:
 
         if len(allIds) == 0:
             return False
-        self.log.info(f'Gather dispatch for {step=} found {len(allIds)} total, {len(completeIds)} complete')
 
         for _id in allIds:
             isComplete = _id in completeIds
@@ -468,7 +467,7 @@ class HeadProcessController:
                 instrument=self.instrument, exposure=_id, universe=self.butler.dimensions
             )
             if isComplete:
-                self.log.info(f'Dispatching {step} for {dataCoord}')
+                self.log.info(f'Dispatching {step} with complete inputs for {dataCoord}')
                 self._dispatch2a(dataCoord)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, _id)
             else:
