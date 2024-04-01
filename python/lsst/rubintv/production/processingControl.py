@@ -506,6 +506,30 @@ class HeadProcessController:
         queueName = self.getFreeGatherWorkerQueue('NIGHTLYROLLUP')
         self.redisHelper.enqueuePayload(payload, queueName)
 
+    def dispatchFocalPlaneMosaics(self):
+        """Dispatch the focal plane mosaic task.
+
+        This will be dispatched to a worker which will then gather the
+        individual CCD mosaics and make the full focal plane mosaic and upload
+        to S3. At the moment, it will only work when everything is completed.
+        """
+        triggeringTask = 'lsst.ip.isr.isrTask.IsrTask'
+        allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
+        completeIds = [_id for _id in allIds if
+                       self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
+                       self.getNumExpected(self.instrument)]
+        if not completeIds:
+            return
+
+        self.log.info(f'Dispatching {len(completeIds)} complete focal plane mosaics for creation.')
+        for expId in completeIds:
+            dataId = {'exposure': expId, 'instrument': self.instrument}
+            dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
+            payload = Payload(dataCoord, bytes(''.encode('utf-8')), '')
+            queueName = self.getFreeGatherWorkerQueue('MOSAIC')
+            self.redisHelper.enqueuePayload(payload, queueName)
+            self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
+
     def run(self):
         while True:
             # affirmRunning should be longer than longest loop but no longer
@@ -534,6 +558,8 @@ class HeadProcessController:
                 step='step2a',
                 dispatchIncomplete=False
             )
+
+            self.dispatchFocalPlaneMosaics()
 
             self.dispatchRollupIfNecessary()
 
