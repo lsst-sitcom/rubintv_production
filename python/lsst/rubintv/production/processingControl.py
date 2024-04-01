@@ -468,10 +468,12 @@ class HeadProcessController:
                 instrument=self.instrument, exposure=_id, universe=self.butler.dimensions
             )
             if isComplete:
+                self.log.info(f'Dispatching {step} for {dataCoord}')
                 self._dispatch2a(dataCoord)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, _id)
             else:
                 if dispatchIncomplete:
+                    self.log.info(f'Dispatching incomplete {step} for {dataCoord}')
                     self._dispatch2a(dataCoord)
                     # NB do not remove the counter key here, as this will be
                     # redispatched once complete, and should only be removed
@@ -489,15 +491,10 @@ class HeadProcessController:
         doRollup : `bool`
             Should we do another rollup?
         """
-        # get completed number for rollupTriggerTask here
-        # check if greater than last dispath
-        # rollupTriggerTask
-        lastDispatched = self.nNightlyRollups
-
         numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, 'step2a')
-        if numComplete > lastDispatched:
-            self.log.info(f"Found {numComplete - lastDispatched} more completed step2a's"
-                          " dispatching nightly rollup")
+        if numComplete > self.nNightlyRollups:
+            self.log.info(f"Found {numComplete - self.nNightlyRollups} more completed step2a's - "
+                          " dispatching them for nightly rollup")
             self.nNightlyRollups = numComplete
             self._dispatchNightlyRollup()
             return True
@@ -507,7 +504,7 @@ class HeadProcessController:
         dataId = {'instrument': self.instrument, 'skymap': 'ops_rehersal_prep_2k_v1'}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
         payload = Payload(dataCoord, self.pipelineGraphsBytes['step2a'], run=self.outputRun)
-        queueName = self.getFreeGatherWorkerQueue('STEP2A')  # XXX MAKE NEW WORKERS FOR THIS!! --------------------------------------- flake8 error to make sure this isn't lost!
+        queueName = self.getFreeGatherWorkerQueue('NIGHTLYROLLUP')
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def run(self):
@@ -539,7 +536,6 @@ class HeadProcessController:
                 dispatchIncomplete=False
             )
 
-            rollupTriggerTask = getNightlyRollupTriggerTask(self._basePipeline)
             self.dispatchRollupIfNecessary()
 
             # note the repattern comes after the fanout so that any commands
