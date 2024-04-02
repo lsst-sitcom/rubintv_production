@@ -76,7 +76,7 @@ class Plotter:
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotFocalPlane(self, expRecord, timeout):
+    def plotFocalPlane(self, expRecord, dataProduct, timeout):
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -86,6 +86,9 @@ class Plotter:
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
+        dataProduct : `str`
+            The data product to use for the plot, either `'postISRCCD'` or
+            `'calexp'`.
         timeout : `int`
             The timeout for waiting for the data to be complete.
 
@@ -98,19 +101,27 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
-        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
-
         # XXX improve this post OR3, but this is REALLY last minute now!
         nExpected = 9
 
         self.fig.clear()
+
+        datapath = None
+        match dataProduct:
+            case 'postISRCCD':
+                datapath = self.locationConfig.calculatedDataPath
+            case 'calexp':
+                datapath = self.locationConfig.binnedCalexpPath
+
+        plotName = f'{dataProduct}Mosaic_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
+
         plotFocalPlaneMosaic(butler=self.butler,
                              figure=self.fig,
                              expId=expId,
                              camera=self.camera,
                              binSize=self.locationConfig.binning,
-                             dataPath=self.locationConfig.calculatedDataPath,
+                             dataPath=datapath,
                              savePlotAs=saveFile,
                              nExpected=nExpected,
                              timeout=timeout,
@@ -171,17 +182,25 @@ class Plotter:
             what we have.
         """
         dataId = payload.dataId
+        dataProduct = payload.run  # TODO: this really needs improving
         (expRecord, ) = self.butler.registry.queryDimensionRecords('exposure', dataId=dataId)
         self.log.info(f'Making plots for {expRecord.dataId}')
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         instPrefix = self.getInstrumentChannelName(self.instrument)
 
-        focalPlaneFile = self.plotFocalPlane(expRecord, timeout=0)
+        plotName = None
+        match dataProduct:
+            case 'postISRCCD':
+                plotName = 'focal_plane_mosaic'
+            case 'calexp':
+                plotName = 'calexp_mosaic'
+
+        focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
         if focalPlaneFile:  # only upload on plot success
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=instPrefix,
-                plotName='focal_plane_mosaic',
+                plotName=plotName,
                 dayObs=dayObs,
                 seqNum=seqNum,
                 filename=focalPlaneFile

@@ -513,22 +513,26 @@ class HeadProcessController:
         individual CCD mosaics and make the full focal plane mosaic and upload
         to S3. At the moment, it will only work when everything is completed.
         """
-        triggeringTask = 'lsst.ip.isr.isrTask.IsrTask'
-        allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
-        completeIds = [_id for _id in allIds if
-                       self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
-                       self.getNumExpected(self.instrument)]
-        if not completeIds:
-            return
+        triggeringTasks = ('lsst.ip.isr.isrTask.IsrTask', 'binnedCalexpCreation')
+        dataProducts = ('postISRCCD', 'calexp')
 
-        self.log.info(f'Dispatching {len(completeIds)} complete focal plane mosaics for creation.')
-        for expId in completeIds:
-            dataId = {'exposure': expId, 'instrument': self.instrument}
-            dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-            payload = Payload(dataCoord, bytes(''.encode('utf-8')), '')
-            queueName = self.getFreeGatherWorkerQueue('MOSAIC')
-            self.redisHelper.enqueuePayload(payload, queueName)
-            self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
+        for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
+            allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
+            completeIds = [_id for _id in allIds if
+                           self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
+                           self.getNumExpected(self.instrument)]
+            if not completeIds:
+                continue
+
+            self.log.info(f'Dispatching {len(completeIds)} complete focal {dataProduct} mosaics for creation.')
+            for expId in completeIds:
+                dataId = {'exposure': expId, 'instrument': self.instrument}
+                dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
+                # TODO: this abuse of Payload really needs improving
+                payload = Payload(dataCoord, bytes(''.encode('utf-8')), dataProduct)
+                queueName = self.getFreeGatherWorkerQueue('MOSAIC')
+                self.redisHelper.enqueuePayload(payload, queueName)
+                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
     def run(self):
         while True:

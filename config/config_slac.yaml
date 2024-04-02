@@ -11,6 +11,7 @@ botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
 scratchPath: ''
 plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
 calculatedDataPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData'
+binnedCalexpPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData/calexps'
 
 # # paths for serving TS8 metadata at SLAC
 ts8MetadataPath: '/sdf/scratch/rubin/rapid-analysis/ts8/sidecar_metadata'

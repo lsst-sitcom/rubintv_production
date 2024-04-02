@@ -393,6 +393,12 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def binnedCalexpPath(self):
+        directory = self._config['binnedCalexpPath']
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def bucketName(self):
         if self._config['bucketName'] == '':
             raise RuntimeError('Bucket name not set in config file')

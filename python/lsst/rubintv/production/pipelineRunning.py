@@ -232,7 +232,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # XXX can also add timing info here
                     self.log.info(f'Starting to process {node.taskDef}')
                     quantum = executor.execute(node.taskDef, node.quantum)
-                    self.postProcessQuantum(quantum)
+                    self.postProcessQuantum(quantum, processingId)
                     self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, processingId)
 
                 except Exception as e:
@@ -260,11 +260,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum):
+    def postProcessQuantum(self, quantum, processingId):
         """Write shards here, make sure to keep these bits quick!
 
         Also, anything you self.limitedButler.get() make sure to add to
         cache_on_put.
+
+        # TODO: After OR3, move all this out to postprocessQuanta.py, and do
+        the dispatch and function definitions in there to keep the runner
+        clean.
         """
         match quantum.taskName:
             case 'lsst.ip.isr.isrTask.IsrTask':
@@ -277,7 +281,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
                 # XXX post OR3 also have this write binned images so we can
                 # update the focal plane mosaic with a calexp-based on.
-                return
+                self.postProcessCalibrate(quantum, processingId)
             case 'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask':
                 # ConsolidateVisitSummaryTask regardless of quickLook or NV
                 # pipeline, because this is the quantum that holds the
@@ -298,7 +302,31 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             binSize=self.locationConfig.binning
         )
 
-        self.log.info(f'Wrote binned image for {dRef.dataId}')
+        self.log.info(f'Wrote binned postISRCCD for {dRef.dataId}')
+
+    def postProcessCalibrate(self, quantum, processingId):
+        # This is very similar indeed to postProcessIsr, but we it's not worth
+        # refactoring yet, especially as they will probably diverge in the
+        # future.
+        dRef = quantum.outputs['calexp'][0]
+        exp = self.limitedButler.get(dRef)
+
+        writeBinnedImage(
+            exp=exp,
+            instrument=self.instrument,
+            outputPath=self.locationConfig.binnedCalexpPath,
+            binSize=self.locationConfig.binning
+        )
+        # use a custom "task label" here because step2a on the summit is
+        # triggered off the end of calibrate, and so needs to have that key in
+        # redis remaining in order to run, and the dequeue action of the
+        # creation of the focal plane mosaic removes that (as it should). If
+        # anything, the binned postISR images should probably use this
+        # mechanism too, and anything else which forks off the main processing
+        # trunk.
+        self.watcher.redisHelper.reportFinished(self.instrument, 'binnedCalexpCreation', processingId)
+
+        self.log.info(f'Wrote binned calexp for {dRef.dataId}')
 
     def postProcessVisitSummary(self, quantum):
         dRef = quantum.outputs['visitSummary'][0]

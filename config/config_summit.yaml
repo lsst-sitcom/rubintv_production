@@ -48,6 +48,7 @@ scratchPath: '/project/rubintv'
 plotPath: '/project/rubintv/plots'
 binnedImagePath: '/project/rubintv/binnedImages'
 calculatedDataPath: '/project/rubintv/calculatedData'
+binnedCalexpPath: '/project/rubintv/calculatedData/calexps'
 
 # TMA config:
 tmaMetadataPath: '/project/rubintv/tma/sidecar_metadata'
