@@ -297,12 +297,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             outputPath=self.locationConfig.calculatedDataPath,
             binSize=self.locationConfig.binning
         )
-        # XXX This MUST be replaced with a redis based signal post OR3!
-        # TODO: reviewer, do not let Merlin get away with this!)
-        # expId = dRef.dataId.id ??
-        # class FakeExpRecord:
-        #     dataId = dRef.dataId
-        # writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord)
 
         self.log.info(f'Wrote binned image for {dRef.dataId}')
 

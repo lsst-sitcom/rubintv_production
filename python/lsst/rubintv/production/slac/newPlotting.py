@@ -22,21 +22,14 @@
 
 
 import os
-import glob
 import matplotlib.pyplot as plt
 import logging
 
-from lsst.eo.pipe.plotting import focal_plane_plotting
-
-
-from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
+# from ..utils import writeMetadataShard  # Use this when we report nImage inc.
 from ..uploaders import Uploader, MultiUploader
-from ..watchers import  writeDataIdFile, RedisWatcher
-from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
-from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
-
-from lsst.summit.utils.butlerUtils import getExpRecord
-from lsst.summit.utils.utils import getExpRecordAge
+from ..watchers import RedisWatcher
+from .mosaicing import plotFocalPlaneMosaic
+from .utils import getCamera
 
 _LOG = logging.getLogger(__name__)
 
@@ -75,10 +68,10 @@ class Plotter:
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
         self.watcher = RedisWatcher(
-                butler=butler,
-                locationConfig=locationConfig,
-                queueName=queueName,
-            )
+            butler=butler,
+            locationConfig=locationConfig,
+            queueName=queueName,
+        )
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
