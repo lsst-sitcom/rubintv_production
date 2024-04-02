@@ -28,6 +28,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from time import sleep
+from functools import partial
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from astro_metadata_translator import ObservationInfo
@@ -1428,6 +1429,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
             rowData = {event.seqNum: {'Has commands?': '✅'}}
             writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
+        metadataWriter = partial(writeMetadataShard, path=self.shardsDirectory)
+
         plotEvent(self.client,
                   event,
                   fig=self.figure,
@@ -1437,6 +1440,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                   azimuthData=azimuthData,
                   elevationData=elevationData,
                   doFilterResiduals=True,
+                  metadataWriter=metadataWriter,
                   )
 
         plotName = 'tma_mount_motion_profile'
