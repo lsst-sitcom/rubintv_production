@@ -43,4 +43,3 @@ plotter = Plotter(
 )
 
 plotter.run()
-
