@@ -1556,7 +1556,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
     def processDay(self, dayObs):
         """
         """
-        events = self.eventMaker.getEvents(dayObs)
+        events = self.eventMaker.getEvents(dayObs, addBlockInfo=False)
 
         # check if every event seqNum is in both the M1M3HardpointAnalysis and
         # MountMotionAnalysis sets, and if not, return immediately
