@@ -109,9 +109,11 @@ def createRemoteS3UploaderForSite():
     site = getSite()
     match site:
         case "base":
+            httpsProxy = 'http://ocio-gpu03.slac.stanford.edu:3128'
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
+                httpsProxy=httpsProxy
             )
         case "summit":
             httpsProxy = 'http://ocio-gpu03.slac.stanford.edu:3128'
