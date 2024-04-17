@@ -163,8 +163,12 @@ class EndPoint(Enum):
                 "rubin-rubintv-data-usdf"
             ),
             Bucket.BTS: BucketInformation(
-                "rubin-rubintv-data-base",
-                "rubin-rubintv-data-base"
+                "rubin-rubintv-data-bts",
+                "rubin-rubintv-data-bts"
+            ),
+            Bucket.TTS: BucketInformation(
+                "rubin-rubintv-data-tts",
+                "rubin-rubintv-data-tts"
             ),
         },
     }
