@@ -174,9 +174,13 @@ class RedisHelper:
                 password = os.getenv('REDIS_PASSWORD')
                 return redis.Redis(host=host, password=password)
             case 'base':
-                raise NotImplementedError('Merlin needs to configure redis connection for base')
+                host = os.getenv('REDIS_HOST')
+                password = os.getenv('REDIS_PASSWORD')
+                return redis.Redis(host=host, password=password)
             case 'tucson':
-                raise NotImplementedError('Merlin needs to configure redis connection for TTS')
+                host = os.getenv('REDIS_HOST')
+                password = os.getenv('REDIS_PASSWORD')
+                return redis.Redis(host=host, password=password)
             case _:
                 raise RuntimeError('Unknown site, cannot connect to redis')
 
