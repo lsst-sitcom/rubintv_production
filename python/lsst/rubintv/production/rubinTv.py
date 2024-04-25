@@ -1300,7 +1300,7 @@ class NightReportChannel(BaseButlerChannel):
                 self.uploader.uploadNightReportData(channel=self.channelName,
                                                     dayObs=self.dayObs,
                                                     filename=jsonFilename)
-                self.s3Uploader.uploadNightReportData(  # XXX need to check this actually works
+                self.s3Uploader.uploadNightReportData(
                     instrument='auxtel',
                     dayObs=self.dayObs,
                     filename=jsonFilename,
