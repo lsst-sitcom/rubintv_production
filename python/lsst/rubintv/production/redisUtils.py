@@ -163,8 +163,7 @@ class RedisHelper:
         site = getSite()
         match site:
             case site if site in ('rubin-devl', 'staff-rsp'):
-                # XXX put this IP in the locationConfig instead?
-                return redis.Redis(host='172.24.5.216', password=getRedisSecret())
+                return redis.Redis(host=self.locationConfig.redisIp, password=getRedisSecret())
             case 'usdf-k8s':
                 password = os.getenv('REDIS_PASSWORD')
                 host = os.getenv('REDIS_HOST')
@@ -513,16 +512,19 @@ class RedisHelper:
         return commands
 
     def pushNewExposureToHeadNode(self, expRecord):
-        """Call to send an expRecord for processing.
+        """Send an exposure record for processing.
 
         This queue is consumed by the head node, which fans it out for
-        processing by the workers.
+        processing by the workers. Which detetors for the exposure will be
+        processed is determined by state of the ``focalPlaneControl`` on the
+        head node at the time the exposure record is fanned out.
 
         The queue can have any length, and will be consumed last-in-first-out.
 
         Parameters
         ----------
-        XXX
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process.
         """
         instrument = expRecord.instrument
         queueName = getNewDataQueueName(instrument)
@@ -583,7 +585,7 @@ class RedisHelper:
         return Payload.from_json(payLoadJson, self.butler)
 
     def clearTaskCounters(self):
-        # XXX is keys OK here?
+        # TODO: DM-44102 check if .keys() is OK here
         keys = self.redis.keys('*EDCOUNTER*')  # FINISHEDCOUNTER and FAILEDCOUNTER
         for key in keys:
             self.redis.delete(key)
@@ -632,6 +634,8 @@ class RedisHelper:
         if not keys:
             print("Nothing in the Redis database.")
             return
+
+        # TODO: DM-44102 Improve how all the redis monitoring stuff is done
 
         # any keys containing these strings will just have their lengths
         # printed, not the full contents of the lists
@@ -713,7 +717,8 @@ class RedisHelper:
                 print("Clearing aborted.")
                 return
 
-        keys = self.redis.keys('*WORKER*')  # XXX check if this is OK to use .keys() here
+        # TODO: DM-44102 check if .keys() is OK here
+        keys = self.redis.keys('*WORKER*')
         for key in keys:
             self.redis.delete(key)
 

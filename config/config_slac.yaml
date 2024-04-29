@@ -1,5 +1,6 @@
 # Required items:
 dataIdScanPath: '/sdf/scratch/rubin/rapid-analysis/dataIds'
+redisIp: '172.24.5.216'
 bucketName: 'rubintv_data_slac'
 dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUniverse.json'
 
