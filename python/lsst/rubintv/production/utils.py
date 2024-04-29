@@ -199,7 +199,10 @@ class FakeExposureRecord:
 def expRecordFromJson(expRecordJson, locationConfig):
     """Deserialize a DimensionRecord from a JSON string.
 
-    XXX Docs
+    expRecordJson : `str`
+        The JSON string to deserialize.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration, used to determine the dimension universe.
     """
     if not expRecordJson:
         return None
