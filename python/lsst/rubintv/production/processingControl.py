@@ -164,7 +164,6 @@ def getVisitId(butler, expRecord):
         visitDataId = visitDataIds[0]
         return visitDataId['visit']
     else:
-        # XXX fix self here
         log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
         log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
                     " define-visits?")
@@ -365,8 +364,6 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        # XXX is this what we should use for all tasks, or should this be SFM
-        # only? Probably for now SFM only, and hardcode the pipeline here
         match self.instrument:
             case 'LATISS':
                 detectorIds = [0]
@@ -442,12 +439,14 @@ class HeadProcessController:
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchGatherSteps(self, triggeringTask, step, dispatchIncomplete=False):
-        """Dispatch any gather steps as needed
+        """Dispatch any gather steps as needed.
+
+        Note that the return value is currently unused, but is planned to be
+        built upon in the next few tickets.
 
         Returns
         -------
-        # XXX this is currently unused, but hopefully will be later
-        dispatchedWork : bool
+        dispatchedWork : `bool`
             Was anything sent out?
         """
         # allIds is all the incomplete or just-completed exp/visit ids for
@@ -719,16 +718,6 @@ class RemoteController:
                 return  # do not apply further commands as soon as one fails
 
 
-class PodProcessController:
-    # XXX remove this completely? This is just the redisHelper now, right?
-    def __init__(self, detectors):
-        self.redisHelper = RedisHelper()
-
-    def isHeadNodeRuning(self, instrument):
-        isRunning = self.redisHelper.redis.get(f'butlerWatcher-{instrument}')
-        return bool(isRunning)  # 0 and None both bool() to False
-
-
 class CameraControlConfig:
     """Processing control for which CCDs will be processed.
     """
@@ -740,7 +729,9 @@ class CameraControlConfig:
         self._guiders = [det for det in self._detectors if self.isGuider(det)]
         self._wavefronts = [det for det in self._detectors if self.isWavefront(det)]
         self.plot = FocalPlaneGeometryPlot()
-        # XXX would be nice if we could improve the spurious/nonsense plot info
+        # TODO: would be nice if we could improve the spurious/nonsense plot
+        # info, but that's an analysis_tools problem, so needs dealing with
+        # upstream.
         self.plotInfo = {"plotName": "test plot", "run": "no run",
                          "tableName": None, "bands": []}
 
@@ -989,11 +980,27 @@ class CameraControlConfig:
         return sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
 
     def asPlotData(self):
-        """Get the data in a form for rendering as a FocalPlaneGeometryPlot.
+        """Get the data in a form for rendering as a ``FocalPlaneGeometryPlot``
 
         Returns
         -------
-        XXX Get this from analysis tools directly.
+        data : `dict`
+            A dict with properties which match the pandas dataframe `data`
+        which analysis_tools expects.
+            The catalog to plot the points from. It is necessary for it to
+            contain the following columns/keys:
+
+            ``"detector"``
+                The integer detector id for the points.
+            ``"amplifier"``
+                The string amplifier name for the points.
+            ``"z"``
+                The numerical value that will be combined via
+                ``statistic`` to the binned value.
+            ``"x"``
+                Focal plane x position, optional.
+            ``"y"``
+                Focal plane y position, optional.
         """
         detNums = []
         ampNames = []
