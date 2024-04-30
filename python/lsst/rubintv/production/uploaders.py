@@ -28,9 +28,11 @@ from abc import abstractmethod, ABC
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, BotoCoreError
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+import tempfile
 from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
@@ -492,6 +494,20 @@ class S3Uploader(IUploader):
             raise e
 
         return uploadAs
+
+    def checkWriteAccess(self, temp_file_prefix='connection_test') -> bool:
+        # Create a temporary file with the specified prefix
+        with tempfile.NamedTemporaryFile(prefix=temp_file_prefix) as test_file:
+            test_file.write(b"Connection Test")
+            try:
+                date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                self._s3Bucket.upload_file(test_file.name, f'test/{temp_file_prefix}_{date_str}.txt')
+                self._s3Bucket.Object(f'{temp_file_prefix}_file.txt').delete()
+                self._log.info("Write access check was successful")
+                return True
+            except (BotoCoreError, ClientError) as e:
+                self._log.exception(f"Write access check failed: {e}")
+                return False
 
     @override
     def uploadNightReportData(
