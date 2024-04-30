@@ -872,7 +872,7 @@ class CameraControlConfig:
         """
         for detector in self._imaging:
             x, y = self._getFullLocationTuple(detector)
-            self._detectorStates[detector] = ((x % 2) + (y % 2) + phase) % 2
+            self._detectorStates[detector] = bool(((x % 2) + (y % 2) + phase) % 2)
 
     def setRaftChequerboard(self, phase=0):
         """Set a chequerboard pattern at the raft level.
@@ -887,7 +887,7 @@ class CameraControlConfig:
         """
         for detector in self._imaging:
             raftX, raftY = self._getRaftTuple(detector)
-            self._detectorStates[detector] = ((raftX % 2) + (raftY % 2) + phase) % 2
+            self._detectorStates[detector] = bool(((raftX % 2) + (raftY % 2) + phase) % 2)
 
     def setE2Von(self):
         """Turn all e2v sensors on.
