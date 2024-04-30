@@ -495,19 +495,61 @@ class S3Uploader(IUploader):
 
         return uploadAs
 
-    def checkWriteAccess(self, temp_file_prefix='connection_test') -> bool:
-        # Create a temporary file with the specified prefix
-        with tempfile.NamedTemporaryFile(prefix=temp_file_prefix) as test_file:
-            test_file.write(b"Connection Test")
+    def checkAccess(self, temp_file_prefix: str | None = 'connection_test') -> bool:
+        """Checks the read, write, and delete access to the S3 bucket.
+           This method uploads a test file to the S3 bucket, downloads it,
+           compares its content to the expected content, and then deletes it.
+           If any of these operations fail, it logs an error
+           and returns False.
+           If all operations succeed, it logs a success message
+           and returns True.
+
+            Parameters
+            ----------
+            temp_file_prefix : str, optional
+                The prefix for the temporary file that will be
+                uploaded to the S3 bucket, by default 'connection_test'
+
+            Returns
+            -------
+            bool
+                True if all operations succeed, False otherwise.
+            """
+        test_content = b"Connection Test"
+        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_name = f'test/{temp_file_prefix}_{date_str}_file.txt'
+        with tempfile.NamedTemporaryFile() as test_file:
+            test_file.write(test_content)
+            test_file.flush()
             try:
-                date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-                self._s3Bucket.upload_file(test_file.name, f'test/{temp_file_prefix}_{date_str}.txt')
-                self._s3Bucket.Object(f'{temp_file_prefix}_file.txt').delete()
-                self._log.info("Write access check was successful")
-                return True
+                self._s3Bucket.upload_file(test_file.name, file_name)
             except (BotoCoreError, ClientError) as e:
-                self._log.exception(f"Write access check failed: {e}")
+                self._log.exception(f"S3Uploader Write Access check failed: {e}")
                 return False
+
+        _, fixed_file_path = tempfile.mkstemp()
+        try:
+            self._s3Bucket.download_file(file_name, fixed_file_path)
+            with open(fixed_file_path, 'rb') as downloaded_file:
+                downloaded_content = downloaded_file.read()
+                if downloaded_content != test_content:
+                    self._log.error("Read Access failed")
+                    return False
+        except (BotoCoreError, ClientError) as e:
+            self._log.exception(f"S3Uploader Read Access check failed: {e}")
+            return False
+        finally:
+            if os.path.exists(fixed_file_path):
+                os.remove(fixed_file_path)
+
+        try:
+            self._s3Bucket.Object(file_name).delete()
+        except (BotoCoreError, ClientError) as e:
+            self._log.exception(f"S3Uploader Delete Access check failed: {e}")
+            return False
+
+        self._log.info("S3 Access check was successful")
+        return True
 
     @override
     def uploadNightReportData(
