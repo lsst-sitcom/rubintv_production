@@ -495,7 +495,7 @@ class S3Uploader(IUploader):
 
         return uploadAs
 
-    def checkAccess(self, temp_file_prefix: str | None = 'connection_test') -> bool:
+    def checkAccess(self, tempFilePrefix: str | None = 'connection_test') -> bool:
         """Checks the read, write, and delete access to the S3 bucket.
            This method uploads a test file to the S3 bucket, downloads it,
            compares its content to the expected content, and then deletes it.
@@ -506,44 +506,44 @@ class S3Uploader(IUploader):
 
             Parameters
             ----------
-            temp_file_prefix : str, optional
+            tempFilePrefix : `str`, optional
                 The prefix for the temporary file that will be
                 uploaded to the S3 bucket, by default 'connection_test'
 
             Returns
             -------
-            bool
+            checkPass: bool
                 True if all operations succeed, False otherwise.
             """
-        test_content = b"Connection Test"
-        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        file_name = f'test/{temp_file_prefix}_{date_str}_file.txt'
-        with tempfile.NamedTemporaryFile() as test_file:
-            test_file.write(test_content)
-            test_file.flush()
+        testContent = b"Connection Test"
+        dateStr = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fileName = f'test/{tempFilePrefix}_{dateStr}_file.txt'
+        with tempfile.NamedTemporaryFile() as testFile:
+            testFile.write(testContent)
+            testFile.flush()
             try:
-                self._s3Bucket.upload_file(test_file.name, file_name)
+                self._s3Bucket.upload_file(testFile.name, fileName)
             except (BotoCoreError, ClientError) as e:
                 self._log.exception(f"S3Uploader Write Access check failed: {e}")
                 return False
 
-        _, fixed_file_path = tempfile.mkstemp()
+        _, fixedFilePath = tempfile.mkstemp()
         try:
-            self._s3Bucket.download_file(file_name, fixed_file_path)
-            with open(fixed_file_path, 'rb') as downloaded_file:
+            self._s3Bucket.download_file(fileName, fixedFilePath)
+            with open(fixedFilePath, 'rb') as downloaded_file:
                 downloaded_content = downloaded_file.read()
-                if downloaded_content != test_content:
+                if downloaded_content != testContent:
                     self._log.error("Read Access failed")
                     return False
         except (BotoCoreError, ClientError) as e:
             self._log.exception(f"S3Uploader Read Access check failed: {e}")
             return False
         finally:
-            if os.path.exists(fixed_file_path):
-                os.remove(fixed_file_path)
+            if os.path.exists(fixedFilePath):
+                os.remove(fixedFilePath)
 
         try:
-            self._s3Bucket.Object(file_name).delete()
+            self._s3Bucket.Object(fileName).delete()
         except (BotoCoreError, ClientError) as e:
             self._log.exception(f"S3Uploader Delete Access check failed: {e}")
             return False
