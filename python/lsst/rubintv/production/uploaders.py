@@ -497,24 +497,24 @@ class S3Uploader(IUploader):
 
     def checkAccess(self, tempFilePrefix: str | None = 'connection_test') -> bool:
         """Checks the read, write, and delete access to the S3 bucket.
-           This method uploads a test file to the S3 bucket, downloads it,
-           compares its content to the expected content, and then deletes it.
-           If any of these operations fail, it logs an error
-           and returns False.
-           If all operations succeed, it logs a success message
-           and returns True.
 
-            Parameters
-            ----------
-            tempFilePrefix : `str`, optional
-                The prefix for the temporary file that will be
-                uploaded to the S3 bucket, by default 'connection_test'
+        This method uploads a test file to the S3 bucket, downloads it,
+        compares its content to the expected content, and then deletes it. If
+        any of these operations fail, it logs an error and returns ``False``.
+        If all operations succeed, it logs a success message and returns
+        ``True``.
 
-            Returns
-            -------
-            checkPass: bool
-                True if all operations succeed, False otherwise.
-            """
+        Parameters
+        ----------
+        tempFilePrefix : `str`, optional
+            The prefix for the temporary file that will be uploaded to the S3
+            bucket, by default 'connection_test'.
+
+        Returns
+        -------
+        checkPass : `bool`
+            ``True`` if all operations succeed, ``False`` otherwise.
+        """
         testContent = b"Connection Test"
         dateStr = datetime.now().strftime('%Y%m%d_%H%M%S')
         fileName = f'test/{tempFilePrefix}_{dateStr}_file.txt'
