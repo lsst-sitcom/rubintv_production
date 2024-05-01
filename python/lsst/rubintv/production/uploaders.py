@@ -25,12 +25,15 @@ import os
 import time
 
 from abc import abstractmethod, ABC
+from boto3.exceptions import S3UploadFailedError, S3TransferFailedError
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, BotoCoreError
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+import tempfile
 from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
@@ -81,7 +84,7 @@ def createLocalS3UploaderForSite(httpsProxy=''):
                 bucket=Bucket.SUMMIT,
                 httpsProxy=httpsProxy
             )
-        case site if site in ['usdf', 'rubin-devl']:
+        case site if site in ['usdf-k8s', 'rubin-devl', 'staff-rsp']:
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.USDF,
@@ -265,11 +268,22 @@ class MultiUploader(IUploader):
     def __init__(self):
         # TODO: thread the remote upload
         self.localUploader = createLocalS3UploaderForSite()
+        localOk = self.localUploader.checkAccess()
+        if not localOk:
+            raise RuntimeError("Failed to connect to local S3 bucket")
 
         try:
             self.remoteUploader = createRemoteS3UploaderForSite()
         except Exception:
             self.remoteUploader = None
+
+        remoteRequired = getSite() in ['summit', 'tucson', 'base']
+        if remoteRequired and not self.hasRemote:
+            raise RuntimeError("Failed to create remote S3 uploader")
+        elif remoteRequired and self.hasRemote:
+            remoteOk = self.remoteUploader.checkAccess()
+            if not remoteOk:
+                raise RuntimeError("Failed to connect to remote S3 bucket")
 
         self.log = _LOG.getChild("MultiUploader")
         self.log.info(f"Created MultiUploader with local: {self.localUploader}"
@@ -493,6 +507,59 @@ class S3Uploader(IUploader):
 
         return uploadAs
 
+    def checkAccess(self, tempFilePrefix: str | None = 'connection_test') -> bool:
+        """Checks the read, write, and delete access to the S3 bucket.
+
+        This method uploads a test file to the S3 bucket, downloads it,
+        compares its content to the expected content, and then deletes it. If
+        any of these operations fail, it logs an error and returns ``False``.
+        If all operations succeed, it logs a success message and returns
+        ``True``.
+
+        Parameters
+        ----------
+        tempFilePrefix : `str`, optional
+            The prefix for the temporary file that will be uploaded to the S3
+            bucket, by default 'connection_test'.
+
+        Returns
+        -------
+        checkPass : `bool`
+            ``True`` if all operations succeed, ``False`` otherwise.
+        """
+        testContent = b"Connection Test"
+        dateStr = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fileName = f'test/{tempFilePrefix}_{dateStr}_file.txt'
+        with tempfile.NamedTemporaryFile() as testFile:
+            testFile.write(testContent)
+            testFile.flush()
+            try:
+                self._s3Bucket.upload_file(testFile.name, fileName)
+            except (BotoCoreError, ClientError, S3UploadFailedError) as e:
+                self._log.exception(f"S3Uploader Write Access check failed: {e}")
+                return False
+
+        with tempfile.NamedTemporaryFile() as fixedFile:
+            try:
+                self._s3Bucket.download_file(fileName, fixedFile.name)
+                with open(fixedFile.name, 'rb') as downloadedFile:
+                    downloadedContent = downloadedFile.read()
+                    if downloadedContent != testContent:
+                        self._log.error("Read Access failed")
+                        return False
+            except (BotoCoreError, ClientError, S3TransferFailedError) as e:
+                self._log.exception(f"S3Uploader Read Access check failed: {e}")
+                return False
+
+        try:
+            self._s3Bucket.Object(fileName).delete()
+        except (BotoCoreError, ClientError) as e:
+            self._log.exception(f"S3Uploader Delete Access check failed: {e}")
+            return False
+
+        self._log.debug("S3 Access check was successful")
+        return True
+
     @override
     def uploadNightReportData(
         self,
@@ -549,8 +616,9 @@ class S3Uploader(IUploader):
                 f"{instrument}/{dayObsStr}/night_report/{instrument}_night_report_{dayObsStr}_{basename}"
             )
         else:
-            # the plot filenames have the channel name saved into them in the form
-            # path/channelName-plotName.png, so remove the channel name and dash
+            # the plot filenames have the channel name saved into them in the
+            # form path/channelName-plotName.png, so remove the channel name
+            # and dash
             plotName = basename.replace(instrument + '_night_reports' + "-", "")
             plotFilename = f'{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}'
             uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}")

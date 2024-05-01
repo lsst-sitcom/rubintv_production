@@ -26,7 +26,6 @@ import unittest
 
 from moto import mock_s3
 from lsst.rubintv.production import S3Uploader
-from lsst.rubintv.production import CHANNELS
 
 
 class TestS3Uploader(unittest.TestCase):
@@ -52,6 +51,10 @@ class TestS3Uploader(unittest.TestCase):
         with open(filePath, 'r') as file:
             content = file.read()
         return content
+
+    def test_connectionTest(self):
+        connected = self._s3_uploader.checkAccess()
+        self.assertTrue(connected)
 
     def test_uploadPerSeqNumPlot(self):
         """Test uploadPerSeqNumPlot for S3 Uploader"""
