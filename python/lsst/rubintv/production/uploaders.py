@@ -25,7 +25,7 @@ import os
 import time
 
 from abc import abstractmethod, ABC
-from boto3.exceptions import S3UploadFailedError
+from boto3.exceptions import S3UploadFailedError, S3TransferFailedError
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
 from botocore.config import Config
@@ -524,7 +524,7 @@ class S3Uploader(IUploader):
             testFile.flush()
             try:
                 self._s3Bucket.upload_file(testFile.name, fileName)
-            except (BotoCoreError, ClientError) as e:
+            except (BotoCoreError, ClientError, S3UploadFailedError) as e:
                 self._log.exception(f"S3Uploader Write Access check failed: {e}")
                 return False
 
@@ -536,7 +536,7 @@ class S3Uploader(IUploader):
                     if downloadedContent != testContent:
                         self._log.error("Read Access failed")
                         return False
-            except (BotoCoreError, ClientError, S3UploadFailedError) as e:
+            except (BotoCoreError, ClientError, S3TransferFailedError) as e:
                 self._log.exception(f"S3Uploader Read Access check failed: {e}")
                 return False
 
