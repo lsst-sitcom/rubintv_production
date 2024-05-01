@@ -25,6 +25,7 @@ import os
 import time
 
 from abc import abstractmethod, ABC
+from boto3.exceptions import S3UploadFailedError
 from boto3.session import Session as S3_session
 from boto3.resources.base import ServiceResource
 from botocore.config import Config
@@ -527,20 +528,17 @@ class S3Uploader(IUploader):
                 self._log.exception(f"S3Uploader Write Access check failed: {e}")
                 return False
 
-        _, fixedFilePath = tempfile.mkstemp()
-        try:
-            self._s3Bucket.download_file(fileName, fixedFilePath)
-            with open(fixedFilePath, 'rb') as downloaded_file:
-                downloaded_content = downloaded_file.read()
-                if downloaded_content != testContent:
-                    self._log.error("Read Access failed")
-                    return False
-        except (BotoCoreError, ClientError) as e:
-            self._log.exception(f"S3Uploader Read Access check failed: {e}")
-            return False
-        finally:
-            if os.path.exists(fixedFilePath):
-                os.remove(fixedFilePath)
+        with tempfile.NamedTemporaryFile() as fixedFile:
+            try:
+                self._s3Bucket.download_file(fileName, fixedFile.name)
+                with open(fixedFile.name, 'rb') as downloaded_file:
+                    downloaded_content = downloaded_file.read()
+                    if downloaded_content != testContent:
+                        self._log.error("Read Access failed")
+                        return False
+            except (BotoCoreError, ClientError, S3UploadFailedError) as e:
+                self._log.exception(f"S3Uploader Read Access check failed: {e}")
+                return False
 
         try:
             self._s3Bucket.Object(fileName).delete()
