@@ -548,7 +548,7 @@ class S3Uploader(IUploader):
             self._log.exception(f"S3Uploader Delete Access check failed: {e}")
             return False
 
-        self._log.info("S3 Access check was successful")
+        self._log.debug("S3 Access check was successful")
         return True
 
     @override
