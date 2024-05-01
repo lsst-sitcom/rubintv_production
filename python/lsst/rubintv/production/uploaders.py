@@ -531,9 +531,9 @@ class S3Uploader(IUploader):
         with tempfile.NamedTemporaryFile() as fixedFile:
             try:
                 self._s3Bucket.download_file(fileName, fixedFile.name)
-                with open(fixedFile.name, 'rb') as downloaded_file:
-                    downloaded_content = downloaded_file.read()
-                    if downloaded_content != testContent:
+                with open(fixedFile.name, 'rb') as downloadedFile:
+                    downloadedContent = downloadedFile.read()
+                    if downloadedContent != testContent:
                         self._log.error("Read Access failed")
                         return False
             except (BotoCoreError, ClientError, S3UploadFailedError) as e:
