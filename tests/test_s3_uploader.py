@@ -52,6 +52,10 @@ class TestS3Uploader(unittest.TestCase):
             content = file.read()
         return content
 
+    def test_connectionTest(self):
+        connected = self._s3_uploader.checkAccess()
+        self.assertTrue(connected)
+
     def test_uploadPerSeqNumPlot(self):
         """Test uploadPerSeqNumPlot for S3 Uploader"""
         observationDay = 20241515
