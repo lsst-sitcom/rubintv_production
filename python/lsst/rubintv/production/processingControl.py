@@ -728,12 +728,7 @@ class CameraControlConfig:
         self._imaging = [det for det in self._detectors if self.isImaging(det)]
         self._guiders = [det for det in self._detectors if self.isGuider(det)]
         self._wavefronts = [det for det in self._detectors if self.isWavefront(det)]
-        self.plot = FocalPlaneGeometryPlot()
-        # TODO: would be nice if we could improve the spurious/nonsense plot
-        # info, but that's an analysis_tools problem, so needs dealing with
-        # upstream.
-        self.plotInfo = {"plotName": "test plot", "run": "no run",
-                         "tableName": None, "bands": []}
+        self._focalPlanePlot = FocalPlaneGeometryPlot()
 
     @staticmethod
     def isWavefront(detector):
@@ -1036,8 +1031,8 @@ class CameraControlConfig:
         fig : `matplotlib.figure.Figure`
             The plotted focal plane as a `Figure`.
         """
-        self.plot.level = 'detector'
-        plot = self.plot.makePlot(self.asPlotData(), self.camera, self.plotInfo)
+        self._focalPlanePlot.level = 'detector'
+        plot = self._focalPlanePlot.makePlot(self.asPlotData(), self.camera, plotInfo=None)
         if saveAs:
             plot.savefig(saveAs)
         return plot
