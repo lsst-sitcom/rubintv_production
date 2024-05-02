@@ -179,21 +179,6 @@ class RedisWatcher:
         self.log = _LOG.getChild("redisWatcher")
         self.payload = None
 
-    # @atexit.register
-    # # I don't think this can work on instance methods, so think about this
-    # # and whether it's even useful
-    # def _deleteWorkerFromPool(self):
-    #     """This is not robust at all, definitely not to OOM messages, but
-    #     gives workers a chance of removing themselves, at least.
-    #     """
-    #     self.redisHelper.announceExistence(self.queueName, remove=True)
-    #     if self.payload is not None:
-    #         # XXX send this to failed queue here
-    #         # Here we have not come from a task error, but from
-    #         # SIGINT or KeyboardInterrupt, so push the failed payload to the
-    #         # failed stack
-    #         return
-
     def run(self, callback, **kwargs):
         """Run forever, calling ``callback`` on each most recent expRecord.
 
