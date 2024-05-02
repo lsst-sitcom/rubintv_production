@@ -22,7 +22,6 @@
 import os
 import glob
 import logging
-import json
 import matplotlib.pyplot as plt
 from time import sleep
 from functools import partial
@@ -37,10 +36,15 @@ import lsst.daf.butler as dafButler
 from lsst.utils.iteration import ensure_iterable
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
-from lsst.resources import ResourcePath
 
 from .utils import waitForDataProduct, getAmplifierRegions
-from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
+from ..utils import (
+    writeDataShard,
+    getShardedData,
+    writeMetadataShard,
+    getGlobPatternForShardedData,
+    getNumExpectedItems,
+)
 from ..uploaders import Uploader, MultiUploader
 from ..watchers import FileWatcher, writeDataIdFile
 from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
@@ -112,68 +116,6 @@ def isOneRaft(instrument):
         The instrument.
     """
     return instrument in ['LSST-TS8', 'LSSTComCam', 'LSSTComCamSim']
-
-
-def getNumExpectedItems(expRecord, logger=None):
-    """A placeholder function for getting the number of expected items.
-
-    For a given instrument, get the number of detectors which were read out or
-    for which we otherwise expect to have data for.
-
-    This method will be updated once we have a way of knowing, from the camera,
-    how many detectors were actually read out (the plan is the CCS writes a
-    JSON file with this info).
-
-    Parameters
-    ----------
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record. This is currently unused, but will be used once
-        we are doing this properly.
-    logger : `logging.Logger`
-        The logger, created if not supplied.
-    """
-    if logger is None:
-        logger = logging.getLogger(__name__)
-
-    instrument = expRecord.instrument
-
-    fallbackValue = None
-    if instrument == "LATISS":
-        fallbackValue = 1
-    elif instrument == "LSSTCam":
-        fallbackValue = 201
-    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
-        fallbackValue = 9
-    else:
-        raise ValueError(f"Unknown instrument {instrument}")
-
-    if instrument == "LSSTComCamSim":
-        return fallbackValue  # it's always nine (it's simulated), and this will all be redone soon anyway
-
-    try:
-        resourcePath = (f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
-                        f"{expRecord.obs_id}_expectedSensors.json")
-        url = ResourcePath(resourcePath)
-        jsonData = url.read()
-        data = json.loads(jsonData)
-        nExpected = len(data['expectedSensors'])
-        if nExpected != fallbackValue:
-            # not a warning because this is it working as expected, but it's
-            # nice to see when we have a partial readout
-            logger.debug(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
-                         f" is different from the nominal value of {fallbackValue} for {instrument}")
-        return nExpected
-    except FileNotFoundError:
-        if instrument in ['LSSTCam', 'LSST-TS8']:
-            # these instruments are expected to have this info, the other are
-            # not yet, so only warn when the file is expected and not found.
-            logger.warning(f"Unable to get number of expected items from {resourcePath}, "
-                           f"using fallback value of {fallbackValue}")
-        return fallbackValue
-    except Exception:
-        logger.exception("Error calculating expected number of items, using fallback value "
-                         f"of {fallbackValue}")
-        return fallbackValue
 
 
 class RawProcesser:

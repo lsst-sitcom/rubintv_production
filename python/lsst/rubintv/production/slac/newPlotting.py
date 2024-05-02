@@ -25,11 +25,10 @@ import os
 import matplotlib.pyplot as plt
 import logging
 
-# from ..utils import writeMetadataShard  # Use this when we report nImage inc.
 from ..uploaders import Uploader, MultiUploader
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
-from .utils import getCamera
+from .utils import getCamera, getNumExpectedItems
 
 _LOG = logging.getLogger(__name__)
 
@@ -101,8 +100,7 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        # XXX improve this post OR3, but this is REALLY last minute now!
-        nExpected = 9
+        nExpected = getNumExpectedItems(expRecord, self.log)
 
         self.fig.clear()
 
