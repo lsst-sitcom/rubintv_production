@@ -325,12 +325,6 @@ class MultiUploader(IUploader):
         if self.hasRemote:
             self.remoteUploader.uploadMovie(*args, **kwargs)
 
-    def uploadStarTrackerPlot(self, *args, **kwargs):
-        self.localUploader.uploadStarTrackerPlot(*args, **kwargs)
-
-        if self.hasRemote:
-            self.remoteUploader.uploadStarTrackerPlot(*args, **kwargs)
-
     def uploadAllSkyStill(self, *args, **kwargs):
         self.localUploader.uploadAllSkyStill(*args, **kwargs)
 
@@ -688,17 +682,6 @@ class S3Uploader(IUploader):
             raise ex
 
         return uploadAs
-
-    def uploadStarTrackerPlot(
-        self,
-        camera,
-        dayObs: int,
-        seqNum: int,
-        filename: str,
-        isFitted: bool,
-    ) -> str:
-        # XXX write this
-        raise NotImplementedError()
 
     def uploadMetdata(
         self,
