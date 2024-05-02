@@ -699,7 +699,7 @@ class Plotter:
 class Replotter(Plotter):
 
     @dataclass
-    class ReplotterWorkload(Uploader):  # XXX why does this inherit from Uploader?!
+    class ReplotterWorkload(Uploader):  # TODO: DM-44166 why does this inherit from Uploader?!
         finderFunction: Callable
         workerFunction: Callable
         name: str

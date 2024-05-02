@@ -97,7 +97,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          instrument=instrument,
                          # writeable true is required to define visits
                          butler=butler,
-                         watcherType='redis',  # XXX remove this hard coding
+                         watcherType='redis',
                          detectors=ensure_iterable([]),  # XXX deal with this on the base class
                          dataProduct=awaitsDataProduct,  # XXX consider renaming this on baseclass post OR3
                          channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
