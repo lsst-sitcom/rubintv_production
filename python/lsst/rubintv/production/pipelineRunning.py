@@ -117,7 +117,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def makeLimitedButler(self, butler):
         cachedOnGet = set()
-        cachedOnPut = {'whatever_the_json_object_ends up being called'}  # XXX update this!
+        cachedOnPut = set()
         for name in self.pipelineGraph.dataset_types.keys():
             if self.pipelineGraph.consumers_of(name):
                 if self.pipelineGraph.producer_of(name) is not None:
@@ -126,6 +126,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     cachedOnGet.add(name)
 
         noCopyOnCache = ('bias', 'dark', 'flat', 'defects', 'camera')
+        self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
     def doProcessImage(self, dataId):
