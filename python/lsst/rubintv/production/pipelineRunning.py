@@ -33,7 +33,7 @@ from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQua
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 
-from .utils import raiseIf, writeMetadataShard
+from .utils import raiseIf, writeMetadataShard, getShardPath
 from .baseChannels import BaseButlerChannel
 from .slac.mosaicing import writeBinnedImage
 from .payloads import pipelineGraphToBytes
@@ -359,11 +359,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         rowData = {seqNum: outputDict}
-        # XXX This ABSOLUTELY must be changed from being hard coded to
-        # use comCamSimMetadataShardPath before merging
-        # XXX
-        # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
-        writeMetadataShard(self.locationConfig.comCamSimMetadataShardPath, dayObs, rowData)
+
+        shardPath = getShardPath(self.locationConfig, expRecord)
+        writeMetadataShard(shardPath, dayObs, rowData)
 
     def clobber(self, object, datasetType, visitDataId):
         """Put object in the butler.

@@ -38,7 +38,7 @@ from lsst.utils.packages import Packages
 
 from .redisUtils import RedisHelper
 from .payloads import Payload, pipelineGraphToBytes
-from .utils import writeExpRecordMetadataShard
+from .utils import writeExpRecordMetadataShard, getShardPath
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -533,31 +533,6 @@ class HeadProcessController:
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
-    def getShardPath(self, expRecord):
-        """Get the path to the metadata shard for the given exposure record.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record to get the shard path for.
-
-        Returns
-        -------
-        shardPath : `str`
-            The path to write the metadata shard to.
-        """
-        assert self.instrument == expRecord.instrument
-
-        match self.expRecord:
-            case 'LATISS':
-                return self.locationConfig.auxTelMetadataShardPath
-            case 'LSSTComCam':
-                return self.locationConfig.comCamMetadataShardPath
-            case 'LSSTComCamSim':
-                return self.locationConfig.comCamSimMetadataShardPath
-            case _:
-                raise ValueError(f'Unknown instrument {self.instrument=}')
-
     def run(self):
         while True:
             # affirmRunning should be longer than longest loop but no longer
@@ -566,7 +541,8 @@ class HeadProcessController:
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
-                writeExpRecordMetadataShard(expRecord, self.getShardPath())
+                assert self.instrument == expRecord.instrument
+                writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 self.doStep1Fanout(expRecord)
 
             # for now, only dispatch to step2a once things are complete because

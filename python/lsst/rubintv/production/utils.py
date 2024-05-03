@@ -1083,3 +1083,27 @@ def getNumExpectedItems(expRecord, logger=None):
         logger.exception("Error calculating expected number of items, using fallback value "
                          f"of {fallbackValue}")
         return fallbackValue
+
+
+def getShardPath(locationConfig, expRecord):
+    """Get the path to the metadata shard for the given exposure record.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to get the shard path for.
+
+    Returns
+    -------
+    shardPath : `str`
+        The path to write the metadata shard to.
+    """
+    match expRecord.instrument:
+        case 'LATISS':
+            return locationConfig.auxTelMetadataShardPath
+        case 'LSSTComCam':
+            return locationConfig.comCamMetadataShardPath
+        case 'LSSTComCamSim':
+            return locationConfig.comCamSimMetadataShardPath
+        case _:
+            raise ValueError(f'Unknown instrument {expRecord.instrument=}')
