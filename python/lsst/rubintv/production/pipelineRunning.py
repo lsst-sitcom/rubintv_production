@@ -185,18 +185,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
 
             self.log.info(f'Running pipeline for {dataId}')
-            # this does the waiting, but stays in the cache so don't even catch
-            # the return XXX this needs to be made more generic to deal with
-            # step2
-            # 1) it needs to wait for other data products, depending on what
-            #    the pipeline is, and
-            # 2) it needs to do the same thing the bot testing code does of
-            #    waiting up to the nominal timeout and then moving on with what
-            #    it got
 
-            # this waits for it to land and caches on the butler but don't
-            # bother to even catch it. Then check for empty qg and raise is
-            # that is the case.
+            # _waitForDataProduct waits for the raw to land in the repo and
+            # caches it on the butler, so don't bother to catch the return.
+            # Then check for empty qg and raise if that is the case.
             self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
 
             qg = builder.build(
@@ -216,17 +208,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 None,
                 taskFactory=TaskFactory(),
                 limited_butler_factory=lambda _: self.limitedButler,
-                clobberOutputs=True,  # XXX think about what to do wrt clobbering
+                clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
             )
 
             if 'exposure' in payload.dataId:
                 processingId = payload.dataId['exposure']  # this works for step1 and step2a
-            else:  # for nightlyRollup this should use the trigger counter or something
-                processingId = 1  # XXX this REALLY need to be different BEFORE OR3!
+            else:
+                # TODO need to work out what to do for non-exposure-containing
+                # dataIds. Do we even need this anymore though, now we have a
+                # step2a finished counter?
+                processingId = 1
 
             for node in qg:
                 try:
-                    # XXX can also add timing info here
+                    # TODO: add per-quantum timing info here and return in
+                    # PayloadResult
                     self.log.info(f'Starting to process {node.taskDef}')
                     quantum = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum, processingId)
@@ -271,13 +267,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             case 'lsst.ip.isr.isrTask.IsrTask':
                 self.postProcessIsr(quantum)
             case 'lsst.pipe.tasks.calibrate.CalibrateTask':
-                # XXX I wonder if we could make dicts of some of the per-CCD
-                # quantities like PSF and 50 sigma source counts etc. Would
-                # probably mean changes to mergeShardsAndUpload in order to
-                # merge dict-like items into their corresponding dicts.
+                # TODO: think about if we could make dicts of some of the
+                # per-CCD quantities like PSF size and 50 sigma source counts
+                # etc. Would probably mean changes to mergeShardsAndUpload in
+                # order to merge dict-like items into their corresponding
+                # dicts.
 
-                # XXX post OR3 also have this write binned images so we can
-                # update the focal plane mosaic with a calexp-based on.
                 self.postProcessCalibrate(quantum, processingId)
             case 'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask':
                 # ConsolidateVisitSummaryTask regardless of quickLook or NV
@@ -285,7 +280,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # visitSummary
                 self.postProcessVisitSummary(quantum)
             case _:
-                # can match here and do fancy dispatch
                 return
 
     def postProcessIsr(self, quantum):
