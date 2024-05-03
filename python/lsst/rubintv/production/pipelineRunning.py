@@ -98,8 +98,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          butler=butler,
                          watcherType='redis',
                          detectors=ensure_iterable([]),  # XXX deal with this on the base class
-                         dataProduct=awaitsDataProduct,  # XXX consider renaming this on baseclass post OR3
-                         channelName='auxtel_calibrateCcd',  # XXX really the init should take an Uploader
+                         dataProduct=awaitsDataProduct,
+                         # TODO: Fix channelName on DM-44202 as it is not
+                         # required in this context but is needed in some.
+                         channelName='',
                          queueName=queueName,
                          doRaise=doRaise,
                          )
