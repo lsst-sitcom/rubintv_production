@@ -28,7 +28,7 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 
 from lsst.utils.iteration import ensure_iterable
 
-from lsst.pipe.base import Pipeline, PipelineGraph
+from lsst.pipe.base import Pipeline
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
@@ -36,7 +36,7 @@ from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from .utils import raiseIf, writeMetadataShard, getShardPath
 from .baseChannels import BaseButlerChannel
 from .slac.mosaicing import writeBinnedImage
-from .payloads import pipelineGraphToBytes
+from .payloads import pipelineGraphToBytes, pipelineGraphFromBytes
 
 __all__ = [
     'SingleCorePipelineRunner',
@@ -168,10 +168,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         try:
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
                 self.log.warning('Pipeline graph has changed, updating')
-                with io.BytesIO(pipelineGraphBytes) as f:
-                    self.pipelineGraph = PipelineGraph._read_stream(f)  # to be public soon
-                    self.pipelineGraphBytes = pipelineGraphBytes
-                    self.limitedButler = self.makeLimitedButler(self.butler)
+                self.pipelineGraphBytes = pipelineGraphFromBytes(pipelineGraphBytes)
+                # need to remake the caching butler if the pipeline changes
+                self.limitedButler = self.makeLimitedButler(self.butler)
 
             where = " AND ".join(f'{k}=_{k}' for k in dataId.mapping)
             bind = {f'_{k}': v for k, v in dataId.mapping.items()}
