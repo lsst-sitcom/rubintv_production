@@ -144,23 +144,20 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         doProcess : `bool`
             True if the image should be processed, False if we should skip it.
         """
-        # XXX add any necessary data-drive logic here to choose if we process
+        # add any necessary data-driven logic here to choose if we process
         return True
 
     def callback(self, payload):
-        """Method called on each new expRecord as it is found in the repo.
+        """Method called on each payload from the queue.
 
-        Runs on the quickLookExp and writes shards with various measured
-        quantities, as calculated by the CharacterizeImageTask and
-        CalibrateTask.
+        Executes the pipeline on the payload's dataId, outputting to the run
+        specified in the payload.
 
         Parameters
         ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process.
         """
-        # XXX dataId, awaitsDatasetTypeName will both be in the payload so
-        # unpack here.
         dataId = payload.dataId
         pipelineGraphBytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
