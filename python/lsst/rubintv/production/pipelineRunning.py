@@ -25,8 +25,6 @@ import numpy as np
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
-from lsst.utils.iteration import ensure_iterable
-
 from lsst.pipe.base import Pipeline
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
@@ -97,10 +95,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                          # writeable true is required to define visits
                          butler=butler,
                          watcherType='redis',
-                         detectors=ensure_iterable([]),  # XXX deal with this on the base class
+                         # TODO: DM-43764 this shouldn't be necessary on the
+                         # base class after this ticket, I think.
+                         detectors=None,
                          dataProduct=awaitsDataProduct,
-                         # TODO: Fix channelName on DM-44202 as it is not
-                         # required in this context but is needed in some.
+                         # TODO: DM-43764 should also be able to fix needing
+                         # channelName when tidying up the base class. Needed
+                         # in some contexts but not all. Maybe default it to
+                         # ''?
                          channelName='',
                          queueName=queueName,
                          doRaise=doRaise,

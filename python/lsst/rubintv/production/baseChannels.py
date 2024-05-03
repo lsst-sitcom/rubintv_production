@@ -135,8 +135,6 @@ class BaseButlerChannel(BaseChannel):
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
-        # XXX will keeping detectors in the class be necessary, or does it only
-        # need to go in the RedisWatcher
         self.detectors = detectors
 
     @abstractmethod
