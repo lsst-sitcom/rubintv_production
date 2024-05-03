@@ -21,7 +21,6 @@
 
 
 import datetime
-import io
 import numpy as np
 
 import lsst.summit.utils.butlerUtils as butlerUtils
