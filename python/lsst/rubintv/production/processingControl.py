@@ -533,6 +533,31 @@ class HeadProcessController:
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
+    def getShardPath(self, expRecord):
+        """Get the path to the metadata shard for the given exposure record.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to get the shard path for.
+
+        Returns
+        -------
+        shardPath : `str`
+            The path to write the metadata shard to.
+        """
+        assert self.instrument == expRecord.instrument
+
+        match self.expRecord:
+            case 'LATISS':
+                return self.locationConfig.auxTelMetadataShardPath
+            case 'LSSTComCam':
+                return self.locationConfig.comCamMetadataShardPath
+            case 'LSSTComCamSim':
+                return self.locationConfig.comCamSimMetadataShardPath
+            case _:
+                raise ValueError(f'Unknown instrument {self.instrument=}')
+
     def run(self):
         while True:
             # affirmRunning should be longer than longest loop but no longer
@@ -541,11 +566,7 @@ class HeadProcessController:
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
-                # XXX This ABSOLUTELY must be changed from being hard coded to
-                # use comCamSimMetadataShardPath before merging
-                # XXX
-                # TODO: REVIEWER - DO NOT LET MERLIN GET AWAY WITH THIS 💩 🔥 🐈
-                writeExpRecordMetadataShard(expRecord, self.locationConfig.comCamSimMetadataShardPath)
+                writeExpRecordMetadataShard(expRecord, self.getShardPath())
                 self.doStep1Fanout(expRecord)
 
             # for now, only dispatch to step2a once things are complete because

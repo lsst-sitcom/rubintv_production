@@ -592,7 +592,6 @@ class S3Uploader(IUploader):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
-        # XXX fix use in nightReportPlotBase
         # this is called from createAndUpload() in nightReportPlotBase.py so if
         # you change the args here (like renaming the channel to be the
         # instrument) then make sure to catch it everywhere
