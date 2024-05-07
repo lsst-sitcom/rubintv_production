@@ -19,42 +19,43 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
+from lsst.utils.plotting.limits import calculate_safe_plotting_limits
 
 from .nightReportPlotBase import StarTrackerPlot
-from lsst.utils.plotting.limits import calculate_safe_plotting_limits
 
 # any classes added to PLOT_FACTORIES will automatically be added to the night
 # report channel, with each being replotted for each image taken.
-PLOT_FACTORIES = ['RaDecAltAzOverTime',
-                  'DeltasPlot',
-                  'SourcesAndScatters',
-                  'AltAzCoverageTopDown',
-                  'CameraPointingOffset',
-                  'InterCameraOffset',
-                  'CameraAzAltOffset',
-                  'CameraAzAltOffsetPosition',
-                  ]
+PLOT_FACTORIES = [
+    "RaDecAltAzOverTime",
+    "DeltasPlot",
+    "SourcesAndScatters",
+    "AltAzCoverageTopDown",
+    "CameraPointingOffset",
+    "InterCameraOffset",
+    "CameraAzAltOffset",
+    "CameraAzAltOffsetPosition",
+]
 
 __all__ = PLOT_FACTORIES
 
-COLORS = 'bgrcmyk'  # these get use in order to automatically give a series of colors for data series
+COLORS = "bgrcmyk"  # these get use in order to automatically give a series of colors for data series
 
 
 class RaDecAltAzOverTime(StarTrackerPlot):
-    _PlotName = 'ra-dec-alt-az-vs-time'
-    _PlotGroup = 'Time-Series'
+    _PlotName = "ra-dec-alt-az-vs-time"
+    _PlotGroup = "Time-Series"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -73,50 +74,50 @@ class RaDecAltAzOverTime(StarTrackerPlot):
         axisLabelSize = 18
         nPlots = 4
 
-        fig, axes = plt.subplots(figsize=(16, 4*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig, axes = plt.subplots(figsize=(16, 4 * nPlots), nrows=nPlots, ncols=1, sharex=True)
         fig.subplots_adjust(hspace=0)
 
-        mjds = metadata['MJD']
+        mjds = metadata["MJD"]
 
-        suffixes = ['', ' wide', ' fast']
+        suffixes = ["", " wide", " fast"]
 
-        plotPairs = [('Alt', 'Calculated Alt'),
-                     ('Az', 'Calculated Az'),
-                     ('Ra', 'Calculated Ra'),
-                     ('Dec', 'Calculated Dec'),
-                     ]
+        plotPairs = [
+            ("Alt", "Calculated Alt"),
+            ("Az", "Calculated Az"),
+            ("Ra", "Calculated Ra"),
+            ("Dec", "Calculated Dec"),
+        ]
 
         for plotNum, (quantity, fittedQuantity) in enumerate(plotPairs):
             for seriesNum, suffix in enumerate(suffixes):
                 seriesName = quantity + suffix  # do the raw data
                 if seriesName in metadata.columns:
                     data = metadata[seriesName]
-                    axes[plotNum].plot(mjds, data, f'-{COLORS[seriesNum]}', label=seriesName)
+                    axes[plotNum].plot(mjds, data, f"-{COLORS[seriesNum]}", label=seriesName)
 
                 seriesName = fittedQuantity + suffix  # then try the fitted data
                 if seriesName in metadata.columns:
                     data = metadata[seriesName]
-                    axes[plotNum].plot(mjds, data, f'--{COLORS[seriesNum+1]}', label=seriesName)
+                    axes[plotNum].plot(mjds, data, f"--{COLORS[seriesNum+1]}", label=seriesName)
 
                 axes[plotNum].legend()
-                axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
+                axes[plotNum].set_xlabel("MJD", size=axisLabelSize)
                 axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
         return True
 
 
 class DeltasPlot(StarTrackerPlot):
-    _PlotName = 'delta-ra-dec-alt-az-rot-vs-time'
-    _PlotGroup = 'Time-Series'
+    _PlotName = "delta-ra-dec-alt-az-rot-vs-time"
+    _PlotGroup = "Time-Series"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -135,47 +136,48 @@ class DeltasPlot(StarTrackerPlot):
         axisLabelSize = 18
         nPlots = 5
 
-        colors = 'bgrcmyk'
+        colors = "bgrcmyk"
 
-        fig, axes = plt.subplots(figsize=(16, 4*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig, axes = plt.subplots(figsize=(16, 4 * nPlots), nrows=nPlots, ncols=1, sharex=True)
         fig.subplots_adjust(hspace=0)
 
-        mjds = metadata['MJD']
+        mjds = metadata["MJD"]
 
-        suffixes = ['', ' wide', ' fast']
+        suffixes = ["", " wide", " fast"]
 
-        plots = ['Delta Alt Arcsec',
-                 'Delta Az Arcsec',
-                 'Delta Dec Arcsec',
-                 'Delta Ra Arcsec',
-                 'Delta Rot Arcsec']
+        plots = [
+            "Delta Alt Arcsec",
+            "Delta Az Arcsec",
+            "Delta Dec Arcsec",
+            "Delta Ra Arcsec",
+            "Delta Rot Arcsec",
+        ]
 
         for plotNum, quantity in enumerate(plots):
             for seriesNum, suffix in enumerate(suffixes):
                 seriesName = quantity + suffix
                 if seriesName in metadata.columns:
                     data = metadata[seriesName]
-                    axes[plotNum].plot(mjds, data, f'-{colors[seriesNum]}', label=seriesName)
+                    axes[plotNum].plot(mjds, data, f"-{colors[seriesNum]}", label=seriesName)
 
                 axes[plotNum].legend()
-                axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
+                axes[plotNum].set_xlabel("MJD", size=axisLabelSize)
                 axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
         return True
 
 
 class SourcesAndScatters(StarTrackerPlot):
-    _PlotName = 'sourceCount-and-astrometric-scatter-vs-time'
-    _PlotGroup = 'Time-Series'
+    _PlotName = "sourceCount-and-astrometric-scatter-vs-time"
+    _PlotGroup = "Time-Series"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -194,46 +196,42 @@ class SourcesAndScatters(StarTrackerPlot):
         axisLabelSize = 18
         nPlots = 4
 
-        colors = 'bgrcmyk'
+        colors = "bgrcmyk"
 
-        fig, axes = plt.subplots(figsize=(16, 4*nPlots), nrows=nPlots, ncols=1, sharex=True)
+        fig, axes = plt.subplots(figsize=(16, 4 * nPlots), nrows=nPlots, ncols=1, sharex=True)
         fig.subplots_adjust(hspace=0)
 
-        mjds = metadata['MJD']
+        mjds = metadata["MJD"]
 
-        suffixes = ['', ' wide', ' fast']
+        suffixes = ["", " wide", " fast"]
 
-        plots = ['RMS scatter arcsec',
-                 'RMS scatter pixels',
-                 'nSources',
-                 'nSources filtered']
+        plots = ["RMS scatter arcsec", "RMS scatter pixels", "nSources", "nSources filtered"]
 
         for plotNum, quantity in enumerate(plots):
             for seriesNum, suffix in enumerate(suffixes):
                 seriesName = quantity + suffix
                 if seriesName in metadata.columns:
                     data = metadata[seriesName]
-                    axes[plotNum].plot(mjds, data, f'-{colors[seriesNum]}', label=seriesName)
+                    axes[plotNum].plot(mjds, data, f"-{colors[seriesNum]}", label=seriesName)
 
                 axes[plotNum].legend()
-                axes[plotNum].set_xlabel('MJD', size=axisLabelSize)
+                axes[plotNum].set_xlabel("MJD", size=axisLabelSize)
                 axes[plotNum].set_ylabel(quantity, size=axisLabelSize)
         return True
 
 
 class AltAzCoverageTopDown(StarTrackerPlot):
-    _PlotName = 'Alt-Az-top-down'
-    _PlotGroup = 'Coverage'
+    _PlotName = "Alt-Az-top-down"
+    _PlotGroup = "Coverage"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -252,26 +250,42 @@ class AltAzCoverageTopDown(StarTrackerPlot):
         _ = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111, polar=True)
 
-        alts = metadata['Alt']
-        azes = metadata['Az']
+        alts = metadata["Alt"]
+        azes = metadata["Az"]
 
-        ax.plot([az*np.pi/180 for az in azes], alts, 'or', label='Pointing')
-        if 'Calculated Dec wide' in metadata.columns:
-            hasWideSolve = metadata.dropna(subset=['Calculated Dec wide'])
-            wideAlts = hasWideSolve['Alt']
-            wideAzes = hasWideSolve['Az']
-            ax.scatter([az*np.pi/180 for az in wideAzes], wideAlts, marker='o', s=200,
-                       facecolors='none', edgecolors='b', label='Wide Solve')
+        ax.plot([az * np.pi / 180 for az in azes], alts, "or", label="Pointing")
+        if "Calculated Dec wide" in metadata.columns:
+            hasWideSolve = metadata.dropna(subset=["Calculated Dec wide"])
+            wideAlts = hasWideSolve["Alt"]
+            wideAzes = hasWideSolve["Az"]
+            ax.scatter(
+                [az * np.pi / 180 for az in wideAzes],
+                wideAlts,
+                marker="o",
+                s=200,
+                facecolors="none",
+                edgecolors="b",
+                label="Wide Solve",
+            )
 
-        if 'Calculated Dec' in metadata.columns:
-            hasNarrowSolve = metadata.dropna(subset=['Calculated Dec'])
-            narrowAlts = hasNarrowSolve['Alt']
-            narrowAzes = hasNarrowSolve['Az']
-            ax.scatter([az*np.pi/180 for az in narrowAzes], narrowAlts, marker='o', s=400,
-                       facecolors='none', edgecolors='g', label='Narrow Solve')
+        if "Calculated Dec" in metadata.columns:
+            hasNarrowSolve = metadata.dropna(subset=["Calculated Dec"])
+            narrowAlts = hasNarrowSolve["Alt"]
+            narrowAzes = hasNarrowSolve["Az"]
+            ax.scatter(
+                [az * np.pi / 180 for az in narrowAzes],
+                narrowAlts,
+                marker="o",
+                s=400,
+                facecolors="none",
+                edgecolors="g",
+                label="Narrow Solve",
+            )
         ax.legend()
-        ax.set_title("Axial coverage - azimuth (theta) vs altitude(r)"
-                     "\n 'Top down' view with zenith at center", va='bottom')
+        ax.set_title(
+            "Axial coverage - azimuth (theta) vs altitude(r)" "\n 'Top down' view with zenith at center",
+            va="bottom",
+        )
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.set_rlim(0, 90)
@@ -281,18 +295,17 @@ class AltAzCoverageTopDown(StarTrackerPlot):
 
 
 class CameraPointingOffset(StarTrackerPlot):
-    _PlotName = 'CameraPointingOffset'
-    _PlotGroup = 'Analysis'
+    _PlotName = "CameraPointingOffset"
+    _PlotGroup = "Analysis"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -329,18 +342,17 @@ class CameraPointingOffset(StarTrackerPlot):
 
 
 class InterCameraOffset(StarTrackerPlot):
-    _PlotName = 'InterCameraOffset'
-    _PlotGroup = 'Analysis'
+    _PlotName = "InterCameraOffset"
+    _PlotGroup = "Analysis"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -381,7 +393,7 @@ class InterCameraOffset(StarTrackerPlot):
         ax[1].set_title("Narrow ($\Delta$Alt, $\Delta$Az) - Wide ($\Delta$Alt, $\Delta$Az)")  # noqa: W605
         ax[1].set_ylabel("Arcsec", fontsize=13)
         ax2 = ax[1].twinx()
-        ax2.plot(metadata["Alt"], label="Commanded Alt", alpha=0.3, color='g')
+        ax2.plot(metadata["Alt"], label="Commanded Alt", alpha=0.3, color="g")
         lines1, labels1 = ax[1].get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax2.legend(lines1 + lines2, labels1 + labels2, loc=0)
@@ -389,18 +401,17 @@ class InterCameraOffset(StarTrackerPlot):
 
 
 class CameraAzAltOffset(StarTrackerPlot):
-    _PlotName = 'CameraAzAltOffset'
-    _PlotGroup = 'Analysis'
+    _PlotName = "CameraAzAltOffset"
+    _PlotGroup = "Analysis"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -435,18 +446,17 @@ class CameraAzAltOffset(StarTrackerPlot):
 
 
 class CameraAzAltOffsetPosition(StarTrackerPlot):
-    _PlotName = 'CameraAzAltOffsetPosition'
-    _PlotGroup = 'Analysis'
+    _PlotName = "CameraAzAltOffsetPosition"
+    _PlotGroup = "Analysis"
 
-    def __init__(self,
-                 dayObs,
-                 locationConfig=None,
-                 uploader=None):
-        super().__init__(dayObs=dayObs,
-                         plotName=self._PlotName,
-                         plotGroup=self._PlotGroup,
-                         locationConfig=locationConfig,
-                         uploader=uploader)
+    def __init__(self, dayObs, locationConfig=None, uploader=None):
+        super().__init__(
+            dayObs=dayObs,
+            plotName=self._PlotName,
+            plotGroup=self._PlotGroup,
+            locationConfig=locationConfig,
+            uploader=uploader,
+        )
 
     def plot(self, metadata):
         """Create a sample plot using data from the StarTracker page tables.
@@ -478,26 +488,24 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
         deltaAltWide -= medDeltaAltWide
         deltaAzWide -= medDeltaAzWide
 
-        fig, ax = plt.subplots(2, 2, figsize=(10, 8), sharex='col', sharey='row')
+        fig, ax = plt.subplots(2, 2, figsize=(10, 8), sharex="col", sharey="row")
         fig.subplots_adjust(hspace=0, wspace=0)
         plt.suptitle(f"Median subtracted pointing errors vs position {self.dayObs}", fontsize=18)
 
-        ax[0][0].scatter(alt, deltaAltWide, color='red', marker='o', label='Wide')
-        ax[0][0].scatter(alt, deltaAlt, color='blue', marker='x', label='Narrow')
+        ax[0][0].scatter(alt, deltaAltWide, color="red", marker="o", label="Wide")
+        ax[0][0].scatter(alt, deltaAlt, color="blue", marker="x", label="Narrow")
         ax[0][0].set_ylabel("DeltaAlt (arcsec)", fontsize=13)
-        ymin, ymax = calculate_safe_plotting_limits([deltaAlt, deltaAltWide],
-                                                    percentile=99.0)
+        ymin, ymax = calculate_safe_plotting_limits([deltaAlt, deltaAltWide], percentile=99.0)
         ax[0][0].set_ylim(ymin, ymax)
         ax[0][0].legend()
 
-        ax[0][1].scatter(az, deltaAltWide, color='red', marker='o', label='Wide')
-        ax[0][1].scatter(az, deltaAlt, color='blue', marker='x', label='Narrow')
+        ax[0][1].scatter(az, deltaAltWide, color="red", marker="o", label="Wide")
+        ax[0][1].scatter(az, deltaAlt, color="blue", marker="x", label="Narrow")
         ax[0][1].legend()
 
-        ax[1][0].scatter(alt, deltaAzWide, color='red', marker='o', label='Wide')
-        ax[1][0].scatter(alt, deltaAz, color='blue', marker='x', label='Narrow')
-        ymin, ymax = calculate_safe_plotting_limits([deltaAz, deltaAzWide],
-                                                    percentile=99.0)
+        ax[1][0].scatter(alt, deltaAzWide, color="red", marker="o", label="Wide")
+        ax[1][0].scatter(alt, deltaAz, color="blue", marker="x", label="Narrow")
+        ymin, ymax = calculate_safe_plotting_limits([deltaAz, deltaAzWide], percentile=99.0)
         ax[1][0].set_ylim(ymin, ymax)
         ax[1][0].set_xlim(0, 90)
         ax[1][0].set_xticks([10, 20, 30, 40, 50, 60, 70, 80])
@@ -505,8 +513,8 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
         ax[1][0].set_ylabel("DeltaAz (arcsec)", fontsize=13)
         ax[1][0].legend()
 
-        ax[1][1].scatter(az, deltaAzWide, color='red', marker='o', label='Wide')
-        ax[1][1].scatter(az, deltaAz, color='blue', marker='x', label='Narrow')
+        ax[1][1].scatter(az, deltaAzWide, color="red", marker="o", label="Wide")
+        ax[1][1].scatter(az, deltaAz, color="blue", marker="x", label="Narrow")
         ax[1][1].set_xlabel("Az (degrees)", fontsize=13)
         ax[1][1].set_xlim(-180, 180)
         ax[1][1].legend()

@@ -21,11 +21,9 @@
 
 """Test cases for utils."""
 import unittest
-import lsst.utils.tests
 
-from lsst.rubintv.production.utils import (isDayObsContiguous,
-                                           sanitizeNans,
-                                           )
+import lsst.utils.tests
+from lsst.rubintv.production.utils import isDayObsContiguous, sanitizeNans
 
 
 class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
@@ -40,18 +38,18 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
         self.assertFalse(isDayObsContiguous(nextDay, differentDay))
 
     def test_sanitizeNans(self):
-        self.assertEqual(sanitizeNans({'a': 1.0, 'b': float('nan')}), {'a': 1.0, 'b': None})
-        self.assertEqual(sanitizeNans([1.0, float('nan')]), [1.0, None])
-        self.assertIsNone(sanitizeNans(float('nan')))
+        self.assertEqual(sanitizeNans({"a": 1.0, "b": float("nan")}), {"a": 1.0, "b": None})
+        self.assertEqual(sanitizeNans([1.0, float("nan")]), [1.0, None])
+        self.assertIsNone(sanitizeNans(float("nan")))
 
         # test that a nested dictionary with nan values is sanitized
-        nestedDict = {'a': 1.0, 'b': {'c': float('nan'), 'd': 2.0}}
+        nestedDict = {"a": 1.0, "b": {"c": float("nan"), "d": 2.0}}
         result = sanitizeNans(nestedDict)
-        self.assertEqual(result['a'], 1.0)
-        self.assertEqual(result['b'], {'c': None, 'd': 2.0})
+        self.assertEqual(result["a"], 1.0)
+        self.assertEqual(result["b"], {"c": None, "d": 2.0})
 
-        noneKeyedDict = {None: 1.0, 'b': {'c': float('nan'), 'd': 2.0}}
-        self.assertEqual(sanitizeNans(noneKeyedDict), {None: 1.0, 'b': {'c': None, 'd': 2.0}})
+        noneKeyedDict = {None: 1.0, "b": {"c": float("nan"), "d": 2.0}}
+        self.assertEqual(sanitizeNans(noneKeyedDict), {None: 1.0, "b": {"c": None, "d": 2.0}})
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

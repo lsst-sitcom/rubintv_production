@@ -20,17 +20,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-import os
 import logging
+import os
 from glob import glob
 from time import sleep
 
-from .uploaders import Heartbeater, Uploader, MultiUploader
-
-from .utils import (isFileWorldWritable,
-                    raiseIf,
-                    sanitizeNans,
-                    )
+from .uploaders import Heartbeater, MultiUploader, Uploader
+from .utils import isFileWorldWritable, raiseIf, sanitizeNans
 
 _LOG = logging.getLogger(__name__)
 
@@ -63,6 +59,7 @@ class TimedMetadataServer:
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
+
     # The time between searches of the metadata shard directory to merge the
     # shards and upload.
     cadence = 1.5
@@ -71,12 +68,7 @@ class TimedMetadataServer:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, *,
-                 locationConfig,
-                 metadataDirectory,
-                 shardsDirectory,
-                 channelName,
-                 doRaise=False):
+    def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, channelName, doRaise=False):
         self.locationConfig = locationConfig
         self.metadataDirectory = metadataDirectory
         self.shardsDirectory = shardsDirectory
@@ -85,10 +77,12 @@ class TimedMetadataServer:
         self.log = _LOG.getChild(self.channelName)
         self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
-        self.heartbeater = Heartbeater(self.channelName,
-                                       self.locationConfig.bucketName,
-                                       self.HEARTBEAT_UPLOAD_PERIOD,
-                                       self.HEARTBEAT_FLATLINE_PERIOD)
+        self.heartbeater = Heartbeater(
+            self.channelName,
+            self.locationConfig.bucketName,
+            self.HEARTBEAT_UPLOAD_PERIOD,
+            self.HEARTBEAT_FLATLINE_PERIOD,
+        )
 
         if not os.path.isdir(self.metadataDirectory):
             # created by the LocationConfig init so this should be impossible
@@ -105,7 +99,7 @@ class TimedMetadataServer:
         filesTouched = set()
         shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
         if shardFiles:
-            self.log.debug(f'Found {len(shardFiles)} shardFiles')
+            self.log.debug(f"Found {len(shardFiles)} shardFiles")
             sleep(0.1)  # just in case a shard is in the process of being written
 
         updating = set()
@@ -135,13 +129,13 @@ class TimedMetadataServer:
                     updating.add((dayObs, seqNum))
             os.remove(shardFile)
 
-            with open(mainFile, 'w') as f:
+            with open(mainFile, "w") as f:
                 json.dump(data, f)
             if not isFileWorldWritable(mainFile):
                 os.chmod(mainFile, 0o777)  # file may be amended by another process
 
         if updating:
-            for (dayObs, seqNum) in sorted(updating, key=lambda x: (x[0], x[1])):
+            for dayObs, seqNum in sorted(updating, key=lambda x: (x[0], x[1])):
                 self.log.info(f"Updating metadata tables for: {dayObs=}, {seqNum=}")
 
         if filesTouched:
@@ -180,7 +174,7 @@ class TimedMetadataServer:
         filename : `str`
             The filename.
         """
-        return os.path.join(self.metadataDirectory, f'dayObs_{dayObs}.json')
+        return os.path.join(self.metadataDirectory, f"dayObs_{dayObs}.json")
 
     def callback(self):
         """Method called on a timer to gather the shards and upload as needed.
@@ -188,15 +182,14 @@ class TimedMetadataServer:
         Adds the metadata to the sidecar file for the dataId and uploads it.
         """
         try:
-            self.log.debug('Getting metadata from shards')
+            self.log.debug("Getting metadata from shards")
             self.mergeShardsAndUpload()  # updates all shards everywhere
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
     def run(self):
-        """Run continuously, looking for metadata and uploading.
-        """
+        """Run continuously, looking for metadata and uploading."""
         while True:
             self.callback()
             if self.heartbeater is not None:

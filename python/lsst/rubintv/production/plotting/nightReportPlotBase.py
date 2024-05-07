@@ -19,14 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from abc import ABC, abstractmethod
-import os
-import matplotlib.pyplot as plt
 import logging
+import os
+from abc import ABC, abstractmethod
 
-__all__ = ['BasePlot',
-           'LatissPlot',
-           'StarTrackerPlot']
+import matplotlib.pyplot as plt
+
+__all__ = ["BasePlot", "LatissPlot", "StarTrackerPlot"]
 
 
 class BasePlot(ABC):
@@ -49,15 +48,17 @@ class BasePlot(ABC):
         The uploader, or ``None``, if being used for development.
     """
 
-    def __init__(self, *,
-                 dayObs,
-                 plotName,
-                 plotGroup,
-                 channelName=None,
-                 locationConfig=None,
-                 uploader=None,
-                 s3Uploader=None,
-                 ):
+    def __init__(
+        self,
+        *,
+        dayObs,
+        plotName,
+        plotGroup,
+        channelName=None,
+        locationConfig=None,
+        uploader=None,
+        s3Uploader=None,
+    ):
         self.dayObs = dayObs
         self.plotName = plotName
         self.plotGroup = plotGroup
@@ -65,7 +66,7 @@ class BasePlot(ABC):
         self.locationConfig = locationConfig
         self.uploader = uploader
         self.s3Uploader = s3Uploader
-        self.log = logging.getLogger(f'lsst.rubintv.production.nightReportPlots.{plotName}')
+        self.log = logging.getLogger(f"lsst.rubintv.production.nightReportPlots.{plotName}")
 
     def getSaveFilename(self):
         """Get the filename to save the plot to.
@@ -78,8 +79,7 @@ class BasePlot(ABC):
             The full path and filename to save the plot to, such that it can be
             passed to ``plt.savefig()``.
         """
-        return os.path.join(self.locationConfig.nightReportPath,
-                            f'{self.channelName}-{self.plotName}.png')
+        return os.path.join(self.locationConfig.nightReportPath, f"{self.channelName}-{self.plotName}.png")
 
     @abstractmethod
     def plot(self, nightReport, metadata, ccdVisitTable):
@@ -133,23 +133,27 @@ class LatissPlot(BasePlot):
     uploader : `lsst.rubintv.production.Uploader`, optional
         The uploader, or ``None``, if being used for development.
     """
-    def __init__(self, *,
-                 dayObs,
-                 plotName,
-                 plotGroup,
-                 locationConfig,
-                 uploader,
-                 s3Uploader,
-                 ):
 
-        super().__init__(dayObs=dayObs,
-                         plotName=plotName,
-                         plotGroup=plotGroup,
-                         channelName="auxtel_night_reports",
-                         locationConfig=locationConfig,
-                         uploader=uploader,
-                         s3Uploader=s3Uploader,
-                         )
+    def __init__(
+        self,
+        *,
+        dayObs,
+        plotName,
+        plotGroup,
+        locationConfig,
+        uploader,
+        s3Uploader,
+    ):
+
+        super().__init__(
+            dayObs=dayObs,
+            plotName=plotName,
+            plotGroup=plotGroup,
+            channelName="auxtel_night_reports",
+            locationConfig=locationConfig,
+            uploader=uploader,
+            s3Uploader=s3Uploader,
+        )
 
     def createAndUpload(self, nightReport, metadata, ccdVisitTable):
         """Create the plot defined in ``plot`` and upload it.
@@ -167,25 +171,23 @@ class LatissPlot(BasePlot):
             The visit summary table for the current day.
         """
         if self.locationConfig is None or self.uploader is None:
-            raise RuntimeError('locationConfig and uploader can only be None for development work.')
+            raise RuntimeError("locationConfig and uploader can only be None for development work.")
 
         success = self.plot(nightReport, metadata, ccdVisitTable)
         if not success:
-            self.log.warning(f'Plot {self.plotName} failed to create')
+            self.log.warning(f"Plot {self.plotName} failed to create")
             return
 
         saveFile = self.getSaveFilename()
         plt.savefig(saveFile)
         plt.close()
 
-        self.uploader.uploadNightReportData(channel=self.channelName,
-                                            dayObs=self.dayObs,
-                                            filename=saveFile,
-                                            plotGroup=self.plotGroup)
-        self.s3Uploader.uploadNightReportData(instrument='auxtel',
-                                              dayObs=self.dayObs,
-                                              filename=saveFile,
-                                              plotGroup=self.plotGroup)
+        self.uploader.uploadNightReportData(
+            channel=self.channelName, dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
+        )
+        self.s3Uploader.uploadNightReportData(
+            instrument="auxtel", dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
+        )
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
         os.remove(saveFile)
@@ -208,23 +210,27 @@ class StarTrackerPlot(BasePlot):
     uploader : `lsst.rubintv.production.Uploader`, optional
         The uploader, or ``None``, if being used for development.
     """
-    def __init__(self, *,
-                 dayObs,
-                 plotName,
-                 plotGroup,
-                 locationConfig,
-                 uploader,
-                 s3Uploader,
-                 ):
 
-        super().__init__(dayObs=dayObs,
-                         plotName=plotName,
-                         plotGroup=plotGroup,
-                         channelName="startracker_night_reports",
-                         locationConfig=locationConfig,
-                         uploader=uploader,
-                         s3Uploader=s3Uploader,
-                         )
+    def __init__(
+        self,
+        *,
+        dayObs,
+        plotName,
+        plotGroup,
+        locationConfig,
+        uploader,
+        s3Uploader,
+    ):
+
+        super().__init__(
+            dayObs=dayObs,
+            plotName=plotName,
+            plotGroup=plotGroup,
+            channelName="startracker_night_reports",
+            locationConfig=locationConfig,
+            uploader=uploader,
+            s3Uploader=s3Uploader,
+        )
 
     def createAndUpload(self, tableData):
         """Create the plot defined in ``plot`` and upload it.
@@ -238,25 +244,23 @@ class StarTrackerPlot(BasePlot):
             The data from all three StarTracker page tables, as a dataframe.
         """
         if self.locationConfig is None or self.uploader is None:
-            raise RuntimeError('locationConfig and uploader can only be None for development work.')
+            raise RuntimeError("locationConfig and uploader can only be None for development work.")
 
         success = self.plot(tableData)
         if not success:
-            self.log.warning(f'Plot {self.plotName} failed to create')
+            self.log.warning(f"Plot {self.plotName} failed to create")
             return
 
         saveFile = self.getSaveFilename()
         plt.savefig(saveFile)
         plt.close()
 
-        self.uploader.uploadNightReportData(channel=self.channelName,
-                                            dayObs=self.dayObs,
-                                            filename=saveFile,
-                                            plotGroup=self.plotGroup)
-        self.s3Uploader.uploadNightReportData(instrument='startracker',
-                                              dayObs=self.dayObs,
-                                              filename=saveFile,
-                                              plotGroup=self.plotGroup)
+        self.uploader.uploadNightReportData(
+            channel=self.channelName, dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
+        )
+        self.s3Uploader.uploadNightReportData(
+            instrument="startracker", dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
+        )
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
         os.remove(saveFile)

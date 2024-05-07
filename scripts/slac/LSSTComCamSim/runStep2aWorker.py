@@ -21,22 +21,23 @@
 
 import os
 import sys
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = 'LSSTComCamSim'
+instrument = "LSSTComCamSim"
 
 setupLogging()
 
 workerName = os.getenv("WORKER_NAME")  # when using statefulSets
 if workerName:
     workerNum = int(workerName.split("-")[-1])
-    print(f'Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that')
+    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
 else:
     workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f'Found WORKER_NUMBER={workerNum} in the env')
+    print(f"Found WORKER_NUMBER={workerNum} in the env")
     if not workerNum:
         if len(sys.argv) < 2:
             print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
@@ -48,14 +49,14 @@ workerNum = int(workerNum)
 queueName = f"STEP2A-WORKER-{workerNum:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-location = 'slac'
+location = "slac"
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
-        'LSSTComCamSim/defaults',
+        "LSSTComCamSim/defaults",
     ],
-    writeable=True
+    writeable=True,
 )
 
 step2aRunner = SingleCorePipelineRunner(
@@ -63,9 +64,9 @@ step2aRunner = SingleCorePipelineRunner(
     locationConfig=locationConfig,
     instrument=instrument,
     pipeline=locationConfig.sfmPipelineFile,
-    step='step2a',
+    step="step2a",
     awaitsDataProduct=None,
     doRaise=True,
-    queueName=queueName
+    queueName=queueName,
 )
 step2aRunner.run()

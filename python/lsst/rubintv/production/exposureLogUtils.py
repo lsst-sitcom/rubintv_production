@@ -19,16 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import requests
 import logging
 
-EXPOSURE_LOG_URL = 'https://summit-lsp.lsst.codes/exposurelog/messages'
+import requests
+
+EXPOSURE_LOG_URL = "https://summit-lsp.lsst.codes/exposurelog/messages"
 
 LOG_ITEM_MAPPINGS = {
-    'message_text': 'Log message',
-    'level': 'Log level',
-    'urls': 'Jira ticket',
-    'exposure_flag': 'Quality flag'
+    "message_text": "Log message",
+    "level": "Log level",
+    "urls": "Jira ticket",
+    "exposure_flag": "Quality flag",
 }
 
 
@@ -50,13 +51,14 @@ def getLogsForDayObs(dayObs, logger=None):
     if not logger:
         logger = logging.getLogger(__name__)
 
-    query = (f'{EXPOSURE_LOG_URL}?'
-             f'min_day_obs={dayObs}&max_day_obs={dayObs+1}'
-             '&is_human=either&is_valid=true&offset=0&limit=10000'
-             )
-    response = requests.request('GET', query)
+    query = (
+        f"{EXPOSURE_LOG_URL}?"
+        f"min_day_obs={dayObs}&max_day_obs={dayObs+1}"
+        "&is_human=either&is_valid=true&offset=0&limit=10000"
+    )
+    response = requests.request("GET", query)
     if not response.ok:
-        logger.warning('Reponse from exposureLog REST API was not OK')
+        logger.warning("Reponse from exposureLog REST API was not OK")
         return None
 
     logs = response.json()

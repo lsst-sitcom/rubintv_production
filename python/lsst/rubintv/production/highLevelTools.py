@@ -19,30 +19,32 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
-import logging
 import glob
-import time
+import logging
+import os
 import pickle
+import time
+
 import pandas as pd
 
+from lsst.summit.utils.butlerUtils import getExpRecordFromDataId, getSeqNumsForDayObs, makeDefaultLatissButler
+from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from lsst.utils import getPackageDir
 
-from lsst.summit.utils.butlerUtils import getSeqNumsForDayObs, makeDefaultLatissButler, getExpRecordFromDataId
-from lsst.summit.utils.utils import dayObsIntToString, setupLogging
 from .channels import CHANNELS, PREFIXES
-from .utils import expRecordToUploadFilename, LocationConfig, FakeExposureRecord
 from .uploaders import Uploader
+from .utils import FakeExposureRecord, LocationConfig, expRecordToUploadFilename
 
-__all__ = ['getPlotSeqNumsForDayObs',
-           'createChannelByName',
-           'remakePlotByDataId',
-           'remakeDay',
-           'pushTestImageToCurrent',
-           'remakeStarTrackerDay',
-           'getDaysWithDataForPlotting',
-           'getPlottingArgs'
-           ]
+__all__ = [
+    "getPlotSeqNumsForDayObs",
+    "createChannelByName",
+    "remakePlotByDataId",
+    "remakeDay",
+    "pushTestImageToCurrent",
+    "remakeStarTrackerDay",
+    "getDaysWithDataForPlotting",
+    "getPlottingArgs",
+]
 
 # this file is for higher level utilities for use in notebooks, but also
 # can be imported by other scripts and channels, especially the catchup ones.
@@ -61,16 +63,20 @@ def getDaysWithDataForPlotting(path):
     days : `list` [`int`]
         The days for which we have data.
     """
-    reportFiles = glob.glob(os.path.join(path, 'report_*.pickle'))
-    mdTableFiles = glob.glob(os.path.join(path, 'dayObs_*.json'))
-    ccdVisitTableFiles = glob.glob(os.path.join(path, 'ccdVisitTable_*.pickle'))
+    reportFiles = glob.glob(os.path.join(path, "report_*.pickle"))
+    mdTableFiles = glob.glob(os.path.join(path, "dayObs_*.json"))
+    ccdVisitTableFiles = glob.glob(os.path.join(path, "ccdVisitTable_*.pickle"))
 
-    reportDays = [int(filename.removeprefix(path + '/report_').removesuffix('.pickle'))
-                  for filename in reportFiles]
-    mdDays = [int(filename.removeprefix(path + '/dayObs_').removesuffix('.json'))
-              for filename in mdTableFiles]
-    ccdVisitDays = [int(filename.removeprefix(path + '/ccdVisitTable_').removesuffix('.pickle'))
-                    for filename in ccdVisitTableFiles]
+    reportDays = [
+        int(filename.removeprefix(path + "/report_").removesuffix(".pickle")) for filename in reportFiles
+    ]
+    mdDays = [
+        int(filename.removeprefix(path + "/dayObs_").removesuffix(".json")) for filename in mdTableFiles
+    ]
+    ccdVisitDays = [
+        int(filename.removeprefix(path + "/ccdVisitTable_").removesuffix(".pickle"))
+        for filename in ccdVisitTableFiles
+    ]
 
     days = set.intersection(set(reportDays), set(mdDays), set(ccdVisitDays))
     return list(days)
@@ -103,11 +109,11 @@ def getPlottingArgs(butler, path, dayObs):
     from lsst.summit.utils import NightReport
 
     if dayObs not in getDaysWithDataForPlotting(path):
-        raise ValueError(f'Data not available for {dayObs=} in {path}')
+        raise ValueError(f"Data not available for {dayObs=} in {path}")
 
-    reportFilename = os.path.join(path, f'report_{dayObs}.pickle')
-    mdFilename = os.path.join(path, f'dayObs_{dayObs}.json')
-    ccdVisitFilename = os.path.join(path, f'ccdVisitTable_{dayObs}.pickle')
+    reportFilename = os.path.join(path, f"report_{dayObs}.pickle")
+    mdFilename = os.path.join(path, f"dayObs_{dayObs}.json")
+    ccdVisitFilename = os.path.join(path, f"ccdVisitTable_{dayObs}.pickle")
 
     report = NightReport(butler, dayObs, reportFilename)
 
@@ -148,16 +154,17 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
 
     if not bucket:
         from google.cloud import storage
+
         client = storage.Client()
         # TODO: either make bucket a mandatory arg or take a locationConfig and
         # create it from bucketName
-        bucket = client.get_bucket('rubintv_data')
+        bucket = client.get_bucket("rubintv_data")
 
     dayObsStr = dayObsIntToString(dayObs)
 
-    prefix = f'{channel}/{PREFIXES[channel]}_dayObs_{dayObsStr}'
+    prefix = f"{channel}/{PREFIXES[channel]}_dayObs_{dayObsStr}"
     blobs = list(bucket.list_blobs(prefix=prefix))
-    existing = [int(b.name.split(f'{prefix}_seqNum_')[1].replace('.png', '')) for b in blobs]
+    existing = [int(b.name.split(f"{prefix}_seqNum_")[1].replace(".png", "")) for b in blobs]
     return sorted(existing)
 
 
@@ -188,12 +195,14 @@ def createChannelByName(location, instrument, channel, *, embargo=False, doRaise
         Raised if the channel is unknown, or creating by name is not supported
         for the channel in question.
     """
-    from .rubinTv import (ImExaminerChannel,
-                          SpecExaminerChannel,
-                          MountTorqueChannel,
-                          MonitorChannel,
-                          MetadataCreator,
-                          )
+    from .rubinTv import (
+        ImExaminerChannel,
+        MetadataCreator,
+        MonitorChannel,
+        MountTorqueChannel,
+        SpecExaminerChannel,
+    )
+
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}.")
 
@@ -201,30 +210,25 @@ def createChannelByName(location, instrument, channel, *, embargo=False, doRaise
 
     match channel:
         case "summit_imexam":
-            return ImExaminerChannel(locationConfig=locationConfig,
-                                     instrument=instrument,
-                                     embargo=embargo,
-                                     doRaise=doRaise)
+            return ImExaminerChannel(
+                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
+            )
         case "summit_specexam":
-            return SpecExaminerChannel(locationConfig=locationConfig,
-                                       instrument=instrument,
-                                       embargo=embargo,
-                                       doRaise=doRaise)
+            return SpecExaminerChannel(
+                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
+            )
         case "auxtel_mount_torques":
-            return MountTorqueChannel(locationConfig=locationConfig,
-                                      instrument=instrument,
-                                      embargo=embargo,
-                                      doRaise=doRaise)
+            return MountTorqueChannel(
+                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
+            )
         case "auxtel_monitor":
-            return MonitorChannel(locationConfig=locationConfig,
-                                  instrument=instrument,
-                                  embargo=embargo,
-                                  doRaise=doRaise)
+            return MonitorChannel(
+                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
+            )
         case "auxtel_metadata":
-            return MetadataCreator(locationConfig=locationConfig,
-                                   instrument=instrument,
-                                   embargo=embargo,
-                                   doRaise=doRaise)
+            return MetadataCreator(
+                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
+            )
         case "all_sky_current":
             raise ValueError(f"{channel} is not a creatable by name.")
         case "all_sky_movies":
@@ -259,15 +263,9 @@ def remakePlotByDataId(location, instrument, channel, dataId, embargo=False):
     tvChannel.callback(expRecord)
 
 
-def remakeDay(location,
-              instrument,
-              channel,
-              dayObs,
-              *,
-              remakeExisting=False,
-              notebook=True,
-              logger=None,
-              embargo=False):
+def remakeDay(
+    location, instrument, channel, dayObs, *, remakeExisting=False, notebook=True, logger=None, embargo=False
+):
     """Remake all the plots for a given day.
 
     Currently auxtel_metadata does not pull from the bucket to check what is
@@ -309,15 +307,18 @@ def remakeDay(location,
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
 
-    if remakeExisting is False and channel in ['auxtel_metadata']:
-        raise ValueError(f"Channel {channel} can currently only remake everything or nothing. "
-                         "If you would like to remake everything, please explicitly pass "
-                         "remakeExisting=True.")
+    if remakeExisting is False and channel in ["auxtel_metadata"]:
+        raise ValueError(
+            f"Channel {channel} can currently only remake everything or nothing. "
+            "If you would like to remake everything, please explicitly pass "
+            "remakeExisting=True."
+        )
 
     if notebook:
         # notebooks have their own eventloops, so this is necessary if the
         # function is being run from within a notebook type environment
         import nest_asyncio
+
         nest_asyncio.apply()
         setupLogging()
 
@@ -332,8 +333,9 @@ def remakeDay(location,
     if not remakeExisting:
         existing = set(getPlotSeqNumsForDayObs(channel, dayObs, bucket=bucket))
         nToMake = len(allSeqNums) - len(existing)
-        logger.info(f"Found {len(existing)} in the bucket which will be skipped, "
-                    f"leaving {nToMake} to create.")
+        logger.info(
+            f"Found {len(existing)} in the bucket which will be skipped, " f"leaving {nToMake} to create."
+        )
 
     toMake = sorted(allSeqNums - existing)
     if not toMake:
@@ -344,7 +346,7 @@ def remakeDay(location,
     # due to image types, short exposures, etc.
     tvChannel = createChannelByName(location, instrument, channel, doRaise=False, embargo=embargo)
     for seqNum in toMake:
-        dataId = {'day_obs': dayObs, 'seq_num': seqNum, 'detector': 0}
+        dataId = {"day_obs": dayObs, "seq_num": seqNum, "detector": 0}
         expRecord = getExpRecordFromDataId(butler, dataId)
         tvChannel.callback(expRecord)
 
@@ -389,52 +391,59 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
 
     if channel not in CHANNELS:
         raise ValueError(f"Channel {channel} not in {CHANNELS}")
-    if channel in ['auxtel_metadata', 'auxtel_isr_runner', 'all_sky_current', 'all_sky_movies',
-                   'auxtel_movies']:
-        raise ValueError(f'Pushing test data not supported for {channel}')
+    if channel in [
+        "auxtel_metadata",
+        "auxtel_isr_runner",
+        "all_sky_current",
+        "all_sky_movies",
+        "auxtel_movies",
+    ]:
+        raise ValueError(f"Pushing test data not supported for {channel}")
     if duration > 60:
-        raise ValueError(f'Maximum time to leave test images in buckets is 60s, got {duration}')
+        raise ValueError(f"Maximum time to leave test images in buckets is 60s, got {duration}")
 
     client = storage.Client()
     bucket = client.get_bucket(bucketName)
-    prefix = f'{channel}/{PREFIXES[channel]}'
+    prefix = f"{channel}/{PREFIXES[channel]}"
     blobs = list(bucket.list_blobs(prefix=prefix))
 
-    logger.info(f'Found {len(blobs)} for channel {channel} in bucket')
+    logger.info(f"Found {len(blobs)} for channel {channel} in bucket")
 
     # names are like
     # 'auxtel_monitor/auxtel-monitor_dayObs_2021-07-06_seqNum_100.png'
-    days = set([b.name.split(f'{prefix}_dayObs_')[1].split('_seqNum')[0] for b in blobs])
-    days = [int(d.replace('-', '')) for d in days]  # days are like 2022-01-02
+    days = set([b.name.split(f"{prefix}_dayObs_")[1].split("_seqNum")[0] for b in blobs])
+    days = [int(d.replace("-", "")) for d in days]  # days are like 2022-01-02
     recentDay = max(days)
 
     seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)
     newSeqNum = max(seqNums) + 1
 
     mockDataCoord = FakeExposureRecord(seq_num=newSeqNum, day_obs=recentDay)
-    testCardFile = os.path.join(getPackageDir('rubintv_production'), 'assets', 'testcard_f.jpg')
+    testCardFile = os.path.join(getPackageDir("rubintv_production"), "assets", "testcard_f.jpg")
     uploadAs = expRecordToUploadFilename(channel, mockDataCoord)
     uploader = Uploader(bucketName)
 
-    logger.info(f'Uploading test card to {mockDataCoord} for channel {channel}')
+    logger.info(f"Uploading test card to {mockDataCoord} for channel {channel}")
     blob = uploader.googleUpload(channel, testCardFile, uploadAs, isLiveFile=True)
 
-    logger.info(f'Upload complete, sleeping for {duration} for you to check...')
+    logger.info(f"Upload complete, sleeping for {duration} for you to check...")
     time.sleep(duration)
     blob.delete()
-    logger.info('Test card removed')
+    logger.info("Test card removed")
 
 
-def remakeStarTrackerDay(*, dayObs,
-                         rootDataPath,
-                         outputRoot,
-                         metadataRoot,
-                         astrometryNetRefCatRoot,
-                         wide,
-                         remakeExisting=False,
-                         logger=None,
-                         forceMaxNum=None
-                         ):
+def remakeStarTrackerDay(
+    *,
+    dayObs,
+    rootDataPath,
+    outputRoot,
+    metadataRoot,
+    astrometryNetRefCatRoot,
+    wide,
+    remakeExisting=False,
+    logger=None,
+    forceMaxNum=None,
+):
     """Remake all the star tracker plots for a given day.
 
     TODO: This needs updating post-refactor, but can wait for another ticket
@@ -465,22 +474,23 @@ def remakeStarTrackerDay(*, dayObs,
         Force the maximum seqNum to be this value. This is useful for remaking
         days from scratch or in full, rather than running as a catchup.
     """
-    raise NotImplementedError('This needs updating post-refactor')
+    raise NotImplementedError("This needs updating post-refactor")
     from .starTracker import StarTrackerChannel, getRawDataDirForDayObs
 
     if not logger:
-        logger = logging.getLogger('lsst.starTracker.remake')
+        logger = logging.getLogger("lsst.starTracker.remake")
 
     # doRaise is False because during bulk plot remaking we expect many fails
-    tvChannel = StarTrackerChannel(wide=wide,
-                                   rootDataPath=rootDataPath,
-                                   metadataRoot=metadataRoot,
-                                   outputRoot=outputRoot,
-                                   astrometryNetRefCatRoot=astrometryNetRefCatRoot,
-                                   doRaise=False,
-                                   )
+    tvChannel = StarTrackerChannel(
+        wide=wide,
+        rootDataPath=rootDataPath,
+        metadataRoot=metadataRoot,
+        outputRoot=outputRoot,
+        astrometryNetRefCatRoot=astrometryNetRefCatRoot,
+        doRaise=False,
+    )
 
-    _ifWide = '_wide' if wide else ''
+    _ifWide = "_wide" if wide else ""
     rawChannel = f"startracker{_ifWide}_raw"
 
     existing = getPlotSeqNumsForDayObs(rawChannel, dayObs)
@@ -488,16 +498,14 @@ def remakeStarTrackerDay(*, dayObs,
     missing = [_ for _ in range(1, maxSeqNum) if _ not in existing]
     logger.info(f"Most recent = {maxSeqNum}, found {len(missing)} missing to create plots for: {missing}")
 
-    dayPath = getRawDataDirForDayObs(rootDataPath=rootDataPath,
-                                     wide=wide,
-                                     dayObs=dayObs)
+    dayPath = getRawDataDirForDayObs(rootDataPath=rootDataPath, wide=wide, dayObs=dayObs)
 
-    files = glob.glob(os.path.join(dayPath, '*.fits'))
+    files = glob.glob(os.path.join(dayPath, "*.fits"))
     foundFiles = {}
     for filename in files:
         # filenames are like GC101_O_20221114_000005.fits
-        _, _, dayObs, seqNumAndSuffix = filename.split('_')
-        seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
+        _, _, dayObs, seqNumAndSuffix = filename.split("_")
+        seqNum = int(seqNumAndSuffix.removesuffix(".fits"))
         foundFiles[seqNum] = filename
 
     toRemake = missing if not remakeExisting else list(range(1, maxSeqNum))
@@ -505,8 +513,8 @@ def remakeStarTrackerDay(*, dayObs,
 
     for seqNum in toRemake:
         if seqNum not in foundFiles.keys():
-            logger.warning(f'Failed to find raw file for {seqNum}, skipping...')
+            logger.warning(f"Failed to find raw file for {seqNum}, skipping...")
             continue
         filename = foundFiles[seqNum]
-        logger.info(f'Processing {seqNum} from {filename}')
+        logger.info(f"Processing {seqNum} from {filename}")
         tvChannel.callback(filename)

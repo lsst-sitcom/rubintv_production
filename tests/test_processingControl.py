@@ -21,8 +21,8 @@
 
 """Test cases for utils."""
 import unittest
-import lsst.utils.tests
 
+import lsst.utils.tests
 from lsst.rubintv.production.processingControl import CameraControlConfig
 
 

@@ -26,23 +26,19 @@ from time import sleep
 
 from lsst.utils.iteration import ensure_iterable
 
-from .uploaders import Heartbeater
 from .redisUtils import RedisHelper
-
-from .utils import (raiseIf,
-                    writeDataIdFile,
-                    getGlobPatternForDataProduct,
-                    getGlobPatternForShardedData,
-                    safeJsonOpen,
-                    ALLOWED_DATASET_TYPES,
-                    expRecordFromJson,
-                    )
-
-__all__ = (
-    'FileWatcher',
-    'RedisWatcher',
-    'ButlerWatcher'
+from .uploaders import Heartbeater
+from .utils import (
+    ALLOWED_DATASET_TYPES,
+    expRecordFromJson,
+    getGlobPatternForDataProduct,
+    getGlobPatternForShardedData,
+    raiseIf,
+    safeJsonOpen,
+    writeDataIdFile,
 )
+
+__all__ = ("FileWatcher", "RedisWatcher", "ButlerWatcher")
 
 _LOG = logging.getLogger(__name__)
 
@@ -75,6 +71,7 @@ class FileWatcher:
     doRaise : `bool`, optional
         If ``True``, raise exceptions. If ``False``, log them.
     """
+
     cadence = 1  # in seconds
 
     # upload heartbeat every n seconds
@@ -82,7 +79,7 @@ class FileWatcher:
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, *, locationConfig, instrument, dataProduct, heartbeatChannelName='', doRaise=False):
+    def __init__(self, *, locationConfig, instrument, dataProduct, heartbeatChannelName="", doRaise=False):
         self.locationConfig = locationConfig
         self.instrument = instrument
         self.dataProduct = dataProduct
@@ -90,10 +87,12 @@ class FileWatcher:
         self.log = _LOG.getChild("fileWatcher")
         self.heartbeatChannelName = heartbeatChannelName
         if heartbeatChannelName:
-            self.heartbeater = Heartbeater(heartbeatChannelName,
-                                           self.locationConfig.bucketName,
-                                           self.HEARTBEAT_UPLOAD_PERIOD,
-                                           self.HEARTBEAT_FLATLINE_PERIOD)
+            self.heartbeater = Heartbeater(
+                heartbeatChannelName,
+                self.locationConfig.bucketName,
+                self.HEARTBEAT_UPLOAD_PERIOD,
+                self.HEARTBEAT_FLATLINE_PERIOD,
+            )
         else:
             self.heartbeater = None
 
@@ -114,19 +113,21 @@ class FileWatcher:
             The most recent exposure record, or `None` if no new record was
             found.
         """
-        pattern = getGlobPatternForDataProduct(dataIdPath=self.locationConfig.dataIdScanPath,
-                                               dataProduct=self.dataProduct,
-                                               instrument=self.instrument)
+        pattern = getGlobPatternForDataProduct(
+            dataIdPath=self.locationConfig.dataIdScanPath,
+            dataProduct=self.dataProduct,
+            instrument=self.instrument,
+        )
         files = glob(pattern)
         files = sorted(files, reverse=True)
         if not files:
-            self.log.warning(f'No files found matching {pattern}')
+            self.log.warning(f"No files found matching {pattern}")
             return None
 
         filename = files[0]
         expId = int(filename.split("_")[-1].removesuffix(".json"))
         if expId == previousExpId:
-            self.log.debug(f'Found the same exposure again: {expId}')
+            self.log.debug(f"Found the same exposure again: {expId}")
             return None
 
         expRecordJson = safeJsonOpen(filename)
@@ -171,6 +172,7 @@ class RedisWatcher:
     detectors : `int` or `list` [`int`]
         The detector, or detectors, to process data for.
     """
+
     def __init__(self, butler, locationConfig, queueName):
         self.redisHelper = RedisHelper(butler, locationConfig)
         self.queueName = queueName
@@ -225,6 +227,7 @@ class ButlerWatcher:
     doRaise : `bool`, optional
         Raise exceptions or log them as warnings?
     """
+
     # look for new images every ``cadence`` seconds
     cadence = 1
     # upload heartbeat every n seconds
@@ -265,7 +268,7 @@ class ButlerWatcher:
             # for different instruments, e.g. TS8 is 10x bigger than AuxTel
             # and also C-controller data has expIds like 3YYYMMDDNNNNN so would
             # always be the "most recent".
-            records.order_by('-exposure.timespan.end')  # the minus means descending ordering
+            records.order_by("-exposure.timespan.end")  # the minus means descending ordering
             records.limit(1)
             records = list(records)
             if len(records) != 1:
@@ -291,14 +294,16 @@ class ButlerWatcher:
 
         # delete all downstream products associated with this exposureRecord
         for dataset in ALLOWED_DATASET_TYPES:
-            pattern = getGlobPatternForShardedData(path=self.locationConfig.calculatedDataPath,
-                                                   dataSetName=dataset,
-                                                   instrument=expRecord.instrument,
-                                                   dayObs=dayObs,
-                                                   seqNum=seqNum)
+            pattern = getGlobPatternForShardedData(
+                path=self.locationConfig.calculatedDataPath,
+                dataSetName=dataset,
+                instrument=expRecord.instrument,
+                dayObs=dayObs,
+                seqNum=seqNum,
+            )
             shardFiles = glob(pattern)
             if len(shardFiles) > 0:
-                self.log.info(f'Deleting {len(shardFiles)} pre-existing files for {dataset}')
+                self.log.info(f"Deleting {len(shardFiles)} pre-existing files for {dataset}")
                 for filename in shardFiles:
                     # deliberately not checking for permission errors here,
                     # if they're raised we want to fail at this point.
@@ -310,10 +315,12 @@ class ButlerWatcher:
         # check for what we actually already have on disk, given that the
         # service will rarely be starting from literally scratch
         for product in self.dataProducts:
-            fileWatcher = FileWatcher(locationConfig=self.locationConfig,
-                                      instrument=self.instrument,
-                                      dataProduct=product,
-                                      doRaise=self.doRaise)
+            fileWatcher = FileWatcher(
+                locationConfig=self.locationConfig,
+                instrument=self.instrument,
+                dataProduct=product,
+                doRaise=self.doRaise,
+            )
             expRecord = fileWatcher.getMostRecentExpRecord()  # returns None if not found
             lastWrittenIds[product] = expRecord
             del fileWatcher
@@ -323,8 +330,11 @@ class ButlerWatcher:
                 # get the new records for all dataproducts
                 newRecords = self._getLatestExpRecords()
                 # work out which ones are actually new and only write those out
-                found = {product: expRecord for product, expRecord in newRecords.items()
-                         if expRecord is not None and expRecord.id != lastWrittenIds[product]}
+                found = {
+                    product: expRecord
+                    for product, expRecord in newRecords.items()
+                    if expRecord is not None and expRecord.id != lastWrittenIds[product]
+                }
 
                 if not found:  # only sleep when there's nothing new at all
                     sleep(self.cadence)
@@ -335,18 +345,20 @@ class ButlerWatcher:
                     # all processing starts with triggering on a raw, so we
                     # only perform that deletion at the very start, and
                     # therefore hard-code raw
-                    if 'raw' in found:
-                        self._deleteExistingData(found['raw'])
+                    if "raw" in found:
+                        self._deleteExistingData(found["raw"])
 
                     for product, expRecord in found.items():
-                        if product == 'raw':  # only push raws to redis
+                        if product == "raw":  # only push raws to redis
                             seenBefore = self.redisHelper.checkButlerWatcherList(self.instrument, expRecord)
                             if not seenBefore:
                                 self.redisHelper.pushNewExposureToHeadNode(expRecord)
                                 self.redisHelper.pushToButlerWatcherList(self.instrument, expRecord)
                             else:
-                                self.log.info(f'Skipping dispatching {expRecord.instrument}-{expRecord.id} as'
-                                              ' it was dispatched by a ButlerWatcher in a previous life')
+                                self.log.info(
+                                    f"Skipping dispatching {expRecord.instrument}-{expRecord.id} as"
+                                    " it was dispatched by a ButlerWatcher in a previous life"
+                                )
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
                     # beat after the callback so as not to delay processing

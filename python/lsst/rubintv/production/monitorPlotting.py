@@ -19,13 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.afw.image as afwImage
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm, colors
-import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from lsst.summit.utils import quickSmooth, getQuantiles
+import lsst.afw.image as afwImage
+from lsst.summit.utils import getQuantiles, quickSmooth
 
 
 def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="default"):
@@ -68,21 +68,23 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
         case "default":
             vmin = np.percentile(data, 1)
             vmax = np.percentile(data, 99)
-            im1 = ax1.imshow(data, cmap=cmap, origin='lower', vmin=vmin, vmax=vmax)
+            im1 = ax1.imshow(data, cmap=cmap, origin="lower", vmin=vmin, vmax=vmax)
         case "CCS":  # The CCS-style scaling
             quantiles = getQuantiles(data, cmap.N)
             norm = colors.BoundaryNorm(quantiles, cmap.N)
             if np.all(np.isnan(quantiles)):
                 allNanColorbar = True
-            im1 = ax1.imshow(data, cmap=cmap, origin='lower', norm=norm)
-        case 'asinh':
+            im1 = ax1.imshow(data, cmap=cmap, origin="lower", norm=norm)
+        case "asinh":
+
             def _forward(x):
                 return np.arcsinh(x)
 
             def _inverse(x):
                 return np.sinh(x)
+
             norm = colors.FuncNorm((_forward, _inverse))
-            im1 = ax1.imshow(data, cmap=cmap, origin='lower', norm=norm)
+            im1 = ax1.imshow(data, cmap=cmap, origin="lower", norm=norm)
         case _:
             raise ValueError(f"Unknown plot scaling option {scalingOption}")
 
@@ -97,7 +99,7 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
         plt.colorbar(im1, cax=cax)
     else:
         # set the tick labels on the cax to all nan manually
-        cax.set_yticklabels(['nan' for _ in cax.get_yticklabels()])
+        cax.set_yticklabels(["nan" for _ in cax.get_yticklabels()])
 
     plt.tight_layout()
     if saveFilename:

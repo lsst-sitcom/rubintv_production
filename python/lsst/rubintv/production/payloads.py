@@ -22,18 +22,18 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
-import json
 import io
+import json
+from dataclasses import dataclass
 
-from lsst.daf.butler import DataCoordinate, Butler
+from lsst.daf.butler import Butler, DataCoordinate
 from lsst.pipe.base import PipelineGraph
 
 __all__ = [
-    'pipelineGraphToBytes',
-    'pipelineGraphFromBytes',
-    'Payload',
-    'PayloadResult',
+    "pipelineGraphToBytes",
+    "pipelineGraphFromBytes",
+    "Payload",
+    "PayloadResult",
 ]
 
 
@@ -65,6 +65,7 @@ class Payload:
 
     These go in minimal, but come out full, by using the butler.
     """
+
     dataId: DataCoordinate
     pipelineGraphBytes: bytes
     run: str
@@ -76,15 +77,15 @@ class Payload:
         butler: Butler,
     ) -> Payload:
         json_dict = json.loads(json_str)
-        dataId = butler.registry.expandDataId(json_dict['dataId'])
-        pipelineGraphBytes = base64.b64decode(json_dict['pipelineGraphBytes'].encode())
-        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes, run=json_dict['run'])
+        dataId = butler.registry.expandDataId(json_dict["dataId"])
+        pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
+        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"])
 
     def to_json(self) -> str:
         json_dict = {
-            'dataId': dict(self.dataId.mapping),
-            'pipelineGraphBytes': base64.b64encode(self.pipelineGraphBytes).decode(),
-            'run': self.run,
+            "dataId": dict(self.dataId.mapping),
+            "pipelineGraphBytes": base64.b64encode(self.pipelineGraphBytes).decode(),
+            "run": self.run,
         }
         return json.dumps(json_dict)
 
@@ -97,6 +98,7 @@ class PayloadResult(Payload):
     """
     A dataclass representing a payload result.
     """
+
     startTime: float
     endTime: float
     splitTimings: dict
@@ -105,10 +107,10 @@ class PayloadResult(Payload):
 
     def __eq__(self, __value: object) -> bool:
         return (
-            super().__eq__(__value) and
-            self.startTime == __value.startTime and
-            self.endTime == __value.endTime and
-            self.splitTimings == __value.splitTimings and
-            self.success == __value.success and
-            self.message == __value.message
+            super().__eq__(__value)
+            and self.startTime == __value.startTime
+            and self.endTime == __value.endTime
+            and self.splitTimings == __value.splitTimings
+            and self.success == __value.success
+            and self.message == __value.message
         )

@@ -19,30 +19,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import os
+import subprocess
 import time
 from time import sleep
-import logging
-import subprocess
+
+import matplotlib.font_manager
 from PIL import Image
 from PIL.ExifTags import TAGS
-import matplotlib.font_manager
 
+from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_datetime, getCurrentDayObs_int
 from lsst.utils.iteration import ensure_iterable
-from lsst.summit.utils.utils import (dayObsIntToString,
-                                     getCurrentDayObs_int,
-                                     getCurrentDayObs_datetime,
-                                     )
-from .utils import expRecordToUploadFilename, raiseIf, FakeExposureRecord, hasDayRolledOver
-from .uploaders import Uploader, Heartbeater, MultiUploader
+
+from .uploaders import Heartbeater, MultiUploader, Uploader
+from .utils import FakeExposureRecord, expRecordToUploadFilename, hasDayRolledOver, raiseIf
 
 try:
     from google.cloud import storage
+
     HAS_GOOGLE_STORAGE = True
 except ImportError:
     HAS_GOOGLE_STORAGE = False
 
-__all__ = ['DayAnimator', 'AllSkyMovieChannel', 'dayObsFromDirName', 'cleanupAllSkyIntermediates']
+__all__ = ["DayAnimator", "AllSkyMovieChannel", "dayObsFromDirName", "cleanupAllSkyIntermediates"]
 
 _LOG = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def _createWritableDir(path):
     try:
         os.makedirs(path, exist_ok=True)
     except Exception as e:
-        raise RuntimeError(f'Error creating/accessing output path {path}') from e
+        raise RuntimeError(f"Error creating/accessing output path {path}") from e
     if not os.access(path, os.W_OK):
         raise RuntimeError(f"Output path {path} is not writable.")
 
@@ -96,10 +96,10 @@ def dayObsFromDirName(fullDirName, logger):
         The dayObs as an int and a str, or ``None, None`` is parsing failed.
     """
     dirname = os.path.basename(fullDirName)
-    dirname = dirname.replace('ut', '')
+    dirname = dirname.replace("ut", "")
     try:
         # days are of the format YYMMDD, make it YYYYMMDD
-        dirname = '20' + dirname
+        dirname = "20" + dirname
         dayObsInt = int(dirname)
         dayObsStr = dayObsIntToString(dayObsInt)
         return dayObsInt, dayObsStr
@@ -121,18 +121,18 @@ def getUbuntuFontPath(logger=None):
     ubuntuBoldPath : `str`
         The path to the Ubuntu bold font, or ``None`` if not found.
     """
-    fontPaths = matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext='ttf')
+    fontPaths = matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
 
-    ubuntuBoldPath = [f for f in fontPaths if f.find('Ubuntu-B.') != -1]
+    ubuntuBoldPath = [f for f in fontPaths if f.find("Ubuntu-B.") != -1]
     if not ubuntuBoldPath:
         if not logger:  # only create if needed
             logger = _LOG.getChild("getUbuntuFontPath")
-        logger.warning('Warning - cound not fund Ubuntu bold font!')
+        logger.warning("Warning - cound not fund Ubuntu bold font!")
         return
     if len(ubuntuBoldPath) != 1:
         if not logger:  # only create if needed
             logger = _LOG.getChild("getUbuntuFontPath")
-        logger.warning('Warning - found multiple fonts for Ubuntu bold, picking the first!')
+        logger.warning("Warning - found multiple fonts for Ubuntu bold, picking the first!")
     ubuntuBoldPath = ubuntuBoldPath[0]
     return ubuntuBoldPath
 
@@ -156,19 +156,19 @@ def getDateTimeFromExif(filename, logger=None):
 
     with Image.open(filename) as img:
         exifData = img.getexif()
-        tagNum = tagMap['DateTime']
+        tagNum = tagMap["DateTime"]
         dateTimeStr = exifData.get(tagNum)
         if dateTimeStr:
             # dateTimeStr comes out like "2021:08:17 06:57:00"
-            dateStr, timeStr = dateTimeStr.split(' ')
-            year, month, day = dateStr.split(':')
+            dateStr, timeStr = dateTimeStr.split(" ")
+            year, month, day = dateStr.split(":")
             dateStr = f"{year}-{month}-{day}"
             return dateStr, timeStr
         else:
             if not logger:  # only create if needed
                 logger = _LOG.getChild("getDateTimeFromExif")
             logger.warning(f"Failed to get DateTime from exif data in {filename}")
-    return '', ''
+    return "", ""
 
 
 def _convertAndAnnotate(inFilename, outFilename, textItems=None):
@@ -187,14 +187,15 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
     """
     imgSize = 2970
     xCrop = 747
-    cmd = ['convert',
-           inFilename,
-           f'-crop {imgSize}x{imgSize}+{xCrop}+0',  # crops to square
-           '-contrast-stretch .5%x.5%',  # approximately the same as 99.5% scale in ds9
-           ]
+    cmd = [
+        "convert",
+        inFilename,
+        f"-crop {imgSize}x{imgSize}+{xCrop}+0",  # crops to square
+        "-contrast-stretch .5%x.5%",  # approximately the same as 99.5% scale in ds9
+    ]
 
     fontPath = getUbuntuFontPath()
-    fontStr = f'-font {fontPath} ' if fontPath else ''  # note the trailing space so it add cleanly
+    fontStr = f"-font {fontPath} " if fontPath else ""  # note the trailing space so it add cleanly
 
     if textItems:
         textItems = ensure_iterable(textItems)
@@ -207,10 +208,10 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
             annotationCommand = f'-pointsize {pointSize} -fill white {fontStr}-annotate +{_x}+{_y} "{item}"'
             cmd.append(annotationCommand)
 
-    north = ('N', 2800, 1100)
-    east = ('E', 1000, 120)
-    south = ('S', 25, 2150)
-    west = ('W', 2000, 2950)
+    north = ("N", 2800, 1100)
+    east = ("E", 1000, 120)
+    south = ("S", 25, 2150)
+    west = ("W", 2000, 2950)
     pointSize = 150
 
     for directionData in [north, east, south, west]:
@@ -221,7 +222,7 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
         cmd.append(annotationCommand)
 
     cmd.append(outFilename)
-    subprocess.check_call(r' '.join(cmd), shell=True)
+    subprocess.check_call(r" ".join(cmd), shell=True)
 
 
 def _imagesToMp4(indir, outfile, framerate, verbose=False):
@@ -240,27 +241,39 @@ def _imagesToMp4(indir, outfile, framerate, verbose=False):
     """
     # NOTE: the order of ffmpeg arguments *REALLY MATTERS*.
     # Reorder them at your own peril!
-    pathPattern = f'\"{os.path.join(indir, "*.jpg")}\"'
+    pathPattern = f'"{os.path.join(indir, "*.jpg")}"'
     if verbose:
-        ffmpeg_verbose = 'info'
+        ffmpeg_verbose = "info"
     else:
-        ffmpeg_verbose = 'error'
-    cmd = ['ffmpeg',
-           '-v', ffmpeg_verbose,
-           '-f', 'image2',
-           '-y',
-           '-pattern_type glob',
-           '-framerate', f'{framerate}',
-           '-i', pathPattern,
-           '-vcodec', 'libx264',
-           '-b:v', '20000k',
-           '-profile:v', 'main',
-           '-pix_fmt', 'yuv420p',
-           '-threads', '10',
-           '-r', f'{framerate}',
-           os.path.join(outfile)]
+        ffmpeg_verbose = "error"
+    cmd = [
+        "ffmpeg",
+        "-v",
+        ffmpeg_verbose,
+        "-f",
+        "image2",
+        "-y",
+        "-pattern_type glob",
+        "-framerate",
+        f"{framerate}",
+        "-i",
+        pathPattern,
+        "-vcodec",
+        "libx264",
+        "-b:v",
+        "20000k",
+        "-profile:v",
+        "main",
+        "-pix_fmt",
+        "yuv420p",
+        "-threads",
+        "10",
+        "-r",
+        f"{framerate}",
+        os.path.join(outfile),
+    ]
 
-    subprocess.check_call(r' '.join(cmd), shell=True)
+    subprocess.check_call(r" ".join(cmd), shell=True)
 
 
 def _seqNumFromFilename(filename):
@@ -301,7 +314,7 @@ def _getSortedSubDirs(path):
     return sorted([p for d in dirs if (os.path.isdir(p := os.path.join(path, d)))])
 
 
-def _getFilesetFromDir(path, filetype='jpg'):
+def _getFilesetFromDir(path, filetype="jpg"):
     """Get a set of the files of a given type from a dir.
 
     Parameters
@@ -336,15 +349,16 @@ def cleanupAllSkyIntermediates(logger=None):
     """
     if not HAS_GOOGLE_STORAGE:
         from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
+
         raise RuntimeError(GOOGLE_CLOUD_MISSING_MSG)
 
     if not logger:
         logger = _LOG.getChild("cleanup")
 
     client = storage.Client()
-    bucket = client.get_bucket('rubintv_data')
+    bucket = client.get_bucket("rubintv_data")
 
-    prefix = 'all_sky_current'
+    prefix = "all_sky_current"
     allsky_current_blobs = list(bucket.list_blobs(prefix=prefix))
     logger.info(f"Found {len(allsky_current_blobs)} blobs for {prefix}")
     names = [b.name for b in allsky_current_blobs]
@@ -357,10 +371,10 @@ def cleanupAllSkyIntermediates(logger=None):
     del names  # no bugs from above!
     bucket.delete_blobs(to_delete)
 
-    prefix = 'all_sky_movies'
+    prefix = "all_sky_movies"
     blobs = list(bucket.list_blobs(prefix=prefix))
     logger.info(f"Found {len(blobs)} total {prefix}")
-    non_final_names = [b.name for b in blobs if b.name.find('final') == -1]
+    non_final_names = [b.name for b in blobs if b.name.find("final") == -1]
     logger.info(f"of which {len(non_final_names)} are not final movies")
     most_recent = sorted(non_final_names)[-1]
     non_final_names.remove(most_recent)
@@ -411,25 +425,29 @@ class DayAnimator:
     historical : `bool`, optional
         Is this historical or live data?
     """
+
     FPS = 10
     DRY_RUN = False
 
-    HEARTBEAT_HANDLE = 'allsky'
+    HEARTBEAT_HANDLE = "allsky"
     HEARTBEAT_UPLOAD_PERIOD = 120
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 600
 
-    def __init__(self, *,
-                 dayObsInt,
-                 todaysDataDir,
-                 outputImageDir,
-                 outputMovieDir,
-                 uploader,
-                 epoUploader,
-                 s3Uploader,
-                 channel,
-                 bucketName,
-                 historical=False):
+    def __init__(
+        self,
+        *,
+        dayObsInt,
+        todaysDataDir,
+        outputImageDir,
+        outputMovieDir,
+        uploader,
+        epoUploader,
+        s3Uploader,
+        channel,
+        bucketName,
+        historical=False,
+    ):
         self.dayObsInt = dayObsInt
         self.todaysDataDir = todaysDataDir
         self.outputImageDir = outputImageDir
@@ -440,10 +458,9 @@ class DayAnimator:
         self.channel = channel
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
-        self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
-                                       bucketName,
-                                       self.HEARTBEAT_UPLOAD_PERIOD,
-                                       self.HEARTBEAT_FLATLINE_PERIOD)
+        self.heartbeater = Heartbeater(
+            self.HEARTBEAT_HANDLE, bucketName, self.HEARTBEAT_UPLOAD_PERIOD, self.HEARTBEAT_FLATLINE_PERIOD
+        )
 
     def _getConvertedFilename(self, filename):
         """Get the filename and path to write the converted images to.
@@ -511,34 +528,32 @@ class DayAnimator:
             # new uploader. SEQNUM_MAX can probably go entirely
             seqNum = SEQNUM_MAX
 
-        channel = 'all_sky_movies'
+        channel = "all_sky_movies"
         fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
-        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.mp4', zeroPad=True)
+        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension=".mp4", zeroPad=True)
         if isFinal:
-            uploadAsFilename = uploadAsFilename.replace(str(SEQNUM_MAX), 'final')
+            uploadAsFilename = uploadAsFilename.replace(str(SEQNUM_MAX), "final")
         creationFilename = os.path.join(self.outputMovieDir, uploadAsFilename)
         self.log.info(f"Creating movie from {self.outputImageDir} as {creationFilename}...")
         if not self.DRY_RUN:
             _imagesToMp4(self.outputImageDir, creationFilename, self.FPS)
             if not os.path.isfile(creationFilename):
-                raise RuntimeError(f'Failed to find movie {creationFilename}')
+                raise RuntimeError(f"Failed to find movie {creationFilename}")
 
         if not self.DRY_RUN:
             self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
             self.s3Uploader.uploadMovie(
-                instrument='allsky',
+                instrument="allsky",
                 dayObs=self.dayObsInt,
                 filename=creationFilename,
                 seqNum=seqNum if not isFinal else None,
             )
             try:
-                self.epoUploader.googleUpload(self.channel,
-                                              creationFilename,
-                                              'all_sky_current.mp4',
-                                              isLargeFile=True,
-                                              isLiveFile=True)
+                self.epoUploader.googleUpload(
+                    self.channel, creationFilename, "all_sky_current.mp4", isLargeFile=True, isLiveFile=True
+                )
             except Exception as e:
-                self.log.exception(f'Failed to upload movie to EPO bucket: {e}')
+                self.log.exception(f"Failed to upload movie to EPO bucket: {e}")
         else:
             self.log.info(f"Would have uploaded {creationFilename} as {uploadAsFilename}")
         return
@@ -551,31 +566,33 @@ class DayAnimator:
         convertedFiles : `Iterable` of `str`
             The set of files from which to upload the most recent.
         """
-        channel = 'all_sky_current'
+        channel = "all_sky_current"
         sourceFilename = sorted(convertedFiles)[-1]
         sourceFilename = self._getConvertedFilename(sourceFilename)
         seqNum = _seqNumFromFilename(sourceFilename)
         fakeDataCoord = FakeExposureRecord(seq_num=seqNum, day_obs=self.dayObsInt)
-        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension='.jpg', zeroPad=True)
+        uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension=".jpg", zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:
-            self.uploader.googleUpload(channel=channel,
-                                       sourceFilename=sourceFilename,
-                                       uploadAsFilename=uploadAsFilename)
+            self.uploader.googleUpload(
+                channel=channel, sourceFilename=sourceFilename, uploadAsFilename=uploadAsFilename
+            )
             self.s3Uploader.uploadPerSeqNumPlot(
-                instrument='allsky',
-                plotName='stills',
+                instrument="allsky",
+                plotName="stills",
                 dayObs=self.dayObsInt,
                 seqNum=seqNum,
                 filename=sourceFilename,
             )
             try:
-                self.epoUploader.googleUpload(channel=channel,
-                                              sourceFilename=sourceFilename,
-                                              uploadAsFilename='all_sky_current.jpg',
-                                              isLiveFile=True)
+                self.epoUploader.googleUpload(
+                    channel=channel,
+                    sourceFilename=sourceFilename,
+                    uploadAsFilename="all_sky_current.jpg",
+                    isLiveFile=True,
+                )
             except Exception as e:
-                self.log.exception(f'Failed to upload still to EPO bucket: {e}')
+                self.log.exception(f"Failed to upload still to EPO bucket: {e}")
         else:
             self.log.info(f"Would have uploaded {sourceFilename} as {uploadAsFilename}")
 
@@ -624,7 +641,7 @@ class DayAnimator:
                 self.uploadLastStill(convertedFiles)
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
-                self.log.debug('Sleeping 20s waiting for new files')
+                self.log.debug("Sleeping 20s waiting for new files")
                 self.heartbeater.beat()
                 sleep(20)
 
@@ -682,9 +699,9 @@ class AllSkyMovieChannel:
         self.locationConfig = locationConfig
         self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
-        self.epoUploader = Uploader('epo_rubintv_data')
+        self.epoUploader = Uploader("epo_rubintv_data")
         self.log = _LOG.getChild("allSkyMovieMaker")
-        self.channel = 'all_sky_movies'
+        self.channel = "all_sky_movies"
         self.doRaise = doRaise
 
         self.rootDataPath = self.locationConfig.allSkyRootDataPath
@@ -717,19 +734,21 @@ class AllSkyMovieChannel:
             The data dir containing the files for today.
         """
         outputMovieDir = os.path.join(self.outputRoot, str(dayObsInt))
-        outputJpgDir = os.path.join(self.outputRoot, str(dayObsInt), 'jpgs')
+        outputJpgDir = os.path.join(self.outputRoot, str(dayObsInt), "jpgs")
         _createWritableDir(outputMovieDir)
         _createWritableDir(outputJpgDir)
         self.log.info(f"Creating new day animator for {dayObsInt}")
-        animator = DayAnimator(dayObsInt=dayObsInt,
-                               todaysDataDir=todaysDataDir,
-                               outputImageDir=outputJpgDir,
-                               outputMovieDir=outputMovieDir,
-                               uploader=self.uploader,
-                               epoUploader=self.epoUploader,
-                               s3Uploader=self.s3Uploader,
-                               channel=self.channel,
-                               bucketName=self.locationConfig.bucketName,)
+        animator = DayAnimator(
+            dayObsInt=dayObsInt,
+            todaysDataDir=todaysDataDir,
+            outputImageDir=outputJpgDir,
+            outputMovieDir=outputMovieDir,
+            uploader=self.uploader,
+            epoUploader=self.epoUploader,
+            s3Uploader=self.s3Uploader,
+            channel=self.channel,
+            bucketName=self.locationConfig.bucketName,
+        )
         animator.run()
 
     def run(self):
@@ -756,13 +775,15 @@ class AllSkyMovieChannel:
                     self.log.info(f"Starting day's animation for {todaysDataDir}.")
                     self.runDay(dayObsInt, todaysDataDir)
                 elif mostRecentDir < todaysDataDir:
-                    self.log.info(f'Waiting 30s for {todaysDataDir} to be created...')
+                    self.log.info(f"Waiting 30s for {todaysDataDir} to be created...")
                     sleep(30)
                 elif mostRecentDir > todaysDataDir:
-                    raise RuntimeError('Running in the past but mode is not historical')
+                    raise RuntimeError("Running in the past but mode is not historical")
             except Exception as e:
-                msg = ("Error processing all sky data:\n"
-                       f"mostRecentDir: {mostRecentDir}\n"
-                       f"todaysDataDir: {todaysDataDir}\n"
-                       f"dayObsInt: {dayObsInt}\n")
+                msg = (
+                    "Error processing all sky data:\n"
+                    f"mostRecentDir: {mostRecentDir}\n"
+                    f"todaysDataDir: {todaysDataDir}\n"
+                    f"dayObsInt: {dayObsInt}\n"
+                )
                 raiseIf(self.doRaise, e, self.log, msg)

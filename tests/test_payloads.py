@@ -20,19 +20,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-import unittest
-import lsst.utils.tests
 import json
+import unittest
 
 from utils import getSampleExpRecord
 
-from lsst.rubintv.production.payloads import (
-    Payload,
-    PayloadResult,
-)
+import lsst.utils.tests
+from lsst.rubintv.production.payloads import Payload, PayloadResult
 
 
-@unittest.skip('Turn these back on sometime after OR3')
+@unittest.skip("Turn these back on sometime after OR3")
 class TestPayload(unittest.TestCase):
     def setUp(self):
         # this got harder because we now need a butler as well
@@ -59,20 +56,14 @@ class TestPayload(unittest.TestCase):
     def test_equality(self):
         payload1 = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
         payload2 = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
-        payloadDiffPipeline = Payload(
-            expRecord=self.expRecord, detector=3, pipeline="diff_pipeline"
-        )
-        payloadDiffDetector = Payload(
-            expRecord=self.expRecord, detector=123, pipeline="test"
-        )
+        payloadDiffPipeline = Payload(expRecord=self.expRecord, detector=3, pipeline="diff_pipeline")
+        payloadDiffDetector = Payload(expRecord=self.expRecord, detector=123, pipeline="test")
 
         diffExpRecord = copy.deepcopy(self.expRecord)
         object.__setattr__(
             diffExpRecord, "dataId", {"instrument": ""}
         )  # mutate expRecord to make it different
-        payloadDiffExpRecord = Payload(
-            expRecord=diffExpRecord, detector=3, pipeline="test"
-        )
+        payloadDiffExpRecord = Payload(expRecord=diffExpRecord, detector=3, pipeline="test")
 
         self.assertEqual(payload1, payload2)
         self.assertNotEqual(payload1, payloadDiffPipeline)
@@ -92,23 +83,23 @@ class TestPayload(unittest.TestCase):
         self.assertEqual(payload.pipeline, "test")
 
         json_str = (
-            '{"expRecord": ' +
-            json.dumps(self.expRecord.to_simple().json()) +
-            ', "detector": 3, "pipeline": "test"}'
+            '{"expRecord": '
+            + json.dumps(self.expRecord.to_simple().json())
+            + ', "detector": 3, "pipeline": "test"}'
         )
         payload = Payload.from_json(json_str)
         self.assertEqual(payload, self.payload)
 
         json_str = (
-            '{"expRecord": ' +
-            json.dumps(self.expRecord.to_simple().json()) +
-            ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
+            '{"expRecord": '
+            + json.dumps(self.expRecord.to_simple().json())
+            + ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
         )
         with self.assertRaises(TypeError):
             payload = Payload.from_json(json_str)
 
 
-@unittest.skip('Turn these back on sometime after OR3')
+@unittest.skip("Turn these back on sometime after OR3")
 class TestPayloadResult(unittest.TestCase):
     def setUp(self):
         self.expRecord = getSampleExpRecord()
@@ -175,20 +166,20 @@ class TestPayloadResult(unittest.TestCase):
         self.assertEqual(payload_result.message, "Test message")
 
         json_str = (
-            '{"expRecord": ' +
-            json.dumps(self.expRecord.to_simple().json()) +
-            ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": ' +
-            '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message"}'
+            '{"expRecord": '
+            + json.dumps(self.expRecord.to_simple().json())
+            + ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": '
+            + '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message"}'
         )
         payload_result = PayloadResult.from_json(json_str)
         self.assertEqual(payload_result, self.payload_result)
 
         json_str = (
-            '{"expRecord": ' +
-            json.dumps(self.expRecord.to_simple().json()) +
-            ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": ' +
-            '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message", "illegalItem": ' +
-            '"test"}'
+            '{"expRecord": '
+            + json.dumps(self.expRecord.to_simple().json())
+            + ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": '
+            + '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message", "illegalItem": '
+            + '"test"}'
         )
         with self.assertRaises(TypeError):
             payload_result = PayloadResult.from_json(json_str)

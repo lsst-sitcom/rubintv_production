@@ -1,4 +1,3 @@
-
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -21,32 +20,33 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.processingControl import HeadProcessController
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = 'LSSTComCamSim'
+instrument = "LSSTComCamSim"
 
 setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running {instrument} head node at {location}...')
+print(f"Running {instrument} head node at {location}...")
 
 
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        'LSSTComCamSim/defaults',
+        "LSSTComCamSim/defaults",
     ],
-    writeable=True  # needed for defineVisits
+    writeable=True,  # needed for defineVisits
 )
 
 controller = HeadProcessController(
     butler=butler,
     instrument=instrument,
     locationConfig=locationConfig,
-    pipelineFile=locationConfig.sfmPipelineFile
+    pipelineFile=locationConfig.sfmPipelineFile,
 )
 controller.run()

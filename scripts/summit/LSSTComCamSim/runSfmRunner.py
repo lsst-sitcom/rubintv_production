@@ -21,22 +21,23 @@
 
 import os
 import sys
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = 'LSSTComCamSim'
+instrument = "LSSTComCamSim"
 
 setupLogging()
 
 workerName = os.getenv("WORKER_NAME")  # when using statefulSets
 if workerName:
     workerNum = int(workerName.split("-")[-1])
-    print(f'Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that')
+    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
 else:
     workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f'Found WORKER_NUMBER={workerNum} in the env')
+    print(f"Found WORKER_NUMBER={workerNum} in the env")
     if not workerNum:
         if len(sys.argv) < 2:
             print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
@@ -46,18 +47,18 @@ else:
 workerNum = int(workerNum)
 
 detectorNum = workerNum % 9
-detectorDepth = workerNum//9
+detectorDepth = workerNum // 9
 queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-location = 'summit'
+location = "summit"
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
-        'LSSTComCamSim/defaults',
+        "LSSTComCamSim/defaults",
     ],
-    writeable=True
+    writeable=True,
 )
 
 sfmRunner = SingleCorePipelineRunner(
@@ -65,9 +66,9 @@ sfmRunner = SingleCorePipelineRunner(
     locationConfig=locationConfig,
     instrument=instrument,
     pipeline=locationConfig.sfmPipelineFile,
-    step='step1',
-    awaitsDataProduct='raw',
+    step="step1",
+    awaitsDataProduct="raw",
     doRaise=True,
-    queueName=queueName
+    queueName=queueName,
 )
 sfmRunner.run()

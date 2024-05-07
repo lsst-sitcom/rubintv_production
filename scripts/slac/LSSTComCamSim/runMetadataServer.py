@@ -20,23 +20,26 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
 
-location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
+location = "slac" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running ComCam metadata server at {location}...')
+print(f"Running ComCam metadata server at {location}...")
 
 metadataDirectory = locationConfig.comCamSimMetadataPath
 shardsDirectory = locationConfig.comCamSimMetadataShardPath
-channelName = 'comcam_sim_metadata'
+channelName = "comcam_sim_metadata"
 
-ts8MetadataServer = TimedMetadataServer(locationConfig=locationConfig,
-                                        metadataDirectory=metadataDirectory,
-                                        shardsDirectory=shardsDirectory,
-                                        channelName=channelName)
+ts8MetadataServer = TimedMetadataServer(
+    locationConfig=locationConfig,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+)
 ts8MetadataServer.run()

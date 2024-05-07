@@ -19,56 +19,59 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
-import uuid
-import yaml
-import io
-from contextlib import redirect_stdout
-import logging
-import json
 import glob
-import time
+import io
+import json
+import logging
 import math
-import numpy as np
-
-from lsst.daf.butler import DimensionUniverse, DimensionConfig, DimensionRecord
-from lsst.resources import ResourcePath
-from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
-from .channels import PREFIXES
-
-from lsst.utils import getPackageDir
+import os
+import time
+import uuid
+from contextlib import redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
-from dataclasses import dataclass
 
+import numpy as np
+import yaml
+
+from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.resources import ResourcePath
+from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
+from lsst.utils import getPackageDir
+
+from .channels import PREFIXES
 
 __all__ = [
-    'writeDimensionUniverseFile',
-    'getDimensionUniverse',
-    'writeDataIdFile',
-    'getGlobPatternForDataProduct',
-    'expRecordToUploadFilename',
-    'getSiteConfig',
-    'checkRubinTvExternalPackages',
-    'raiseIf',
-    'isDayObsContiguous',
-    'writeMetadataShard',
-    'writeDataShard',
-    'getShardedData',
-    'isFileWorldWritable',
-    'LocationConfig',
-    'sanitizeNans',
-    'safeJsonOpen',
-    'getNumExpectedItems',
-    'ALLOWED_DATASET_TYPES',
-    'NumpyEncoder',
+    "writeDimensionUniverseFile",
+    "getDimensionUniverse",
+    "writeDataIdFile",
+    "getGlobPatternForDataProduct",
+    "expRecordToUploadFilename",
+    "getSiteConfig",
+    "checkRubinTvExternalPackages",
+    "raiseIf",
+    "isDayObsContiguous",
+    "writeMetadataShard",
+    "writeDataShard",
+    "getShardedData",
+    "isFileWorldWritable",
+    "LocationConfig",
+    "sanitizeNans",
+    "safeJsonOpen",
+    "getNumExpectedItems",
+    "ALLOWED_DATASET_TYPES",
+    "NumpyEncoder",
 ]
 
-EFD_CLIENT_MISSING_MSG = ('ImportError: lsst_efd_client not found. Please install with:\n'
-                          '    pip install lsst-efd-client')
+EFD_CLIENT_MISSING_MSG = (
+    "ImportError: lsst_efd_client not found. Please install with:\n" "    pip install lsst-efd-client"
+)
 
-GOOGLE_CLOUD_MISSING_MSG = ('ImportError: Google cloud storage not found. Please install with:\n'
-                            '    pip install google-cloud-storage')
+GOOGLE_CLOUD_MISSING_MSG = (
+    "ImportError: Google cloud storage not found. Please install with:\n"
+    "    pip install google-cloud-storage"
+)
 
 DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.json")
 
@@ -79,11 +82,11 @@ DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.js
 # over them and delete them. Having this list here and checking before writing
 # ensures that the list is maintained, as new products can't be written without
 # being added here first.
-ALLOWED_DATASET_TYPES = ['rawNoises', 'binnedImage']
+ALLOWED_DATASET_TYPES = ["rawNoises", "binnedImage"]
 SEQNUM_PADDING = 6
-SHARDED_DATA_TEMPLATE = os.path.join("{path}",
-                                     "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}"
-                                     "_seqNum_{seqNum}_{suffix}.json")
+SHARDED_DATA_TEMPLATE = os.path.join(
+    "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
+)
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -96,7 +99,7 @@ def writeDimensionUniverseFile(butler, locationConfig):
     This assumes that all repos in a give location are on the same version, but
     we will make sure to keep that always true.
     """
-    with open(locationConfig.dimensionUniverseFile, 'w') as f:
+    with open(locationConfig.dimensionUniverseFile, "w") as f:
         f.write(json.dumps(butler.dimensions.dimensionConfig.toDict()))
 
 
@@ -126,11 +129,10 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
     expId = expRecord.id
     dayObs = expRecord.day_obs
     seqNum = expRecord.seq_num
-    outFile = DATA_ID_TEMPLATE.format(path=dataIdPath,
-                                      instrument=expRecord.instrument,
-                                      dataProduct=dataProduct,
-                                      expId=expId)
-    with open(outFile, 'w') as f:
+    outFile = DATA_ID_TEMPLATE.format(
+        path=dataIdPath, instrument=expRecord.instrument, dataProduct=dataProduct, expId=expId
+    )
+    with open(outFile, "w") as f:
         f.write(json.dumps(expRecord.to_simple().json()))
     if log:
         log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
@@ -149,10 +151,7 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct, instrument):
     dataProduct : `str`
         The data product to find the dataIds for.
     """
-    return DATA_ID_TEMPLATE.format(path=dataIdPath,
-                                   instrument=instrument,
-                                   dataProduct=dataProduct,
-                                   expId='*')
+    return DATA_ID_TEMPLATE.format(path=dataIdPath, instrument=instrument, dataProduct=dataProduct, expId="*")
 
 
 def getGlobPatternForShardedData(path, dataSetName, instrument, dayObs, seqNum):
@@ -174,13 +173,15 @@ def getGlobPatternForShardedData(path, dataSetName, instrument, dayObs, seqNum):
     seqNum : `int`
         The seqNum to find the sharded data for.
     """
-    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}" if seqNum != "*" else '*'
-    return SHARDED_DATA_TEMPLATE.format(path=path,
-                                        dataSetName=dataSetName,
-                                        instrument=instrument,
-                                        dayObs=dayObs,
-                                        seqNum=seqNumFormatted,
-                                        suffix='*')
+    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}" if seqNum != "*" else "*"
+    return SHARDED_DATA_TEMPLATE.format(
+        path=path,
+        dataSetName=dataSetName,
+        instrument=instrument,
+        dayObs=dayObs,
+        seqNum=seqNumFormatted,
+        suffix="*",
+    )
 
 
 @dataclass
@@ -191,6 +192,7 @@ class FakeExposureRecord:
     than dict items, so this dataclass exists to allow using the same naming
     function when we do not have a real dataId.
     """
+
     seq_num: int
     day_obs: int
 
@@ -208,13 +210,10 @@ def expRecordFromJson(expRecordJson, locationConfig):
     """
     if not expRecordJson:
         return None
-    return DimensionRecord.from_json(
-        expRecordJson,
-        universe=getDimensionUniverse(locationConfig)
-    )
+    return DimensionRecord.from_json(expRecordJson, universe=getDimensionUniverse(locationConfig))
 
 
-def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
+def expRecordToUploadFilename(channel, expRecord, extension=".png", zeroPad=False):
     """Convert an expRecord to a filename, for use when uploading to a channel.
 
     Names the file in way the frontend app expects, zeropadding the seqNum if
@@ -249,8 +248,9 @@ class LocationConfig:
     @cached_property, otherwise they are will be method-type rather than
     str-type when they are accessed.
     """
+
     location: str
-    log: logging.Logger = logging.getLogger('lsst.rubintv.production.utils.LocationConfig')
+    log: logging.Logger = logging.getLogger("lsst.rubintv.production.utils.LocationConfig")
 
     def __post_init__(self) -> None:
         # Touch the _config after init to make sure the config file can be
@@ -279,15 +279,16 @@ class LocationConfig:
         """
         if not os.path.isdir(dirName):
             if createIfMissing:
-                self.log.info(f'Directory {dirName} does not exist, creating it.')
+                self.log.info(f"Directory {dirName} does not exist, creating it.")
                 os.makedirs(dirName, exist_ok=True)  # exist_ok necessary due to potential startup race
 
                 if not os.access(dirName, os.W_OK):  # check if dir is 777 but only when creating
                     try:  # attempt to chmod to 777
                         os.chmod(dirName, 0o777)
                     except PermissionError:
-                        raise RuntimeError(f"Directory {dirName} is not world-writable "
-                                           "and could not be made so.")
+                        raise RuntimeError(
+                            f"Directory {dirName} is not world-writable " "and could not be made so."
+                        )
 
         # check whether we succeeded
         if not os.path.isdir(dirName):
@@ -309,7 +310,7 @@ class LocationConfig:
         """
         expanded = os.path.expandvars(filename)
         if not os.path.isfile(expanded):
-            raise RuntimeError(f'Could not find file {filename} at {expanded}')
+            raise RuntimeError(f"Could not find file {filename} at {expanded}")
 
     @cached_property
     def _config(self):
@@ -317,225 +318,225 @@ class LocationConfig:
 
     @cached_property
     def dimensionUniverseFile(self):
-        file = self._config['dimensionUniverseFile']
+        file = self._config["dimensionUniverseFile"]
         return file
 
     @cached_property
     def redisIp(self):
-        return self._config['redisIp']
+        return self._config["redisIp"]
 
     @cached_property
     def sfmPipelineFile(self):
-        file = self._config['sfmPipelineFile']
+        file = self._config["sfmPipelineFile"]
         self._checkFile(file)
         return file
 
     def butlerPath(self):
-        file = self._config['butlerPath']
+        file = self._config["butlerPath"]
         self._checkFile(file)
         return file
 
     @cached_property
     def ts8ButlerPath(self):
-        file = self._config['ts8ButlerPath']
+        file = self._config["ts8ButlerPath"]
         self._checkFile(file)
         return file
 
     @cached_property
     def botButlerPath(self):
-        file = self._config['botButlerPath']
+        file = self._config["botButlerPath"]
         self._checkFile(file)
         return file
 
     @cached_property
     def dataIdScanPath(self):
-        directory = self._config['dataIdScanPath']
+        directory = self._config["dataIdScanPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def metadataPath(self):
-        directory = self._config['metadataPath']
+        directory = self._config["metadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def auxTelMetadataPath(self):
-        directory = self._config['auxTelMetadataPath']
+        directory = self._config["auxTelMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def metadataShardPath(self):
-        directory = self._config['metadataShardPath']
+        directory = self._config["metadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def auxTelMetadataShardPath(self):
-        directory = self._config['auxTelMetadataShardPath']
+        directory = self._config["auxTelMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def ts8MetadataPath(self):
-        directory = self._config['ts8MetadataPath']
+        directory = self._config["ts8MetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def ts8MetadataShardPath(self):
-        directory = self._config['ts8MetadataShardPath']
+        directory = self._config["ts8MetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def plotPath(self):
-        directory = self._config['plotPath']
+        directory = self._config["plotPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def calculatedDataPath(self):
-        directory = self._config['calculatedDataPath']
+        directory = self._config["calculatedDataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def binnedCalexpPath(self):
-        directory = self._config['binnedCalexpPath']
+        directory = self._config["binnedCalexpPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def bucketName(self):
-        if self._config['bucketName'] == '':
-            raise RuntimeError('Bucket name not set in config file')
-        return self._config['bucketName']
+        if self._config["bucketName"] == "":
+            raise RuntimeError("Bucket name not set in config file")
+        return self._config["bucketName"]
 
     @cached_property
     def binning(self):
-        return self._config['binning']
+        return self._config["binning"]
 
     # start of the summit migration stuff:
     # star tracker paths
     @cached_property
     def starTrackerDataPath(self):
-        directory = self._config['starTrackerDataPath']
+        directory = self._config["starTrackerDataPath"]
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     @cached_property
     def starTrackerMetadataPath(self):
-        directory = self._config['starTrackerMetadataPath']
+        directory = self._config["starTrackerMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def starTrackerMetadataShardPath(self):
-        directory = self._config['starTrackerMetadataShardPath']
+        directory = self._config["starTrackerMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def starTrackerOutputPath(self):
-        directory = self._config['starTrackerOutputPath']
+        directory = self._config["starTrackerOutputPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def astrometryNetRefCatPath(self):
-        directory = self._config['astrometryNetRefCatPath']
+        directory = self._config["astrometryNetRefCatPath"]
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     # animation paths
     @cached_property
     def moviePngPath(self):
-        directory = self._config['moviePngPath']
+        directory = self._config["moviePngPath"]
         self._checkDir(directory)
         return directory
 
     # all sky cam paths
     @cached_property
     def allSkyRootDataPath(self):
-        directory = self._config['allSkyRootDataPath']
+        directory = self._config["allSkyRootDataPath"]
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     @cached_property
     def allSkyOutputPath(self):
-        directory = self._config['allSkyOutputPath']
+        directory = self._config["allSkyOutputPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def nightReportPath(self):
-        directory = self._config['nightReportPath']
+        directory = self._config["nightReportPath"]
         self._checkDir(directory)
         return directory
 
     # ComCam stuff:
     @cached_property
     def comCamButlerPath(self):
-        file = self._config['comCamButlerPath']
+        file = self._config["comCamButlerPath"]
         self._checkFile(file)
         return file
 
     @cached_property
     def comCamMetadataPath(self):
-        directory = self._config['comCamMetadataPath']
+        directory = self._config["comCamMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def comCamMetadataShardPath(self):
-        directory = self._config['comCamMetadataShardPath']
+        directory = self._config["comCamMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def comCamSimMetadataPath(self):
-        directory = self._config['comCamSimMetadataPath']
+        directory = self._config["comCamSimMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def comCamSimMetadataShardPath(self):
-        directory = self._config['comCamSimMetadataShardPath']
+        directory = self._config["comCamSimMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def botMetadataPath(self):
-        directory = self._config['botMetadataPath']
+        directory = self._config["botMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def botMetadataShardPath(self):
-        directory = self._config['botMetadataShardPath']
+        directory = self._config["botMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     # TMA config:
     @cached_property
     def tmaMetadataPath(self):
-        directory = self._config['tmaMetadataPath']
+        directory = self._config["tmaMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
     def tmaMetadataShardPath(self):
-        directory = self._config['tmaMetadataShardPath']
+        directory = self._config["tmaMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     def getOutputChain(self, instrument):
-        return self._config['outputChains'][instrument]
+        return self._config["outputChains"][instrument]
 
 
-def getSiteConfig(site='summit'):
+def getSiteConfig(site="summit"):
     """Get the site configuration, given a site name.
 
     Parameters
@@ -548,8 +549,8 @@ def getSiteConfig(site='summit'):
     config : `dict`
         The configuration, as a dict.
     """
-    packageDir = getPackageDir('rubintv_production')
-    configFile = os.path.join(packageDir, 'config', f'config_{site}.yaml')
+    packageDir = getPackageDir("rubintv_production")
+    configFile = os.path.join(packageDir, "config", f"config_{site}.yaml")
     config = yaml.safe_load(open(configFile, "rb"))
     return config
 
@@ -577,12 +578,14 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
     hasEfdClient = False
     try:
         from google.cloud import storage  # noqa: F401
+
         hasGoogleStorage = True
     except ImportError:
         pass
 
     try:
         from lsst_efd_client import EfdClient  # noqa: F401
+
         hasEfdClient = True
     except ImportError:
         pass
@@ -597,7 +600,7 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
         exit()
 
 
-def raiseIf(doRaise, error, logger, msg=''):
+def raiseIf(doRaise, error, logger, msg=""):
     """Raises the error if ``doRaise`` otherwise logs it as a warning.
 
     Parameters
@@ -617,7 +620,7 @@ def raiseIf(doRaise, error, logger, msg=''):
         Raised if ``self.doRaise`` is True, otherwise swallows and warns.
     """
     if not msg:
-        msg = f'{error}'
+        msg = f"{error}"
     if doRaise:
         raise RuntimeError(msg) from error
     else:
@@ -641,8 +644,8 @@ def isDayObsContiguous(dayObs, otherDayObs):
     contiguous : `bool`
         Are the days contiguous?
     """
-    d1 = datetime.strptime(str(dayObs), '%Y%m%d')
-    d2 = datetime.strptime(str(otherDayObs), '%Y%m%d')
+    d1 = datetime.strptime(str(dayObs), "%Y%m%d")
+    d2 = datetime.strptime(str(otherDayObs), "%Y%m%d")
     deltaDays = d2.date() - d1.date()
     return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
 
@@ -670,12 +673,14 @@ def hasDayRolledOver(dayObs, logger=None):
     currentDay = getCurrentDayObs_int()
     if currentDay == dayObs:
         return False
-    elif currentDay == dayObs+1:
+    elif currentDay == dayObs + 1:
         return True
     else:
         if not isDayObsContiguous(currentDay, dayObs):
-            logger.warning(f"Encountered non-linear time! dayObs supplied was {dayObs}"
-                           f" and now the current dayObs is {currentDay}!")
+            logger.warning(
+                f"Encountered non-linear time! dayObs supplied was {dayObs}"
+                f" and now the current dayObs is {currentDay}!"
+            )
         return True  # the day has still rolled over, just in an unexpected way
 
 
@@ -744,7 +749,7 @@ def writeMetadataShard(path, dayObs, mdDict):
         Raised if mdDict is not a dictionary.
     """
     if not isinstance(mdDict, dict):
-        raise TypeError(f'mdDict must be a dict, not {type(mdDict)}')
+        raise TypeError(f"mdDict must be a dict, not {type(mdDict)}")
 
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
@@ -752,9 +757,9 @@ def writeMetadataShard(path, dayObs, mdDict):
     suffix = uuid.uuid1()
     # this pattern is relied up elsewhere, so don't change it without updating
     # in at least the following places: mergeShardsAndUpload
-    filename = os.path.join(path, f'metadata-dayObs_{dayObs}_{suffix}.json')
+    filename = os.path.join(path, f"metadata-dayObs_{dayObs}_{suffix}.json")
 
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
@@ -774,19 +779,19 @@ def writeExpRecordMetadataShard(expRecord, metadataShardPath):
         The exposure record.
     """
     md = {}
-    md['Exposure time'] = expRecord.exposure_time
-    md['Image type'] = expRecord.observation_type
-    md['Reason'] = expRecord.observation_reason
-    md['Date begin'] = expRecord.timespan.begin.isot
-    md['Program'] = expRecord.science_program
-    md['Group name'] = expRecord.group_name
-    md['Filter'] = expRecord.physical_filter
-    md['Target'] = expRecord.target_name
-    md['RA'] = expRecord.tracking_ra
-    md['Dec'] = expRecord.tracking_dec
-    md['Sky angle'] = expRecord.sky_angle
-    md['Azimuth'] = expRecord.azimuth
-    md['Elevation'] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
+    md["Exposure time"] = expRecord.exposure_time
+    md["Image type"] = expRecord.observation_type
+    md["Reason"] = expRecord.observation_reason
+    md["Date begin"] = expRecord.timespan.begin.isot
+    md["Program"] = expRecord.science_program
+    md["Group name"] = expRecord.group_name
+    md["Filter"] = expRecord.physical_filter
+    md["Target"] = expRecord.target_name
+    md["RA"] = expRecord.tracking_ra
+    md["Dec"] = expRecord.tracking_dec
+    md["Sky angle"] = expRecord.sky_angle
+    md["Azimuth"] = expRecord.azimuth
+    md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
 
     seqNum = expRecord.seq_num
     dayObs = expRecord.day_obs
@@ -818,23 +823,26 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
         Raised if dataDict is not a dictionary.
     """
     if dataSetName not in ALLOWED_DATASET_TYPES:
-        raise ValueError(f'dataSetName must be one of {ALLOWED_DATASET_TYPES}, not {dataSetName}. If you are'
-                         ' trying to add a new one, simply add it to the list.')
+        raise ValueError(
+            f"dataSetName must be one of {ALLOWED_DATASET_TYPES}, not {dataSetName}. If you are"
+            " trying to add a new one, simply add it to the list."
+        )
 
     if not isinstance(dataDict, dict):
-        raise TypeError(f'dataDict must be a dict, not {type(dataDict)}')
+        raise TypeError(f"dataDict must be a dict, not {type(dataDict)}")
 
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
-    filename = createFilenameForDataShard(path=path,
-                                          instrument=instrument,
-                                          dataSetName=dataSetName,
-                                          dayObs=dayObs,
-                                          seqNum=seqNum,
-                                          )
+    filename = createFilenameForDataShard(
+        path=path,
+        instrument=instrument,
+        dataSetName=dataSetName,
+        dayObs=dayObs,
+        seqNum=seqNum,
+    )
 
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         json.dump(dataDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
         os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
@@ -868,25 +876,29 @@ def createFilenameForDataShard(path, dataSetName, instrument, dayObs, seqNum):
     """
     suffix = uuid.uuid1()
     seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}"
-    filename = SHARDED_DATA_TEMPLATE.format(path=path,
-                                            dataSetName=dataSetName,
-                                            instrument=instrument,
-                                            dayObs=dayObs,
-                                            seqNum=seqNumFormatted,
-                                            suffix=suffix)
+    filename = SHARDED_DATA_TEMPLATE.format(
+        path=path,
+        dataSetName=dataSetName,
+        instrument=instrument,
+        dayObs=dayObs,
+        seqNum=seqNumFormatted,
+        suffix=suffix,
+    )
     return filename
 
 
-def getShardedData(path,
-                   instrument,
-                   dayObs,
-                   seqNum,
-                   dataSetName,
-                   nExpected,
-                   timeout,
-                   logger=None,
-                   deleteIfComplete=True,
-                   deleteRegardless=False):
+def getShardedData(
+    path,
+    instrument,
+    dayObs,
+    seqNum,
+    dataSetName,
+    nExpected,
+    timeout,
+    logger=None,
+    deleteIfComplete=True,
+    deleteRegardless=False,
+):
     """Read back the sharded data for a given dayObs, seqNum, and dataset.
 
     Looks for ``nExpected`` files in the directory ``path``, merges their
@@ -933,11 +945,9 @@ def getShardedData(path,
     TypeError
         Raised if dataDict is not a dictionary.
     """
-    pattern = getGlobPatternForShardedData(path=path,
-                                           instrument=instrument,
-                                           dataSetName=dataSetName,
-                                           dayObs=dayObs,
-                                           seqNum=seqNum)
+    pattern = getGlobPatternForShardedData(
+        path=path, instrument=instrument, dataSetName=dataSetName, dayObs=dayObs, seqNum=seqNum
+    )
 
     start = time.time()
     firstLoop = True
@@ -946,7 +956,7 @@ def getShardedData(path,
         files = glob.glob(pattern)
         if len(files) > nExpected:
             # it is ambiguous which to use to form a coherent set, so raise
-            raise RuntimeError(f'Too many data files found for {dataSetName} for {dayObs=}-{seqNum=}')
+            raise RuntimeError(f"Too many data files found for {dataSetName} for {dayObs=}-{seqNum=}")
         if len(files) == nExpected:
             break
         time.sleep(0.2)
@@ -954,8 +964,10 @@ def getShardedData(path,
     if len(files) != nExpected:
         if not logger:
             logger = logging.getLogger(__name__)
-        logger.warning(f'Found {len(files)} files after waiting {timeout}s for {dataSetName}'
-                       f' for {dayObs=}-{seqNum=} but expected {nExpected}')
+        logger.warning(
+            f"Found {len(files)} files after waiting {timeout}s for {dataSetName}"
+            f" for {dayObs=}-{seqNum=} but expected {nExpected}"
+        )
 
     if not files:
         return None, 0
@@ -987,7 +999,7 @@ def isFileWorldWritable(filename):
     return stat.st_mode & 0o777 == 0o777
 
 
-def safeJsonOpen(filename, timeout=.3):
+def safeJsonOpen(filename, timeout=0.3):
     """Open a JSON file, waiting for it to be populated if necessary.
 
     JSON doesn't like opening zero-byte files, so try to open it, and if it's
@@ -1014,13 +1026,13 @@ def safeJsonOpen(filename, timeout=.3):
     start = time.time()
     while time.time() - start < timeout:
         try:
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 jsonData = json.load(f)
                 return jsonData
         except (RuntimeError, json.decoder.JSONDecodeError):
             pass
         time.sleep(0.1)
-    raise RuntimeError(f'Failed to load data from {filename} after {timeout}s')
+    raise RuntimeError(f"Failed to load data from {filename} after {timeout}s")
 
 
 def getNumExpectedItems(expRecord, logger=None):
@@ -1060,28 +1072,35 @@ def getNumExpectedItems(expRecord, logger=None):
         return fallbackValue  # it's always nine (it's simulated), and this will all be redone soon anyway
 
     try:
-        resourcePath = (f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
-                        f"{expRecord.obs_id}_expectedSensors.json")
+        resourcePath = (
+            f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
+            f"{expRecord.obs_id}_expectedSensors.json"
+        )
         url = ResourcePath(resourcePath)
         jsonData = url.read()
         data = json.loads(jsonData)
-        nExpected = len(data['expectedSensors'])
+        nExpected = len(data["expectedSensors"])
         if nExpected != fallbackValue:
             # not a warning because this is it working as expected, but it's
             # nice to see when we have a partial readout
-            logger.debug(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
-                         f" is different from the nominal value of {fallbackValue} for {instrument}")
+            logger.debug(
+                f"Partial focal plane readout detected: expected number of items ({nExpected}) "
+                f" is different from the nominal value of {fallbackValue} for {instrument}"
+            )
         return nExpected
     except FileNotFoundError:
-        if instrument in ['LSSTCam', 'LSST-TS8']:
+        if instrument in ["LSSTCam", "LSST-TS8"]:
             # these instruments are expected to have this info, the other are
             # not yet, so only warn when the file is expected and not found.
-            logger.warning(f"Unable to get number of expected items from {resourcePath}, "
-                           f"using fallback value of {fallbackValue}")
+            logger.warning(
+                f"Unable to get number of expected items from {resourcePath}, "
+                f"using fallback value of {fallbackValue}"
+            )
         return fallbackValue
     except Exception:
-        logger.exception("Error calculating expected number of items, using fallback value "
-                         f"of {fallbackValue}")
+        logger.exception(
+            "Error calculating expected number of items, using fallback value " f"of {fallbackValue}"
+        )
         return fallbackValue
 
 
@@ -1099,11 +1118,11 @@ def getShardPath(locationConfig, expRecord):
         The path to write the metadata shard to.
     """
     match expRecord.instrument:
-        case 'LATISS':
+        case "LATISS":
             return locationConfig.auxTelMetadataShardPath
-        case 'LSSTComCam':
+        case "LSSTComCam":
             return locationConfig.comCamMetadataShardPath
-        case 'LSSTComCamSim':
+        case "LSSTComCamSim":
             return locationConfig.comCamSimMetadataShardPath
         case _:
-            raise ValueError(f'Unknown instrument {expRecord.instrument=}')
+            raise ValueError(f"Unknown instrument {expRecord.instrument=}")

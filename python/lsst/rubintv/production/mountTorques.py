@@ -19,14 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import time
-import numpy as np
-import matplotlib.pyplot as plt
-from astropy.time import Time
 import asyncio
+import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+from astro_metadata_translator import ObservationInfo
+from astropy.time import Time
+
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import dayObsIntToString
-from astro_metadata_translator import ObservationInfo
 
 try:
     from lsst_efd_client import merge_packed_time_series as mpts
@@ -36,13 +38,14 @@ except ImportError:
 
 __all__ = ["calculateMountErrors"]
 
-NON_TRACKING_IMAGE_TYPES = ['BIAS',
-                            'FLAT',
-                            ]
+NON_TRACKING_IMAGE_TYPES = [
+    "BIAS",
+    "FLAT",
+]
 
 AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC = 280.0
-MOUNT_IMAGE_WARNING_LEVEL = .25  # this determines the colouring of the cells in the table, yellow for this
-MOUNT_IMAGE_BAD_LEVEL = .4  # and red for this
+MOUNT_IMAGE_WARNING_LEVEL = 0.25  # this determines the colouring of the cells in the table, yellow for this
+MOUNT_IMAGE_BAD_LEVEL = 0.4  # and red for this
 
 
 def _getEfdData(client, dataSeries, startTime, endTime):
@@ -51,7 +54,7 @@ def _getEfdData(client, dataSeries, startTime, endTime):
     This exists so that the top level functions don't all have to be async def.
     """
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(client.select_time_series(dataSeries, ['*'], startTime.utc, endTime.utc))
+    return loop.run_until_complete(client.select_time_series(dataSeries, ["*"], startTime.utc, endTime.utc))
 
 
 def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
@@ -101,21 +104,21 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
 
     imgType = expRecord.observation_type.upper()
     if imgType in NON_TRACKING_IMAGE_TYPES:
-        logger.info(f'Skipping mount torques for non-tracking image type {imgType} for {dataIdString}')
+        logger.info(f"Skipping mount torques for non-tracking image type {imgType} for {dataIdString}")
         return False
 
     # only process these if they're the unusual tracking-darks used for closed
     # dome testing of the telescope.
-    if imgType == 'DARK':
-        if expRecord.target_name == 'slew_icrs':
-            logger.info(f'Calculating mount torques for slewing dark image {dataIdString}')
+    if imgType == "DARK":
+        if expRecord.target_name == "slew_icrs":
+            logger.info(f"Calculating mount torques for slewing dark image {dataIdString}")
         else:
-            logger.info(f'Skipping mount torques for non-slewing dark for {dataIdString}')
+            logger.info(f"Skipping mount torques for non-slewing dark for {dataIdString}")
             return False
 
     exptime = expRecord.exposure_time
     if exptime < 1.99:
-        logger.info('Skipping sub 2s expsoure')
+        logger.info("Skipping sub 2s expsoure")
         return False
 
     tStart = expRecord.timespan.begin.tai.to_value("isot")
@@ -123,13 +126,13 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     elevation = 90 - expRecord.zenith_angle
 
     # TODO: DM-33859 remove this once it can be got from the expRecord
-    md = butler.get('raw.metadata', dataId, detector=0)
+    md = butler.get("raw.metadata", dataId, detector=0)
     obsInfo = ObservationInfo(md)
     azimuth = obsInfo.altaz_begin.az.value
     logger.debug(f"dataId={dataIdString}, imgType={imgType}, Times={tStart}, {tEnd}")
 
     end = time.time()
-    elapsed = end-start
+    elapsed = end - start
     logger.debug(f"Elapsed time for butler query = {elapsed}")
 
     start = time.time()
@@ -139,8 +142,8 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     # After doing all of this, there is still a 2 second offset,
     # which is discussed in JIRA ticket DM-29243, but not understood.
 
-    t_start = Time(tStart, scale='tai')
-    t_end = Time(tEnd, scale='tai')
+    t_start = Time(tStart, scale="tai")
+    t_end = Time(tEnd, scale="tai")
     logger.debug(f"Tstart = {t_start.isot}, Tend = {t_end.isot}")
 
     mount_position = _getEfdData(client, "lsst.sal.ATMCS.mount_AzEl_Encoders", t_start, t_end)
@@ -148,16 +151,16 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     torques = _getEfdData(client, "lsst.sal.ATMCS.measuredTorque", t_start, t_end)
     logger.debug("Length of time series", len(mount_position))
 
-    az = mpts(mount_position, 'azimuthCalculatedAngle', stride=1)
-    el = mpts(mount_position, 'elevationCalculatedAngle', stride=1)
-    rot = mpts(nasmyth_position, 'nasmyth2CalculatedAngle', stride=1)
-    az_torque_1 = mpts(torques, 'azimuthMotor1Torque', stride=1)
-    az_torque_2 = mpts(torques, 'azimuthMotor2Torque', stride=1)
-    el_torque = mpts(torques, 'elevationMotorTorque', stride=1)
-    rot_torque = mpts(torques, 'nasmyth2MotorTorque', stride=1)
+    az = mpts(mount_position, "azimuthCalculatedAngle", stride=1)
+    el = mpts(mount_position, "elevationCalculatedAngle", stride=1)
+    rot = mpts(nasmyth_position, "nasmyth2CalculatedAngle", stride=1)
+    az_torque_1 = mpts(torques, "azimuthMotor1Torque", stride=1)
+    az_torque_2 = mpts(torques, "azimuthMotor2Torque", stride=1)
+    el_torque = mpts(torques, "elevationMotorTorque", stride=1)
+    rot_torque = mpts(torques, "nasmyth2MotorTorque", stride=1)
 
     end = time.time()
-    elapsed = end-start
+    elapsed = end - start
     logger.debug(f"Elapsed time to get the data = {elapsed}")
     start = time.time()
 
@@ -195,7 +198,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     image_rot_rms = rot_rms * AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC * np.pi / 180.0 / 3600.0
 
     end = time.time()
-    elapsed = end-start
+    elapsed = end - start
     logger.debug(f"Elapsed time for error calculations = {elapsed}")
     start = time.time()
     if saveFilename is not None:
@@ -205,68 +208,75 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         plt.suptitle(title, fontsize=18)
         # Azimuth axis
         plt.subplot(3, 3, 1)
-        ax1 = az['azimuthCalculatedAngle'].plot(legend=True, color='red')
+        ax1 = az["azimuthCalculatedAngle"].plot(legend=True, color="red")
         ax1.set_title("Azimuth axis", fontsize=16)
         ax1.axvline(az.index[0], color="red", linestyle="--")
         ax1.set_xticks([])
         ax1.set_ylabel("Degrees")
         plt.subplot(3, 3, 4)
-        plt.plot(fit_times, az_error, color='red')
+        plt.plot(fit_times, az_error, color="red")
 
-        plt.title(f"Azimuth RMS error = {az_rms:.2f} arcseconds\n"
-                  f"  Image RMS error = {image_az_rms:.2f} arcseconds")
+        plt.title(
+            f"Azimuth RMS error = {az_rms:.2f} arcseconds\n"
+            f"  Image RMS error = {image_az_rms:.2f} arcseconds"
+        )
         plt.ylim(-10.0, 10.0)
         plt.xticks([])
         plt.ylabel("Arcseconds")
         plt.subplot(3, 3, 7)
-        ax7 = az_torque_1['azimuthMotor1Torque'].plot(legend=True, color='blue')
-        ax7 = az_torque_2['azimuthMotor2Torque'].plot(legend=True, color='green')
+        ax7 = az_torque_1["azimuthMotor1Torque"].plot(legend=True, color="blue")
+        ax7 = az_torque_2["azimuthMotor2Torque"].plot(legend=True, color="green")
         ax7.axvline(az.index[0], color="red", linestyle="--")
         ax7.set_ylabel("Torque (motor current in amps)")
 
         # Elevation axis
         plt.subplot(3, 3, 2)
-        ax2 = el['elevationCalculatedAngle'].plot(legend=True, color='green')
+        ax2 = el["elevationCalculatedAngle"].plot(legend=True, color="green")
         ax2.set_title("Elevation axis", fontsize=16)
         ax2.axvline(az.index[0], color="red", linestyle="--")
         ax2.set_xticks([])
         plt.subplot(3, 3, 5)
-        plt.plot(fit_times, el_error, color='green')
-        plt.title(f"Elevation RMS error = {el_rms:.2f} arcseconds\n"
-                  f"    Image RMS error = {image_el_rms:.2f} arcseconds")
+        plt.plot(fit_times, el_error, color="green")
+        plt.title(
+            f"Elevation RMS error = {el_rms:.2f} arcseconds\n"
+            f"    Image RMS error = {image_el_rms:.2f} arcseconds"
+        )
         plt.ylim(-10.0, 10.0)
         plt.xticks([])
         plt.subplot(3, 3, 8)
-        ax8 = el_torque['elevationMotorTorque'].plot(legend=True, color='blue')
+        ax8 = el_torque["elevationMotorTorque"].plot(legend=True, color="blue")
         ax8.axvline(az.index[0], color="red", linestyle="--")
         ax8.set_ylabel("Torque (motor current in amps)")
 
         # Nasmyth2 rotator axis
         plt.subplot(3, 3, 3)
-        ax3 = rot['nasmyth2CalculatedAngle'].plot(legend=True, color='blue')
+        ax3 = rot["nasmyth2CalculatedAngle"].plot(legend=True, color="blue")
         ax3.set_title("Nasmyth2 axis", fontsize=16)
         ax3.axvline(az.index[0], color="red", linestyle="--")
         ax3.set_xticks([])
         plt.subplot(3, 3, 6)
-        plt.plot(fit_times, rot_error, color='blue')
-        plt.title(f"Nasmyth2 RMS error = {rot_rms:.2f} arcseconds\n"
-                  f"  Image RMS error <= {image_rot_rms:.2f} arcseconds")
+        plt.plot(fit_times, rot_error, color="blue")
+        plt.title(
+            f"Nasmyth2 RMS error = {rot_rms:.2f} arcseconds\n"
+            f"  Image RMS error <= {image_rot_rms:.2f} arcseconds"
+        )
         plt.ylim(-10.0, 10.0)
         plt.xticks([])
         plt.subplot(3, 3, 9)
-        ax9 = rot_torque['nasmyth2MotorTorque'].plot(legend=True, color='blue')
+        ax9 = rot_torque["nasmyth2MotorTorque"].plot(legend=True, color="blue")
         ax9.axvline(az.index[0], color="red", linestyle="--")
         ax9.set_ylabel("Torque (motor current in amps)")
         plt.savefig(saveFilename)
 
         end = time.time()
-        elapsed = end-start
+        elapsed = end - start
         logger.debug(f"Elapsed time for plots = {elapsed}")
 
-    return dict(az_rms=az_rms,
-                el_rms=el_rms,
-                rot_rms=rot_rms,
-                image_az_rms=image_az_rms,
-                image_el_rms=image_el_rms,
-                image_rot_rms=image_rot_rms
-                )
+    return dict(
+        az_rms=az_rms,
+        el_rms=el_rms,
+        rot_rms=rot_rms,
+        image_az_rms=image_az_rms,
+        image_el_rms=image_el_rms,
+        image_rot_rms=image_rot_rms,
+    )

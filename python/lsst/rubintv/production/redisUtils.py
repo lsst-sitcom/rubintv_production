@@ -20,11 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-import redis
 import logging
-from datetime import timedelta
 import os
 import time
+from datetime import timedelta
+
+import redis
 
 from lsst.summit.utils.utils import getSite
 
@@ -36,6 +37,7 @@ clear_output = None
 IN_NOTEBOOK = False
 try:
     from IPython import get_ipython
+
     ipython_instance = get_ipython()
     # Check if notebook and not just IPython terminal. ipython_instance is None
     # if not in IPython environment, and if IPKernelApp is not in the config
@@ -44,13 +46,12 @@ try:
         IN_NOTEBOOK = False
     else:
         from IPython.display import clear_output
+
         IN_NOTEBOOK = True
 except (ImportError, NameError):
     pass
 
-__all__ = (
-    'RedisHelper'
-)
+__all__ = "RedisHelper"
 
 
 def decode_string(value):
@@ -66,7 +67,7 @@ def decode_string(value):
     str
         Decoded string.
     """
-    return value.decode('utf-8')
+    return value.decode("utf-8")
 
 
 def decode_hash(hash_dict):
@@ -82,7 +83,7 @@ def decode_hash(hash_dict):
     dict
         Dictionary with decoded keys and values.
     """
-    return {k.decode('utf-8'): v.decode('utf-8') for k, v in hash_dict.items()}
+    return {k.decode("utf-8"): v.decode("utf-8") for k, v in hash_dict.items()}
 
 
 def decode_list(value_list):
@@ -98,7 +99,7 @@ def decode_list(value_list):
     list
         List of decoded values.
     """
-    return [item.decode('utf-8') for item in value_list]
+    return [item.decode("utf-8") for item in value_list]
 
 
 def decode_set(value_set):
@@ -114,7 +115,7 @@ def decode_set(value_set):
     set
         Set of decoded values.
     """
-    return {item.decode('utf-8') for item in value_set}
+    return {item.decode("utf-8") for item in value_set}
 
 
 def decode_zset(value_zset):
@@ -130,17 +131,17 @@ def decode_zset(value_zset):
     list
         List of tuples with decoded values and scores.
     """
-    return [(item[0].decode('utf-8'), item[1]) for item in value_zset]
+    return [(item[0].decode("utf-8"), item[1]) for item in value_zset]
 
 
-def getRedisSecret(filename='$HOME/.lsst/redis_secret.ini'):
+def getRedisSecret(filename="$HOME/.lsst/redis_secret.ini"):
     filename = os.path.expandvars(filename)
     with open(filename) as f:
         return f.read().strip()
 
 
 def getNewDataQueueName(instrument):
-    return f'INCOMING-{instrument}-raw'
+    return f"INCOMING-{instrument}-raw"
 
 
 class RedisHelper:
@@ -150,7 +151,7 @@ class RedisHelper:
         self.isHeadNode = isHeadNode
         self.redis = self._makeRedis()
         self._testRedisConnection()
-        self.log = logging.getLogger('lsst.rubintv.production.redisUtils.RedisHelper')
+        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
 
     def _makeRedis(self):
         """Create a redis connection.
@@ -162,26 +163,26 @@ class RedisHelper:
         """
         site = getSite()
         match site:
-            case site if site in ('rubin-devl', 'staff-rsp'):
+            case site if site in ("rubin-devl", "staff-rsp"):
                 return redis.Redis(host=self.locationConfig.redisIp, password=getRedisSecret())
-            case 'usdf-k8s':
-                password = os.getenv('REDIS_PASSWORD')
-                host = os.getenv('REDIS_HOST')
+            case "usdf-k8s":
+                password = os.getenv("REDIS_PASSWORD")
+                host = os.getenv("REDIS_HOST")
                 return redis.Redis(host=host, password=password)
-            case 'summit':
-                host = os.getenv('REDIS_HOST')
-                password = os.getenv('REDIS_PASSWORD')
+            case "summit":
+                host = os.getenv("REDIS_HOST")
+                password = os.getenv("REDIS_PASSWORD")
                 return redis.Redis(host=host, password=password)
-            case 'base':
-                host = os.getenv('REDIS_HOST')
-                password = os.getenv('REDIS_PASSWORD')
+            case "base":
+                host = os.getenv("REDIS_HOST")
+                password = os.getenv("REDIS_PASSWORD")
                 return redis.Redis(host=host, password=password)
-            case 'tucson':
-                host = os.getenv('REDIS_HOST')
-                password = os.getenv('REDIS_PASSWORD')
+            case "tucson":
+                host = os.getenv("REDIS_HOST")
+                password = os.getenv("REDIS_PASSWORD")
                 return redis.Redis(host=host, password=password)
             case _:
-                raise RuntimeError('Unknown site, cannot connect to redis')
+                raise RuntimeError("Unknown site, cannot connect to redis")
 
     def _testRedisConnection(self):
         """Check that redis is online and can be contacted.
@@ -195,9 +196,9 @@ class RedisHelper:
         try:
             self.redis.ping()
         except redis.exceptions.ConnectionError as e:
-            raise RuntimeError('Could not connect to redis - is it running?') from e
+            raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:
-            raise RuntimeError(f'Unexpected error connecting to redis: {e}')
+            raise RuntimeError(f"Unexpected error connecting to redis: {e}")
 
     def affirmRunning(self, podName, timePeriod):
         """Affirm that the named pod is running OK and should not be considered
@@ -211,7 +212,7 @@ class RedisHelper:
             The amount of time after which the pod would be considered dead if
             not reaffirmed by.
         """
-        self.redis.setex(f'{podName}_IS-RUNNING', timedelta(seconds=timePeriod), value=1)
+        self.redis.setex(f"{podName}_IS-RUNNING", timedelta(seconds=timePeriod), value=1)
 
     def confirmRunning(self, podName):
         """Check whether the named pod is running or should be considered dead.
@@ -221,7 +222,7 @@ class RedisHelper:
         podName : `str`
             The name of the pod.
         """
-        isRunning = self.redis.get(f'{podName}_IS-RUNNING')
+        isRunning = self.redis.get(f"{podName}_IS-RUNNING")
         return bool(isRunning)  # 0 and None both bool() to False
 
     def announceBusy(self, queueName):
@@ -232,7 +233,7 @@ class RedisHelper:
         queueName : `str`
             The name of the queue the worker is processing.
         """
-        self.redis.set(f'{queueName}_IS-BUSY', value=1)
+        self.redis.set(f"{queueName}_IS-BUSY", value=1)
 
     def announceFree(self, queueName):
         """Announce that a worker is free to process a queue.
@@ -245,7 +246,7 @@ class RedisHelper:
             The name of the queue the worker is processing.
         """
         self.announceExistence(queueName)
-        self.redis.delete(f'{queueName}_IS-BUSY')
+        self.redis.delete(f"{queueName}_IS-BUSY")
 
     def announceExistence(self, queueName, remove=False):
         """Announce that a worker is present in the pool.
@@ -266,9 +267,9 @@ class RedisHelper:
             Remove the worker from pool. Default is ``True``.
         """
         if not remove:
-            self.redis.setex(f'{queueName}_EXISTS', timedelta(seconds=30), value=1)
+            self.redis.setex(f"{queueName}_EXISTS", timedelta(seconds=30), value=1)
         else:
-            self.redis.delete(f'{queueName}_EXISTS')
+            self.redis.delete(f"{queueName}_EXISTS")
 
     def getAllWorkers(self, workerType=None):
         """Get the list of workers that are currently active.
@@ -285,16 +286,16 @@ class RedisHelper:
             The list of workers that are currently active.
         """
         if workerType is None:
-            workerType = '*'
+            workerType = "*"
 
         # need to get the set of things that exist, or are busy, because
         # things "cease to exist" during long processing runs, but they do
         # still show as busy
-        existing = self.redis.keys(f'{workerType}*WORKER*_EXISTS')
-        existing = [key.decode('utf-8').replace('_EXISTS', '') for key in existing]
+        existing = self.redis.keys(f"{workerType}*WORKER*_EXISTS")
+        existing = [key.decode("utf-8").replace("_EXISTS", "") for key in existing]
 
-        busy = self.redis.keys(f'{workerType}*WORKER*_IS-BUSY')
-        busy = [key.decode('utf-8').replace('_IS-BUSY', '') for key in busy]
+        busy = self.redis.keys(f"{workerType}*WORKER*_IS-BUSY")
+        busy = [key.decode("utf-8").replace("_IS-BUSY", "") for key in busy]
 
         allWorkers = sorted(set(existing + busy))
 
@@ -317,7 +318,7 @@ class RedisHelper:
         workers = []
         allWorkers = self.getAllWorkers(workerType=workerType)
         for worker in allWorkers:
-            if not self.redis.get(f'{worker}_IS-BUSY'):
+            if not self.redis.get(f"{worker}_IS-BUSY"):
                 workers.append(worker)
         return sorted(workers)
 
@@ -331,7 +332,7 @@ class RedisHelper:
             The exposure record to push to the list.
         """
         expRecordJson = expRecord.to_simple().json()
-        self.redis.lpush(f'{instrument}-fromButlerWacher', expRecordJson)
+        self.redis.lpush(f"{instrument}-fromButlerWacher", expRecordJson)
 
     def reportFinished(self, instrument, taskName, processingId, failed=False):
         """Report that a task has finished.
@@ -346,11 +347,11 @@ class RedisHelper:
             Either the exposureId or visitId of the payload that has finished
             being processed for the specified task.
         """
-        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
         self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace('FINISHEDCOUNTER', 'FAILEDCOUNTER')
+            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
             self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
     def getNumFinished(self, instrument, taskName, processingId):
@@ -371,7 +372,7 @@ class RedisHelper:
         numFinished : `int`
             The number of times the task has finished.
         """
-        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
         return int(self.redis.hget(key, processingId))
 
     def reportVisitLevelFinished(self, instrument, step, failed=False):
@@ -386,11 +387,11 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f'{instrument}-{step}-FINISHEDCOUNTER'
+        key = f"{instrument}-{step}-FINISHEDCOUNTER"
         self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace('FINISHEDCOUNTER', 'FAILEDCOUNTER')
+            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
             self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
     def getNumVisitLevelFinished(self, instrument, step):
@@ -408,7 +409,7 @@ class RedisHelper:
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f'{instrument}-{step}-FINISHEDCOUNTER'
+        key = f"{instrument}-{step}-FINISHEDCOUNTER"
         return int(self.redis.get(key) or 0)
 
     def reportNightLevelFinished(self, instrument, failed=False):
@@ -421,11 +422,11 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f'{instrument}-NIGHTLYROLLUP-FINISHEDCOUNTER'
+        key = f"{instrument}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
 
     def getIdsForTask(self, instrument, taskName):
-        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
         idList = self.redis.hgetall(key).keys()  # list of bytes
         return [int(procId) for procId in idList]
 
@@ -444,7 +445,7 @@ class RedisHelper:
             Either the exposureId or visitId of the payload that has finished
             being processed for the specified task.
         """
-        key = f'{instrument}-{taskName}-FINISHEDCOUNTER'
+        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
         self.redis.hdel(key, processId)
 
     def checkButlerWatcherList(self, instrument, expRecord):
@@ -472,8 +473,8 @@ class RedisHelper:
         """
         expRecordJson = expRecord.to_simple().json()
 
-        data = self.redis.lrange(f'{instrument}-fromButlerWacher', 0, -1)
-        recordStrings = [item.decode('utf-8') for item in data]
+        data = self.redis.lrange(f"{instrument}-fromButlerWacher", 0, -1)
+        recordStrings = [item.decode("utf-8") for item in data]
         return expRecordJson in recordStrings
 
     def _checkIsHeadNode(self):
@@ -482,7 +483,7 @@ class RedisHelper:
         the main queue.
         """
         if not self.isHeadNode:
-            raise RuntimeError('This function is only for the head node - consume your queue, worker!')
+            raise RuntimeError("This function is only for the head node - consume your queue, worker!")
 
     def getRemoteCommands(self):
         """Get any remote commands that have been sent to the head node.
@@ -506,8 +507,8 @@ class RedisHelper:
             ]
         """
         commands = []
-        while command := self.redis.rpop('commands'):  # rpop for FIFO
-            commands.append(json.loads(command.decode('utf-8')))
+        while command := self.redis.rpop("commands"):  # rpop for FIFO
+            commands.append(json.loads(command.decode("utf-8")))
 
         return commands
 
@@ -586,7 +587,7 @@ class RedisHelper:
 
     def clearTaskCounters(self):
         # TODO: DM-44102 check if .keys() is OK here
-        keys = self.redis.keys('*EDCOUNTER*')  # FINISHEDCOUNTER and FAILEDCOUNTER
+        keys = self.redis.keys("*EDCOUNTER*")  # FINISHEDCOUNTER and FAILEDCOUNTER
         for key in keys:
             self.redis.delete(key)
 
@@ -599,10 +600,11 @@ class RedisHelper:
             The next exposure to process for the specified detector, or
             ``None`` if the queue is empty.
         """
+
         def _isPayload(jsonData):
             try:
                 loaded = json.loads(jsonData)
-                _ = loaded['dataId']
+                _ = loaded["dataId"]
                 return True
             except (KeyError, json.JSONDecodeError):
                 pass
@@ -611,7 +613,7 @@ class RedisHelper:
         def _isExpRecord(jsonData):
             try:
                 loaded = json.loads(jsonData)
-                _ = loaded['definition']
+                _ = loaded["definition"]
                 return True
             except (KeyError, json.JSONDecodeError):
                 pass
@@ -630,7 +632,7 @@ class RedisHelper:
 
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
-        keys = sorted(r.keys('*'))
+        keys = sorted(r.keys("*"))
         if not keys:
             print("Nothing in the Redis database.")
             return
@@ -640,7 +642,7 @@ class RedisHelper:
         # any keys containing these strings will just have their lengths
         # printed, not the full contents of the lists
         lengthKeyPatterns = [
-            'fromButlerWacher',
+            "fromButlerWacher",
         ]
 
         def handleLengthKeys(key):
@@ -649,23 +651,23 @@ class RedisHelper:
 
         for key in keys:
             key = decode_string(key)
-            type_of_key = r.type(key).decode('utf-8')
+            type_of_key = r.type(key).decode("utf-8")
 
             if any(pattern in key for pattern in lengthKeyPatterns):
                 handleLengthKeys(key)
                 continue
 
             # Handle different Redis data types
-            if type_of_key == 'string':
+            if type_of_key == "string":
                 value = decode_string(r.get(key))
                 print(f"{key}: {value}")
-            elif type_of_key == 'hash':
+            elif type_of_key == "hash":
                 values = decode_hash(r.hgetall(key))
                 print(f"{key}: {values}")
-            elif type_of_key == 'list':
+            elif type_of_key == "list":
                 values = decode_list(r.lrange(key, 0, -1))
                 print(f"{key}:")
-                indent = 2 * ' '
+                indent = 2 * " "
                 for item in values:
                     if _isPayload(item):
                         print(f"{indent}{getPayloadDataId(item)}")
@@ -673,10 +675,10 @@ class RedisHelper:
                         print(f"{indent}{getExpRecordDataId(item)}")
                     else:
                         print(f"{indent}{item}")
-            elif type_of_key == 'set':
+            elif type_of_key == "set":
                 values = decode_set(r.smembers(key))
                 print(f"{key}: {values}")
-            elif type_of_key == 'zset':
+            elif type_of_key == "zset":
                 values = decode_zset(r.zrange(key, 0, -1, withscores=True))
                 print(f"{key}: {values}")
             else:
@@ -695,7 +697,7 @@ class RedisHelper:
             print("Are you sure you want to clear the Redis database? This action cannot be undone.")
             print("Type 'yes' to confirm.")
             response = input()
-            if response != 'yes':
+            if response != "yes":
                 print("Clearing aborted.")
                 return
         self.redis.flushdb()
@@ -713,12 +715,12 @@ class RedisHelper:
             print("Are you sure you want to clear the worker queues?")
             print("Type 'yes' to confirm.")
             response = input()
-            if response != 'yes':
+            if response != "yes":
                 print("Clearing aborted.")
                 return
 
         # TODO: DM-44102 check if .keys() is OK here
-        keys = self.redis.keys('*WORKER*')
+        keys = self.redis.keys("*WORKER*")
         for key in keys:
             self.redis.delete(key)
 
@@ -743,4 +745,4 @@ class RedisHelper:
             if IN_NOTEBOOK:
                 clear_output(wait=True)
             else:
-                print('\033c', end='')  # clear the terminal
+                print("\033c", end="")  # clear the terminal

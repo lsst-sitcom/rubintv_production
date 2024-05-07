@@ -20,23 +20,26 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
 
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running AuxTel metadata server at {location}...')
+print(f"Running AuxTel metadata server at {location}...")
 
 metadataDirectory = locationConfig.auxTelMetadataPath
 shardsDirectory = locationConfig.auxTelMetadataShardPath
-channelName = 'auxtel_metadata'
+channelName = "auxtel_metadata"
 
-auxTelMetadataServer = TimedMetadataServer(locationConfig=locationConfig,
-                                           metadataDirectory=metadataDirectory,
-                                           shardsDirectory=shardsDirectory,
-                                           channelName=channelName)
+auxTelMetadataServer = TimedMetadataServer(
+    locationConfig=locationConfig,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+)
 auxTelMetadataServer.run()

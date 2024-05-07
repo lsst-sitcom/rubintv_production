@@ -19,26 +19,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Iterable
-import numpy as np
-import json
 import enum
+import json
 import logging
 from ast import literal_eval
 from time import sleep
+from typing import Iterable
+
+import numpy as np
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
-from lsst.obs.lsst import LsstCam
-from lsst.daf.butler import MissingCollectionError, CollectionType, DataCoordinate
-from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
-from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.ctrl.mpexec import TaskFactory
+from lsst.daf.butler import CollectionType, DataCoordinate, MissingCollectionError
+from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
+from lsst.obs.lsst import LsstCam
+from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.utils.iteration import ensure_iterable
 from lsst.utils.packages import Packages
 
-from .redisUtils import RedisHelper
 from .payloads import Payload, pipelineGraphToBytes
-from .utils import writeExpRecordMetadataShard, getShardPath
+from .redisUtils import RedisHelper
+from .utils import getShardPath, writeExpRecordMetadataShard
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -59,6 +60,7 @@ class WorkerProcessingMode(enum.IntEnum):
         will not be abadoned. This is necessary, otherwise, if we can't keep up
         with the incoming images, we will never fully process a single image!
     """
+
     WAITING = 0
     CONSUMING = 1
     MURDEROUS = 2
@@ -87,16 +89,18 @@ def prepRunCollection(
     created : `bool`
         Was a new run created? ``True`` if so, ``False`` if it already existed.
     """
-    log = logging.getLogger('lsst.rubintv.production.processControl.prepRunCollection')
+    log = logging.getLogger("lsst.rubintv.production.processControl.prepRunCollection")
     newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
     if not newRun:
-        raise RuntimeError(f'New {run=} already exists, so either there is a logic error in the head node'
-                           ' init/getLatestRunAndPrep() or someone manually created collections with that'
-                           ' prefix.')
+        raise RuntimeError(
+            f"New {run=} already exists, so either there is a logic error in the head node"
+            " init/getLatestRunAndPrep() or someone manually created collections with that"
+            " prefix."
+        )
 
     pipelineGraphs = list(ensure_iterable(pipelineGraphs))
     log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
-    butler.put(packages, 'packages', run=run)
+    butler.put(packages, "packages", run=run)
 
     for pipelineGraph in pipelineGraphs:
         for datasetTypeNode in pipelineGraph.dataset_types.values():
@@ -107,16 +111,22 @@ def prepRunCollection(
         taskFactory = TaskFactory()
         for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
 
-            inputRefs = [butler.find_dataset(readEdge.dataset_type_name, collections=[run])
-                         if readEdge.dataset_type_name not in readEdge.dataset_type_name
-                         else initRefs[readEdge.dataset_type_name]
-                         for readEdge in taskNode.init.inputs.values()]
+            inputRefs = [
+                (
+                    butler.find_dataset(readEdge.dataset_type_name, collections=[run])
+                    if readEdge.dataset_type_name not in readEdge.dataset_type_name
+                    else initRefs[readEdge.dataset_type_name]
+                )
+                for readEdge in taskNode.init.inputs.values()
+            ]
             task = taskFactory.makeTask(taskDef, butler, inputRefs)
 
             for writeEdge in taskNode.init.outputs.values():
                 datasetTypeName = writeEdge.dataset_type_name
                 initRefs[datasetTypeName] = butler.put(
-                    getattr(task, writeEdge.connection_name), datasetTypeName, run=run,
+                    getattr(task, writeEdge.connection_name),
+                    datasetTypeName,
+                    run=run,
                 )
 
 
@@ -133,14 +143,13 @@ def defineVisit(butler, expRecord):
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record to define the visit for.
     """
-    instr = Instrument.from_string(butler.registry.defaults.dataId['instrument'],
-                                   butler.registry)
+    instr = Instrument.from_string(butler.registry.defaults.dataId["instrument"], butler.registry)
     config = DefineVisitsConfig()
     instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
     task = DefineVisitsTask(config=config, butler=butler)
 
-    task.run([{'exposure': expRecord.id}], collections=butler.collections)
+    task.run([{"exposure": expRecord.id}], collections=butler.collections)
 
 
 def getVisitId(butler, expRecord):
@@ -157,21 +166,23 @@ def getVisitId(butler, expRecord):
     visitDataId : `int`
         The visitId, as an int.
     """
-    expIdDict = {'exposure': expRecord.id}
+    expIdDict = {"exposure": expRecord.id}
     visitDataIds = butler.registry.queryDataIds(["visit"], dataId=expIdDict)
     visitDataIds = list(set(visitDataIds))
     if len(visitDataIds) == 1:
         visitDataId = visitDataIds[0]
-        return visitDataId['visit']
+        return visitDataId["visit"]
     else:
-        log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
-        log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
-                    " define-visits?")
+        log = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
+        log.warning(
+            f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
+            " define-visits?"
+        )
         return None
 
 
 def getHeadNodeName(instrument):
-    return f'headNode-{instrument}'
+    return f"headNode-{instrument}"
 
 
 def getStep2aTriggerTask(pipelineFile):
@@ -192,12 +203,12 @@ def getStep2aTriggerTask(pipelineFile):
     taskName : `str`
         The task which triggers step2a processing.
     """
-    if 'nightly-validation' in pipelineFile:
-        return 'lsst.pipe.tasks.postprocess.TransformSourceTableTask'
-    elif 'quickLook' in pipelineFile:
-        return 'lsst.pipe.tasks.calibrate.CalibrateTask'
+    if "nightly-validation" in pipelineFile:
+        return "lsst.pipe.tasks.postprocess.TransformSourceTableTask"
+    elif "quickLook" in pipelineFile:
+        return "lsst.pipe.tasks.calibrate.CalibrateTask"
     else:
-        raise ValueError(f'Unsure how to trigger step2a when {pipelineFile=}')
+        raise ValueError(f"Unsure how to trigger step2a when {pipelineFile=}")
 
 
 def getNightlyRollupTriggerTask(pipelineFile):
@@ -218,12 +229,12 @@ def getNightlyRollupTriggerTask(pipelineFile):
     taskName : `str`
         The task which triggers step2a processing.
     """
-    if 'nightly-validation' in pipelineFile:
-        return 'lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask'
-    elif 'quickLook' in pipelineFile:
-        return 'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask'
+    if "nightly-validation" in pipelineFile:
+        return "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask"
+    elif "quickLook" in pipelineFile:
+        return "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask"
     else:
-        raise ValueError(f'Unsure how to trigger nightly rollup when {pipelineFile=}')
+        raise ValueError(f"Unsure how to trigger nightly rollup when {pipelineFile=}")
 
 
 class HeadProcessController:
@@ -235,13 +246,14 @@ class HeadProcessController:
     remotely controlled by a RemoteController, for example to change the
     processing strategy from a notebook or from LOVE.
     """
+
     def __init__(self, butler, instrument, locationConfig, pipelineFile, outputChain=None, forceNewRun=False):
         self.butler = butler
         self.instrument = instrument
         self.locationConfig = locationConfig
         self._basePipeline = pipelineFile
         self.name = getHeadNodeName(instrument)
-        self.log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
+        self.log = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
         self.focalPlaneControl = CameraControlConfig()
         self.workerMode = WorkerProcessingMode.WAITING
@@ -250,13 +262,13 @@ class HeadProcessController:
         self.nDispatched = 0
         self.nNightlyRollups = 0
 
-        steps = ('step1', 'step2a', 'nightlyRollup')  # NB: these need to be in order for prepRunCollection!
+        steps = ("step1", "step2a", "nightlyRollup")  # NB: these need to be in order for prepRunCollection!
         self.pipelineGraphUris = {}
         self.pipelineGraphs = {}
         self.pipelineGraphsBytes = {}
 
         for step in steps:
-            stepStr = '#' + step
+            stepStr = "#" + step
             self.pipelineGraphUris[step] = self._basePipeline + stepStr
             self.pipelineGraphs[step] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
                 registry=self.butler.registry
@@ -281,19 +293,19 @@ class HeadProcessController:
             allRuns = self.butler.registry.getCollectionChain(self.outputChain)
         except MissingCollectionError:
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
-            lastRun = f'{self.outputChain}/0'
+            lastRun = f"{self.outputChain}/0"
             prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
 
-        allRunNums = [int(run.removeprefix(self.outputChain + '/')) for run in allRuns]
+        allRunNums = [int(run.removeprefix(self.outputChain + "/")) for run in allRuns]
         lastRunNum = max(allRunNums)
-        lastRun = f'{self.outputChain}/{lastRunNum}'
+        lastRun = f"{self.outputChain}/{lastRunNum}"
 
         if forceNewRun or self.checkIfNewRunNeeded(lastRun, packages):
             lastRunNum += 1
-            lastRun = f'{self.outputChain}/{lastRunNum}'
+            lastRun = f"{self.outputChain}/{lastRunNum}"
 
             # prepRunCollection is called instead of registerCollection
             prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
@@ -317,7 +329,7 @@ class HeadProcessController:
         notebook users always set a manual outputChain and don't squat on
         quickLook this is sufficient.
         """
-        oldPackages = self.butler.get('packages', collections=[lastRun])
+        oldPackages = self.butler.get("packages", collections=[lastRun])
         if packages.difference(oldPackages):  # checks if any of the versions are different
             return True
         return False
@@ -327,18 +339,18 @@ class HeadProcessController:
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
 
-        sfmWorkers = self.redisHelper.getFreeWorkers(workerType='SFM')
+        sfmWorkers = self.redisHelper.getFreeWorkers(workerType="SFM")
         sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
 
         # get ones which match the detectorId. We'll make this smarter later.
-        idMatchedWorkers = [queue for queue in sfmWorkers if f'-{detectorId:02}-' in queue]
+        idMatchedWorkers = [queue for queue in sfmWorkers if f"-{detectorId:02}-" in queue]
         if idMatchedWorkers == []:
             # TODO: until we have a real backlog queue just put it on the last
             # worker in the stack.
-            busyWorkers = self.redisHelper.getAllWorkers(workerType='SFM')
-            idMatchedWorkers = [queue for queue in busyWorkers if f'-{detectorId:02}-' in queue]
+            busyWorkers = self.redisHelper.getAllWorkers(workerType="SFM")
+            idMatchedWorkers = [queue for queue in busyWorkers if f"-{detectorId:02}-" in queue]
             busyWorker = idMatchedWorkers[-1]
-            self.log.warning(f'No free workers available for {detectorId=}, sending work to {busyWorker=}')
+            self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
             return busyWorker
         return idMatchedWorkers[0]
 
@@ -353,7 +365,7 @@ class HeadProcessController:
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(workerType=workerType)
         busyWorker = busyWorkers[-1]
-        self.log.warning(f'No free workers available for {workerType=}, sending work to {busyWorker=}')
+        self.log.warning(f"No free workers available for {workerType=}, sending work to {busyWorker=}")
         return busyWorker
 
     def doStep1Fanout(self, expRecord):
@@ -365,29 +377,29 @@ class HeadProcessController:
             The expRecord to process.
         """
         match self.instrument:
-            case 'LATISS':
+            case "LATISS":
                 detectorIds = [0]
-            case instrument if instrument in ('LSSTComCam', 'LSSTComCamSim'):
+            case instrument if instrument in ("LSSTComCam", "LSSTComCamSim"):
                 detectorIds = range(9)  # at least for OR3, always process all ComCam chips
-            case 'LSSTCom':
+            case "LSSTCom":
                 detectorIds = self.focalPlaneControl.getEnabledDetIds()
             case _:
-                raise ValueError(f'Unknown instrument {self.instrument=}')
+                raise ValueError(f"Unknown instrument {self.instrument=}")
 
         dataIds = {}
         for detectorId in detectorIds:
             dataIds[detectorId] = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
 
-        self.log.info(f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
-                      f" out to {len(detectorIds)} detectors.")
+        self.log.info(
+            f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
+            f" out to {len(detectorIds)} detectors."
+        )
 
         for detectorId, dataId in dataIds.items():
             queueName = self.getFreeSFMWorkerQueue(detectorId)
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
-                dataId=dataId,
-                pipelineGraphBytes=self.pipelineGraphsBytes['step1'],
-                run=self.outputRun
+                dataId=dataId, pipelineGraphBytes=self.pipelineGraphsBytes["step1"], run=self.outputRun
             )
             self.redisHelper.enqueuePayload(payload, queueName)
 
@@ -409,7 +421,8 @@ class HeadProcessController:
         return expRecord
 
     def repattern(self):
-        """Apply the VisitProcessingMode to the focal plane sensor selection.
+        """Apply the VisitProcessingMode to the focal plane sensor
+        selection.
         """
         match self.visitMode:
             case VisitProcessingMode.CONSTANT:
@@ -420,22 +433,20 @@ class HeadProcessController:
                 if self.nDispatched % 2 == 0:
                     self.focalPlaneControl.invertImagingSelection()
             case _:
-                raise ValueError(f'Unknown visit processing mode {self.visitMode=}')
+                raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
     def getNumExpected(self, instrument):
-        if instrument in ('LSSTComCam', 'LSSTComCamSim'):
+        if instrument in ("LSSTComCam", "LSSTComCamSim"):
             return 9
-        raise NotImplementedError(f'Need to extend dispatch for non-single-raft instruments {instrument=}')
+        raise NotImplementedError(f"Need to extend dispatch for non-single-raft instruments {instrument=}")
 
     def _dispatch2a(self, dataCoordinate):
         payload = Payload(
-            dataId=dataCoordinate,
-            pipelineGraphBytes=self.pipelineGraphsBytes['step2a'],
-            run=self.outputRun
+            dataId=dataCoordinate, pipelineGraphBytes=self.pipelineGraphsBytes["step2a"], run=self.outputRun
         )
         # caps for the queue name. Maybe should reconsider how that's dealt wit
         # post OR3
-        queueName = self.getFreeGatherWorkerQueue('STEP2A')
+        queueName = self.getFreeGatherWorkerQueue("STEP2A")
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchGatherSteps(self, triggeringTask, step, dispatchIncomplete=False):
@@ -453,9 +464,12 @@ class HeadProcessController:
         # gather processing. Completed ids are removed once the gather step
         # has been run.
         allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
-        completeIds = [_id for _id in allIds if
-                       self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
-                       self.getNumExpected(self.instrument)]
+        completeIds = [
+            _id
+            for _id in allIds
+            if self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id)
+            == self.getNumExpected(self.instrument)
+        ]
 
         if len(allIds) == 0:
             return False
@@ -466,12 +480,12 @@ class HeadProcessController:
                 instrument=self.instrument, exposure=_id, universe=self.butler.dimensions
             )
             if isComplete:
-                self.log.info(f'Dispatching {step} with complete inputs for {dataCoord}')
+                self.log.info(f"Dispatching {step} with complete inputs for {dataCoord}")
                 self._dispatch2a(dataCoord)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, _id)
             else:
                 if dispatchIncomplete:
-                    self.log.info(f'Dispatching incomplete {step} for {dataCoord}')
+                    self.log.info(f"Dispatching incomplete {step} for {dataCoord}")
                     self._dispatch2a(dataCoord)
                     # NB do not remove the counter key here, as this will be
                     # redispatched once complete, and should only be removed
@@ -489,20 +503,22 @@ class HeadProcessController:
         doRollup : `bool`
             Should we do another rollup?
         """
-        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, 'step2a')
+        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a")
         if numComplete > self.nNightlyRollups:
-            self.log.info(f"Found {numComplete - self.nNightlyRollups} more completed step2a's - "
-                          " dispatching them for nightly rollup")
+            self.log.info(
+                f"Found {numComplete - self.nNightlyRollups} more completed step2a's - "
+                " dispatching them for nightly rollup"
+            )
             self.nNightlyRollups = numComplete
             self._dispatchNightlyRollup()
             return True
         return False
 
     def _dispatchNightlyRollup(self):
-        dataId = {'instrument': self.instrument, 'skymap': 'ops_rehersal_prep_2k_v1'}
+        dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-        payload = Payload(dataCoord, self.pipelineGraphsBytes['step2a'], run=self.outputRun)
-        queueName = self.getFreeGatherWorkerQueue('NIGHTLYROLLUP')
+        payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
+        queueName = self.getFreeGatherWorkerQueue("NIGHTLYROLLUP")
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self):
@@ -512,24 +528,27 @@ class HeadProcessController:
         individual CCD mosaics and make the full focal plane mosaic and upload
         to S3. At the moment, it will only work when everything is completed.
         """
-        triggeringTasks = ('lsst.ip.isr.isrTask.IsrTask', 'binnedCalexpCreation')
-        dataProducts = ('postISRCCD', 'calexp')
+        triggeringTasks = ("lsst.ip.isr.isrTask.IsrTask", "binnedCalexpCreation")
+        dataProducts = ("postISRCCD", "calexp")
 
         for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
             allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
-            completeIds = [_id for _id in allIds if
-                           self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id) ==
-                           self.getNumExpected(self.instrument)]
+            completeIds = [
+                _id
+                for _id in allIds
+                if self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id)
+                == self.getNumExpected(self.instrument)
+            ]
             if not completeIds:
                 continue
 
-            self.log.info(f'Dispatching {len(completeIds)} complete focal {dataProduct} mosaics for creation')
+            self.log.info(f"Dispatching {len(completeIds)} complete focal {dataProduct} mosaics for creation")
             for expId in completeIds:
-                dataId = {'exposure': expId, 'instrument': self.instrument}
+                dataId = {"exposure": expId, "instrument": self.instrument}
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
-                payload = Payload(dataCoord, bytes(''.encode('utf-8')), dataProduct)
-                queueName = self.getFreeGatherWorkerQueue('MOSAIC')
+                payload = Payload(dataCoord, bytes("".encode("utf-8")), dataProduct)
+                queueName = self.getFreeGatherWorkerQueue("MOSAIC")
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
@@ -555,8 +574,8 @@ class HeadProcessController:
             # re-dispatching for every single new CCD exposure which finishes.
             self.dispatchGatherSteps(
                 triggeringTask=getStep2aTriggerTask(self._basePipeline),
-                step='step2a',
-                dispatchIncomplete=False
+                step="step2a",
+                dispatchIncomplete=False,
             )
 
             self.dispatchFocalPlaneMosaics()
@@ -576,7 +595,7 @@ class HeadProcessController:
 
 class RemoteController:
     def __init__(self, butler, locationConfig):
-        self.log = logging.getLogger('lsst.rubintv.production.processControl.RemoteController')
+        self.log = logging.getLogger("lsst.rubintv.production.processControl.RemoteController")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
 
     def sendCommand(self, method, **kwargs):
@@ -586,7 +605,7 @@ class RemoteController:
         Note that all kwargs must be JSON serializable.
         """
         payload = {method: kwargs}
-        self.redisHelper.redis.lpush('commands', json.dumps(payload))
+        self.redisHelper.redis.lpush("commands", json.dumps(payload))
 
     def executeRemoteCommands(self, parentClass):
         """Execute commands sent from a RemoteController or LOVE.
@@ -655,11 +674,11 @@ class RemoteController:
             """
             getterParts = None
             setterPart = None
-            if '=' in command:
-                getterPart, setterPart = command.split('=')
-                getterParts = getterPart.split('.')
+            if "=" in command:
+                getterPart, setterPart = command.split("=")
+                getterParts = getterPart.split(".")
             else:
-                getterParts = command.split('.')
+                getterParts = command.split(".")
             return getterParts, setterPart
 
         def safeEval(setterPart):
@@ -690,11 +709,11 @@ class RemoteController:
             except (SyntaxError, ValueError):  # anything non-primative will raise like this
                 pass
 
-            if setterPart.split('.')[0] in globals():
+            if setterPart.split(".")[0] in globals():
                 # we're instantiating a known class, so it's safe
                 item = eval(setterPart)
                 return item
-            raise ValueError(f'Will not execute arbitrary code - got {setterPart=}')
+            raise ValueError(f"Will not execute arbitrary code - got {setterPart=}")
 
         # command list is a list of dict: dict with each dict only having a
         # single key, and the value being the kwargs, if any.
@@ -716,8 +735,8 @@ class RemoteController:
 
 
 class CameraControlConfig:
-    """Processing control for which CCDs will be processed.
-    """
+    """Processing control for which CCDs will be processed."""
+
     def __init__(self):
         self.camera = LsstCam.getCamera()
         self._detectorStates = {det: False for det in self.camera}
@@ -741,7 +760,7 @@ class CameraControlConfig:
         isWavefront : `bool`
             `True` is the detector is a wavefront sensor, else `False`.
         """
-        return detector.getPhysicalType() == 'ITL_WF'
+        return detector.getPhysicalType() == "ITL_WF"
 
     @staticmethod
     def isGuider(detector):
@@ -757,7 +776,7 @@ class CameraControlConfig:
         isGuider : `bool`
             `True` is the detector is a guider sensor, else `False`.
         """
-        return detector.getPhysicalType() == 'ITL_G'
+        return detector.getPhysicalType() == "ITL_G"
 
     @staticmethod
     def isImaging(detector):
@@ -773,7 +792,7 @@ class CameraControlConfig:
         isImaging : `bool`
             `True` is the detector is an imaging sensor, else `False`.
         """
-        return detector.getPhysicalType() in ['E2V', 'ITL']
+        return detector.getPhysicalType() in ["E2V", "ITL"]
 
     @staticmethod
     def _getRaftTuple(detector):
@@ -793,7 +812,7 @@ class CameraControlConfig:
         y : `int`
             The raft's row number, zero-indexed.
         """
-        rString = detector.getName().split('_')[0]
+        rString = detector.getName().split("_")[0]
         return int(rString[1]), int(rString[2])
 
     @staticmethod
@@ -814,7 +833,7 @@ class CameraControlConfig:
         y : `int`
             The detectors's row number, zero-indexed within the raft.
         """
-        sString = detector.getName().split('_')[1]
+        sString = detector.getName().split("_")[1]
         return int(sString[1]), int(sString[2])
 
     def _getFullLocationTuple(self, detector):
@@ -829,26 +848,22 @@ class CameraControlConfig:
         return col, row
 
     def setWavefrontOn(self):
-        """Turn all the wavefront sensors on.
-        """
+        """Turn all the wavefront sensors on."""
         for detector in self._wavefronts:
             self._detectorStates[detector] = True
 
     def setWavefrontOff(self):
-        """Turn all the wavefront sensors off.
-        """
+        """Turn all the wavefront sensors off."""
         for detector in self._wavefronts:
             self._detectorStates[detector] = False
 
     def setGuidersOn(self):
-        """Turn all the guider sensors on.
-        """
+        """Turn all the guider sensors on."""
         for detector in self._guiders:
             self._detectorStates[detector] = True
 
     def setGuidersOff(self):
-        """Turn all the wavefront sensors off.
-        """
+        """Turn all the wavefront sensors off."""
         for detector in self._guiders:
             self._detectorStates[detector] = False
 
@@ -882,36 +897,31 @@ class CameraControlConfig:
             self._detectorStates[detector] = bool(((raftX % 2) + (raftY % 2) + phase) % 2)
 
     def setE2Von(self):
-        """Turn all e2v sensors on.
-        """
+        """Turn all e2v sensors on."""
         for detector in self._imaging:
-            if detector.getPhysicalType() == 'E2V':
+            if detector.getPhysicalType() == "E2V":
                 self._detectorStates[detector] = True
 
     def setE2Voff(self):
-        """Turn all e2v sensors off.
-        """
+        """Turn all e2v sensors off."""
         for detector in self._imaging:
-            if detector.getPhysicalType() == 'E2V':
+            if detector.getPhysicalType() == "E2V":
                 self._detectorStates[detector] = False
 
     def setITLon(self):
-        """Turn all ITL sensors on.
-        """
+        """Turn all ITL sensors on."""
         for detector in self._imaging:
-            if detector.getPhysicalType() == 'ITL':
+            if detector.getPhysicalType() == "ITL":
                 self._detectorStates[detector] = True
 
     def setITLoff(self):
-        """Turn all ITL sensors off.
-        """
+        """Turn all ITL sensors off."""
         for detector in self._imaging:
-            if detector.getPhysicalType() == 'ITL':
+            if detector.getPhysicalType() == "ITL":
                 self._detectorStates[detector] = False
 
     def setFullFocalPlaneGuidersOn(self):
-        """Turn all ITL sensors on.
-        """
+        """Turn all ITL sensors on."""
         for detector in self._imaging:
             sensorX, sensorY = self._getSensorTuple(detector)
             if sensorX <= 1 and sensorY <= 1:
@@ -934,20 +944,17 @@ class CameraControlConfig:
             self._detectorStates[detector] = False
 
     def setAllImagingOn(self):
-        """Turn all imaging sensors on.
-        """
+        """Turn all imaging sensors on."""
         for detector in self._imaging:
             self._detectorStates[detector] = True
 
     def setAllImagingOff(self):
-        """Turn all imaging sensors off.
-        """
+        """Turn all imaging sensors off."""
         for detector in self._imaging:
             self._detectorStates[detector] = False
 
     def invertImagingSelection(self):
-        """Invert the selection of the imaging chips only.
-        """
+        """Invert the selection of the imaging chips only."""
         for detector in self._imaging:
             self._detectorStates[detector] = not self._detectorStates[detector]
 
@@ -1008,14 +1015,14 @@ class CameraControlConfig:
                 z.append(state)
 
         return {
-            'detector': detNums,
-            'amplifier': ampNames,
-            'x': np.array(x),
-            'y': np.array(y),
-            'z': np.array(z)
+            "detector": detNums,
+            "amplifier": ampNames,
+            "x": np.array(x),
+            "y": np.array(y),
+            "z": np.array(z),
         }
 
-    def plotConfig(self, saveAs=''):
+    def plotConfig(self, saveAs=""):
         """Plot the current configuration.
 
         Parameters
@@ -1028,7 +1035,7 @@ class CameraControlConfig:
         fig : `matplotlib.figure.Figure`
             The plotted focal plane as a `Figure`.
         """
-        self._focalPlanePlot.level = 'detector'
+        self._focalPlanePlot.level = "detector"
         plot = self._focalPlanePlot.makePlot(self.asPlotData(), self.camera, plotInfo=None)
         if saveAs:
             plot.savefig(saveAs)

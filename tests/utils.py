@@ -23,14 +23,11 @@ import os
 
 from lsst.rubintv.production.utils import expRecordFromJson, safeJsonOpen
 
-__all__ = (
-    "getSampleExpRecord",
-)
+__all__ = ("getSampleExpRecord",)
 
 
 def getSampleExpRecord():
-    """Get a sample exposure record for testing purposes.
-    """
+    """Get a sample exposure record for testing purposes."""
     dirname = os.path.dirname(__file__)
     expRecordFilename = os.path.join(dirname, "data", "sampleExpRecord.json")
     expRecordJson = safeJsonOpen(expRecordFilename)

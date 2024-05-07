@@ -1,4 +1,3 @@
-
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -21,11 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import os
-import matplotlib.pyplot as plt
 import logging
+import os
 
-from ..uploaders import Uploader, MultiUploader
+import matplotlib.pyplot as plt
+
+from ..uploaders import MultiUploader, Uploader
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 from .utils import getCamera, getNumExpectedItems
@@ -57,6 +57,7 @@ class Plotter:
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
+
     def __init__(self, butler, locationConfig, instrument, queueName, doRaise=False):
         self.locationConfig = locationConfig
         self.butler = butler
@@ -106,25 +107,27 @@ class Plotter:
 
         datapath = None
         match dataProduct:
-            case 'postISRCCD':
+            case "postISRCCD":
                 datapath = self.locationConfig.calculatedDataPath
-            case 'calexp':
+            case "calexp":
                 datapath = self.locationConfig.binnedCalexpPath
 
-        plotName = f'{dataProduct}Mosaic_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        plotName = f"{dataProduct}Mosaic_dayObs_{dayObs}_seqNum_{seqNum}.png"
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
-        plotFocalPlaneMosaic(butler=self.butler,
-                             figure=self.fig,
-                             expId=expId,
-                             camera=self.camera,
-                             binSize=self.locationConfig.binning,
-                             dataPath=datapath,
-                             savePlotAs=saveFile,
-                             nExpected=nExpected,
-                             timeout=timeout,
-                             logger=self.log)
-        self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
+        plotFocalPlaneMosaic(
+            butler=self.butler,
+            figure=self.fig,
+            expId=expId,
+            camera=self.camera,
+            binSize=self.locationConfig.binning,
+            dataPath=datapath,
+            savePlotAs=saveFile,
+            nExpected=nExpected,
+            timeout=timeout,
+            logger=self.log,
+        )
+        self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
         return saveFile
 
     @staticmethod
@@ -146,16 +149,16 @@ class Plotter:
         # TODO: remove this whole method once RubinTV v2 uses real instrument
         # names
         match instrument:
-            case 'LSST-TS8':
-                return 'ts8'
-            case 'LSSTComCam':
-                return 'comcam'
-            case 'LSSTComCamSim':
-                return 'comcam_sim'
-            case 'LSSTCam':
-                return 'slac_lsstcam'
+            case "LSST-TS8":
+                return "ts8"
+            case "LSSTComCam":
+                return "comcam"
+            case "LSSTComCamSim":
+                return "comcam_sim"
+            case "LSSTCam":
+                return "slac_lsstcam"
             case _:
-                raise ValueError(f'Unknown instrument {instrument}')
+                raise ValueError(f"Unknown instrument {instrument}")
 
     def callback(self, payload):
         """Method called on each new expRecord as it is found in the repo.
@@ -181,18 +184,18 @@ class Plotter:
         """
         dataId = payload.dataId
         dataProduct = payload.run  # TODO: this really needs improving
-        (expRecord, ) = self.butler.registry.queryDimensionRecords('exposure', dataId=dataId)
-        self.log.info(f'Making plots for {expRecord.dataId}')
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+        self.log.info(f"Making plots for {expRecord.dataId}")
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         instPrefix = self.getInstrumentChannelName(self.instrument)
 
         plotName = None
         match dataProduct:
-            case 'postISRCCD':
-                plotName = 'focal_plane_mosaic'
-            case 'calexp':
-                plotName = 'calexp_mosaic'
+            case "postISRCCD":
+                plotName = "focal_plane_mosaic"
+            case "calexp":
+                plotName = "calexp_mosaic"
 
         focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
         if focalPlaneFile:  # only upload on plot success
@@ -201,7 +204,7 @@ class Plotter:
                 plotName=plotName,
                 dayObs=dayObs,
                 seqNum=seqNum,
-                filename=focalPlaneFile
+                filename=focalPlaneFile,
             )
 
     def run(self):

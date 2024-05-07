@@ -19,19 +19,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import time
 import logging
-from time import sleep
+import time
 from abc import ABC, abstractmethod
+from time import sleep
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
-from .uploaders import Uploader, MultiUploader
+from .uploaders import MultiUploader, Uploader
 from .watchers import FileWatcher, RedisWatcher
 
 __all__ = [
-    'BaseChannel',
-    'BaseButlerChannel',
+    "BaseChannel",
+    "BaseButlerChannel",
 ]
 
 
@@ -50,12 +50,7 @@ class BaseChannel(ABC):
         If ``True``, raise exceptions. If ``False``, log them.
     """
 
-    def __init__(self, *,
-                 locationConfig,
-                 log,
-                 watcher,
-                 doRaise
-                 ):
+    def __init__(self, *, locationConfig, log, watcher, doRaise):
         self.locationConfig = locationConfig
         self.log = log
         self.watcher = watcher
@@ -101,25 +96,28 @@ class BaseButlerChannel(BaseChannel):
         If ``True``, raise exceptions. If ``False``, log them.
     """
 
-    def __init__(self,
-                 *,
-                 locationConfig,
-                 instrument,
-                 butler,
-                 dataProduct,
-                 detectors,
-                 channelName,
-                 watcherType,
-                 doRaise,
-                 queueName=None,  # only needed for redis watcher. Not the neatest but will do for now
-                 ):
-        if watcherType == 'file':
-            watcher = FileWatcher(locationConfig=locationConfig,
-                                  instrument=instrument,
-                                  dataProduct=dataProduct,
-                                  heartbeatChannelName=channelName,
-                                  doRaise=doRaise)
-        elif watcherType == 'redis':
+    def __init__(
+        self,
+        *,
+        locationConfig,
+        instrument,
+        butler,
+        dataProduct,
+        detectors,
+        channelName,
+        watcherType,
+        doRaise,
+        queueName=None,  # only needed for redis watcher. Not the neatest but will do for now
+    ):
+        if watcherType == "file":
+            watcher = FileWatcher(
+                locationConfig=locationConfig,
+                instrument=instrument,
+                dataProduct=dataProduct,
+                heartbeatChannelName=channelName,
+                doRaise=doRaise,
+            )
+        elif watcherType == "redis":
             watcher = RedisWatcher(
                 butler=butler,
                 locationConfig=locationConfig,
@@ -127,11 +125,8 @@ class BaseButlerChannel(BaseChannel):
             )
         else:
             raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
-        log = logging.getLogger(f'lsst.rubintv.production.{channelName}')
-        super().__init__(locationConfig=locationConfig,
-                         log=log,
-                         watcher=watcher,
-                         doRaise=doRaise)
+        log = logging.getLogger(f"lsst.rubintv.production.{channelName}")
+        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
@@ -178,5 +173,5 @@ class BaseButlerChannel(BaseChannel):
                     return gettingButler.get(ref)
             else:
                 sleep(cadence)
-        self.log.warning(f'Waited {timeout}s for {self.dataProduct} for {dataId} to no avail')
+        self.log.warning(f"Waited {timeout}s for {self.dataProduct} for {dataId} to no avail")
         return None

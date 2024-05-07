@@ -21,22 +21,22 @@
 
 
 import datetime
+
 import numpy as np
 
 import lsst.summit.utils.butlerUtils as butlerUtils
-
+from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from lsst.pipe.base import Pipeline
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
-from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 
-from .utils import raiseIf, writeMetadataShard, getShardPath
 from .baseChannels import BaseButlerChannel
+from .payloads import pipelineGraphFromBytes, pipelineGraphToBytes
 from .slac.mosaicing import writeBinnedImage
-from .payloads import pipelineGraphToBytes, pipelineGraphFromBytes
+from .utils import getShardPath, raiseIf, writeMetadataShard
 
 __all__ = [
-    'SingleCorePipelineRunner',
+    "SingleCorePipelineRunner",
 ]
 
 # TODO: post OR3 maybe get this from the pipeline graph?
@@ -47,11 +47,11 @@ __all__ = [
 
 # record when these tasks finish per-quantum so we can trigger off the counts
 TASK_ENDPOINTS_TO_TRACK = (
-    'lsst.ip.isr.isrTask.IsrTask',  # for focal plane mosaics
-    'lsst.pipe.tasks.calibrate.CalibrateTask',  # end of step1 for quickLook pipeline
-    'lsst.pipe.tasks.postprocess.TransformSourceTableTask',  # end of step1 for nightly pipeline
-    'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask',  # end of step2a for quickLook pipeline
-    'lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask',  # end of step2a for nightly
+    "lsst.ip.isr.isrTask.IsrTask",  # for focal plane mosaics
+    "lsst.pipe.tasks.calibrate.CalibrateTask",  # end of step1 for quickLook pipeline
+    "lsst.pipe.tasks.postprocess.TransformSourceTableTask",  # end of step1 for nightly pipeline
+    "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask",  # end of step2a for quickLook pipeline
+    "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step2a for nightly
 )
 
 
@@ -88,25 +88,26 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         awaitsDataProduct,
         queueName,
         *,
-        doRaise=False
+        doRaise=False,
     ):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         # writeable true is required to define visits
-                         butler=butler,
-                         watcherType='redis',
-                         # TODO: DM-43764 this shouldn't be necessary on the
-                         # base class after this ticket, I think.
-                         detectors=None,
-                         dataProduct=awaitsDataProduct,
-                         # TODO: DM-43764 should also be able to fix needing
-                         # channelName when tidying up the base class. Needed
-                         # in some contexts but not all. Maybe default it to
-                         # ''?
-                         channelName='',
-                         queueName=queueName,
-                         doRaise=doRaise,
-                         )
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            # writeable true is required to define visits
+            butler=butler,
+            watcherType="redis",
+            # TODO: DM-43764 this shouldn't be necessary on the
+            # base class after this ticket, I think.
+            detectors=None,
+            dataProduct=awaitsDataProduct,
+            # TODO: DM-43764 should also be able to fix needing
+            # channelName when tidying up the base class. Needed
+            # in some contexts but not all. Maybe default it to
+            # ''?
+            channelName="",
+            queueName=queueName,
+            doRaise=doRaise,
+        )
         self.instrument = instrument
         self.butler = butler
         self.step = step
@@ -128,7 +129,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 else:
                     cachedOnGet.add(name)
 
-        noCopyOnCache = ('bias', 'dark', 'flat', 'defects', 'camera')
+        noCopyOnCache = ("bias", "dark", "flat", "defects", "camera")
         self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
@@ -170,24 +171,24 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         try:
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
-                self.log.warning('Pipeline graph has changed, updating')
+                self.log.warning("Pipeline graph has changed, updating")
                 self.pipelineGraphBytes = pipelineGraphFromBytes(pipelineGraphBytes)
                 # need to remake the caching butler if the pipeline changes
                 self.limitedButler = self.makeLimitedButler(self.butler)
 
-            where = " AND ".join(f'{k}=_{k}' for k in dataId.mapping)
-            bind = {f'_{k}': v for k, v in dataId.mapping.items()}
+            where = " AND ".join(f"{k}=_{k}" for k in dataId.mapping)
+            bind = {f"_{k}": v for k, v in dataId.mapping.items()}
             builder = AllDimensionsQuantumGraphBuilder(
                 self.pipelineGraph,
                 self.butler,
                 where=where,
                 bind=bind,
                 clobber=True,
-                input_collections=self.butler.collections + (self.runCollection, ),
+                input_collections=self.butler.collections + (self.runCollection,),
                 output_run=self.runCollection,
             )
 
-            self.log.info(f'Running pipeline for {dataId}')
+            self.log.info(f"Running pipeline for {dataId}")
 
             # _waitForDataProduct waits for the raw to land in the repo and
             # caches it on the butler, so don't bother to catch the return.
@@ -196,7 +197,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             qg = builder.build(
                 metadata={
-                    "input": self.butler.collections + (self.runCollection, ),
+                    "input": self.butler.collections + (self.runCollection,),
                     "output_run": self.runCollection,
                     "data_query": where,
                     "bind": bind,
@@ -214,8 +215,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
             )
 
-            if 'exposure' in payload.dataId:
-                processingId = payload.dataId['exposure']  # this works for step1 and step2a
+            if "exposure" in payload.dataId:
+                processingId = payload.dataId["exposure"]  # this works for step1 and step2a
             else:
                 # TODO need to work out what to do for non-exposure-containing
                 # dataIds. Do we even need this anymore though, now we have a
@@ -226,7 +227,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 try:
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
-                    self.log.info(f'Starting to process {node.taskDef}')
+                    self.log.info(f"Starting to process {node.taskDef}")
                     quantum = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum, processingId)
                     self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, processingId)
@@ -238,21 +239,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # Don't track all the intermediate tasks, only
                     # points used for triggering other workflows.
                     # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
-                    self.log.exception(f'Task {quantum.taskName} failed: {e}')
+                    self.log.exception(f"Task {quantum.taskName} failed: {e}")
                     self.watcher.redisHelper.reportFinished(
                         self.instrument, quantum.taskName, processingId, failed=True
                     )
 
             # finished looping over nodes
-            if self.step == 'step2a':
-                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, 'step2a')
-            if self.step == 'nightlyRollup':
+            if self.step == "step2a":
+                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
+            if self.step == "nightlyRollup":
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
 
         except Exception as e:
-            if self.step == 'step2a':
-                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, 'step2a', failed=True)
-            if self.step == 'nightlyRollup':
+            if self.step == "step2a":
+                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", failed=True)
+            if self.step == "nightlyRollup":
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
@@ -267,9 +268,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         clean.
         """
         match quantum.taskName:
-            case 'lsst.ip.isr.isrTask.IsrTask':
+            case "lsst.ip.isr.isrTask.IsrTask":
                 self.postProcessIsr(quantum)
-            case 'lsst.pipe.tasks.calibrate.CalibrateTask':
+            case "lsst.pipe.tasks.calibrate.CalibrateTask":
                 # TODO: think about if we could make dicts of some of the
                 # per-CCD quantities like PSF size and 50 sigma source counts
                 # etc. Would probably mean changes to mergeShardsAndUpload in
@@ -277,7 +278,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # dicts.
 
                 self.postProcessCalibrate(quantum, processingId)
-            case 'lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask':
+            case "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask":
                 # ConsolidateVisitSummaryTask regardless of quickLook or NV
                 # pipeline, because this is the quantum that holds the
                 # visitSummary
@@ -286,30 +287,30 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 return
 
     def postProcessIsr(self, quantum):
-        dRef = quantum.outputs['postISRCCD'][0]
+        dRef = quantum.outputs["postISRCCD"][0]
         exp = self.limitedButler.get(dRef)
 
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
             outputPath=self.locationConfig.calculatedDataPath,
-            binSize=self.locationConfig.binning
+            binSize=self.locationConfig.binning,
         )
 
-        self.log.info(f'Wrote binned postISRCCD for {dRef.dataId}')
+        self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
 
     def postProcessCalibrate(self, quantum, processingId):
         # This is very similar indeed to postProcessIsr, but we it's not worth
         # refactoring yet, especially as they will probably diverge in the
         # future.
-        dRef = quantum.outputs['calexp'][0]
+        dRef = quantum.outputs["calexp"][0]
         exp = self.limitedButler.get(dRef)
 
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
             outputPath=self.locationConfig.binnedCalexpPath,
-            binSize=self.locationConfig.binning
+            binSize=self.locationConfig.binning,
         )
         # use a custom "task label" here because step2a on the summit is
         # triggered off the end of calibrate, and so needs to have that key in
@@ -318,32 +319,32 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.watcher.redisHelper.reportFinished(self.instrument, 'binnedCalexpCreation', processingId)
+        self.watcher.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
 
-        self.log.info(f'Wrote binned calexp for {dRef.dataId}')
+        self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
     def postProcessVisitSummary(self, quantum):
-        dRef = quantum.outputs['visitSummary'][0]
+        dRef = quantum.outputs["visitSummary"][0]
         vs = self.limitedButler.get(dRef)
-        (expRecord, ) = self.butler.registry.queryDimensionRecords('exposure', dataId=dRef.dataId)
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
         pixToArcseconds = np.nanmean([row.wcs.getPixelScale().asArcseconds() for row in vs])
         SIGMA2FWHM = np.sqrt(8 * np.log(2))
 
         e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
-        e2 = 2*vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
+        e2 = 2 * vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
 
         outputDict = {
-            'PSF FWHM': np.nanmean(vs["psfSigma"]) * SIGMA2FWHM * pixToArcseconds,
-            'PSF e1': np.nanmean(e1),
-            'PSF e2': np.nanmean(e2),
-            'Sky mean': np.nanmean(vs["skyBg"]),
-            'Sky RMS': np.nanmean(vs["skyNoise"]),
-            'Variance plane mean': np.nanmean(vs["meanVar"]),
-            'PSF star count': np.nanmean(vs["nPsfStar"]),
-            'Astrometric bias': np.nanmean(vs["astromOffsetMean"]),
-            'Astrometric scatter': np.nanmean(vs["astromOffsetStd"]),
-            'Zeropoint': np.nanmean(vs["zeroPoint"]),
+            "PSF FWHM": np.nanmean(vs["psfSigma"]) * SIGMA2FWHM * pixToArcseconds,
+            "PSF e1": np.nanmean(e1),
+            "PSF e2": np.nanmean(e2),
+            "Sky mean": np.nanmean(vs["skyBg"]),
+            "Sky RMS": np.nanmean(vs["skyNoise"]),
+            "Variance plane mean": np.nanmean(vs["meanVar"]),
+            "PSF star count": np.nanmean(vs["nPsfStar"]),
+            "Astrometric bias": np.nanmean(vs["astromOffsetMean"]),
+            "Astrometric scatter": np.nanmean(vs["astromOffsetStd"]),
+            "Zeropoint": np.nanmean(vs["zeroPoint"]),
         }
 
         # flag all these as measured items to color the cell
@@ -373,8 +374,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         self.butler.registry.registerRun(self.outputRunName)
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f'Overwriting existing {datasetType} for {visitDataId}')
+            self.log.warning(f"Overwriting existing {datasetType} for {visitDataId}")
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f'Put {datasetType} for {visitDataId}')
+        self.log.info(f"Put {datasetType} for {visitDataId}")

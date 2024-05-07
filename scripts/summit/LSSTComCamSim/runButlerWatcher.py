@@ -1,4 +1,3 @@
-
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -21,22 +20,20 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import writeDimensionUniverseFile
+
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production import ButlerWatcher
+from lsst.rubintv.production.utils import LocationConfig, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running ComCam butler watcher at {location}...')
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+print(f"Running ComCam butler watcher at {location}...")
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all'])
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 writeDimensionUniverseFile(butler, locationConfig)
-butlerWatcher = ButlerWatcher(butler=butler,
-                              locationConfig=locationConfig,
-                              instrument='LSSTComCamSim',
-                              dataProducts='raw',
-                              doRaise=True)
+butlerWatcher = ButlerWatcher(
+    butler=butler, locationConfig=locationConfig, instrument="LSSTComCamSim", dataProducts="raw", doRaise=True
+)
 butlerWatcher.run()
