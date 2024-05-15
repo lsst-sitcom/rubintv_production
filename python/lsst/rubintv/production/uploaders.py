@@ -27,6 +27,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import TypedDict
 
@@ -34,7 +35,7 @@ from boto3.exceptions import S3TransferFailedError, S3UploadFailedError
 from boto3.resources.base import ServiceResource
 from boto3.session import Session as S3_session
 from botocore.config import Config
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 from typing_extensions import Optional, override
 
