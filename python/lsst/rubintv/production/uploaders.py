@@ -24,6 +24,7 @@ import logging
 import os
 import tempfile
 import time
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -34,11 +35,6 @@ from boto3.resources.base import ServiceResource
 from boto3.session import Session as S3_session
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
-import tempfile
-from botocore.exceptions import ClientError
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 from typing_extensions import Optional, override
 
@@ -283,7 +279,7 @@ class MultiUploader:
 
     def __init__(self):
         # TODO: thread the remote upload
-        self.localUploader = createLocalS3UploaderForSite()
+        self.localUploader = createS3UploaderForSite(UploaderType.LOCAL)
         localOk = self.localUploader.checkAccess()
         if not localOk:
             raise RuntimeError("Failed to connect to local S3 bucket")
@@ -311,45 +307,38 @@ class MultiUploader:
     def hasRemote(self):
         return self.remoteUploader is not None
 
-    def uploadPerSeqNumPlot(self, *args, **kwargs):
-        self.localUploader.uploadPerSeqNumPlot(*args, **kwargs)
-        self.log.info("uploaded to local")
-        self.log.info("uploaded to local")
+    def _call_method(self, uploader, name, *args, **kwargs):
+        # Check conditions for calling the method in local and remote uploader
+        if not hasattr(uploader, name):
+            raise AttributeError(
+                f"'{type(uploader).__name__}' object has no attribute '{name}'"
+            )
+        method = getattr(uploader, name)
+        if not callable(method):
+            raise AttributeError(
+                f"'{type(uploader).__name__}' object is not method '{name}'"
+            )
+        method(*args, **kwargs)
 
-        if self.hasRemote:
-            self.remoteUploader.uploadPerSeqNumPlot(*args, **kwargs)
-            self.log.info("uploaded to remote")
-            self.log.info("uploaded to remote")
+    def __getattr__(self, name):
+        # This method is called when an attribute is not found
+        # (i.e. it is not an instance attribute nor is
+        # it found in the class tree for self).
+        # In this case, we'll try to call the method on the
+        # local and remote uploader.
 
-    def uploadNightReportData(self, *args, **kwargs):
-        self.localUploader.uploadNightReportData(*args, **kwargs)
+        if name.startswith("_"):
+            raise AttributeError(f"Attempted to access private method '{name}'")
 
-        if self.hasRemote:
-            self.remoteUploader.uploadNightReportData(*args, **kwargs)
+        def wrapper(*args, **kwargs):
+            self._call_method(self.localUploader, name, *args, **kwargs)
+            self.log.info("uploaded to local")
 
-    def upload(self, *args, **kwargs):
-        self.localUploader.upload(*args, **kwargs)
+            if self.hasRemote:
+                self._call_method(self.remoteUploader, name, *args, **kwargs)
+                self.log.info("uploaded to remote")
 
-        if self.hasRemote:
-            self.remoteUploader.upload(*args, **kwargs)
-
-    def uploadMetdata(self, *args, **kwargs):
-        self.localUploader.uploadMetdata(*args, **kwargs)
-
-        if self.hasRemote:
-            self.remoteUploader.uploadMetdata(*args, **kwargs)
-
-    def uploadMovie(self, *args, **kwargs):
-        self.localUploader.uploadMovie(*args, **kwargs)
-
-        if self.hasRemote:
-            self.remoteUploader.uploadMovie(*args, **kwargs)
-
-    def uploadAllSkyStill(self, *args, **kwargs):
-        self.localUploader.uploadAllSkyStill(*args, **kwargs)
-
-        if self.hasRemote:
-            self.remoteUploader.uploadAllSkyStill(*args, **kwargs)
+        return wrapper
 
 
 class S3Uploader(UploaderInterface):
@@ -361,7 +350,6 @@ class S3Uploader(UploaderInterface):
     s3Bucket : `ServiceResource`
         S3 Bucket to upload files to.
     """
-
 
     def __init__(self, s3Bucket: ServiceResource) -> None:
         super().__init__()
@@ -429,9 +417,6 @@ class S3Uploader(UploaderInterface):
     def _createBucketConnection(
         endPoint: str, bucketInfo: BucketInformation, proxyUrl: str = ""
     ) -> ServiceResource:
-    def _createBucketConnection(
-        endPoint: str, bucketInfo: BucketInformation, proxyUrl: str = ""
-    ) -> ServiceResource:
         """Create bucket connection used to upload files.
 
         Parameters
@@ -444,7 +429,7 @@ class S3Uploader(UploaderInterface):
         httpsProxy : `str`, optional
             URL of an https proxy if needed. Form should be: host:port.
 
-        Raises
+         Raises
         ------
         ConnectionError
             When connection could not be stablished with S3 server.
@@ -523,7 +508,9 @@ class S3Uploader(UploaderInterface):
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
-            self._log.exception(f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}")
+            self._log.exception(
+                f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}"
+            )
             raise e
 
         return uploadAs
@@ -619,6 +606,7 @@ class S3Uploader(UploaderInterface):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
+        # TODO: DM-44330 fix use in nightReportPlotBase
         # this is called from createAndUpload() in nightReportPlotBase.py so if
         # you change the args here (like renaming the channel to be the
         # instrument) then make sure to catch it everywhere
@@ -627,12 +615,10 @@ class S3Uploader(UploaderInterface):
 
         if plotGroup is None:
             plotGroup = "default"
-            plotGroup = "default"
 
         basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
 
-        if basename == "md.json":  # it's not a plot, so special case this one case
         if basename == "md.json":  # it's not a plot, so special case this one case
             uploadAs = (
                 f"{instrument}/{dayObsStr}/night_report/"
@@ -654,7 +640,9 @@ class S3Uploader(UploaderInterface):
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
-            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
+            self._log.exception(
+                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
+            )
             raise ex
 
         return uploadAs
@@ -679,7 +667,9 @@ class S3Uploader(UploaderInterface):
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
         except ClientError as e:
             logging.error(e)
-            raise UploadError(f"Failed uploading file {sourceFilename} as Key: {destinationFilename}")
+            raise UploadError(
+                f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
+            )
         return destinationFilename
 
     def uploadMovie(
@@ -719,7 +709,6 @@ class S3Uploader(UploaderInterface):
         ext = os.path.splitext(filename)[1]  # contains the period
 
         if seqNum is None:
-            seqNum = "final"
             seqNum = "final"
         else:
             seqNum = f"{seqNum:06}"
@@ -870,11 +859,15 @@ class Uploader:
 
         # heartbeat retry strategy
         modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+        modified_retry = modified_retry.with_delay(
+            initial=0.5, multiplier=1.2, maximum=2
+        )
 
         try:
             blob.upload_from_string(heartbeatJson, retry=modified_retry)
-            self.log.debug(f"Uploaded heartbeat to channel {channel} with datetime {currTime}")
+            self.log.debug(
+                f"Uploaded heartbeat to channel {channel} with datetime {currTime}"
+            )
             return True
         except Exception:
             return False
@@ -934,12 +927,16 @@ class Uploader:
         timeout = 1000 if isLargeFile else 60  # default is 60s
         deadline = timeout if isLargeFile else 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+        modified_retry = modified_retry.with_delay(
+            initial=0.5, multiplier=1.2, maximum=2
+        )
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception:
-            self.log.exception(f"Failed to upload {filename} as {uploadAs} to {channel}")
+            self.log.exception(
+                f"Failed to upload {filename} as {uploadAs} to {channel}"
+            )
             return None
 
         return blob
@@ -981,7 +978,9 @@ class Uploader:
         # the plot filenames have the channel name saved into them in the form
         # path/channelName-plotName.png, so remove the channel name and dash
         basename = basename.replace(channel + "-", "")
-        uploadAs = f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
+        uploadAs = (
+            f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
+        )
 
         blob = self.bucket.blob(uploadAs)
         blob.cache_control = "no-store"
@@ -991,12 +990,16 @@ class Uploader:
         timeout = 60  # default is 60s
         deadline = 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+        modified_retry = modified_retry.with_delay(
+            initial=0.5, multiplier=1.2, maximum=2
+        )
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
-            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
+            self.log.warning(
+                f"Failed to upload {uploadAs} to {channel} because {repr(e)}"
+            )
             return None
 
         return blob
@@ -1050,12 +1053,18 @@ class Uploader:
         timeout = 1000 if isLargeFile else 60  # default is 60s
         deadline = timeout if isLargeFile else 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
+        modified_retry = modified_retry.with_delay(
+            initial=0.5, multiplier=1.2, maximum=2
+        )
         try:
-            blob.upload_from_filename(sourceFilename, retry=modified_retry, timeout=timeout)
+            blob.upload_from_filename(
+                sourceFilename, retry=modified_retry, timeout=timeout
+            )
             self.log.info(f"Uploaded {sourceFilename} to {finalName}")
         except Exception as e:
-            self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
+            self.log.warning(
+                f"Failed to upload {finalName} to {channel} because {repr(e)}"
+            )
             return None
 
         return blob
@@ -1105,10 +1114,14 @@ class Heartbeater:
             Upload with a different flatline period. Use before starting long
             running jobs.
         """
-        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
+        forecast = (
+            self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
+        )
 
         now = time.time()
         elapsed = now - self.lastUpload
         if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
-            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
+            if self.uploader.uploadHeartbeat(
+                self.handle, forecast
+            ):  # returns True on successful upload
                 self.lastUpload = now  # only reset this if the upload was successful
