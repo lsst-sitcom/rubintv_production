@@ -22,7 +22,7 @@
 import sys
 
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -41,5 +41,6 @@ ts8MetadataServer = TimedMetadataServer(
     metadataDirectory=metadataDirectory,
     shardsDirectory=shardsDirectory,
     channelName=channelName,
+    doRaise=getDoRaise(),
 )
 ts8MetadataServer.run()

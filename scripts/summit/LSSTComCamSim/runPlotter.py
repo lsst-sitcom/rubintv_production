@@ -23,7 +23,7 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.slac.newPlotting import Plotter
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -39,7 +39,7 @@ plotter = Plotter(
     locationConfig=locationConfig,
     instrument="LSSTComCamSim",
     queueName=queueName,
-    doRaise=True,
+    doRaise=getDoRaise(),
 )
 
 plotter.run()

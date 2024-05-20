@@ -51,6 +51,7 @@ __all__ = [
     "getSiteConfig",
     "checkRubinTvExternalPackages",
     "raiseIf",
+    "getDoRaise",
     "isDayObsContiguous",
     "writeMetadataShard",
     "writeDataShard",
@@ -625,6 +626,21 @@ def raiseIf(doRaise, error, logger, msg=""):
         raise RuntimeError(msg) from error
     else:
         logger.exception(msg)
+
+
+def getDoRaise():
+    """Get the value of ``RAPID_ANALYSIS_DO_RAISE`` as a bool from the env.
+
+    Defaults to False if not present or if the value cannot be interpreted as a
+    boolean.
+
+    Returns
+    -------
+    do_raise : `bool`
+        Whether to raise exceptions or not.
+    """
+    doRaiseString = os.getenv("RAPID_ANALYSIS_DO_RAISE", "False").strip().lower()
+    return doRaiseString in ["true", "1", "yes"]
 
 
 def isDayObsContiguous(dayObs, otherDayObs):

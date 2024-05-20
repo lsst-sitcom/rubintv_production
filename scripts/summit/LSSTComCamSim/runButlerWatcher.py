@@ -23,7 +23,7 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import LocationConfig, writeDimensionUniverseFile
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -34,6 +34,10 @@ locationConfig = LocationConfig(location)
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 writeDimensionUniverseFile(butler, locationConfig)
 butlerWatcher = ButlerWatcher(
-    butler=butler, locationConfig=locationConfig, instrument="LSSTComCamSim", dataProducts="raw", doRaise=True
+    butler=butler,
+    locationConfig=locationConfig,
+    instrument="LSSTComCamSim",
+    dataProducts="raw",
+    doRaise=getDoRaise(),
 )
 butlerWatcher.run()

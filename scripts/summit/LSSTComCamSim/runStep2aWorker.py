@@ -24,7 +24,7 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
@@ -66,7 +66,7 @@ step2aRunner = SingleCorePipelineRunner(
     pipeline=locationConfig.sfmPipelineFile,
     step="step2a",
     awaitsDataProduct=None,
-    doRaise=True,
+    doRaise=getDoRaise(),
     queueName=queueName,
 )
 step2aRunner.run()
