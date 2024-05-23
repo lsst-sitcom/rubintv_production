@@ -171,8 +171,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
                 self.log.warning('Pipeline graph has changed, updating')
                 with io.BytesIO(pipelineGraphBytes) as f:
+                    # XXX change this to use the util if not already like that
                     self.pipelineGraph = PipelineGraph._read_stream(f)  # to be public soon
                     self.pipelineGraphBytes = pipelineGraphBytes
+                    # XXX why is this line here?
                     self.limitedButler = self.makeLimitedButler(self.butler)
 
             where = " AND ".join(f'{k}=_{k}' for k in dataId.mapping)

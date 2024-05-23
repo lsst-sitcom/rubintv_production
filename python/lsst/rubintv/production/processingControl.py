@@ -164,8 +164,7 @@ def getVisitId(butler, expRecord):
         visitDataId = visitDataIds[0]
         return visitDataId['visit']
     else:
-        # XXX fix self here
-        log = logging.getLogger('lsst.rubintv.production.processControl.HeadProcessController')
+        log = logging.getLogger('lsst.rubintv.production.processControl.getVisitId')
         log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
                     " define-visits?")
         return None
@@ -178,7 +177,7 @@ def getHeadNodeName(instrument):
 def getStep2aTriggerTask(pipelineFile):
     """Get the last task in a step1 which runs, to know when to trigger step2a.
 
-    This is the task which is run when a decetor-exposure is complete, and
+    This is the task which is run when a detector-exposure is complete, and
     which therefore means it's time to trigger the step2a processing if all
     quanta are complete.
 
@@ -365,14 +364,12 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        # XXX is this what we should use for all tasks, or should this be SFM
-        # only? Probably for now SFM only, and hardcode the pipeline here
         match self.instrument:
             case 'LATISS':
                 detectorIds = [0]
             case instrument if instrument in ('LSSTComCam', 'LSSTComCamSim'):
                 detectorIds = range(9)  # at least for OR3, always process all ComCam chips
-            case 'LSSTCom':
+            case 'LSSTCam':
                 detectorIds = self.focalPlaneControl.getEnabledDetIds()
             case _:
                 raise ValueError(f'Unknown instrument {self.instrument=}')
@@ -442,13 +439,41 @@ class HeadProcessController:
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchGatherSteps(self, triggeringTask, step, dispatchIncomplete=False):
-        """Dispatch any gather steps as needed
+        """Dispatch any gather steps as needed.
+
+        Parameters
+        ----------
+        triggeringTask : `str`
+            The triggering task.
+        # XXX This can maybe be removed entirely by just using the step1
+        complete counter (just need to add that counting to redis). Only issue
+        here would then be that this wouldn't be able to be used for
+        gather/re-gather for branch-tasks, like focal plane mosaics and any
+        others like that, but maybe that's fine - focal plane mosaics already
+        have their own dispatch function anyway.
+
+        step : `str`
+            The step to dispatch.
+        # XXX currently only used for logging - just remove this?
+
+        dispatchIncomplete : `bool`
+            Whether to dispatch gather tasks when the detector exposures are
+            not yet all completed
 
         Returns
         -------
-        # XXX this is currently unused, but hopefully will be later
-        dispatchedWork : bool
+        workWasDispatched : `bool`
             Was anything sent out?
+
+        Notes
+        -----
+        * The return value here is currently unused, but hopefully will be
+          later.
+        * The default value for ``dispatchIncomplete`` should probably change
+          to ``True`` once we're actually setup to handle this better, but that
+          will also require some hold-off logic so that we don't immediately
+          start processing things which only have a single detector-exposure's
+          worth of data.
         """
         # allIds is all the incomplete or just-completed exp/visit ids for
         # gather processing. Completed ids are removed once the gather step
@@ -719,16 +744,6 @@ class RemoteController:
                 return  # do not apply further commands as soon as one fails
 
 
-class PodProcessController:
-    # XXX remove this completely? This is just the redisHelper now, right?
-    def __init__(self, detectors):
-        self.redisHelper = RedisHelper()
-
-    def isHeadNodeRuning(self, instrument):
-        isRunning = self.redisHelper.redis.get(f'butlerWatcher-{instrument}')
-        return bool(isRunning)  # 0 and None both bool() to False
-
-
 class CameraControlConfig:
     """Processing control for which CCDs will be processed.
     """
@@ -740,7 +755,7 @@ class CameraControlConfig:
         self._guiders = [det for det in self._detectors if self.isGuider(det)]
         self._wavefronts = [det for det in self._detectors if self.isWavefront(det)]
         self.plot = FocalPlaneGeometryPlot()
-        # XXX would be nice if we could improve the spurious/nonsense plot info
+        # would be nice if we could improve the spurious/nonsense plot info
         self.plotInfo = {"plotName": "test plot", "run": "no run",
                          "tableName": None, "bands": []}
 

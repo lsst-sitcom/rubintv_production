@@ -166,8 +166,8 @@ class RedisHelper:
                 # XXX put this IP in the locationConfig instead?
                 return redis.Redis(host='172.24.5.216', password=getRedisSecret())
             case 'usdf-k8s':
-                password = os.getenv('REDIS_PASSWORD')
                 host = os.getenv('REDIS_HOST')
+                password = os.getenv('REDIS_PASSWORD')
                 return redis.Redis(host=host, password=password)
             case 'summit':
                 host = os.getenv('REDIS_HOST')
@@ -518,7 +518,8 @@ class RedisHelper:
 
         Parameters
         ----------
-        XXX
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process the detector images for.
         """
         instrument = expRecord.instrument
         queueName = getNewDataQueueName(instrument)

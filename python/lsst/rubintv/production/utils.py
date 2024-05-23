@@ -199,7 +199,18 @@ class FakeExposureRecord:
 def expRecordFromJson(expRecordJson, locationConfig):
     """Deserialize a DimensionRecord from a JSON string.
 
-    XXX Docs
+
+    Parameters
+    ----------
+    expRecordJson : `str`
+        The JSON for the exposure record to deserialize.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The LocationConfig, used to get the current butler dimenion universe.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record.
     """
     if not expRecordJson:
         return None
@@ -207,6 +218,49 @@ def expRecordFromJson(expRecordJson, locationConfig):
         expRecordJson,
         universe=getDimensionUniverse(locationConfig)
     )
+
+
+def getShardDir(instrument, locationConfig):
+    """Get the directory to use for writing shards to, given the instrument.
+
+    TODO: Think about whether to make this a method on LocationConfig. Not
+    doing this right now because there is a lot of tech debt there, and the
+    whole thing might get removed/refactored.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location config.
+
+    Returns
+    -------
+    shardDir : `str`
+        The shard directory path.
+    """
+    match instrument:
+        case 'LATISS':
+            return locationConfig.auxTelMetadataShardPath
+        case 'LSSTComCam':
+            return locationConfig.comCamMetadataShardPath
+        case 'LSSTComCamSim':
+            return locationConfig.comCamSimMetadataShardPath
+        # case 'LSSTCam':
+        #     return locationConfig.
+        case 'ts8':
+            return locationConfig.ts8MetadataShardPath
+        case 'bot':
+            return locationConfig.botMetadataShardPath
+        case 'TMA':
+            return locationConfig.tmaMetadataShardPath
+        case 'startracker':
+            # XXX need to think about the three cameras and how we're going to
+            # do that. Is it finally time to split them off and make it three
+            # real instruments?
+            return locationConfig.starTrackerMetadataShardPath
+        case _:
+            raise ValueError(f"Can't get shard dir for unknown instrument: {instrument}")
 
 
 def expRecordToUploadFilename(channel, expRecord, extension='.png', zeroPad=False):
@@ -321,7 +375,7 @@ class LocationConfig:
         self._checkFile(file)
         return file
 
-    def butlerPath(self):
+    def butlerPath(self):  # XXX why isn't this cached?
         file = self._config['butlerPath']
         self._checkFile(file)
         return file
@@ -345,7 +399,7 @@ class LocationConfig:
         return directory
 
     @cached_property
-    def metadataPath(self):
+    def metadataPath(self):  # XXX is this actually used anywhere? It's too vague!
         directory = self._config['metadataPath']
         self._checkDir(directory)
         return directory
@@ -357,7 +411,7 @@ class LocationConfig:
         return directory
 
     @cached_property
-    def metadataShardPath(self):
+    def metadataShardPath(self):  # XXX is this actually used anywhere? It's too vague!
         directory = self._config['metadataShardPath']
         self._checkDir(directory)
         return directory
