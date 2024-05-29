@@ -234,7 +234,7 @@ class UploaderInterface(ABC):
         ----------
         channel : `str`
             The RubinTV channel to upload to.
-        observation_day : `int`
+        dayObs : `int`
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
@@ -308,7 +308,7 @@ class MultiUploader:
     def hasRemote(self):
         return self.remoteUploader is not None
 
-    def _call_method(self, uploader, name, *args, **kwargs):
+    def _callMethod(self, uploader, name, *args, **kwargs):
         # Check conditions for calling the method in local and remote uploader
         if not hasattr(uploader, name):
             raise AttributeError(
@@ -332,11 +332,11 @@ class MultiUploader:
             raise AttributeError(f"Attempted to access private method '{name}'")
 
         def wrapper(*args, **kwargs):
-            self._call_method(self.localUploader, name, *args, **kwargs)
+            self._callMethod(self.localUploader, name, *args, **kwargs)
             self.log.info("uploaded to local")
 
             if self.hasRemote:
-                self._call_method(self.remoteUploader, name, *args, **kwargs)
+                self._callMethod(self.remoteUploader, name, *args, **kwargs)
                 self.log.info("uploaded to remote")
 
         return wrapper
