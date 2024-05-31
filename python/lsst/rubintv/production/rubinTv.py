@@ -120,6 +120,7 @@ MD_NAMES_MAP = {
     "day_obs": "dayObs",
     "seq_num": "seqNum",
     "group_id": "Group id",
+    "group": "Group",
     "target_name": "Target",
     "science_program": "Science program",
     "tracking_ra": "RA",
@@ -134,6 +135,7 @@ MD_NAMES_MAP = {
     "focus_z": "Focus-Z",
     "seeing": "DIMM Seeing",
     "altitude": "Altitude",
+    "can_see_sky": "Can see the sky?",
 }
 
 
