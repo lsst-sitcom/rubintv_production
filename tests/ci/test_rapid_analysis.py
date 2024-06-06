@@ -101,7 +101,7 @@ YAML_FILES_TO_CHECK = [os.path.join(package_dir, file) for file in YAML_FILES_TO
 # --------------- Wrapper Function --------------- #
 
 
-def exec_script(test_script: TestScript):
+def exec_script(test_script: TestScript, output_queue):
     """
     Function to run the script in a separate process and capture its output.
     """
@@ -137,8 +137,7 @@ def exec_script(test_script: TestScript):
             exit_code = e.code if e.code is not None else 0
 
     # Collect outputs
-    exit_codes[test_script.path] = exit_code
-    outputs[test_script.path] = (f_stdout.getvalue(), f_stderr.getvalue())
+    output_queue.put((test_script.path, exit_code, f_stdout.getvalue(), f_stderr.getvalue()))
 
 
 def clear_redis_database(host, port, password):
@@ -307,21 +306,26 @@ def terminate_redis():
 def run_test_scripts(scripts, timeout):
     start_time = time.time()
     processes = {}
+    output_queue = multiprocessing.Queue()
+
     for script in scripts:
-        p = multiprocessing.Process(target=exec_script, args=(script,))
+        p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
         p.start()
         processes[p] = script.path
         print(f"Started {script.path} with PID {p.pid}")
 
     while True:
-        for p, scriptpath in processes.items():
+        for p in list(processes.keys()):
             if not p.is_alive():
                 p.join()  # Clean up the finished process
-                exitcode = p.exitcode
-                # XXX add "as expected below"
-                print(f"Script {scriptpath} exited with exit code {exitcode}")
                 processes.pop(p)
-                break
+
+        # Collect outputs from the queue
+        while not output_queue.empty():
+            script_path, exit_code, stdout, stderr = output_queue.get()
+            exit_codes[script_path] = exit_code
+            outputs[script_path] = (stdout, stderr)
+            print(f"Collected output for {script_path}")
 
         if time.time() - start_time > timeout:
             print("Timeout reached. Terminating remaining processes.")
@@ -330,7 +334,9 @@ def run_test_scripts(scripts, timeout):
                 p.join()
                 print(f"Process {p.pid} terminated.")
                 exit_codes[scriptpath] = "timeout"
+                outputs[scriptpath] = ("", "Process terminated due to timeout.")
             break
+
         if not processes:
             break
         time.sleep(1)
