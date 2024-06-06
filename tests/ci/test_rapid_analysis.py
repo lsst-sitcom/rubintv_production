@@ -44,7 +44,7 @@ REDIS_PROCESS = None
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = True  # XXX Turn on before merging
+DO_RUN_META_TESTS = False  # XXX Turn on before merging
 DO_CHECK_YAML_FILES = False  # XXX Turn on before merging
 
 REDIS_IP = "127.0.0.1"
@@ -233,17 +233,19 @@ def check_redis_final_contents():
 
 
 def print_final_result(fails, passes):
+    n_fails = len(fails)
+    n_passes = len(passes)
     terminal_width = os.get_terminal_size().columns
 
     # Determine the colors and text to display
-    if fails > 0:
+    if n_fails > 0:
         pass_color = "\033[92m"
         fail_color = "\033[91m"
-        text = f"{pass_color}{passes} passing tests\033[0m, {fail_color}{fails} failing tests\033[0m"
+        text = f"{pass_color}{n_passes} passing tests\033[0m, {fail_color}{n_fails} failing tests\033[0m"
         padding_color = fail_color
     else:
         pass_color = fail_color = "\033[92m"
-        text = f"{pass_color}{passes} passing tests, {fails} failing tests\033[0m"
+        text = f"{pass_color}{n_passes} passing tests, {n_fails} failing tests\033[0m"
         padding_color = pass_color
 
     # Calculate the padding
@@ -251,6 +253,10 @@ def print_final_result(fails, passes):
     padding = f"{padding_color}{'-' * padding_length}\033[0m"
 
     # Print the centered text with colored padding
+    for fail in fails:
+        print(f"{fail} failed ❌")
+    for testPass in passes:
+        print(f"{testPass} passed ✅")
     print(f"{padding}{text}{padding}")
 
 
@@ -362,13 +368,13 @@ def check_meta_test_results():
 
 
 def main():
-    FAILCOUNTER = 0
-    PASSCOUNTER = 0
+    FAILS = []
+    PASSES = []
 
     if DO_CHECK_YAML_FILES:
         yaml_files_ok = check_yaml_keys()
         if not yaml_files_ok:  # not an instant fail
-            FAILCOUNTER += 1
+            FAILS.append("YAML check")
 
     for test_script in itertools.chain(TEST_SCRIPTS, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED):
         if not os.path.isfile(test_script.path):
@@ -389,16 +395,16 @@ def main():
     logger.info("Meta-tests passed, running real tests now...\n")
     run_test_scripts(TEST_SCRIPTS, TEST_DURATION)
 
-    # Report results and perform assertions
-    logger.info("\nTest Results:")
     # Check there's a result for all scripts
     expected = [script.path for script in TEST_SCRIPTS]
     if DO_RUN_META_TESTS:
         expected += [s.path for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
-
     if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
-        raise RuntimeError("Not all test scripts have been run somehow - this is drastically wrong")
+        raise RuntimeError(
+            "Not all test scripts have had their results collected somehow - this is drastically wrong!"
+        )
 
+    logger.info("\nTest Results:")
     for script, result in exit_codes.items():
         if script not in [s.path for s in TEST_SCRIPTS]:  # We've already done these
             continue
@@ -406,11 +412,11 @@ def main():
         stdout, stderr = outputs[script]
         if result == "timeout":
             logger.info(f"{script}: Passed (was still running at end of testing period)")
-            PASSCOUNTER += 1
+            PASSES.append(script)
             continue
         elif result == 0:
             logger.info(f"{script}: Passed with exit code zero")
-            PASSCOUNTER += 1
+            PASSES.append(script)
             continue
         else:
             logger.error(f"{script}: Failed with exit code {result}. Stdout and stderr below:")
@@ -418,17 +424,15 @@ def main():
             print(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
             print(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
             print("\n\n")  # put a nice gap between each failing scripts's output
-            FAILCOUNTER += 1
+            FAILS.append(script)
 
     if check_redis_final_contents():
-        logger.info("Pass - redis contents are as expected")
-        PASSCOUNTER += 1
+        PASSES.append("Redis content check")
     else:
-        logger.error("FAIL - redis contents are not as expected")
-        FAILCOUNTER += 1
+        FAILS.append("Redis content check")
 
-    print_final_result(FAILCOUNTER, PASSCOUNTER)
-    if FAILCOUNTER > 0:
+    print_final_result(FAILS, PASSES)
+    if len(FAILS) > 0:
         sys.exit(1)
 
 
