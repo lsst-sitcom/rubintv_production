@@ -304,13 +304,10 @@ def terminate_redis():
         logger.info("Terminated Redis process")
 
 
-def run_meta_tests():
-    logger.info("Running meta-tests to test the CI suite...")
-    allMetaScripts = META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED
-
+def run_test_scripts(scripts, timeout):
     start_time = time.time()
     processes = {}
-    for script in allMetaScripts:
+    for script in scripts:
         p = multiprocessing.Process(target=exec_script, args=(script,))
         p.start()
         processes[p] = script.path
@@ -326,7 +323,7 @@ def run_meta_tests():
                 processes.pop(p)
                 break
 
-        if time.time() - start_time > META_TEST_DURATION:
+        if time.time() - start_time > timeout:
             print("Timeout reached. Terminating remaining processes.")
             for p, scriptpath in processes.items():
                 p.terminate()
@@ -338,6 +335,8 @@ def run_meta_tests():
             break
         time.sleep(1)
 
+
+def check_meta_test_results():
     # Don't count these towards passes and fail, just raise if these aren't
     # as expected, as it means the test suite is fundamentally broken
     passed = True
@@ -356,40 +355,6 @@ def run_meta_tests():
         raise RuntimeError("Meta-tests did not pass as expected - fix the test suite and try again.")
 
 
-def run_rapid_analysis_tests():
-    logger.info("Running real Rapid Analysis scripts...")
-
-    start_time = time.time()
-    processes = {}
-    for script in TEST_SCRIPTS:
-        p = multiprocessing.Process(target=exec_script, args=(script,))
-        p.start()
-        processes[p] = script.path
-        print(f"Started {script.path} with PID {p.pid}")
-
-    while True:
-        for p, scriptpath in processes.items():
-            if not p.is_alive():
-                p.join()  # Clean up the finished process
-                exitcode = p.exitcode
-                # XXX add "as expected below"
-                print(f"Script {scriptpath} exited with exit code {exitcode}")
-                processes.pop(p)
-                break
-
-        if time.time() - start_time > TEST_DURATION:
-            print("Timeout reached. Terminating remaining processes.")
-            for p, scriptpath in processes.items():
-                p.terminate()
-                p.join()
-                print(f"Process {p.pid} terminated.")
-                exit_codes[scriptpath] = "timeout"
-            break
-        if not processes:
-            break
-        time.sleep(1)
-
-
 def main():
     FAILCOUNTER = 0
     PASSCOUNTER = 0
@@ -406,7 +371,9 @@ def main():
     # these exit if any fail because that means everything is broken so there's
     # no point in continuing
     if DO_RUN_META_TESTS:
-        run_meta_tests()
+        logger.info("Running meta-tests to test the CI suite...")
+        run_test_scripts(META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION)
+        check_meta_test_results()
 
     # Run setup script to start and check redis
     atexit.register(terminate_redis)
@@ -414,18 +381,17 @@ def main():
 
     # Run each real test script
     logger.info("Meta-tests passed, running real tests now...\n")
-    run_rapid_analysis_tests()
+    run_test_scripts(TEST_SCRIPTS, TEST_DURATION)
 
     # Report results and perform assertions
     logger.info("\nTest Results:")
     # Check there's a result for all scripts
+    expected = [script.path for script in TEST_SCRIPTS]
     if DO_RUN_META_TESTS:
-        if not set(exit_codes.keys()) == set(
-            [script.path for script in TEST_SCRIPTS]
-            + [script.path for script in META_TESTS_FAIL_EXPECTED]
-            + [script.path for script in META_TESTS_PASS_EXPECTED]
-        ):
-            raise RuntimeError("Not all test scripts have been run somehow - this is drastically wrong")
+        expected += [s.path for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
+
+    if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
+        raise RuntimeError("Not all test scripts have been run somehow - this is drastically wrong")
 
     for script, result in exit_codes.items():
         if script not in [s.path for s in TEST_SCRIPTS]:  # We've already done these
