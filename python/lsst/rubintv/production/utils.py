@@ -323,10 +323,6 @@ class LocationConfig:
         return file
 
     @cached_property
-    def redisIp(self):
-        return self._config["redisIp"]
-
-    @cached_property
     def sfmPipelineFile(self):
         file = self._config["sfmPipelineFile"]
         self._checkFile(file)

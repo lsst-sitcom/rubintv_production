@@ -27,8 +27,6 @@ from datetime import timedelta
 
 import redis
 
-from lsst.summit.utils.utils import getSite
-
 from .payloads import Payload
 from .utils import expRecordFromJson
 
@@ -161,28 +159,10 @@ class RedisHelper:
         redis.Redis
             The redis connection.
         """
-        site = getSite()
-        match site:
-            case site if site in ("rubin-devl", "staff-rsp"):
-                return redis.Redis(host=self.locationConfig.redisIp, password=getRedisSecret())
-            case "usdf-k8s":
-                password = os.getenv("REDIS_PASSWORD")
-                host = os.getenv("REDIS_HOST")
-                return redis.Redis(host=host, password=password)
-            case "summit":
-                host = os.getenv("REDIS_HOST")
-                password = os.getenv("REDIS_PASSWORD")
-                return redis.Redis(host=host, password=password)
-            case "base":
-                host = os.getenv("REDIS_HOST")
-                password = os.getenv("REDIS_PASSWORD")
-                return redis.Redis(host=host, password=password)
-            case "tucson":
-                host = os.getenv("REDIS_HOST")
-                password = os.getenv("REDIS_PASSWORD")
-                return redis.Redis(host=host, password=password)
-            case _:
-                raise RuntimeError("Unknown site, cannot connect to redis")
+        host = os.getenv("REDIS_HOST")
+        password = os.getenv("REDIS_PASSWORD")
+        port = os.getenv("REDIS_PORT", 6379)
+        return redis.Redis(host=host, password=password, port=port)
 
     def _testRedisConnection(self):
         """Check that redis is online and can be contacted.

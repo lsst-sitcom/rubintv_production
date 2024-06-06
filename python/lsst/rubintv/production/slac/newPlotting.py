@@ -26,9 +26,10 @@ import os
 import matplotlib.pyplot as plt
 
 from ..uploaders import MultiUploader, Uploader
+from ..utils import getNumExpectedItems
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
-from .utils import getCamera, getNumExpectedItems
+from .utils import getCamera
 
 _LOG = logging.getLogger(__name__)
 

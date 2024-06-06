@@ -44,11 +44,12 @@ REDIS_PROCESS = None
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = True
+DO_RUN_META_TESTS = True  # XXX Turn on before merging
 DO_CHECK_YAML_FILES = False  # XXX Turn on before merging
 
 REDIS_IP = "127.0.0.1"
 REDIS_PORT = "6111"
+REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
 TEST_DURATION = 30  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 2  # Time to wait after starting redis-server before using it
@@ -140,32 +141,33 @@ def exec_script(test_script: TestScript):
     outputs[test_script.path] = (f_stdout.getvalue(), f_stderr.getvalue())
 
 
-def clear_redis_database(redis_host, redis_port):
-    r = redis.Redis(host=redis_host, port=redis_port)
+def clear_redis_database(host, port, password):
+    r = redis.Redis(host=host, port=port, password=password)
     r.flushall()  # Clear the database
     print("Cleared Redis database")
 
 
 def start_redis(redis_init_wait_time):
     global REDIS_PROCESS
-    redis_host = os.environ["RAPID_ANALYSIS_TESTING_REDIS_HOST"]
-    redis_port = os.environ["RAPID_ANALYSIS_TESTING_REDIS_PORT"]
+    host = os.environ["REDIS_HOST"]
+    port = os.environ["REDIS_PORT"]
+    password = os.environ["REDIS_PASSWORD"]
 
     capture_kwargs = {}
     if CAPTURE_REDIS_OUTPUT:
         capture_kwargs["stdout"] = subprocess.PIPE
         capture_kwargs["stderr"] = subprocess.PIPE
 
-    print(f"Starting redis on {redis_host}:{redis_port}")
+    print(f"Starting redis on {host}:{port}")
     # Start the Redis server
     REDIS_PROCESS = subprocess.Popen(
-        ["redis-server", "--port", redis_port, "--bind", redis_host],
+        ["redis-server", "--port", port, "--bind", host, "--requirepass", password],
         **capture_kwargs,
     )
-    print(f"Redis server started on {redis_host}:{redis_port} with PID: {REDIS_PROCESS.pid}")
+    print(f"Redis server started on {host}:{port} with PID: {REDIS_PROCESS.pid}")
 
     time.sleep(redis_init_wait_time)  # Give redis a moment to start
-    clear_redis_database(redis_host, redis_port)
+    clear_redis_database(host, port, password)
     return
 
 
@@ -175,8 +177,9 @@ def run_setup(redis_init_wait_time):
     Sets env vars and starts redis, returning the process.
     """
     # Set environment variables for Redis
-    os.environ["RAPID_ANALYSIS_TESTING_REDIS_HOST"] = REDIS_IP
-    os.environ["RAPID_ANALYSIS_TESTING_REDIS_PORT"] = REDIS_PORT
+    os.environ["REDIS_HOST"] = REDIS_IP
+    os.environ["REDIS_PORT"] = REDIS_PORT
+    os.environ["REDIS_PASSWORD"] = REDIS_PASSWORD
 
     # set so that runners raise on error, and confirm that's working via
     # getDoRaise as that's how they will retrieve the value
@@ -196,10 +199,11 @@ def check_redis_startup():
     """
     Ping Redis and check we can set and read back a test key.
     """
-    redis_host = os.environ["RAPID_ANALYSIS_TESTING_REDIS_HOST"]
-    redis_port = os.environ["RAPID_ANALYSIS_TESTING_REDIS_PORT"]
+    host = os.environ["REDIS_HOST"]
+    port = os.environ["REDIS_PORT"]
+    password = os.environ["REDIS_PASSWORD"]
 
-    r = redis.Redis(host=redis_host, port=redis_port)
+    r = redis.Redis(host=host, port=port, password=password)
 
     # Ping Redis
     if not r.ping():
@@ -219,10 +223,11 @@ def check_redis_final_contents():
     Ping Redis and check we can set and read back a test key.
     """
     # Example check, you can expand this based on your needs
-    redis_host = os.environ["RAPID_ANALYSIS_TESTING_REDIS_HOST"]
-    redis_port = os.environ["RAPID_ANALYSIS_TESTING_REDIS_PORT"]
+    host = os.environ["REDIS_HOST"]
+    port = os.environ["REDIS_PORT"]
+    password = os.environ["REDIS_PASSWORD"]
 
-    r = redis.Redis(host=redis_host, port=redis_port)
+    r = redis.Redis(host=host, port=port, password=password)
     keys = r.keys()
     logger.info(f"Redis contains keys: {keys}")
     return True  # Modify this based on actual checks
@@ -300,12 +305,12 @@ def terminate_redis():
 
 
 def run_meta_tests():
-    logger.info("Running meta-tests to test the CI suite")
-    allScripts = META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED
+    logger.info("Running meta-tests to test the CI suite...")
+    allMetaScripts = META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED
 
     start_time = time.time()
     processes = {}
-    for script in allScripts:
+    for script in allMetaScripts:
         p = multiprocessing.Process(target=exec_script, args=(script,))
         p.start()
         processes[p] = script.path
@@ -331,7 +336,7 @@ def run_meta_tests():
             break
         if not processes:
             break
-        time.sleep(1)  # Adjust the sleep duration as necessary
+        time.sleep(1)
 
     # Don't count these towards passes and fail, just raise if these aren't
     # as expected, as it means the test suite is fundamentally broken
@@ -352,7 +357,7 @@ def run_meta_tests():
 
 
 def run_rapid_analysis_tests():
-    logger.info("Running meta-tests to test the CI suite")
+    logger.info("Running real Rapid Analysis scripts...")
 
     start_time = time.time()
     processes = {}
@@ -372,7 +377,7 @@ def run_rapid_analysis_tests():
                 processes.pop(p)
                 break
 
-        if time.time() - start_time > META_TEST_DURATION:
+        if time.time() - start_time > TEST_DURATION:
             print("Timeout reached. Terminating remaining processes.")
             for p, scriptpath in processes.items():
                 p.terminate()
@@ -382,7 +387,7 @@ def run_rapid_analysis_tests():
             break
         if not processes:
             break
-        time.sleep(1)  # Adjust the sleep duration as necessary
+        time.sleep(1)
 
 
 def main():
@@ -414,12 +419,13 @@ def main():
     # Report results and perform assertions
     logger.info("\nTest Results:")
     # Check there's a result for all scripts
-    if not set(exit_codes.keys()) == set(
-        [script.path for script in TEST_SCRIPTS]
-        + [script.path for script in META_TESTS_FAIL_EXPECTED]
-        + [script.path for script in META_TESTS_PASS_EXPECTED]
-    ):
-        raise RuntimeError("Not all test scripts have been run somehow - this is drastically wrong")
+    if DO_RUN_META_TESTS:
+        if not set(exit_codes.keys()) == set(
+            [script.path for script in TEST_SCRIPTS]
+            + [script.path for script in META_TESTS_FAIL_EXPECTED]
+            + [script.path for script in META_TESTS_PASS_EXPECTED]
+        ):
+            raise RuntimeError("Not all test scripts have been run somehow - this is drastically wrong")
 
     for script, result in exit_codes.items():
         if script not in [s.path for s in TEST_SCRIPTS]:  # We've already done these
@@ -435,10 +441,11 @@ def main():
             PASSCOUNTER += 1
             continue
         else:
-            logger.error(f"{script}: Failed with exit code {result}")
+            logger.error(f"{script}: Failed with exit code {result}. Stdout and stderr below:")
             # import ipdb as pdb; pdb.set_trace()
             print(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
             print(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
+            print("\n\n")  # put a nice gap between each failing scripts's output
             FAILCOUNTER += 1
 
     if check_redis_final_contents():
