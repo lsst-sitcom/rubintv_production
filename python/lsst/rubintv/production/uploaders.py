@@ -499,7 +499,7 @@ class S3Uploader(IUploader):
             try:
                 self._s3Bucket.upload_file(testFile.name, fileName)
             except (BotoCoreError, ClientError, S3UploadFailedError) as e:
-                self._log.exception(f"S3Uploader Write Access check failed: {e}")
+                self._log.info(f"S3Uploader Write Access check failed: {e}")
                 return False
 
         with tempfile.NamedTemporaryFile() as fixedFile:
@@ -511,13 +511,13 @@ class S3Uploader(IUploader):
                         self._log.error("Read Access failed")
                         return False
             except (BotoCoreError, ClientError, S3TransferFailedError) as e:
-                self._log.exception(f"S3Uploader Read Access check failed: {e}")
+                self._log.info(f"S3Uploader Read Access check failed: {e}")
                 return False
 
         try:
             self._s3Bucket.Object(fileName).delete()
         except (BotoCoreError, ClientError) as e:
-            self._log.exception(f"S3Uploader Delete Access check failed: {e}")
+            self._log.info(f"S3Uploader Delete Access check failed: {e}")
             return False
 
         self._log.debug("S3 Access check was successful")
