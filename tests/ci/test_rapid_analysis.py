@@ -11,7 +11,6 @@ import time
 import traceback
 from dataclasses import dataclass
 from multiprocessing import Manager
-from typing import List, Optional
 from unittest.mock import patch
 
 import redis
@@ -29,7 +28,8 @@ logger.info = print
 @dataclass
 class TestScript:
     path: str
-    args: Optional[List[str]] = None
+    args: list[str] = None
+    delay: float = 0.0
 
     def __post_init__(self):
         if self.args is None:
@@ -70,7 +70,6 @@ TODAY = 20240101
 TEST_SCRIPTS = [
     # XXX patch this so it never puts anything if new data lands during tests
     TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
-    TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"]),
     TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
     # XXX deal with collecting and reporting on these identical runners
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "0"]),
@@ -82,6 +81,7 @@ TEST_SCRIPTS = [
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "6"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
+    TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -145,6 +145,7 @@ def exec_script(test_script: TestScript, output_queue):
                     "sys": sys,
                 }
                 sys.argv = [script_path] + script_args
+                time.sleep(test_script.delay)
                 exec(script_content, exec_globals)
                 exit_code = 0
 
