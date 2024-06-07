@@ -25,6 +25,7 @@ import json
 import logging
 import math
 import os
+import sys
 import time
 import uuid
 from contextlib import redirect_stdout
@@ -48,7 +49,6 @@ __all__ = [
     "writeDataIdFile",
     "getGlobPatternForDataProduct",
     "expRecordToUploadFilename",
-    "getSiteConfig",
     "checkRubinTvExternalPackages",
     "raiseIf",
     "getDoRaise",
@@ -58,6 +58,7 @@ __all__ = [
     "getShardedData",
     "isFileWorldWritable",
     "LocationConfig",
+    "getAutomaticLocationConfig",
     "sanitizeNans",
     "safeJsonOpen",
     "getNumExpectedItems",
@@ -315,7 +316,7 @@ class LocationConfig:
 
     @cached_property
     def _config(self):
-        return getSiteConfig(self.location)
+        return _loadConfigFile(self.location)
 
     @cached_property
     def dimensionUniverseFile(self):
@@ -533,7 +534,32 @@ class LocationConfig:
         return self._config["outputChains"][instrument]
 
 
-def getSiteConfig(site="summit"):
+def getAutomaticLocationConfig():
+    """Get a location config, based on RA location and command line args.
+
+    If no command line args have been supplied, get the LocationConfig based on
+    where the code is being run. If a command line arg was supplied, use that
+    as an override value.
+
+    Returns
+    -------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    """
+    if len(sys.argv) >= 2:
+        try:  # try using this, because anything could be in argv[1]
+            location = sys.argv[1]
+            return LocationConfig(location)
+        except FileNotFoundError:
+            pass
+
+    location = os.getenv("RAPID_ANALYSIS_LOCATION")
+    if not location:
+        raise RuntimeError("No location was supplied on the command line or via RAPID_ANALYSIS_LOCATION.")
+    return LocationConfig(location)
+
+
+def _loadConfigFile(site):
     """Get the site configuration, given a site name.
 
     Parameters
