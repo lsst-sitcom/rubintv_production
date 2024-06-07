@@ -24,9 +24,9 @@ import logging
 import os
 import tempfile
 import time
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 
 from boto3.exceptions import S3TransferFailedError, S3UploadFailedError
@@ -491,8 +491,8 @@ class S3Uploader(IUploader):
             ``True`` if all operations succeed, ``False`` otherwise.
         """
         testContent = b"Connection Test"
-        dateStr = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fileName = f"test/{tempFilePrefix}_{dateStr}_file.txt"
+        uniqueStr = uuid.uuid4().hex
+        fileName = f"test/{tempFilePrefix}_{uniqueStr}_file.txt"
         with tempfile.NamedTemporaryFile() as testFile:
             testFile.write(testContent)
             testFile.flush()
