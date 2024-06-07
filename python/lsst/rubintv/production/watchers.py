@@ -192,7 +192,7 @@ class RedisWatcher:
         """
         while True:
             self.redisHelper.announceFree(self.queueName)
-            self.butler.registry.refresh()  # make sure new calibs are picked up, takes 1.2ms
+            self.redisHelper.butler.registry.refresh()  # make sure new calibs are picked up, takes 1.2ms
             payload = self.redisHelper.dequeuePayload(self.queueName)
             if payload is not None:
                 try:
