@@ -35,6 +35,16 @@ class TestScript:
         if self.args is None:
             self.args = []
 
+    def __str__(self):
+        args_str = ":".join(self.args)
+        return f"{self.path}:{args_str}"
+
+    def __repr__(self):
+        return str(self)
+
+    def __hash__(self):
+        return hash((self.path, tuple(self.args)))
+
 
 # Globals for communication between functions
 manager = Manager()
@@ -148,7 +158,7 @@ def exec_script(test_script: TestScript, output_queue):
             exit_code = e.code if e.code is not None else 0
 
     # Collect outputs
-    output_queue.put((test_script.path, exit_code, f_stdout.getvalue(), f_stderr.getvalue()))
+    output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue()))
 
 
 def clear_redis_database(host, port, password):
@@ -268,9 +278,9 @@ def print_final_result(fails, passes):
 
     # Print the centered text with colored padding
     for fail in fails:
-        print(f"{fail} failed ❌")
+        print(f"❌ {fail} failed")
     for testPass in passes:
-        print(f"{testPass} passed ✅")
+        print(f"✅ {testPass} passed")
     print(f"{padding}{text}{padding}")
 
 
@@ -331,8 +341,8 @@ def run_test_scripts(scripts, timeout):
     for script in scripts:
         p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
         p.start()
-        processes[p] = script.path
-        print(f"Started {script.path} with PID {p.pid}")
+        processes[p] = script
+        print(f"Started {script} with PID {p.pid}")
 
     while True:
         for p in list(processes.keys()):
@@ -342,19 +352,19 @@ def run_test_scripts(scripts, timeout):
 
         # Collect outputs from the queue
         while not output_queue.empty():
-            script_path, exit_code, stdout, stderr = output_queue.get()
-            exit_codes[script_path] = exit_code
-            outputs[script_path] = (stdout, stderr)
-            print(f"Collected output for {script_path}")
+            script, exit_code, stdout, stderr = output_queue.get()
+            exit_codes[script] = exit_code
+            outputs[script] = (stdout, stderr)
+            print(f"Collected output for {script}")
 
         if time.time() - start_time > timeout:
             print("Timeout reached. Terminating remaining processes.")
-            for p, scriptpath in processes.items():
+            for p, script in processes.items():
                 p.terminate()
                 p.join()
                 print(f"Process {p.pid} terminated.")
-                exit_codes[scriptpath] = "timeout"
-                outputs[scriptpath] = ("", "Process terminated due to timeout.")
+                exit_codes[script] = "timeout"
+                outputs[script] = ("", "Process terminated due to timeout.")
             break
 
         if not processes:
@@ -367,14 +377,14 @@ def check_meta_test_results():
     # as expected, as it means the test suite is fundamentally broken
     passed = True
     for script in META_TESTS_FAIL_EXPECTED:
-        if exit_codes[script.path] in (0, "timeout"):
-            print(f"Test {script.path} was expected to fail but did not return a non-zero exit code:")
-            print(outputs[script.path][1])
+        if exit_codes[script] in (0, "timeout"):
+            print(f"Test {script} was expected to fail but did not return a non-zero exit code:")
+            print(outputs[script][1])
             passed = False
     for script in META_TESTS_PASS_EXPECTED:
-        if exit_codes[script.path] not in (0, "timeout"):
-            print(f"Test {script.path} was expected to pass but returned a non-zero exit code:")
-            print(outputs[script.path][1])
+        if exit_codes[script] not in (0, "timeout"):
+            print(f"Test {script} was expected to pass but returned a non-zero exit code:")
+            print(outputs[script][1])
             passed = False
 
     if not passed:
@@ -409,9 +419,9 @@ def main():
     run_test_scripts(TEST_SCRIPTS, TEST_DURATION)
 
     # Check there's a result for all scripts
-    expected = [script.path for script in TEST_SCRIPTS]
+    expected = [script for script in TEST_SCRIPTS]
     if DO_RUN_META_TESTS:
-        expected += [s.path for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
+        expected += [s for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
     if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
         raise RuntimeError(
             "Not all test scripts have had their results collected somehow - this is drastically wrong!"
@@ -419,16 +429,11 @@ def main():
 
     logger.info("\nTest Results:")
     for script, result in exit_codes.items():
-        if script not in [s.path for s in TEST_SCRIPTS]:  # We've already done these
+        if script not in [s for s in TEST_SCRIPTS]:  # We've already done these
             continue
 
         stdout, stderr = outputs[script]
-        if result == "timeout":
-            logger.info(f"{script}: Passed (was still running at end of testing period)")
-            PASSES.append(script)
-            continue
-        elif result == 0:
-            logger.info(f"{script}: Passed with exit code zero")
+        if result in ["timeout", 0]:
             PASSES.append(script)
             continue
         else:
@@ -436,7 +441,7 @@ def main():
             # import ipdb as pdb; pdb.set_trace()
             print(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
             print(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
-            print("\n\n")  # put a nice gap between each failing scripts's output
+            print("\n")  # put a nice gap between each failing scripts's output
             FAILS.append(script)
 
     if check_redis_final_contents():
