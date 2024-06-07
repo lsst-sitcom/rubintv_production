@@ -24,7 +24,7 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
@@ -39,20 +39,18 @@ else:
     workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
     print(f"Found WORKER_NUMBER={workerNum} in the env")
     if not workerNum:
-        if len(sys.argv) < 2:
+        if len(sys.argv) < 3:
             print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
             sys.exit(1)
-        workerNum = int(sys.argv[1])
+        workerNum = int(sys.argv[2])
 
 workerNum = int(workerNum)
 
 detectorNum = workerNum % 9
 detectorDepth = workerNum // 9
 queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
-print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-location = "summit"
-locationConfig = LocationConfig(location)
+locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
@@ -60,6 +58,8 @@ butler = dafButler.Butler(
     ],
     writeable=True,
 )
+
+print(f"Running sfmRunner for worker {workerNum}, queueName={queueName} at {locationConfig.location}")
 
 sfmRunner = SingleCorePipelineRunner(
     butler=butler,

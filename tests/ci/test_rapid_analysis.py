@@ -58,9 +58,20 @@ TODAY = 20240101
 
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS = [
+    # XXX patch this so it never puts anything if new data lands during tests
     TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
     TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"]),
     TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
+    # XXX deal with collecting and reporting on these identical runners
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "0"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "3"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "4"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "5"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "6"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -175,6 +186,9 @@ def run_setup(redis_init_wait_time):
 
     Sets env vars and starts redis, returning the process.
     """
+    # set other env vars required for RA config
+    os.environ["RAPID_ANALYSIS_LOCATION"] = "slac_testing"
+
     # Set environment variables for Redis
     os.environ["REDIS_HOST"] = REDIS_IP
     os.environ["REDIS_PORT"] = REDIS_PORT
@@ -229,7 +243,7 @@ def check_redis_final_contents():
     r = redis.Redis(host=host, port=port, password=password)
     keys = r.keys()
     logger.info(f"Redis contains keys: {keys}")
-    return True  # Modify this based on actual checks
+    return True  # XXX change the return value to be based on a real check
 
 
 def print_final_result(fails, passes):
@@ -376,13 +390,12 @@ def main():
         if not yaml_files_ok:  # not an instant fail
             FAILS.append("YAML check")
 
-    for test_script in itertools.chain(TEST_SCRIPTS, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED):
-        if not os.path.isfile(test_script.path):
-            raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
-
     # these exit if any fail because that means everything is broken so there's
     # no point in continuing
     if DO_RUN_META_TESTS:
+        for test_script in itertools.chain(TEST_SCRIPTS, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED):
+            if not os.path.isfile(test_script.path):
+                raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
         logger.info("Running meta-tests to test the CI suite...")
         run_test_scripts(META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION)
         check_meta_test_results()
