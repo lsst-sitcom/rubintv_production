@@ -69,6 +69,8 @@ comCamBinning: 8
 comCamMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards'
 
+comCamSimMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata'
+comCamSimMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata/shards'
 
 # summit-like configs
 tmaMetadataPath: '/sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata'

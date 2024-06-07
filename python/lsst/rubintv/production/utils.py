@@ -822,7 +822,7 @@ def writeExpRecordMetadataShard(expRecord, metadataShardPath):
     md["Reason"] = expRecord.observation_reason
     md["Date begin"] = expRecord.timespan.begin.isot
     md["Program"] = expRecord.science_program
-    md["Group name"] = expRecord.group_name
+    md["Group name"] = expRecord.group
     md["Filter"] = expRecord.physical_filter
     md["Target"] = expRecord.target_name
     md["RA"] = expRecord.tracking_ra
