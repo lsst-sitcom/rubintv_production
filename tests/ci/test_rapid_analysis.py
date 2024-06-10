@@ -23,6 +23,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 logger.info = print
+logger.warning = print
 
 
 @dataclass
@@ -160,6 +161,30 @@ def exec_script(test_script: TestScript, output_queue):
 
     # Collect outputs
     output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue()))
+
+
+def check_system_size_and_load():
+    number_of_cores = os.cpu_count()
+    number_of_scripts = len(TEST_SCRIPTS)
+    if number_of_scripts > number_of_cores:
+        logger.info(
+            f"The number of test scripts ({number_of_scripts}) is greater than"
+            f" the number of cores ({number_of_cores}).\nThis test suite needs to be run on a bigger system."
+        )
+        sys.exit(1)
+
+    load1, load5, load15 = os.getloadavg()  # 1, 5 and 15 min load averages
+    if any(load > 50 for load in [load1, load5, load15]):
+        # double space after warning sign is necessary
+        logger.warning("⚠️  High system load detected, results could be affected ⚠️ ")
+
+    approx_cores_free = (100 - load5) / 100 * number_of_cores
+    if number_of_scripts > approx_cores_free:
+        logger.warning(
+            # double space after warning sign is necessary
+            f"⚠️  Number of test scripts ({number_of_scripts}) is greater than the approximage number of free"
+            f" cores {approx_cores_free:.1f} ⚠️ "
+        )
 
 
 def clear_redis_database(host, port, password):
@@ -395,6 +420,8 @@ def check_meta_test_results():
 def main():
     FAILS = []
     PASSES = []
+
+    check_system_size_and_load()
 
     if DO_CHECK_YAML_FILES:
         yaml_files_ok = check_yaml_keys()
