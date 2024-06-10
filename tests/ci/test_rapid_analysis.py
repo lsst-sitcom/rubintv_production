@@ -54,7 +54,7 @@ REDIS_PROCESS = None
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = False  # XXX Turn on before merging
+DO_RUN_META_TESTS = True  # XXX Turn on before merging
 DO_CHECK_YAML_FILES = False  # XXX Turn on before merging
 
 REDIS_IP = "127.0.0.1"
@@ -62,7 +62,7 @@ REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
 TEST_DURATION = 30  # How long to leave SFM to run for
-REDIS_INIT_WAIT_TIME = 2  # Time to wait after starting redis-server before using it
+REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
 
@@ -155,7 +155,7 @@ def exec_script(test_script: TestScript, output_queue):
             exit_code = 1
         except SystemExit as e:
             # Handle normal exit or sys.exit called within the script
-            print(f"Script exited with status: {e}")
+            logger.info(f"Script exited with status: {e}")
             exit_code = e.code if e.code is not None else 0
 
     # Collect outputs
@@ -165,7 +165,7 @@ def exec_script(test_script: TestScript, output_queue):
 def clear_redis_database(host, port, password):
     r = redis.Redis(host=host, port=port, password=password)
     r.flushall()  # Clear the database
-    print("Cleared Redis database")
+    logger.info("Cleared Redis database")
 
 
 def start_redis(redis_init_wait_time):
@@ -179,13 +179,14 @@ def start_redis(redis_init_wait_time):
         capture_kwargs["stdout"] = subprocess.PIPE
         capture_kwargs["stderr"] = subprocess.PIPE
 
-    print(f"Starting redis on {host}:{port}")
+    logger.info(f"Starting redis on {host}:{port}")
     # Start the Redis server
     REDIS_PROCESS = subprocess.Popen(
         ["redis-server", "--port", port, "--bind", host, "--requirepass", password],
         **capture_kwargs,
     )
-    print(f"Redis server started on {host}:{port} with PID: {REDIS_PROCESS.pid}")
+    logger.info(f"✅ Redis server started on {host}:{port} with PID: {REDIS_PROCESS.pid}")
+    logger.info(f"Waiting for {redis_init_wait_time}s to let redis startup finish")
 
     time.sleep(redis_init_wait_time)  # Give redis a moment to start
     clear_redis_database(host, port, password)
@@ -214,7 +215,6 @@ def run_setup(redis_init_wait_time):
     start_redis(redis_init_wait_time)
 
     # Wait for the setup timeout and then check Redis
-    logger.info(f"Waiting for {redis_init_wait_time} seconds to let setup complete")
     check_redis_startup()
     return
 
@@ -239,7 +239,7 @@ def check_redis_startup():
     if value != "test_value":
         raise RuntimeError("Could not set and read back a test key in Redis")
     r.flushall()  # Clear the database
-    logger.info("Successfully pinged Redis and set/read back a test key")
+    logger.info("✅ Successfully pinged Redis and set/read back a test key")
 
 
 def check_redis_final_contents():
@@ -279,10 +279,10 @@ def print_final_result(fails, passes):
 
     # Print the centered text with colored padding
     for fail in fails:
-        print(f"❌ {fail} failed")
+        logger.info(f"❌ {fail} failed")
     for testPass in passes:
-        print(f"✅ {testPass} passed")
-    print(f"{padding}{text}{padding}")
+        logger.info(f"✅ {testPass} passed")
+    logger.info(f"{padding}{text}{padding}")
 
 
 def check_yaml_keys():
@@ -299,7 +299,7 @@ def check_yaml_keys():
                 else:
                     file_keys[filename] = set()
             except yaml.YAMLError as exc:
-                print(f"Error loading {filename}: {exc}")
+                logger.info(f"Error loading {filename}: {exc}")
 
     # Get the set of all keys across all files
     all_keys = set().union(*file_keys.values())
@@ -313,16 +313,16 @@ def check_yaml_keys():
 
     # Print the report
     if missing_keys_report:
-        print("Missing Keys Report:")
+        logger.info("Missing Keys Report:")
         for filename, missing_keys in missing_keys_report.items():
             filename = filename.replace(package_dir + "/", "")
-            print(f"{filename} is missing keys:")
+            logger.info(f"{filename} is missing keys:")
             for key in missing_keys:
-                print(f"  {key}")
-            print()  # blank line between each failing file
+                logger.info(f"  {key}")
+            logger.info()  # blank line between each failing file
         return False
     else:
-        print("All files contain the same keys.")
+        logger.info("All files contain the same keys.")
         return True
 
 
@@ -343,7 +343,7 @@ def run_test_scripts(scripts, timeout):
         p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
         p.start()
         processes[p] = script
-        print(f"Started {script} with PID {p.pid}")
+        logger.info(f"Started {script} with PID {p.pid}")
 
     while True:
         for p in list(processes.keys()):
@@ -356,14 +356,14 @@ def run_test_scripts(scripts, timeout):
             script, exit_code, stdout, stderr = output_queue.get()
             exit_codes[script] = exit_code
             outputs[script] = (stdout, stderr)
-            print(f"Collected output for {script}")
+            logger.info(f"Collected output for {script}")
 
         if time.time() - start_time > timeout:
-            print("Timeout reached. Terminating remaining processes.")
+            logger.info(f"Running period of {timeout}s finished, terminating running processes.")
             for p, script in processes.items():
                 p.terminate()
                 p.join()
-                print(f"Process {p.pid} terminated.")
+                logger.info(f"Process {p.pid} terminated.")
                 exit_codes[script] = "timeout"
                 outputs[script] = ("", "Process terminated due to timeout.")
             break
@@ -379,13 +379,13 @@ def check_meta_test_results():
     passed = True
     for script in META_TESTS_FAIL_EXPECTED:
         if exit_codes[script] in (0, "timeout"):
-            print(f"Test {script} was expected to fail but did not return a non-zero exit code:")
-            print(outputs[script][1])
+            logger.info(f"Test {script} was expected to fail but did not return a non-zero exit code:")
+            logger.info(outputs[script][1])
             passed = False
     for script in META_TESTS_PASS_EXPECTED:
         if exit_codes[script] not in (0, "timeout"):
-            print(f"Test {script} was expected to pass but returned a non-zero exit code:")
-            print(outputs[script][1])
+            logger.info(f"Test {script} was expected to pass but returned a non-zero exit code:")
+            logger.info(outputs[script][1])
             passed = False
 
     if not passed:
@@ -416,7 +416,7 @@ def main():
     run_setup(REDIS_INIT_WAIT_TIME)
 
     # Run each real test script
-    logger.info("Meta-tests passed, running real tests now...\n")
+    logger.info("✅ Meta-tests passed, running real tests now...\n")
     run_test_scripts(TEST_SCRIPTS, TEST_DURATION)
 
     # Check there's a result for all scripts
@@ -440,9 +440,9 @@ def main():
         else:
             logger.error(f"{script}: Failed with exit code {result}. Stdout and stderr below:")
             # import ipdb as pdb; pdb.set_trace()
-            print(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
-            print(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
-            print("\n")  # put a nice gap between each failing scripts's output
+            logger.info(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
+            logger.info(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
+            logger.info("\n")  # put a nice gap between each failing scripts's output
             FAILS.append(script)
 
     if check_redis_final_contents():
