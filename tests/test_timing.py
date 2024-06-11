@@ -28,10 +28,9 @@ from lsst.rubintv.production.timing import BoxCarTimer
 
 
 class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
-
     def test_lap(self):
         timer = BoxCarTimer(length=5)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         self.assertEqual(len(timer._buffer), 1)
@@ -39,7 +38,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_buffer_length(self):
         timer = BoxCarTimer(length=3)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.1)
@@ -50,7 +49,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_min(self):
         timer = BoxCarTimer(length=3)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.2)
@@ -60,7 +59,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_max(self):
         timer = BoxCarTimer(length=3)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.2)
@@ -70,7 +69,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_mean(self):
         timer = BoxCarTimer(length=3)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.2)
@@ -82,7 +81,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_median(self):
         timer = BoxCarTimer(length=5)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.2)
@@ -96,7 +95,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_extreme_outliers(self):
         timer = BoxCarTimer(length=5)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.1)
@@ -110,7 +109,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_overflow(self):
         timer = BoxCarTimer(length=5)
-        timer.lap()
+        timer.start()
         time.sleep(1)
         timer.lap()
         for i in range(5):
@@ -121,6 +120,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_empty_buffer(self):
         timer = BoxCarTimer(length=3)
+        timer.start()  # need to start for min/max etc to work at all
         self.assertIsNone(timer.min())
         self.assertIsNone(timer.max())
         self.assertIsNone(timer.mean())
@@ -128,7 +128,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_last_lap_time(self):
         timer = BoxCarTimer(length=5)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.lap()
         time.sleep(0.2)
@@ -137,7 +137,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
     def test_pause_resume(self):
         timer = BoxCarTimer(length=5)
-        timer.lap()
+        timer.start()
         time.sleep(0.1)
         timer.pause()
         time.sleep(0.2)
@@ -150,6 +150,38 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         with self.assertRaises(RuntimeError):
             timer.pause()
             timer.lap()
+
+    def test_lap_counting(self):
+        timer = BoxCarTimer(length=5)
+        timer.start()
+        for i in range(3):  # check the basics
+            timer.lap()
+        self.assertEqual(timer.totalLaps, 3)
+        for i in range(10):  # check it works if we overrun the buffer
+            timer.lap()
+        self.assertEqual(timer.totalLaps, 13)
+        timer.pause()
+        timer.resume()
+        self.assertEqual(timer.totalLaps, 13)  # check pause/resume doesn't add a lap
+
+    def test_not_started(self):
+        timer = BoxCarTimer(length=5)
+        with self.assertRaises(RuntimeError):
+            timer.lap()
+        with self.assertRaises(RuntimeError):
+            timer.pause()
+        with self.assertRaises(RuntimeError):
+            timer.resume()
+        with self.assertRaises(RuntimeError):
+            timer.min()
+        with self.assertRaises(RuntimeError):
+            timer.max()
+        with self.assertRaises(RuntimeError):
+            timer.mean()
+        with self.assertRaises(RuntimeError):
+            timer.median()
+        with self.assertRaises(RuntimeError):
+            timer.lastLapTime()
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

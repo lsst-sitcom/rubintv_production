@@ -43,7 +43,8 @@ class BoxCarTimer:
     Raises
     ------
     RuntimeError
-        If the timer is a lap is attempted to be recorded while paused.
+        Raised if a lap is attempted to be recorded while paused or before it
+        is started.
     """
 
     def __init__(self, length):
@@ -51,6 +52,13 @@ class BoxCarTimer:
         self.lastTime = None
         self.paused = False
         self.pauseStartTime = None
+        self.totalLaps = 0
+        self.started = False
+
+    def start(self):
+        """Start the timer."""
+        self.lastTime = time.time()
+        self.started = True
 
     def lap(self):
         """Record the elapsed time since the last lap.
@@ -58,8 +66,10 @@ class BoxCarTimer:
         Raises
         ------
         RuntimeError
-            If the timer is paused.
+            If the timer is paused or not started.
         """
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot record lap.")
         if self.paused:
             raise RuntimeError("Timer is paused. Cannot record lap.")
         currentTime = time.time()
@@ -67,15 +77,20 @@ class BoxCarTimer:
             elapsed_time = currentTime - self.lastTime
             self._buffer.append(elapsed_time)
         self.lastTime = currentTime
+        self.totalLaps += 1
 
     def pause(self):
         """Pause the timer."""
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot pause.")
         if not self.paused:
             self.pauseStartTime = time.time()
             self.paused = True
 
     def resume(self):
         """Resume the timer."""
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot resume.")
         if self.paused:
             pauseDuration = time.time() - self.pauseStartTime
             self.lastTime += pauseDuration
@@ -95,6 +110,8 @@ class BoxCarTimer:
         min : `float`
             The minimum elapsed time or its frequency.
         """
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot get minimum.")
         if not self._buffer:
             return None
         minValue = min(self._buffer)
@@ -103,7 +120,7 @@ class BoxCarTimer:
         return minValue
 
     def max(self, frequency=False):
-        """Get the minimum lap time in the buffer.
+        """Get the maximum lap time in the buffer.
 
         Parameters
         ----------
@@ -115,6 +132,8 @@ class BoxCarTimer:
         max : `float`
             The maximum elapsed time or its frequency.
         """
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot get maximum.")
         if not self._buffer:
             return None
         maxValue = max(self._buffer)
@@ -135,6 +154,8 @@ class BoxCarTimer:
         mean : `float`
             The mean elapsed time or its frequency.
         """
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot get mean.")
         if not self._buffer:
             return None
         meanValue = sum(self._buffer) / len(self._buffer)
@@ -155,6 +176,8 @@ class BoxCarTimer:
         median : `float`
             The median elapsed time or its frequency.
         """
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot get median.")
         if not self._buffer:
             return None
         medianValue = statistics.median(self._buffer)
@@ -170,6 +193,8 @@ class BoxCarTimer:
         lastLap : `float`
             The elapsed time of the last lap.
         """
+        if not self.started:
+            raise RuntimeError("Timer has not been started. Cannot get last lap time.")
         if not self._buffer:
             return None
         return self._buffer[-1]
