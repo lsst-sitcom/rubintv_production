@@ -31,6 +31,7 @@ class TestScript:
     path: str
     args: list[str] = None
     delay: float = 0.0
+    displayOnPass: bool = False
 
     def __post_init__(self):
         if self.args is None:
@@ -45,6 +46,12 @@ class TestScript:
 
     def __hash__(self):
         return hash((self.path, tuple(self.args)))
+
+    @classmethod
+    def from_existing(cls, existing, new_path):
+        return cls(
+            path=new_path, args=existing.args, delay=existing.delay, displayOnPass=existing.displayOnPass
+        )
 
 
 # Globals for communication between functions
@@ -62,7 +69,7 @@ REDIS_IP = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 30  # How long to leave SFM to run for
+TEST_DURATION = 45  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -72,7 +79,6 @@ TEST_SCRIPTS = [
     # XXX patch this so it never puts anything if new data lands during tests
     TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
     TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
-    # XXX deal with collecting and reporting on these identical runners
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "0"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
@@ -82,7 +88,7 @@ TEST_SCRIPTS = [
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "6"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
-    TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1),
+    TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1, displayOnPass=True),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -93,6 +99,7 @@ META_TESTS_FAIL_EXPECTED = [
 META_TESTS_PASS_EXPECTED = [
     TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
     TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
+    TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
 ]
 
 YAML_FILES_TO_CHECK = [
@@ -108,14 +115,17 @@ YAML_FILES_TO_CHECK = [
 ci_dir = os.path.dirname(os.path.abspath(__file__))
 package_dir = os.path.abspath(os.path.join(ci_dir, "../../"))
 TEST_SCRIPTS = [
-    TestScript(os.path.join(package_dir, test_script.path), test_script.args) for test_script in TEST_SCRIPTS
+    TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
+    for test_script in TEST_SCRIPTS
 ]
+
 META_TESTS_FAIL_EXPECTED = [
-    TestScript(os.path.join(ci_dir, test_script.path), test_script.args)
+    TestScript.from_existing(test_script, os.path.join(ci_dir, test_script.path))
     for test_script in META_TESTS_FAIL_EXPECTED
 ]
+
 META_TESTS_PASS_EXPECTED = [
-    TestScript(os.path.join(ci_dir, test_script.path), test_script.args)
+    TestScript.from_existing(test_script, os.path.join(ci_dir, test_script.path))
     for test_script in META_TESTS_PASS_EXPECTED
 ]
 YAML_FILES_TO_CHECK = [os.path.join(package_dir, file) for file in YAML_FILES_TO_CHECK]
@@ -388,7 +398,7 @@ def run_test_scripts(scripts, timeout):
             for p, script in processes.items():
                 p.terminate()
                 p.join()
-                logger.info(f"Process {p.pid} terminated.")
+                logger.info(f"Running process {p.pid} terminated.")
                 exit_codes[script] = "timeout"
                 outputs[script] = ("", "Process terminated due to timeout.")
             break
@@ -463,6 +473,10 @@ def main():
         stdout, stderr = outputs[script]
         if result in ["timeout", 0]:
             PASSES.append(script)
+            if script.displayOnPass:
+                logger.info(f"\n🙂 *Passing* logs from {script}:")
+                logger.info(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
+                logger.info(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
             continue
         else:
             logger.error(f"{script}: Failed with exit code {result}. Stdout and stderr below:")
