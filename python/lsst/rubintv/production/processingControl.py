@@ -39,6 +39,7 @@ from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
 from .redisUtils import RedisHelper
+from .timing import BoxCarTimer
 from .utils import getShardPath, writeExpRecordMetadataShard
 
 
@@ -95,7 +96,7 @@ def prepRunCollection(
         raise RuntimeError(
             f"New {run=} already exists, so either there is a logic error in the head node"
             " init/getLatestRunAndPrep() or someone manually created collections with that"
-            " prefix."
+            " prefix and didn't chain it to the output collection."
         )
 
     pipelineGraphs = list(ensure_iterable(pipelineGraphs))
@@ -110,7 +111,6 @@ def prepRunCollection(
         initRefs = {}
         taskFactory = TaskFactory()
         for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
-
             inputRefs = [
                 (
                     butler.find_dataset(readEdge.dataset_type_name, collections=[run])
@@ -247,6 +247,8 @@ class HeadProcessController:
     processing strategy from a notebook or from LOVE.
     """
 
+    targetLoopDuration = 0.2  # in seconds, so 5Hz
+
     def __init__(self, butler, instrument, locationConfig, pipelineFile, outputChain=None, forceNewRun=False):
         self.butler = butler
         self.instrument = instrument
@@ -259,6 +261,7 @@ class HeadProcessController:
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
         self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
+        self.timer = BoxCarTimer(length=100)  # don't start here, the event loop starts the lap timer
         self.nDispatched = 0
         self.nNightlyRollups = 0
 
@@ -552,8 +555,32 @@ class HeadProcessController:
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
+    def regulateLoopSpeed(self):
+        """Attempt to regulate the loop speed to the target frequency.
+
+        This will sleep for the appropriate amount of time if the loop is
+        running quickly enough to require it, and will log a warning if the
+        loop is running too slowly. The sleep time doesn't count towards the
+        loop timings, that is only the time taken to actually perform the event
+        loop's work.
+        """
+        self.timer.lap()
+        self.timer.pause()  # don't count the sleeping towards the loop time
+        sleepPeriod = self.targetLoopDuration - self.timer.lastLapTime()
+        if sleepPeriod > 0:
+            sleep(sleepPeriod)
+        else:
+            self.log.warning(f"Event loop running slow, last loop took {self.timer.lastLapTime():.2f}s")
+        self.timer.resume()
+
     def run(self):
+        self.timer.start()
         while True:
+            if (self.timer.totalLaps + 1) % 100 == 0:  # +1 so we don't trigger this on the first loop
+                medianFreq = self.timer.mean(frequency=True)
+                maxLoopTime = self.timer.mean(frequency=False)
+                self.log.info(f"Event loop running at {medianFreq:.2f}Hz, longest loop = {maxLoopTime:.2f}s")
+
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.name, 5)
 
@@ -587,10 +614,7 @@ class HeadProcessController:
             # do we toggle
             self.repattern()
 
-            # don't run *too* fast if we're spinning our wheels. Probably want
-            # to do something a little more intelligent here, but this is fine
-            # until after OR3.
-            sleep(0.05)
+            self.regulateLoopSpeed()
 
 
 class RemoteController:
