@@ -126,7 +126,7 @@ def exec_script(test_script: TestScript, output_queue):
 
     def termination_handler(signum, frame):
         print("Termination signal received, exiting...")
-        raise BaseException
+        raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, termination_handler)
 
@@ -177,7 +177,7 @@ def exec_script(test_script: TestScript, output_queue):
     except SystemExit as e:
         logging.info(f"Script exited with status: {e}")
         exit_code = e.code if e.code is not None else 0
-    except BaseException:  # this is the timeout error now
+    except KeyboardInterrupt:  # this is the timeout error now
         exit_code = "timeout"
     finally:
         sys.stdout = original_stdout
