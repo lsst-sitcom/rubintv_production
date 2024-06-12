@@ -5,60 +5,39 @@ import itertools
 import logging
 import multiprocessing
 import os
+import signal
 import subprocess
 import sys
 import time
 import traceback
-from dataclasses import dataclass
 from multiprocessing import Manager
 from unittest.mock import patch
 
 import redis
 import yaml
-
-from lsst.rubintv.production.utils import getDoRaise
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
-logger.info = print
-logger.warning = print
+from cihelper import TestScript
 
 
-@dataclass
-class TestScript:
-    path: str
-    args: list[str] = None
-    delay: float = 0.0
-    displayOnPass: bool = False
-
-    def __post_init__(self):
-        if self.args is None:
-            self.args = []
-
-    def __str__(self):
-        args_str = ":".join(self.args)
-        return f"{self.path}:{args_str}"
-
-    def __repr__(self):
-        return str(self)
-
-    def __hash__(self):
-        return hash((self.path, tuple(self.args)))
-
-    @classmethod
-    def from_existing(cls, existing, new_path):
-        return cls(
-            path=new_path, args=existing.args, delay=existing.delay, displayOnPass=existing.displayOnPass
-        )
+def do_nothing(*args, **kwargs):
+    pass
 
 
-# Globals for communication between functions
-manager = Manager()
-exit_codes = manager.dict()
-outputs = manager.dict()
-REDIS_PROCESS = None
+# ensure nothing downstream can use this function as it has global consequences
+# which stop the log capture working
+logging.basicConfig = do_nothing
+
+
+# these imports need to come after the log patching (I think)
+from lsst.daf.butler.cli.cliLog import CliLog  # noqa: E402
+
+# call this once and then also disable it so it doesn't interfere with the log
+# capture later on
+CliLog.initLog(False)
+CliLog.initLog = do_nothing
+
+
+# only import from lsst.anything once the logging configs have been frozen
+from lsst.rubintv.production.utils import getDoRaise  # noqa: E402
 
 # --------------- Configuration --------------- #
 
@@ -69,10 +48,11 @@ REDIS_IP = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 45  # How long to leave SFM to run for
+TEST_DURATION = 90  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
+DEBUG = False
 
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS = [
@@ -100,6 +80,7 @@ META_TESTS_PASS_EXPECTED = [
     TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
     TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
     TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
+    TestScript("meta_test_logging_capture.py"),  # outputs logs - for visual inspection only sadly
 ]
 
 YAML_FILES_TO_CHECK = [
@@ -130,54 +111,93 @@ META_TESTS_PASS_EXPECTED = [
 ]
 YAML_FILES_TO_CHECK = [os.path.join(package_dir, file) for file in YAML_FILES_TO_CHECK]
 
-# --------------- Wrapper Function --------------- #
+
+# Globals for communication between functions
+manager = Manager()
+exit_codes = manager.dict()
+outputs = manager.dict()
+REDIS_PROCESS = None
 
 
 def exec_script(test_script: TestScript, output_queue):
     """
     Function to run the script in a separate process and capture its output.
     """
+
+    def termination_handler(signum, frame):
+        print("Termination signal received, exiting...")
+        raise BaseException
+
+    signal.signal(signal.SIGTERM, termination_handler)
+
     script_path = test_script.path
     script_args = test_script.args
 
     f_stdout = io.StringIO()
     f_stderr = io.StringIO()
+    log_stream = io.StringIO()
+
+    # Setup log capture
+    log_handler = logging.StreamHandler(log_stream)
+    log_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+
+    # Add handler to the root logger
+    root_logger = logging.getLogger()
+    root_logger.addHandler(log_handler)
+    root_logger.setLevel(logging.INFO)
+
     exit_code = None
-    with contextlib.redirect_stdout(f_stdout), contextlib.redirect_stderr(f_stderr):
-        # Read the script content
-        try:
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
+    # Redirect sys.stdout and sys.stderr
+    sys.stdout = f_stdout
+    sys.stderr = f_stderr
+
+    try:
+        with contextlib.redirect_stdout(f_stdout), contextlib.redirect_stderr(f_stderr):
             with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
-                # Redirect stdout and stderr
                 with open(script_path, "r") as script_file:
                     script_content = script_file.read()
                 exec_globals = {
                     "__name__": "__main__",
                     "__file__": script_path,
                     "sys": sys,
+                    "logging": logging,  # Pass the logging module to the script
+                    "lsst.daf.butler.cli.cliLog": CliLog,
+                    "CliLog": CliLog,
                 }
                 sys.argv = [script_path] + script_args
                 time.sleep(test_script.delay)
                 exec(script_content, exec_globals)
                 exit_code = 0
+    except Exception:
+        traceback.print_exc(file=f_stderr)
+        exit_code = 1
+    except SystemExit as e:
+        logging.info(f"Script exited with status: {e}")
+        exit_code = e.code if e.code is not None else 0
+    except BaseException:  # this is the timeout error now
+        exit_code = "timeout"
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
 
-        except Exception:
-            # Capture traceback in stderr
-            traceback.print_exc(file=f_stderr)
-            exit_code = 1
-        except SystemExit as e:
-            # Handle normal exit or sys.exit called within the script
-            logger.info(f"Script exited with status: {e}")
-            exit_code = e.code if e.code is not None else 0
+        log_output = log_stream.getvalue()
+        if DEBUG:
+            print(f"Putting outputs for script {test_script} into queue")
+        output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue(), log_output))
 
-    # Collect outputs
-    output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue()))
+        # Clean up logger handlers
+        root_logger.removeHandler(log_handler)
+        log_handler.close()
 
 
 def check_system_size_and_load():
     number_of_cores = os.cpu_count()
     number_of_scripts = len(TEST_SCRIPTS)
     if number_of_scripts > number_of_cores:
-        logger.info(
+        print(
             f"The number of test scripts ({number_of_scripts}) is greater than"
             f" the number of cores ({number_of_cores}).\nThis test suite needs to be run on a bigger system."
         )
@@ -186,11 +206,11 @@ def check_system_size_and_load():
     load1, load5, load15 = os.getloadavg()  # 1, 5 and 15 min load averages
     if any(load > 50 for load in [load1, load5, load15]):
         # double space after warning sign is necessary
-        logger.warning("⚠️  High system load detected, results could be affected ⚠️ ")
+        print("⚠️  High system load detected, results could be affected ⚠️ ")
 
     approx_cores_free = (100 - load5) / 100 * number_of_cores
     if number_of_scripts > approx_cores_free:
-        logger.warning(
+        print(
             # double space after warning sign is necessary
             f"⚠️  Number of test scripts ({number_of_scripts}) is greater than the approximage number of free"
             f" cores {approx_cores_free:.1f} ⚠️ "
@@ -200,7 +220,7 @@ def check_system_size_and_load():
 def clear_redis_database(host, port, password):
     r = redis.Redis(host=host, port=port, password=password)
     r.flushall()  # Clear the database
-    logger.info("Cleared Redis database")
+    print("Cleared Redis database")
 
 
 def start_redis(redis_init_wait_time):
@@ -214,14 +234,14 @@ def start_redis(redis_init_wait_time):
         capture_kwargs["stdout"] = subprocess.PIPE
         capture_kwargs["stderr"] = subprocess.PIPE
 
-    logger.info(f"Starting redis on {host}:{port}")
+    print(f"Starting redis on {host}:{port}")
     # Start the Redis server
     REDIS_PROCESS = subprocess.Popen(
         ["redis-server", "--port", port, "--bind", host, "--requirepass", password],
         **capture_kwargs,
     )
-    logger.info(f"✅ Redis server started on {host}:{port} with PID: {REDIS_PROCESS.pid}")
-    logger.info(f"Waiting for {redis_init_wait_time}s to let redis startup finish")
+    print(f"✅ Redis server started on {host}:{port} with PID: {REDIS_PROCESS.pid}")
+    print(f"Waiting for {redis_init_wait_time}s to let redis startup finish")
 
     time.sleep(redis_init_wait_time)  # Give redis a moment to start
     clear_redis_database(host, port, password)
@@ -274,7 +294,7 @@ def check_redis_startup():
     if value != "test_value":
         raise RuntimeError("Could not set and read back a test key in Redis")
     r.flushall()  # Clear the database
-    logger.info("✅ Successfully pinged Redis and set/read back a test key")
+    print("✅ Successfully pinged Redis and set/read back a test key")
 
 
 def check_redis_final_contents():
@@ -288,7 +308,7 @@ def check_redis_final_contents():
 
     r = redis.Redis(host=host, port=port, password=password)
     keys = r.keys()
-    logger.info(f"Redis contains keys: {keys}")
+    print(f"Redis contains keys: {keys}")
     return True  # XXX change the return value to be based on a real check
 
 
@@ -314,10 +334,10 @@ def print_final_result(fails, passes):
 
     # Print the centered text with colored padding
     for fail in fails:
-        logger.info(f"❌ {fail} failed")
+        print(f"❌ {fail} failed")
     for testPass in passes:
-        logger.info(f"✅ {testPass} passed")
-    logger.info(f"{padding}{text}{padding}")
+        print(f"✅ {testPass} passed")
+    print(f"{padding}{text}{padding}")
 
 
 def check_yaml_keys():
@@ -334,7 +354,7 @@ def check_yaml_keys():
                 else:
                     file_keys[filename] = set()
             except yaml.YAMLError as exc:
-                logger.info(f"Error loading {filename}: {exc}")
+                print(f"Error loading {filename}: {exc}")
 
     # Get the set of all keys across all files
     all_keys = set().union(*file_keys.values())
@@ -348,16 +368,16 @@ def check_yaml_keys():
 
     # Print the report
     if missing_keys_report:
-        logger.info("Missing Keys Report:")
+        print("Missing Keys Report:")
         for filename, missing_keys in missing_keys_report.items():
             filename = filename.replace(package_dir + "/", "")
-            logger.info(f"{filename} is missing keys:")
+            print(f"{filename} is missing keys:")
             for key in missing_keys:
-                logger.info(f"  {key}")
-            logger.info()  # blank line between each failing file
+                print(f"  {key}")
+            print()  # blank line between each failing file
         return False
     else:
-        logger.info("All files contain the same keys.")
+        print("All files contain the same keys.")
         return True
 
 
@@ -366,7 +386,7 @@ def terminate_redis():
     if REDIS_PROCESS:
         REDIS_PROCESS.terminate()
         REDIS_PROCESS.wait()
-        logger.info("Terminated Redis process")
+        print("Terminated Redis process")
 
 
 def run_test_scripts(scripts, timeout):
@@ -378,50 +398,88 @@ def run_test_scripts(scripts, timeout):
         p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
         p.start()
         processes[p] = script
-        logger.info(f"Started {script} with PID {p.pid}")
 
-    while True:
-        for p in list(processes.keys()):
-            if not p.is_alive():
-                p.join()  # Clean up the finished process
+    while processes:
+        # Check running time
+        if time.time() - start_time > timeout:
+            for p in list(processes.keys()):
+                p.terminate()  # Send SIGTERM signal
+                p.join()
+                if DEBUG:
+                    print(f"Terminated running process {processes[p]} at timeout.")
                 processes.pop(p)
 
-        # Collect outputs from the queue
-        while not output_queue.empty():
-            script, exit_code, stdout, stderr = output_queue.get()
-            exit_codes[script] = exit_code
-            outputs[script] = (stdout, stderr)
-            logger.info(f"Collected output for {script}")
+    while not output_queue.empty():
+        script, exit_code, stdout, stderr, log_output = output_queue.get()
+        exit_codes[script] = exit_code
+        outputs[script] = (stdout, stderr, log_output)
+        if DEBUG:
+            print(f"Collected output for {script}")
 
-        if time.time() - start_time > timeout:
-            logger.info(f"Running period of {timeout}s finished, terminating running processes.")
-            for p, script in processes.items():
-                p.terminate()
-                p.join()
-                logger.info(f"Running process {p.pid} terminated.")
-                exit_codes[script] = "timeout"
-                outputs[script] = ("", "Process terminated due to timeout.")
-            break
 
-        if not processes:
-            break
-        time.sleep(1)
+def check_log_capture():
+    def get_log_capture_script():
+        (script,) = [s for s in META_TESTS_PASS_EXPECTED if "meta_test_logging_capture.py" in s.path]
+        return script
+
+    stdout_expected = ["This is in stdout"]
+    log_expected = [
+        "logger at info level",
+        "logger at warning level",
+        "logger at error level",
+        "logger at info level - post CliLog.initLog()",
+        "logger at warning level - post CliLog.initLog()",
+        "logger at error level - post CliLog.initLog()",
+    ]
+    passed = True
+
+    logging_capture_script = get_log_capture_script()
+    stdout, stderr, logs = outputs[logging_capture_script]  # single strings with \n embedded
+    missing_items = []
+    for line in stdout_expected:
+        if line not in stdout:
+            print(f"❌ Test {logging_capture_script} did not capture stdout as expected.")
+            missing_items.append(line)
+            passed = False
+
+    for line in log_expected:
+        if line not in logs:
+            print(f"❌ Test {logging_capture_script} did not capture logs as expected.")
+            missing_items.append(line)
+            passed = False
+
+    if missing_items:
+        print(f"❌ Missing log items: {missing_items}")
+    else:
+        print(f"✅ Test {logging_capture_script} captured all stdout and logs as expected.")
+
+    return passed
 
 
 def check_meta_test_results():
     # Don't count these towards passes and fail, just raise if these aren't
     # as expected, as it means the test suite is fundamentally broken
+
     passed = True
     for script in META_TESTS_FAIL_EXPECTED:
-        if exit_codes[script] in (0, "timeout"):
-            logger.info(f"Test {script} was expected to fail but did not return a non-zero exit code:")
-            logger.info(outputs[script][1])
+        code = exit_codes[script]
+        if code in (0, "timeout"):
+            print(f"❌ Test {script} was expected to fail but returned a zero-like exit code: {code}")
+            print(outputs[script][1])
             passed = False
+        else:
+            print(f"✅ Test {script} passed (by failing) with exit code: {code}")
     for script in META_TESTS_PASS_EXPECTED:
-        if exit_codes[script] not in (0, "timeout"):
-            logger.info(f"Test {script} was expected to pass but returned a non-zero exit code:")
-            logger.info(outputs[script][1])
+        code = exit_codes[script]
+        if code not in (0, "timeout"):
+            print(f"❌ Test {script} was expected to pass but returned a non-zero exit code: {code}")
+            print(outputs[script][1])
             passed = False
+        else:
+            print(f"✅ Test {script} passed with exit code: {code}")
+
+    capture_ok = check_log_capture()
+    passed = passed and capture_ok
 
     if not passed:
         raise RuntimeError("Meta-tests did not pass as expected - fix the test suite and try again.")
@@ -444,16 +502,16 @@ def main():
         for test_script in itertools.chain(TEST_SCRIPTS, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED):
             if not os.path.isfile(test_script.path):
                 raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
-        logger.info("Running meta-tests to test the CI suite...")
+        print(f"Running meta-tests to test the CI suite for the next {META_TEST_DURATION}s...")
         run_test_scripts(META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION)
         check_meta_test_results()
+        print("✅ All meta-tests passed, running real tests now...\n")
 
     # Run setup script to start and check redis
     atexit.register(terminate_redis)
     run_setup(REDIS_INIT_WAIT_TIME)
 
     # Run each real test script
-    logger.info("✅ Meta-tests passed, running real tests now...\n")
     run_test_scripts(TEST_SCRIPTS, TEST_DURATION)
 
     # Check there's a result for all scripts
@@ -465,25 +523,24 @@ def main():
             "Not all test scripts have had their results collected somehow - this is drastically wrong!"
         )
 
-    logger.info("\nTest Results:")
+    print("\nTest Results:")
     for script, result in exit_codes.items():
         if script not in [s for s in TEST_SCRIPTS]:  # We've already done these
             continue
 
-        stdout, stderr = outputs[script]
+        stdout, stderr, log_output = outputs[script]
         if result in ["timeout", 0]:
             PASSES.append(script)
             if script.displayOnPass:
-                logger.info(f"\n🙂 *Passing* logs from {script}:")
-                logger.info(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
-                logger.info(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
+                print(f"\n🙂 *Passing* logs from {script}:")
+                print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
+                print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
             continue
         else:
-            logger.error(f"{script}: Failed with exit code {result}. Stdout and stderr below:")
-            # import ipdb as pdb; pdb.set_trace()
-            logger.info(f"{script} stdout: {stdout}")  # ensure use of str not repr to print properly
-            logger.info(f"{script} stderr: {stderr}")  # ensure use of str not repr to print properly
-            logger.info("\n")  # put a nice gap between each failing scripts's output
+            print(f"{script}: Failed with exit code {result}. Stdout, stderr and logs below:")
+            print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
+            print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
+            print("\n")  # put a nice gap between each failing scripts's output
             FAILS.append(script)
 
     if check_redis_final_contents():
