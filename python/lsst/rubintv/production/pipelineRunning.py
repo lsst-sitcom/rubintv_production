@@ -379,3 +379,72 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f"Put {datasetType} for {visitDataId}")
+
+
+class SingleCoreQuantumRunner(BaseButlerChannel):
+
+    def __init__(
+        self,
+        locationConfig,
+        butler,
+        instrument,
+        pipeline,  # not pulled from the locationConfig to allow notebook/debug usage
+        queueName,
+        *,
+        doRaise=False,
+    ):
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            # writeable true is required to define visits
+            butler=butler,
+            watcherType="redis",
+            # TODO: DM-43764 this shouldn't be necessary on the
+            # base class after this ticket, I think.
+            detectors=None,
+            dataProduct=None,
+            # TODO: DM-43764 should also be able to fix needing
+            # channelName when tidying up the base class. Needed
+            # in some contexts but not all. Maybe default it to
+            # ''?
+            channelName="",
+            queueName=queueName,
+            doRaise=doRaise,
+        )
+        self.instrument = instrument
+        self.butler = butler
+        self.pipeline = pipeline
+        self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
+        self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
+
+        self.runCollection = None
+        self.limitedButler = self.makeLimitedButler(butler)
+        self.log.info(f"Pipeline running configured to consume from {queueName}")
+
+    def makeLimitedButler(self, butler):
+        # TODO: refactor this to use to not copy and paste it
+        cachedOnGet = set()
+        cachedOnPut = set()
+        for name in self.pipelineGraph.dataset_types.keys():
+            if self.pipelineGraph.consumers_of(name):
+                if self.pipelineGraph.producer_of(name) is not None:
+                    cachedOnPut.add(name)
+                else:
+                    cachedOnGet.add(name)
+
+        noCopyOnCache = ("bias", "dark", "flat", "defects", "camera")
+        self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
+        return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+
+    def callback(self, quantumPayload):
+        try:
+            executor = SingleQuantumExecutor(
+                None,
+                taskFactory=TaskFactory(),
+                limited_butler_factory=lambda _: self.limitedButler,
+                clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
+            )
+
+        except Exception:
+            self.log.exception("Failed to create executor")
+            return

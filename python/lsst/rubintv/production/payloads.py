@@ -26,7 +26,7 @@ import io
 import json
 from dataclasses import dataclass
 
-from lsst.daf.butler import Butler, DataCoordinate
+from lsst.daf.butler import Butler, DataCoordinate, Quantum, SerializedQuantum
 from lsst.pipe.base import PipelineGraph
 
 __all__ = [
@@ -114,3 +114,32 @@ class PayloadResult(Payload):
             and self.success == __value.success
             and self.message == __value.message
         )
+
+
+@dataclass(frozen=True)
+class QuantumPayload:
+    """A dataclass representing a quatum payload.
+    """
+
+    quantum: Quantum
+    run: str
+
+    @classmethod
+    def from_json(
+        cls,
+        json_str: str,
+        butler: Butler,
+    ) -> Payload:
+        json_dict = json.loads(json_str)
+        quantum = Quantum.from_simple(Quantum._serializedType.model_validate(json_dict['quantum']), universe=butler.dimensions)
+        return cls(quantum=quantum, run=json_dict["run"])
+
+    def to_json(self) -> str:
+        json_dict = {
+            "quantum": self.quantum.to_simple().model_dump(),
+            "run": self.run,
+        }
+        return json.dumps(json_dict)
+
+    def __repr__(self):
+        return f"QuantumPayload(quantum={self.quantum}, run={self.run})"
