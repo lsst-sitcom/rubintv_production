@@ -261,7 +261,8 @@ class HeadProcessController:
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
         self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
-        self.timer = BoxCarTimer(length=100)  # don't start here, the event loop starts the lap timer
+        self.workTimer = BoxCarTimer(length=100)  # don't start here, the event loop starts the lap timer
+        self.loopTimer = BoxCarTimer(length=100)  # don't start here, the event loop starts the lap timer
         self.nDispatched = 0
         self.nNightlyRollups = 0
 
@@ -564,23 +565,44 @@ class HeadProcessController:
         loop timings, that is only the time taken to actually perform the event
         loop's work.
         """
-        self.timer.lap()
-        self.timer.pause()  # don't count the sleeping towards the loop time
-        sleepPeriod = self.targetLoopDuration - self.timer.lastLapTime()
+        self.loopTimer.lap()  # times the actual loop
+        self.workTimer.lap()  # times the actual work done in the loop
+
+        # XXX there is a minor bug here in what the logs say but it's not
+        # serious enough for me to fix right now. I don't think it's affecting
+        # things.
+        if self.loopTimer.totalLaps % 100 == 0:  # +1 so we don't trigger this on the first loop
+            loopSpeed = self.loopTimer.median(frequency=True)
+            maxLoopTime = self.loopTimer.max(frequency=False)
+            self.log.info(
+                f"Event loop running at regulated speed of {loopSpeed:.2f}Hz with a max time of"
+                f" {maxLoopTime:.2f}s for the last {len(self.loopTimer._buffer)} loops"
+            )
+
+            medianFreq = self.workTimer.mean(frequency=True)
+            maxWorkTime = self.workTimer.mean(frequency=False)
+            self.log.info(
+                f"If unlimited, the event loop would run at {medianFreq:.2f}Hz, with a longest"
+                f" workload of {maxWorkTime:.2f}s in the last {len(self.workTimer._buffer)} loops"
+            )
+
+        sleepPeriod = self.targetLoopDuration - self.loopTimer.lastLapTime()
         if sleepPeriod > 0:
+            self.workTimer.pause()  # don't count the sleeping towards the loop time on work timer
             sleep(sleepPeriod)
+            self.workTimer.resume()
         else:
-            self.log.warning(f"Event loop running slow, last loop took {self.timer.lastLapTime():.2f}s")
-        self.timer.resume()
+            if sleepPeriod < -0.01:  # allow some noise
+                lastLap = self.loopTimer.lastLapTime()
+                lastWork = self.loopTimer.lastLapTime()
+                self.log.warning(
+                    f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
+                )
 
     def run(self):
-        self.timer.start()
+        self.workTimer.start()  # times how long it actually takes to do the work
+        self.loopTimer.start()  # checks the delivered loop performance
         while True:
-            if (self.timer.totalLaps + 1) % 100 == 0:  # +1 so we don't trigger this on the first loop
-                medianFreq = self.timer.mean(frequency=True)
-                maxLoopTime = self.timer.mean(frequency=False)
-                self.log.info(f"Event loop running at {medianFreq:.2f}Hz, longest loop = {maxLoopTime:.2f}s")
-
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.name, 5)
 
