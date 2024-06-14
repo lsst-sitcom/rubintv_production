@@ -24,7 +24,7 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
@@ -42,15 +42,14 @@ else:
         if len(sys.argv) < 2:
             print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
             sys.exit(1)
-        workerNum = int(sys.argv[1])
+        workerNum = int(sys.argv[2])
 
 workerNum = int(workerNum)
 
 queueName = f"STEP2A-WORKER-{workerNum:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-location = "summit"
-locationConfig = LocationConfig(location)
+locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
@@ -70,3 +69,4 @@ step2aRunner = SingleCorePipelineRunner(
     queueName=queueName,
 )
 step2aRunner.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here
