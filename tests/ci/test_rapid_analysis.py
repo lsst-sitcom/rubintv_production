@@ -17,6 +17,13 @@ import redis
 import yaml
 from cihelper import TestScript
 
+# these imports need to come after the log patching (I think)
+from lsst.daf.butler.cli.cliLog import CliLog  # noqa: E402
+
+# call this once and then also disable it so it doesn't interfere with the log
+# capture later on
+CliLog.initLog(False)
+
 
 def do_nothing(*args, **kwargs):
     pass
@@ -37,29 +44,32 @@ CliLog.initLog = do_nothing
 
 
 # only import from lsst.anything once the logging configs have been frozen
+# noqa: E402
+# from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.rubintv.production.utils import getDoRaise  # noqa: E402
 
 # --------------- Configuration --------------- #
 
 DO_RUN_META_TESTS = True  # XXX Turn on before merging
-DO_CHECK_YAML_FILES = False  # XXX Turn on before merging
+DO_CHECK_YAML_FILES = True  # XXX Turn on before merging
 
-REDIS_IP = "127.0.0.1"
+REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 90  # How long to leave SFM to run for
+TEST_DURATION = 300  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
-DEBUG = False
+DEBUG = True
 
 # List of test scripts to run, defined relative to package root
-TEST_SCRIPTS = [
-    # XXX patch this so it never puts anything if new data lands during tests
-    TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
+TEST_SCRIPTS_ROUND_1 = [
+    # the main RA testing - runs data through the processing pods
     TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "0"]),
+    TestScript("scripts/summit/LSSTComCamSim/runStep2aWorker.py", ["slac_testing", "0"]),  # maybe not OK
+    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"]),  # maybe not OK
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "0"], displayOnPass=True),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "3"]),
@@ -69,6 +79,16 @@ TEST_SCRIPTS = [
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
     TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1, displayOnPass=True),
+    TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, displayOnPass=True),
+]
+
+TEST_SCRIPTS_ROUND_2 = [
+    # run after the processing pods are torn down, so that, for example, the
+    # butler watcher can be checked without attempting to process the image it
+    # drops into redis
+    # XXX need to get this to actually run
+    # XXX need to add check that this actually output to redis
+    TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -84,10 +104,11 @@ META_TESTS_PASS_EXPECTED = [
 ]
 
 YAML_FILES_TO_CHECK = [
-    "config/config_bts.yaml",
-    "config/config_tts.yaml",
+    # TODO Add the commented out files back in when you're ready
+    # "config/config_bts.yaml",
+    # "config/config_tts.yaml",
     "config/config_summit.yaml",
-    "config/config_slac.yaml",
+    # "config/config_slac.yaml",
     "config/config_slac_testing.yaml",
 ]
 
@@ -95,9 +116,14 @@ YAML_FILES_TO_CHECK = [
 
 ci_dir = os.path.dirname(os.path.abspath(__file__))
 package_dir = os.path.abspath(os.path.join(ci_dir, "../../"))
-TEST_SCRIPTS = [
+TEST_SCRIPTS_ROUND_1 = [
     TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
-    for test_script in TEST_SCRIPTS
+    for test_script in TEST_SCRIPTS_ROUND_1
+]
+
+TEST_SCRIPTS_ROUND_2 = [
+    TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
+    for test_script in TEST_SCRIPTS_ROUND_2
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -126,7 +152,7 @@ def exec_script(test_script: TestScript, output_queue):
 
     def termination_handler(signum, frame):
         print("Termination signal received, exiting...")
-        raise KeyboardInterrupt
+        raise BaseException
 
     signal.signal(signal.SIGTERM, termination_handler)
 
@@ -177,7 +203,7 @@ def exec_script(test_script: TestScript, output_queue):
     except SystemExit as e:
         logging.info(f"Script exited with status: {e}")
         exit_code = e.code if e.code is not None else 0
-    except KeyboardInterrupt:  # this is the timeout error now
+    except BaseException:  # this is the timeout error now
         exit_code = "timeout"
     finally:
         sys.stdout = original_stdout
@@ -195,7 +221,7 @@ def exec_script(test_script: TestScript, output_queue):
 
 def check_system_size_and_load():
     number_of_cores = os.cpu_count()
-    number_of_scripts = len(TEST_SCRIPTS)
+    number_of_scripts = len(TEST_SCRIPTS_ROUND_1)
     if number_of_scripts > number_of_cores:
         print(
             f"The number of test scripts ({number_of_scripts}) is greater than"
@@ -257,7 +283,7 @@ def run_setup(redis_init_wait_time):
     os.environ["RAPID_ANALYSIS_LOCATION"] = "slac_testing"
 
     # Set environment variables for Redis
-    os.environ["REDIS_HOST"] = REDIS_IP
+    os.environ["REDIS_HOST"] = REDIS_HOST
     os.environ["REDIS_PORT"] = REDIS_PORT
     os.environ["REDIS_PASSWORD"] = REDIS_PASSWORD
 
@@ -398,16 +424,36 @@ def run_test_scripts(scripts, timeout):
         p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
         p.start()
         processes[p] = script
+        print(f"Launched {script} with pid={p.pid}...")
 
+    last_secs = None
     while processes:
         # Check running time
-        if time.time() - start_time > timeout:
+        time_remaining = timeout - (time.time() - start_time)
+        mins, secs = divmod(time_remaining, 60)
+        if int(secs) != last_secs:  # only update when the seconds change
+            last_secs = int(secs)
+            timer = f"{int(mins):02d}:{int(secs):02d} remaining" if time_remaining > 0 else "time's up"
+            end = "\r" if time_remaining > 0 else "\n"  # overwrite until the end, then leave it showing
+            n_alive = sum([p.is_alive() for p in processes])
+            print(f"{timer} with {n_alive} processes running", end=end)
+
+        if time_remaining <= 0:
             for p in list(processes.keys()):
+                if not p.is_alive():
+                    p.join()
+                    processes.pop(p)
+                    continue
+                if DEBUG:
+                    print(f"Terminating running process {processes[p]} at timeout.")
                 p.terminate()  # Send SIGTERM signal
                 p.join()
+                popped = processes.pop(p)
                 if DEBUG:
-                    print(f"Terminated running process {processes[p]} at timeout.")
-                processes.pop(p)
+                    print(f"Terminated running process {popped}.")
+
+    if DEBUG:
+        print("Finished terminating running processes, collecting outputs...")
 
     while not output_queue.empty():
         script, exit_code, stdout, stderr, log_output = output_queue.get()
@@ -499,7 +545,9 @@ def main():
     # these exit if any fail because that means everything is broken so there's
     # no point in continuing
     if DO_RUN_META_TESTS:
-        for test_script in itertools.chain(TEST_SCRIPTS, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED):
+        for test_script in itertools.chain(
+            TEST_SCRIPTS_ROUND_1, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED
+        ):
             if not os.path.isfile(test_script.path):
                 raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
         print(f"Running meta-tests to test the CI suite for the next {META_TEST_DURATION}s...")
@@ -512,10 +560,10 @@ def main():
     run_setup(REDIS_INIT_WAIT_TIME)
 
     # Run each real test script
-    run_test_scripts(TEST_SCRIPTS, TEST_DURATION)
+    run_test_scripts(TEST_SCRIPTS_ROUND_1, TEST_DURATION)
 
     # Check there's a result for all scripts
-    expected = [script for script in TEST_SCRIPTS]
+    expected = [script for script in TEST_SCRIPTS_ROUND_1]
     if DO_RUN_META_TESTS:
         expected += [s for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
     if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
@@ -525,7 +573,7 @@ def main():
 
     print("\nTest Results:")
     for script, result in exit_codes.items():
-        if script not in [s for s in TEST_SCRIPTS]:  # We've already done these
+        if script not in [s for s in TEST_SCRIPTS_ROUND_1]:  # We've already done these
             continue
 
         stdout, stderr, log_output = outputs[script]
