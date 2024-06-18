@@ -571,7 +571,7 @@ class RedisHelper:
         for key in keys:
             self.redis.delete(key)
 
-    def displayRedisContents(self):
+    def displayRedisContents(self, instrument=None):
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -616,6 +616,9 @@ class RedisHelper:
         if not keys:
             print("Nothing in the Redis database.")
             return
+
+        if instrument is not None:
+            keys = [key for key in keys if instrument in key]
 
         # TODO: DM-44102 Improve how all the redis monitoring stuff is done
 
