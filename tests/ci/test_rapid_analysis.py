@@ -449,7 +449,7 @@ def run_test_scripts(scripts, timeout):
     for p in list(processes.keys()):
         if DEBUG:
             print(f"Joining terminated process {p.pid}.")
-        p.join(timeout=2)
+        p.join(timeout=3)
 
     if DEBUG:
         print("Finished terminating running processes, collecting outputs...")

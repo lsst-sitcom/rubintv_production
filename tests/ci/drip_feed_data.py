@@ -23,7 +23,8 @@ butler = dafButler.Butler(
 
 redisHelper = RedisHelper(butler, locationConfig)
 
-where = f"exposure.day_obs=20240402 AND exposure.seq_num=1 AND instrument='{instrument}'"
+where = f"exposure.day_obs=20240613 AND exposure.seq_num=17 AND instrument='{instrument}'"  # OR4
+where = f"exposure.day_obs=20240402 AND exposure.seq_num=1 AND instrument='{instrument}'"  # OR3
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 1, f"Expected 1 record, got {len(records)}"
 record = records[0]
@@ -37,6 +38,3 @@ print(f"Pushing expId={record.id} for {record.instrument} for processing")
 # this is what the butlerWatcher does for each new record
 redisHelper.pushNewExposureToHeadNode(record)
 redisHelper.pushToButlerWatcherList(instrument, record)
-# sys.exit(0)
-while True:
-    time.sleep(1)
