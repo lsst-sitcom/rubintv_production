@@ -556,7 +556,7 @@ def getAutomaticLocationConfig():
     location = os.getenv("RAPID_ANALYSIS_LOCATION")
     if not location:
         raise RuntimeError("No location was supplied on the command line or via RAPID_ANALYSIS_LOCATION.")
-    return LocationConfig(location)
+    return LocationConfig(location.lower())
 
 
 def _loadConfigFile(site):
