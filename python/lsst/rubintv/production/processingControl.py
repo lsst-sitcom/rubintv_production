@@ -143,13 +143,15 @@ def defineVisit(butler, expRecord):
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record to define the visit for.
     """
-    instr = Instrument.from_string(butler.registry.defaults.dataId["instrument"], butler.registry)
-    config = DefineVisitsConfig()
-    instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
+    ids = list(butler.registry.queryDimensionRecords("visit", dataId=expRecord.dataId))
+    if len(ids) == 0:  # only run if needed
+        instr = Instrument.from_string(butler.registry.defaults.dataId["instrument"], butler.registry)
+        config = DefineVisitsConfig()
+        instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
-    task = DefineVisitsTask(config=config, butler=butler)
+        task = DefineVisitsTask(config=config, butler=butler)
 
-    task.run([{"exposure": expRecord.id}], collections=butler.collections)
+        task.run([{"exposure": expRecord.id}], collections=butler.collections)
 
 
 def getVisitId(butler, expRecord):

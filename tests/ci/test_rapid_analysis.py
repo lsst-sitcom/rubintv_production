@@ -577,11 +577,13 @@ def main():
             if script.display_on_pass:
                 print(f"\n🙂 *Passing* logs from {script}:")
                 print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
+                print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
                 print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
             continue
         else:
             print(f"{script}: Failed with exit code {result}. Stdout, stderr and logs below:")
             print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
+            print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
             print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
             print("\n")  # put a nice gap between each failing scripts's output
             FAILS.append(script)
