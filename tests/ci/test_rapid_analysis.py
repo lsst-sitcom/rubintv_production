@@ -327,14 +327,12 @@ def check_redis_final_contents():
     """
     Ping Redis and check we can set and read back a test key.
     """
-    # Example check, you can expand this based on your needs
-    host = os.environ["REDIS_HOST"]
-    port = os.environ["REDIS_PORT"]
-    password = os.environ["REDIS_PASSWORD"]
+    from lsst.rubintv.production.redisUtils import RedisHelper
 
-    r = redis.Redis(host=host, port=port, password=password)
-    keys = r.keys()
-    print(f"Redis contains keys: {keys}")
+    redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
+    redisHelper.displayRedisContents()
+
+    # keys = redisHelper.redis.keys()
     return True  # XXX change the return value to be based on a real check
 
 
