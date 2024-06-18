@@ -44,6 +44,7 @@ class Tee:
     def write(self, obj):
         for f in self.files:
             f.write(obj)
+            f.flush()  # Ensure immediate output
 
     def flush(self):
         for f in self.files:
