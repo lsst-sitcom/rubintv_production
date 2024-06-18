@@ -427,9 +427,8 @@ def run_test_scripts(scripts, timeout):
         print(f"Launched {script} with pid={p.pid}...")
 
     last_secs = None
-    while processes:
+    while (time_remaining := (timeout - (time.time() - start_time))) > 0:
         # Check running time
-        time_remaining = timeout - (time.time() - start_time)
         mins, secs = divmod(time_remaining, 60)
         if int(secs) != last_secs:  # only update when the seconds change
             last_secs = int(secs)
@@ -437,20 +436,22 @@ def run_test_scripts(scripts, timeout):
             end = "\r" if time_remaining > 0 else "\n"  # overwrite until the end, then leave it showing
             n_alive = sum([p.is_alive() for p in processes])
             print(f"{timer} with {n_alive} processes running", end=end)
+        time.sleep(1)
 
-        if time_remaining <= 0:
-            for p in list(processes.keys()):
-                if not p.is_alive():
-                    p.join()
-                    processes.pop(p)
-                    continue
-                if DEBUG:
-                    print(f"Terminating running process {processes[p]} at timeout.")
-                p.terminate()  # Send SIGTERM signal
-                p.join()
-                popped = processes.pop(p)
-                if DEBUG:
-                    print(f"Terminated running process {popped}.")
+    for p in list(processes.keys()):
+        if p.is_alive():
+            if DEBUG:
+                print(f"Terminating running process {processes[p]} at timeout.")
+            p.terminate()  # Send SIGTERM signal
+
+    print("Post SIGTERM sleep")
+    time.sleep(3)  # leave time to die
+
+    # Ensure all processes have terminated
+    for p in list(processes.keys()):
+        if DEBUG:
+            print(f"Joining terminated process {p.pid}.")
+        p.join(timeout=2)
 
     if DEBUG:
         print("Finished terminating running processes, collecting outputs...")
