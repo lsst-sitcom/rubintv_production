@@ -1,5 +1,4 @@
 import atexit
-import contextlib
 import io
 import itertools
 import logging
@@ -15,14 +14,7 @@ from unittest.mock import patch
 
 import redis
 import yaml
-from cihelper import TestScript
-
-# these imports need to come after the log patching (I think)
-from lsst.daf.butler.cli.cliLog import CliLog  # noqa: E402
-
-# call this once and then also disable it so it doesn't interfere with the log
-# capture later on
-CliLog.initLog(False)
+from ciutils import TestScript, conditional_redirect
 
 
 def do_nothing(*args, **kwargs):
@@ -61,15 +53,20 @@ TEST_DURATION = 300  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
-DEBUG = True
+DEBUG = False
 
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
     TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
-    TestScript("scripts/summit/LSSTComCamSim/runStep2aWorker.py", ["slac_testing", "0"]),  # maybe not OK
-    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"]),  # maybe not OK
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "0"], displayOnPass=True),
+    TestScript("scripts/summit/LSSTComCamSim/runStep2aWorker.py", ["slac_testing", "0"], tee_output=True),
+    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"], tee_output=True),
+    TestScript(
+        "scripts/summit/LSSTComCamSim/runSfmRunner.py",
+        ["slac_testing", "0"],
+        display_on_pass=True,
+        tee_output=True,
+    ),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "3"]),
@@ -78,8 +75,10 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "6"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
-    TestScript("scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1, displayOnPass=True),
-    TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, displayOnPass=True),
+    TestScript(
+        "scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1, display_on_pass=True
+    ),
+    TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, display_on_pass=True),
 ]
 
 TEST_SCRIPTS_ROUND_2 = [
@@ -100,7 +99,8 @@ META_TESTS_PASS_EXPECTED = [
     TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
     TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
     TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
-    TestScript("meta_test_logging_capture.py"),  # outputs logs - for visual inspection only sadly
+    TestScript("meta_test_logging_capture.py"),  # check logs are captured when not being teed
+    TestScript("meta_test_logging_capture.py", tee_output=True),  # confirm teeing works
 ]
 
 YAML_FILES_TO_CHECK = [
@@ -176,12 +176,8 @@ def exec_script(test_script: TestScript, output_queue):
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
-    # Redirect sys.stdout and sys.stderr
-    sys.stdout = f_stdout
-    sys.stderr = f_stderr
-
     try:
-        with contextlib.redirect_stdout(f_stdout), contextlib.redirect_stderr(f_stderr):
+        with conditional_redirect(test_script.tee_output, f_stdout, f_stderr, log_handler, root_logger):
             with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
                 with open(script_path, "r") as script_file:
                     script_content = script_file.read()
@@ -463,9 +459,9 @@ def run_test_scripts(scripts, timeout):
 
 
 def check_log_capture():
-    def get_log_capture_script():
-        (script,) = [s for s in META_TESTS_PASS_EXPECTED if "meta_test_logging_capture.py" in s.path]
-        return script
+    def get_log_capture_scripts():
+        scripts = [s for s in META_TESTS_PASS_EXPECTED if "meta_test_logging_capture.py" in s.path]
+        return scripts
 
     stdout_expected = ["This is in stdout"]
     log_expected = [
@@ -478,25 +474,25 @@ def check_log_capture():
     ]
     passed = True
 
-    logging_capture_script = get_log_capture_script()
-    stdout, stderr, logs = outputs[logging_capture_script]  # single strings with \n embedded
-    missing_items = []
-    for line in stdout_expected:
-        if line not in stdout:
-            print(f"❌ Test {logging_capture_script} did not capture stdout as expected.")
-            missing_items.append(line)
-            passed = False
+    for logging_capture_script in get_log_capture_scripts():
+        stdout, stderr, logs = outputs[logging_capture_script]  # single strings with \n embedded
+        missing_items = []
+        for line in stdout_expected:
+            if line not in stdout:
+                print(f"❌ Test {logging_capture_script} did not capture stdout as expected.")
+                missing_items.append(line)
+                passed = False
 
-    for line in log_expected:
-        if line not in logs:
-            print(f"❌ Test {logging_capture_script} did not capture logs as expected.")
-            missing_items.append(line)
-            passed = False
+        for line in log_expected:
+            if line not in logs:
+                print(f"❌ Test {logging_capture_script} did not capture logs as expected.")
+                missing_items.append(line)
+                passed = False
 
-    if missing_items:
-        print(f"❌ Missing log items: {missing_items}")
-    else:
-        print(f"✅ Test {logging_capture_script} captured all stdout and logs as expected.")
+        if missing_items:
+            print(f"❌ Missing log items: {missing_items}")
+        else:
+            print(f"✅ Test {logging_capture_script} captured all stdout and logs as expected.")
 
     return passed
 
@@ -578,7 +574,7 @@ def main():
         stdout, stderr, log_output = outputs[script]
         if result in ["timeout", 0]:
             PASSES.append(script)
-            if script.displayOnPass:
+            if script.display_on_pass:
                 print(f"\n🙂 *Passing* logs from {script}:")
                 print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
                 print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
