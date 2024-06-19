@@ -228,7 +228,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
 
-                    taskName = node.taskDef.label
+                    taskName = node.taskDef.taskName
                     self.log.info(f"Starting to process {taskName}")
                     quantum = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum, processingId)

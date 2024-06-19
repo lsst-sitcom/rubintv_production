@@ -573,10 +573,10 @@ class HeadProcessController:
         # XXX there is a minor bug here in what the logs say but it's not
         # serious enough for me to fix right now. I don't think it's affecting
         # things.
-        if self.loopTimer.totalLaps % 100 == 0:  # +1 so we don't trigger this on the first loop
+        if self.loopTimer.totalLaps % 100 == 0:
             loopSpeed = self.loopTimer.median(frequency=True)
             maxLoopTime = self.loopTimer.max(frequency=False)
-            self.log.info(
+            self.log.debug(
                 f"Event loop running at regulated speed of {loopSpeed:.2f}Hz with a max time of"
                 f" {maxLoopTime:.2f}s for the last {len(self.loopTimer._buffer)} loops"
             )
