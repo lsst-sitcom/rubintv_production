@@ -244,7 +244,7 @@ class RedisHelper:
         queueName : `str`
             The name of the queue the worker is processing.
         remove : `bool`, optional
-            Remove the worker from pool. Default is ``True``.
+            Remove the worker from pool. Default is ``False``.
         """
         if not remove:
             self.redis.setex(f"{queueName}_EXISTS", timedelta(seconds=30), value=1)
@@ -353,7 +353,8 @@ class RedisHelper:
             The number of times the task has finished.
         """
         key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
-        return int(self.redis.hget(key, processingId))
+        value = self.redis.hget(key, processingId)
+        return int(value or 0)
 
     def reportVisitLevelFinished(self, instrument, step, failed=False):
         """Count the number of times a visit-level pipeline has finished.

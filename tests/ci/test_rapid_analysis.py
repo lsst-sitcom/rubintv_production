@@ -49,7 +49,7 @@ REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 300  # How long to leave SFM to run for
+TEST_DURATION = 400  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -76,7 +76,10 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
     TestScript(
-        "scripts/summit/LSSTComCamSim/runHeadNode.py", ["slac_testing"], delay=1, display_on_pass=True
+        "scripts/summit/LSSTComCamSim/runHeadNode.py",
+        ["slac_testing"],
+        delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
+        display_on_pass=True,
     ),
     TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, display_on_pass=True),
 ]
@@ -153,7 +156,7 @@ def exec_script(test_script: TestScript, output_queue):
 
     def termination_handler(signum, frame):
         print("Termination signal received, exiting...")
-        raise BaseException
+        raise KeyboardInterrupt()
 
     signal.signal(signal.SIGTERM, termination_handler)
 
@@ -200,7 +203,7 @@ def exec_script(test_script: TestScript, output_queue):
     except SystemExit as e:
         logging.info(f"Script exited with status: {e}")
         exit_code = e.code if e.code is not None else 0
-    except BaseException:  # this is the timeout error now
+    except KeyboardInterrupt:  # this is the timeout error now
         exit_code = "timeout"
     finally:
         sys.stdout = original_stdout
@@ -325,8 +328,29 @@ def check_redis_final_contents():
     redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
     redisHelper.displayRedisContents()
 
-    # keys = redisHelper.redis.keys()
-    return True  # XXX change the return value to be based on a real check
+    inst = "LSSTComCamSim"
+    passed = True
+
+    visits = [
+        7024061300017,
+    ]  # for expansion
+    n_visits = len(visits)
+
+    n_step2a = redisHelper.getNumVisitLevelFinished(inst, "step2a")
+    if n_step2a != n_visits:
+        print(f"❌ Expected {n_visits} step2a to have finished, got {n_step2a}")
+        passed = False
+    else:
+        print(f"✅ {n_step2a}x step2a finished")
+
+    key = f"{inst}-NIGHTLYROLLUP-FINISHEDCOUNTER"
+    n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
+    if n_nightly_rollups != n_visits:
+        print(f"❌ Expected {n_visits} nightly rollup finished, got {n_nightly_rollups}")
+        passed = False
+    else:
+        print(f"✅ {n_visits} nightly rollup finished")
+    return passed
 
 
 def print_final_result(fails, passes):
@@ -581,7 +605,7 @@ def main():
                 print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
             continue
         else:
-            print(f"{script}: Failed with exit code {result}. Stdout, stderr and logs below:")
+            print(f"🚨 {script}: Failed with exit code {result}. Stdout, stderr and logs below 🚨")
             print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
             print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
             print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
