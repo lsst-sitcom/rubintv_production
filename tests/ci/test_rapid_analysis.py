@@ -98,6 +98,7 @@ META_TESTS_FAIL_EXPECTED = [
 META_TESTS_PASS_EXPECTED = [
     TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
     TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
+    TestScript("meta_test_env.py"),  # Confirms things we're manipulating via the env are set in workers
     TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
     TestScript("meta_test_logging_capture.py"),  # check logs are captured when not being teed
     TestScript("meta_test_logging_capture.py", tee_output=True),  # confirm teeing works
@@ -270,7 +271,7 @@ def start_redis(redis_init_wait_time):
     return
 
 
-def run_setup(redis_init_wait_time):
+def run_setup():
     """Setup everything for testing.
 
     Sets env vars and starts redis, returning the process.
@@ -289,10 +290,6 @@ def run_setup(redis_init_wait_time):
     if getDoRaise() is not True:  # confirm that this will be used correctly by services
         raise RuntimeError("getDoRaise is not True")
 
-    start_redis(redis_init_wait_time)
-
-    # Wait for the setup timeout and then check Redis
-    check_redis_startup()
     return
 
 
@@ -532,6 +529,9 @@ def main():
 
     check_system_size_and_load()
 
+    # setup env vars for all processes
+    run_setup()  # needs to come before meta tests as they test the env vars
+
     if DO_CHECK_YAML_FILES:
         yaml_files_ok = check_yaml_keys()
         if not yaml_files_ok:  # not an instant fail
@@ -550,9 +550,9 @@ def main():
         check_meta_test_results()
         print("✅ All meta-tests passed, running real tests now...\n")
 
-    # Run setup script to start and check redis
     atexit.register(terminate_redis)
-    run_setup(REDIS_INIT_WAIT_TIME)
+    start_redis(REDIS_INIT_WAIT_TIME)
+    check_redis_startup()  # Wait for the setup timeout and then check Redis
 
     # Run each real test script
     run_test_scripts(TEST_SCRIPTS_ROUND_1, TEST_DURATION)
