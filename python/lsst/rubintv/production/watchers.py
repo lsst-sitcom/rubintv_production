@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ("FileWatcher", "RedisWatcher", "ButlerWatcher")
+
 import logging
 import os
 from glob import glob
@@ -37,8 +39,6 @@ from .utils import (
     safeJsonOpen,
     writeDataIdFile,
 )
-
-__all__ = ("FileWatcher", "RedisWatcher", "ButlerWatcher")
 
 _LOG = logging.getLogger(__name__)
 

@@ -69,10 +69,10 @@ class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
         camConfig.setAllOff()
         self.assertEqual(0, camConfig.getNumEnabled())
 
-        camConfig.setFullChequerboard(phase=0)
+        camConfig.setFullCheckerboard(phase=0)
         self.assertEqual(nFullPhase0, camConfig.getNumEnabled())
 
-        camConfig.setFullChequerboard(phase=1)
+        camConfig.setFullCheckerboard(phase=1)
         self.assertEqual(nFullPhase1, camConfig.getNumEnabled())
 
         camConfig.setWavefrontOn()
@@ -108,10 +108,10 @@ class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
         camConfig.setAllOff()
         self.assertEqual(0, camConfig.getNumEnabled())
 
-        camConfig.setRaftChequerboard(phase=0)
+        camConfig.setRaftCheckerboard(phase=0)
         self.assertEqual(nRaftPhase0, camConfig.getNumEnabled())
 
-        camConfig.setRaftChequerboard(phase=1)
+        camConfig.setRaftCheckerboard(phase=1)
         self.assertEqual(nRaftPhase1, camConfig.getNumEnabled())
 
         camConfig.setWavefrontOn()
@@ -124,11 +124,11 @@ class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
         camConfig = CameraControlConfig()
         camConfig.plotConfig()
 
-        camConfig.setRaftChequerboard(phase=1)
+        camConfig.setRaftCheckerboard(phase=1)
         camConfig.plotConfig()
 
         camConfig.setWavefrontOn()
-        camConfig.setRaftChequerboard(phase=1)
+        camConfig.setRaftCheckerboard(phase=1)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

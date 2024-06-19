@@ -86,14 +86,24 @@ class BaseButlerChannel(BaseChannel):
     ----------
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The location configuration to use.
+    instrument : `str`
+        The instrument to process data for.
     butler : `lsst.daf.butler.Butler`
         The Butler to use.
     dataProduct : `str`
         The dataProduct to watch for.
+    detectors : `list` of `int`
+        The detectors to process the data for. TODO: This is unused in some
+        contexts - fix this, ideally fully removing it.
     channelName : `str`
         The name of the channel, used for uploads and logging.
+    watcherType : `str`
+        The type of watcher to use - either `"file"` or `"redis"`.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
+    queueName : `str`, optional
+        If using a `"redis"` type watcher, which queue should this consume
+        from.
     """
 
     def __init__(

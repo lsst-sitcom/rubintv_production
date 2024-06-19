@@ -54,6 +54,8 @@ TASK_ENDPOINTS_TO_TRACK = (
     "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step2a for nightly
 )
 
+NO_COPY_ON_CACHE = ("bias", "dark", "flat", "defects", "camera")
+
 
 class SingleCorePipelineRunner(BaseButlerChannel):
     """Class for detector-parallel or single-core pipelines, e.g. SFM.
@@ -70,10 +72,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         The instrument name.
     pipeline : `str`
         The path to the pipeline yaml file.
-    detector : `int`
-        The detector number.
-    embargo : `bool`, optional
-        Use the embargo repo?
+    step : `str`
+        The step of the pipeline to run with this worker.
+    awaitsDataProduct : `str`
+        The data product that this runner needs in order to run. Should be set
+        to `"raw"` for step1 runners and `None` for all other ones, as their
+        triggering is dealt with by the head node. TODO: See if this can be
+        removed entirely, because this inconsistency is a bit weird.
+    queueName : `str`
+        The queue that the worker should consume from.
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
@@ -93,7 +100,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         super().__init__(
             locationConfig=locationConfig,
             instrument=instrument,
-            # writeable true is required to define visits
             butler=butler,
             watcherType="redis",
             # TODO: DM-43764 this shouldn't be necessary on the
@@ -129,7 +135,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 else:
                     cachedOnGet.add(name)
 
-        noCopyOnCache = ("bias", "dark", "flat", "defects", "camera")
+        noCopyOnCache = NO_COPY_ON_CACHE
         self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
@@ -241,9 +247,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # Track when the tasks finish, regardless of whether they
                     # succeeded.
 
-                    # Don't track all the intermediate tasks, only
-                    # points used for triggering other workflows.
-                    # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
+                    # TODO: consider whether to track all the intermediate
+                    # tasks, or only the points used for triggering other
+                    # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
                     self.watcher.redisHelper.reportFinished(
                         self.instrument, taskName, processingId, failed=True

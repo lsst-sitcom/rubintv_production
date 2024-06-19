@@ -178,7 +178,7 @@ class RedisHelper:
         except redis.exceptions.ConnectionError as e:
             raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:
-            raise RuntimeError(f"Unexpected error connecting to redis: {e}")
+            raise RuntimeError(f"Unexpected error connecting to redis: {e}") from e
 
     def affirmRunning(self, podName, timePeriod):
         """Affirm that the named pod is running OK and should not be considered
@@ -477,12 +477,12 @@ class RedisHelper:
             function with.
 
             For example, to ensure the guiders are on, the wavefronts are off,
-            and we have a phase-0 per-CCD chequerboard, the received commands
+            and we have a phase-0 per-CCD checkerboard, the received commands
             would look like:
 
             commands = [
                 {'setAllOff': {}},
-                {'setFullChequerboard': {'phase': 0}},
+                {'setFullCheckerboard': {'phase': 0}},
                 {'setGuidersOn': {}},
             ]
         """

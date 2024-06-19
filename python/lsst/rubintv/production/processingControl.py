@@ -34,7 +34,6 @@ from lsst.daf.butler import CollectionType, DataCoordinate, MissingCollectionErr
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
-from lsst.utils.iteration import ensure_iterable
 from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
@@ -49,9 +48,9 @@ class WorkerProcessingMode(enum.IntEnum):
     WAITING: The worker will process only the most recently taken image, and
         then will wait for new images to land, and will not process the backlog
         in the meantime.
-    CONSUMING: The worker will always process the most recent image, but will
-        will also process the backlog of images if no new images have landed
-        during the last processing.
+    CONSUMING: The worker will always process the most recent image, but also
+        process the backlog of images if no new images have landed during
+        the last processing.
     MURDEROUS: The worker will process the most recent image, and will also
         work its way through the backlog of images, but if new images land
         while backlog images are bring processed, the worker will abandon the
@@ -75,7 +74,7 @@ class VisitProcessingMode(enum.IntEnum):
 
 def prepRunCollection(
     butler,
-    pipelineGraphs: PipelineGraph | Iterable[PipelineGraph],
+    pipelineGraphs: Iterable[PipelineGraph],
     run,
     packages: Packages,
 ):
@@ -99,7 +98,6 @@ def prepRunCollection(
             " prefix and didn't chain it to the output collection."
         )
 
-    pipelineGraphs = list(ensure_iterable(pipelineGraphs))
     log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
     butler.put(packages, "packages", run=run)
 
@@ -110,7 +108,7 @@ def prepRunCollection(
 
         initRefs = {}
         taskFactory = TaskFactory()
-        for taskDef, taskNode in zip(pipelineGraph._iter_task_defs(), pipelineGraph.tasks.values()):
+        for taskNode in pipelineGraph.tasks.values():
             inputRefs = [
                 (
                     butler.find_dataset(readEdge.dataset_type_name, collections=[run])
@@ -119,7 +117,7 @@ def prepRunCollection(
                 )
                 for readEdge in taskNode.init.inputs.values()
             ]
-            task = taskFactory.makeTask(taskDef, butler, inputRefs)
+            task = taskFactory.makeTask(taskNode, butler, inputRefs)
 
             for writeEdge in taskNode.init.outputs.values():
                 datasetTypeName = writeEdge.dataset_type_name
@@ -133,8 +131,10 @@ def prepRunCollection(
 def defineVisit(butler, expRecord):
     """Define a visit in the registry, given an expRecord.
 
-    Note that this takes about 9ms regardless of whether it exists, so it
-    is no quicker to check than just run the define call.
+    Only runs if the visit hasn't already been defined. Previously, it was
+    thought to be fine to run repeatedly, but updates in the stack can cause
+    slight differences in the calcualted region, which causes a ConflictError,
+    so only run if we don't already have a visit id available.
 
     NB: butler must be writeable for this to work.
 
@@ -144,7 +144,7 @@ def defineVisit(butler, expRecord):
         The exposure record to define the visit for.
     """
     ids = list(butler.registry.queryDimensionRecords("visit", dataId=expRecord.dataId))
-    if len(ids) == 0:  # only run if needed
+    if len(ids) < 1:  # only run if needed
         instr = Instrument.from_string(butler.registry.defaults.dataId["instrument"], butler.registry)
         config = DefineVisitsConfig()
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
@@ -155,8 +155,7 @@ def defineVisit(butler, expRecord):
 
 
 def getVisitId(butler, expRecord):
-    """Lookup visitId for an expRecord or dataId containing an exposureId
-    or other uniquely identifying keys such as dayObs and seqNum.
+    """Lookup visitId for an expRecord.
 
     Parameters
     ----------
@@ -188,11 +187,11 @@ def getHeadNodeName(instrument):
 
 
 def getStep2aTriggerTask(pipelineFile):
-    """Get the last task in a step1 which runs, to know when to trigger step2a.
+    """Get the last task that runs step1, to know when to trigger step2a.
 
     This is the task which is run when a decetor-exposure is complete, and
-    which therefore means it's time to trigger the step2a processing if all
-    quanta are complete.
+    therefore means it's time to trigger the step2a processing if all quanta
+    are complete.
 
     Parameters
     ----------
@@ -205,6 +204,7 @@ def getStep2aTriggerTask(pipelineFile):
     taskName : `str`
         The task which triggers step2a processing.
     """
+    # TODO: See if this can be removed entirely now we have finished counters
     if "nightly-validation" in pipelineFile:
         return "lsst.pipe.tasks.postprocess.TransformSourceTableTask"
     elif "quickLook" in pipelineFile:
@@ -214,7 +214,7 @@ def getStep2aTriggerTask(pipelineFile):
 
 
 def getNightlyRollupTriggerTask(pipelineFile):
-    """Get the last task in a step1 which runs, to know when to trigger step2a.
+    """Get the last task that runs in step2, to know when to trigger rollup.
 
     This is the task which is run when a decetor-exposure is complete, and
     which therefore means it's time to trigger the step2a processing if all
@@ -231,6 +231,7 @@ def getNightlyRollupTriggerTask(pipelineFile):
     taskName : `str`
         The task which triggers step2a processing.
     """
+    # TODO: See if this can be removed entirely now we have finished counters
     if "nightly-validation" in pipelineFile:
         return "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask"
     elif "quickLook" in pipelineFile:
@@ -259,7 +260,7 @@ class HeadProcessController:
         self.name = getHeadNodeName(instrument)
         self.log = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
-        self.focalPlaneControl = CameraControlConfig()
+        self.focalPlaneControl = CameraControlConfig() if instrument == "LSSTCam" else None
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
         self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
@@ -295,9 +296,13 @@ class HeadProcessController:
         packages = Packages.fromSystem()
 
         allRuns = []
+        needNewChain = False
         try:
             allRuns = self.butler.registry.getCollectionChain(self.outputChain)
         except MissingCollectionError:
+            needNewChain = True
+
+        if needNewChain:
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
             lastRun = f"{self.outputChain}/0"
             prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
@@ -329,7 +334,7 @@ class HeadProcessController:
 
         Note that this is safe for checking config versions so long as the
         configs only come from packages in git, so DRP_PIPE and obs_packages.
-        The only way of this going wrong would be either running wiht -c on the
+        The only way of this going wrong would be either running with -c on the
         command line, which isn't relevant here, or pushing straight to the
         head node from a notebook *and* using the same outputChain. As long as
         notebook users always set a manual outputChain and don't squat on
@@ -382,15 +387,12 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        match self.instrument:
-            case "LATISS":
-                detectorIds = [0]
-            case instrument if instrument in ("LSSTComCam", "LSSTComCamSim"):
-                detectorIds = range(9)  # at least for OR3, always process all ComCam chips
-            case "LSSTCom":
-                detectorIds = self.focalPlaneControl.getEnabledDetIds()
-            case _:
-                raise ValueError(f"Unknown instrument {self.instrument=}")
+        detectorIds = []
+        if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
+            detectorIds = self.focalPlaneControl.getEnabledDetIds()
+        else:
+            results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
+            detectorIds = [item["detector"] for item in results]
 
         dataIds = {}
         for detectorId in detectorIds:
@@ -419,9 +421,9 @@ class HeadProcessController:
         # first time touching the new expRecord so run define visits
 
         # butler must be writeable for the task to run, but don't check here
-        # and let the DefineVisitsTaskraise, because it is useful to be able to
-        # run from a notebook with a normal butler when not needing to define
-        # visits
+        # and let the DefineVisitsTask raise, because it is useful to be able
+        # to run from a notebook with a normal butler when not needing to
+        # define visits
         self.log.info(f"Defining visit (if needed) for {expRecord.id}")
         defineVisit(self.butler, expRecord)
         return expRecord
@@ -553,7 +555,7 @@ class HeadProcessController:
                 dataId = {"exposure": expId, "instrument": self.instrument}
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
-                payload = Payload(dataCoord, bytes("".encode("utf-8")), dataProduct)
+                payload = Payload(dataCoord, b"", dataProduct)
                 queueName = self.getFreeGatherWorkerQueue("MOSAIC")
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
@@ -642,6 +644,8 @@ class HeadProcessController:
 
 
 class RemoteController:
+    # TODO: consider removing this completely. There has to be a simpler way
+    # and this was basically a fun plane project
     def __init__(self, butler, locationConfig):
         self.log = logging.getLogger("lsst.rubintv.production.processControl.RemoteController")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
@@ -700,9 +704,9 @@ class RemoteController:
             """Given a command, return the getting parts and the setting parts,
             if any.
 
-            For example, 'focalPlane.setFullChequerboard' is just components to
+            For example, 'focalPlane.setFullCheckerboard' is just components to
             call, and would therefore return `['focalPlane',
-            'setFullChequerboard'], None` and if the command were
+            'setFullCheckerboard'], None` and if the command were
             'workerMode=WorkerProcessingMode.CONSUMING' this would return
             `['workerMode'], ['WorkerProcessingMode.CONSUMING']`
 
@@ -732,7 +736,7 @@ class RemoteController:
         def safeEval(setterPart):
             """Ensure whatever we're being asked to instantiate is safe to.
 
-            If a primative is passed, it's safely evaluated with literal_eval,
+            If a primitive is passed, it's safely evaluated with literal_eval,
             otherwise, it's only instantiated if it's already an item in the
             global namespace, ensuring that arbitrary code execution cannot
             occur.
@@ -785,6 +789,7 @@ class RemoteController:
 class CameraControlConfig:
     """Processing control for which CCDs will be processed."""
 
+    # TODO: Make this camera agnostic if necessary.
     def __init__(self):
         self.camera = LsstCam.getCamera()
         self._detectorStates = {det: False for det in self.camera}
@@ -915,8 +920,8 @@ class CameraControlConfig:
         for detector in self._guiders:
             self._detectorStates[detector] = False
 
-    def setFullChequerboard(self, phase=0):
-        """Set a chequerboard pattern at the CCD level.
+    def setFullCheckerboard(self, phase=0):
+        """Set a checkerboard pattern at the CCD level.
 
         Parameters
         ----------
@@ -929,8 +934,8 @@ class CameraControlConfig:
             x, y = self._getFullLocationTuple(detector)
             self._detectorStates[detector] = bool(((x % 2) + (y % 2) + phase) % 2)
 
-    def setRaftChequerboard(self, phase=0):
-        """Set a chequerboard pattern at the raft level.
+    def setRaftCheckerboard(self, phase=0):
+        """Set a checkerboard pattern at the raft level.
 
         Parameters
         ----------
