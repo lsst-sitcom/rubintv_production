@@ -645,7 +645,8 @@ def raiseIf(doRaise, error, logger, msg=""):
     if not msg:
         msg = f"{error}"
     if doRaise:
-        raise RuntimeError(msg) from error
+        logger.exception(msg)
+        raise error
     else:
         logger.exception(msg)
 
