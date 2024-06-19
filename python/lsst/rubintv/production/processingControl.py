@@ -583,7 +583,7 @@ class HeadProcessController:
 
             medianFreq = self.workTimer.mean(frequency=True)
             maxWorkTime = self.workTimer.mean(frequency=False)
-            self.log.info(
+            self.log.debug(
                 f"If unlimited, the event loop would run at {medianFreq:.2f}Hz, with a longest"
                 f" workload of {maxWorkTime:.2f}s in the last {len(self.workTimer._buffer)} loops"
             )
@@ -594,7 +594,7 @@ class HeadProcessController:
             sleep(sleepPeriod)
             self.workTimer.resume()
         else:
-            if sleepPeriod < -0.01:  # allow some noise
+            if sleepPeriod < -0.05:  # allow some noise
                 lastLap = self.loopTimer.lastLapTime()
                 lastWork = self.loopTimer.lastLapTime()
                 self.log.warning(
