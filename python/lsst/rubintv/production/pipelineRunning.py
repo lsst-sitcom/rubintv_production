@@ -26,7 +26,7 @@ import numpy as np
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
-from lsst.pipe.base import Pipeline
+from lsst.pipe.base import Pipeline, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 
@@ -195,7 +195,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # Then check for empty qg and raise if that is the case.
             self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
 
-            qg = builder.build(
+            qg: QuantumGraph = builder.build(
                 metadata={
                     "input": self.butler.collections + (self.runCollection,),
                     "output_run": self.runCollection,
@@ -227,22 +227,28 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 try:
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
-                    self.log.info(f"Starting to process {node.taskDef}")
+
+                    taskName = node.taskDef.label
+                    self.log.info(f"Starting to process {taskName}")
                     quantum = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum, processingId)
-                    self.watcher.redisHelper.reportFinished(self.instrument, quantum.taskName, processingId)
+                    self.watcher.redisHelper.reportFinished(self.instrument, taskName, processingId)
 
                 except Exception as e:
+                    # don't use quantum directly in this block in case it is
+                    # not defined due to executor.execute() raising
+
                     # Track when the tasks finish, regardless of whether they
                     # succeeded.
 
                     # Don't track all the intermediate tasks, only
                     # points used for triggering other workflows.
                     # if quantum.taskName in TASK_ENDPOINTS_TO_TRACK:
-                    self.log.exception(f"Task {quantum.taskName} failed: {e}")
+                    self.log.exception(f"Task {taskName} failed: {e}")
                     self.watcher.redisHelper.reportFinished(
-                        self.instrument, quantum.taskName, processingId, failed=True
+                        self.instrument, taskName, processingId, failed=True
                     )
+                    raise e  # still raise the error once we've logged the quantum as finishing
 
             # finished looping over nodes
             if self.step == "step2a":
