@@ -1,75 +1,60 @@
-dimensionUniverseFile: '/sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json'
+bucketName: rubintv_data
+
+# Required items:
+dataIdScanPath: /sdf/home/m/mfl/u/rubintv/dataIds
+dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
+
+# Summit items:
+nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
 
 # AuxTel metadata
-auxTelMetadataPath: '/sdf/home/m/mfl/u/rubintv/sidecar_metadata'
-auxTelMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards'
+auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
+auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
 
 # all sky
-allSkyRootDataPath: '/sdf/home/m/mfl/u/rubintv/allsky/raw'
-allSkyOutputPath: '/sdf/home/m/mfl/u/rubintv/allsky'
+allSkyRootDataPath: /sdf/home/m/mfl/u/rubintv/allsky/raw
+allSkyOutputPath: /sdf/home/m/mfl/u/rubintv/allsky
 
 # animation
-moviePngPath: '/sdf/home/m/mfl/u/rubintv/auxTel_animation'
-
-nightReportPath: '/sdf/home/m/mfl/u/rubintv/nightReportData'
-
+moviePngPath: /sdf/home/m/mfl/u/rubintv/auxTel_animation
 
 # Star Trackers paths:
 # The path at which to find the data on disk. Does not include the
 # GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
-starTrackerDataPath: '/sdf/home/m/mfl/u/starTracker'
-starTrackerOutputPath: '/sdf/home/m/mfl/u/rubintv/starTracker/output'
-starTrackerMetadataPath: '/sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata'
-starTrackerMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata/shards'
+starTrackerDataPath: /sdf/home/m/mfl/u/starTracker
+starTrackerOutputPath: /sdf/home/m/mfl/u/rubintv/starTracker/output
+starTrackerMetadataPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata
+starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata/shards
 
-# for writing the per-day json files and shards to for the star tracker channels
-# starTrackerMetadataPath: '/sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata'
-# starTrackerMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata'
-
-# for writing the rendered pngs of the a.net fits out to
-# starTrackerOutputPath: '/sdf/home/m/mfl/u/rubintv/starTracker/output'
 
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
-astrometryNetRefCatPath: '/sdf/home/m/mfl/u/astrometry_net'
-
-#######################
-# SLAC paths and config
-#######################
-
-# Butler paths - use full paths not aliases here as path existence is checked
-ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
-botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
-
-# # data paths
-scratchPath: '/sdf/home/m/mfl/u/rubintv'
-dataIdScanPath: '/sdf/home/m/mfl/u/rubintv/dataIds'
-plotPath: '/sdf/home/m/mfl/u/rubintv/plots'
-# calculatedDataPath: '/sdf/home/m/mfl/u/rubintv/calculatedData'
-calculatedDataPath: '/sdf/home/m/mfl/u/rubintv/calculatedData'
-
-# # paths for serving TS8 metadata at SLAC
-ts8MetadataPath: '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata'
-ts8MetadataShardPath:  '/sdf/home/m/mfl/u/rubintv/ts8/sidecar_metadata/shards'
-
-# # paths for serving BOT metadata at SLAC
-botMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata'
-botMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards'
-
-# bucketName needs to be set by the user doing the testing,
-# depending on whether they want to upload to the summit or slac bucket
-bucketName: ''
-binning: 8
-
+astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
 
 # ComCam configuration:
-comCamButlerPath: '/sdf/group/rubin/repo/embargo/butler.yaml'
-comCamBinning: 8
+comCamButlerPath: /sdf/group/rubin/repo/embargo/butler.yaml
+binning: 8
 # # paths for serving TS8 metadata at SLAC
-comCamMetadataPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata'
-comCamMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards'
+comCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata
+comCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards
 
+comCamSimMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata
+comCamSimMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata/shards
 
-# summit-like configs
-tmaMetadataPath: '/sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata'
-tmaMetadataShardPath: '/sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards'
+# Not prefixed with ComCam because were currently just pretending that ComCam is TS8
+scratchPath: /sdf/home/m/mfl/u/rubintv
+plotPath: /sdf/home/m/mfl/u/rubintv/plots
+binnedImagePath: /sdf/home/m/mfl/u/rubintv/binnedImages
+calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
+binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
+
+# TMA config:
+tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
+tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
+
+sfmPipelineFile: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
+
+outputChains:
+  LSSTComCam: LSSTComCam/quickLookTesting
+  LSSTComCamSim: LSSTComCamSim/quickLookTesting
+  LSSTCam: LSSTCam/quickLookTesting

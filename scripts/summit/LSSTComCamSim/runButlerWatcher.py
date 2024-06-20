@@ -20,23 +20,24 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+
+import lsst.daf.butler as dafButler
+from lsst.rubintv.production import ButlerWatcher
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+print(f"Running ComCam butler watcher at {location}...")
 
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running ComCam metadata server at {location}...')
-
-metadataDirectory = locationConfig.comCamSimMetadataPath
-shardsDirectory = locationConfig.comCamSimMetadataShardPath
-channelName = 'comcam_sim_metadata'
-
-ts8MetadataServer = TimedMetadataServer(locationConfig=locationConfig,
-                                        metadataDirectory=metadataDirectory,
-                                        shardsDirectory=shardsDirectory,
-                                        channelName=channelName)
-ts8MetadataServer.run()
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+writeDimensionUniverseFile(butler, locationConfig)
+butlerWatcher = ButlerWatcher(
+    butler=butler,
+    locationConfig=locationConfig,
+    instrument="LSSTComCamSim",
+    dataProducts="raw",
+    doRaise=getDoRaise(),
+)
+butlerWatcher.run()

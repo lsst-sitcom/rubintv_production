@@ -20,21 +20,22 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
+
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.slac import Replotter
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running raw processor for detector 8 at {location}...')
+print("Running ComCamSim replotter...")
 
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                        'LSSTComCamSim/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTComCamSim',
-                            detectors=8,
-                            doRaise=True)
-rawProcessor.run()
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+plotter = Replotter(
+    butler=butler,
+    locationConfig=locationConfig,
+    instrument="LSSTComCamSim",
+    doRaise=getDoRaise(),
+)
+plotter.run()

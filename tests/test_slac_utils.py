@@ -21,8 +21,8 @@
 
 """Test cases for utils."""
 import unittest
-import lsst.utils.tests
 
+import lsst.utils.tests
 from lsst.rubintv.production.slac.utils import getGains
 
 
@@ -31,13 +31,13 @@ class RubinTVSlacUtilsTestCase(lsst.utils.tests.TestCase):
 
     def test_getGains(self):
         # check we have all the gains for TS8
-        ts8Gains = getGains('LSST-TS8')
+        ts8Gains = getGains("LSST-TS8")
         self.assertEqual(len(ts8Gains), 9)
         for ccd, gains in ts8Gains.items():
             self.assertEqual(len(gains), 16)
 
         # check we have all the gains for ComCam
-        comCamGains = getGains('LSSTComCam')
+        comCamGains = getGains("LSSTComCam")
         self.assertEqual(len(comCamGains), 9)
         for ccd, gains in comCamGains.items():
             self.assertEqual(len(gains), 16)
@@ -47,22 +47,23 @@ class RubinTVSlacUtilsTestCase(lsst.utils.tests.TestCase):
             ts8ChipGains = ts8Gains[ccdName]
             comCamChipGains = comCamGains[ccdName]
             self.assertEqual(ts8ChipGains.keys(), comCamChipGains.keys())  # amps have the same names
-            self.assertTrue(all([t1 != t2 for t1, t2 in zip(ts8ChipGains.values(),
-                                                            comCamChipGains.values())]))  # all gains differ
+            self.assertTrue(
+                all([t1 != t2 for t1, t2 in zip(ts8ChipGains.values(), comCamChipGains.values())])
+            )  # all gains differ
         self.assertNotEqual(ts8Gains, comCamGains)
 
         # check we have all the gains for the full camera
-        lsstCamGains = getGains('LSSTCam')
+        lsstCamGains = getGains("LSSTCam")
         self.assertEqual(len(lsstCamGains), 205)
         for ccd, gains in lsstCamGains.items():
             nExpected = 16  # amps in an imaging CCD
-            if ccd.split('_')[1].startswith('SW'):  # it's a wavefront sensor with 8 amps
+            if ccd.split("_")[1].startswith("SW"):  # it's a wavefront sensor with 8 amps
                 nExpected = 8
             self.assertEqual(len(gains), nExpected)
 
         # check it only works for known instruments
         with self.assertRaises(ValueError):
-            getGains('BadInstrumentName')
+            getGains("BadInstrumentName")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

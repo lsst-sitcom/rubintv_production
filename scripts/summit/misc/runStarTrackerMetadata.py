@@ -20,23 +20,26 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-print('Running star tracker metadata server...')
+print("Running star tracker metadata server...")
 
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 
 metadataDirectory = locationConfig.starTrackerMetadataPath
 shardsDirectory = locationConfig.starTrackerMetadataShardPath
-channelName = 'startracker_metadata'
+channelName = "startracker_metadata"
 
-starTrackerMetadata = TimedMetadataServer(locationConfig=locationConfig,
-                                          metadataDirectory=metadataDirectory,
-                                          shardsDirectory=shardsDirectory,
-                                          channelName=channelName)
+starTrackerMetadata = TimedMetadataServer(
+    locationConfig=locationConfig,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+)
 starTrackerMetadata.run()

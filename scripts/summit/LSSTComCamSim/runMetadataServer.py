@@ -20,21 +20,27 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
+
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running raw processor for detector 4 at {location}...')
+checkRubinTvExternalPackages()
 
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                        'LSSTComCamSim/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTComCamSim',
-                            detectors=4,
-                            doRaise=True)
-rawProcessor.run()
+print(f"Running ComCam metadata server at {location}...")
+
+metadataDirectory = locationConfig.comCamSimMetadataPath
+shardsDirectory = locationConfig.comCamSimMetadataShardPath
+channelName = "comcam_sim_metadata"
+
+ts8MetadataServer = TimedMetadataServer(
+    locationConfig=locationConfig,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+    doRaise=getDoRaise(),
+)
+ts8MetadataServer.run()

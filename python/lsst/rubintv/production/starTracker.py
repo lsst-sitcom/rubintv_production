@@ -19,54 +19,56 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import logging
+import os
+import time
+import traceback
 from glob import glob
 from time import sleep
-import traceback
-from matplotlib import pyplot as plt
-import pandas as pd
+
 import numpy as np
-import time
+import pandas as pd
+from matplotlib import pyplot as plt
 
 import lsst.geom as geom
-
-from lsst.summit.utils.utils import (getCurrentDayObs_int,
-                                     getAltAzFromSkyPosition,
-                                     dayObsIntToString,
-                                     starTrackerFileToExposure,
-                                     )
 from lsst.summit.utils.astrometry import CommandLineSolver
 from lsst.summit.utils.astrometry.plotting import plot
-from lsst.summit.utils.astrometry.utils import (runCharactierizeImage,
-                                                filterSourceCatOnBrightest,
-                                                getAverageAzFromHeader,
-                                                getAverageElFromHeader,
-                                                )
+from lsst.summit.utils.astrometry.utils import (
+    filterSourceCatOnBrightest,
+    getAverageAzFromHeader,
+    getAverageElFromHeader,
+    runCharactierizeImage,
+)
 from lsst.summit.utils.starTracker import (
+    KNOWN_CAMERAS,
     dayObsSeqNumFromFilename,
+    fastCam,
     getRawDataDirForDayObs,
     isStreamingModeFile,
-    KNOWN_CAMERAS,
     narrowCam,
     wideCam,
-    fastCam,
 )
-from .channels import PREFIXES
-from .utils import writeMetadataShard, hasDayRolledOver, raiseIf
-from .uploaders import Uploader, Heartbeater, MultiUploader
-from .baseChannels import BaseChannel
-from .plotting import starTrackerNightReportPlots
+from lsst.summit.utils.utils import (
+    dayObsIntToString,
+    getAltAzFromSkyPosition,
+    getCurrentDayObs_int,
+    starTrackerFileToExposure,
+)
 
+from .baseChannels import BaseChannel
+from .channels import PREFIXES
+from .plotting import starTrackerNightReportPlots
+from .uploaders import Heartbeater, MultiUploader, Uploader
+from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = (
-    'getCurrentRawDataDir',
-    'getDataDir',
-    'getFilename',
-    'StarTrackerWatcher',
-    'StarTrackerChannel',
-    'StarTrackerNightReportChannel',
-    'StarTrackerCatchup',
+    "getCurrentRawDataDir",
+    "getDataDir",
+    "getFilename",
+    "StarTrackerWatcher",
+    "StarTrackerChannel",
+    "StarTrackerNightReportChannel",
+    "StarTrackerCatchup",
 )
 
 _LOG = logging.getLogger(__name__)
@@ -103,9 +105,9 @@ def getDataDir(rootPath, camera, dayObs):
     path : `str`
         The path to the data.
     """
-    rootPath = os.path.join(rootPath, 'GenericCamera')
-    datePath = dayObsIntToString(dayObs).replace('-', '/')
-    path = os.path.join(rootPath, f'{camera.cameraNumber}/{datePath}/')
+    rootPath = os.path.join(rootPath, "GenericCamera")
+    datePath = dayObsIntToString(dayObs).replace("-", "/")
+    path = os.path.join(rootPath, f"{camera.cameraNumber}/{datePath}/")
     return path
 
 
@@ -129,7 +131,7 @@ def getFilename(rootPath, camera, dayObs, seqNum):
         The filename.
     """
     path = getDataDir(rootPath, camera, dayObs)
-    filename = f'GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits'
+    filename = f"GC{camera.cameraNumber}_O_{dayObs}_{seqNum:06}.fits"
     return os.path.join(path, filename)
 
 
@@ -148,6 +150,7 @@ class StarTrackerWatcher:
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera to watch for raw data for.
     """
+
     cadence = 1  # in seconds
 
     # upload heartbeat every n seconds
@@ -179,7 +182,7 @@ class StarTrackerWatcher:
             The expId of the ``latestFile`` or ``None`` is nothing is found.
         """
         currentDir = getCurrentRawDataDir(self.rootDataPath, self.camera)
-        files = glob(os.path.join(currentDir, '*.fits'))
+        files = glob(os.path.join(currentDir, "*.fits"))
         files = sorted(files, reverse=True)  # everything is zero-padded so sorts nicely
         if not files:
             return None, None, None, None
@@ -190,10 +193,10 @@ class StarTrackerWatcher:
             return None, None, None, None
 
         # filenames are like GC101_O_20221114_000005.fits
-        _, _, dayObs, seqNumAndSuffix = latestFile.split('_')
+        _, _, dayObs, seqNumAndSuffix = latestFile.split("_")
         dayObs = int(dayObs)
-        seqNum = int(seqNumAndSuffix.removesuffix('.fits'))
-        expId = int(str(dayObs) + seqNumAndSuffix.removesuffix('.fits'))
+        seqNum = int(seqNumAndSuffix.removesuffix(".fits"))
+        expId = int(str(dayObs) + seqNumAndSuffix.removesuffix(".fits"))
         return latestFile, dayObs, seqNum, expId
 
     def run(self, callback):
@@ -205,7 +208,7 @@ class StarTrackerWatcher:
             The method to call, with the latest filename as the argument.
         """
         lastFound = -1
-        filename = 'no filename'
+        filename = "no filename"
         while True:
             try:
                 filename, _, _, expId = self._getLatestImageDataIdAndExpId()
@@ -214,7 +217,7 @@ class StarTrackerWatcher:
                     self.heartbeater.beat()
 
                 if (filename is None) or (lastFound == expId):
-                    self.log.debug('Found nothing, sleeping')
+                    self.log.debug("Found nothing, sleeping")
                     sleep(self.cadence)
                     continue
                 else:
@@ -222,7 +225,7 @@ class StarTrackerWatcher:
                     callback(filename)
 
             except Exception as e:
-                self.log.warning(f'Skipped {filename} due to {e}')
+                self.log.warning(f"Skipped {filename} due to {e}")
                 traceback.print_exc()
 
 
@@ -244,39 +247,33 @@ class StarTrackerChannel(BaseChannel):
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
+
     # upload heartbeat every n seconds
     HEARTBEAT_UPLOAD_PERIOD = 30
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
 
-    def __init__(self,
-                 locationConfig,
-                 *,
-                 cameraType,
-                 doRaise=False):
+    def __init__(self, locationConfig, *, cameraType, doRaise=False):
         if cameraType not in KNOWN_CAMERAS:
             raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
-        if cameraType == 'narrow':
+        if cameraType == "narrow":
             self.camera = narrowCam
-        elif cameraType == 'wide':
+        elif cameraType == "wide":
             self.camera = wideCam
-        elif cameraType == 'fast':
+        elif cameraType == "fast":
             self.camera = fastCam
         else:
-            raise RuntimeError('This should be impossible, camera type already checked.')
+            raise RuntimeError("This should be impossible, camera type already checked.")
 
-        name = 'starTracker' + self.camera.suffix
-        log = logging.getLogger(f'lsst.rubintv.production.{name}')
+        name = "starTracker" + self.camera.suffix
+        log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
-        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
-                                     bucketName=locationConfig.bucketName,
-                                     camera=self.camera)
+        watcher = StarTrackerWatcher(
+            rootDataPath=self.rootDataPath, bucketName=locationConfig.bucketName, camera=self.camera
+        )
 
-        super().__init__(locationConfig=locationConfig,
-                         log=log,
-                         watcher=watcher,
-                         doRaise=doRaise)
+        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
 
         self.channelRaw = f"startracker{self.camera.suffix}_raw"  # TODO: DM-43413 remove?
         self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"  # TODO: DM-43413 remove?
@@ -285,26 +282,30 @@ class StarTrackerChannel(BaseChannel):
         self.metadataRoot = self.locationConfig.starTrackerMetadataPath
         self.astrometryNetRefCatRoot = self.locationConfig.astrometryNetRefCatPath
         self.doRaise = doRaise
-        self.shardsDir = os.path.join(self.metadataRoot, 'shards')
+        self.shardsDir = os.path.join(self.metadataRoot, "shards")
         for path in (self.outputRoot, self.shardsDir, self.metadataRoot):
             try:
                 os.makedirs(path, exist_ok=True)
             except Exception as e:
                 raise RuntimeError(f"Failed to find/create {path}") from e
 
-        self.heartbeaterAnalysis = Heartbeater(self.channelAnalysis,
-                                               self.locationConfig.bucketName,
-                                               self.HEARTBEAT_UPLOAD_PERIOD,
-                                               self.HEARTBEAT_FLATLINE_PERIOD)
-        self.heartbeaterRaw = Heartbeater(self.channelRaw,
-                                          self.locationConfig.bucketName,
-                                          self.HEARTBEAT_UPLOAD_PERIOD,
-                                          self.HEARTBEAT_FLATLINE_PERIOD)
+        self.heartbeaterAnalysis = Heartbeater(
+            self.channelAnalysis,
+            self.locationConfig.bucketName,
+            self.HEARTBEAT_UPLOAD_PERIOD,
+            self.HEARTBEAT_FLATLINE_PERIOD,
+        )
+        self.heartbeaterRaw = Heartbeater(
+            self.channelRaw,
+            self.locationConfig.bucketName,
+            self.HEARTBEAT_UPLOAD_PERIOD,
+            self.HEARTBEAT_FLATLINE_PERIOD,
+        )
         self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
-        self.solver = CommandLineSolver(indexFilePath=self.locationConfig.astrometryNetRefCatPath,
-                                        checkInParallel=True,
-                                        timeout=30)
+        self.solver = CommandLineSolver(
+            indexFilePath=self.locationConfig.astrometryNetRefCatPath, checkInParallel=True, timeout=30
+        )
         self.fig = plt.figure(figsize=(16, 16))
 
     def writeDefaultPointingShardForFilename(self, exp, filename):
@@ -330,13 +331,13 @@ class StarTrackerChannel(BaseChannel):
         try:
             az = getAverageAzFromHeader(expMd)
         except RuntimeError:
-            self.log.warning(f'Failed to get az from header for {filename}')
+            self.log.warning(f"Failed to get az from header for {filename}")
 
         alt = None
         try:
             alt = getAverageElFromHeader(expMd)
         except RuntimeError:
-            self.log.warning(f'Failed to get alt from header for {filename}')
+            self.log.warning(f"Failed to get alt from header for {filename}")
 
         # We use MJD as a float because neither astropy.Time nor python
         # datetime.datetime are natively JSON serializable so just use the
@@ -345,7 +346,7 @@ class StarTrackerChannel(BaseChannel):
         mjd = exp.visitInfo.getDate().toAstropy().mjd
 
         datetime = exp.visitInfo.date.toPython()
-        taiString = datetime.time().isoformat().split('.')[0]
+        taiString = datetime.time().isoformat().split(".")[0]
 
         contents = {
             f"Exposure Time{self.camera.suffixWithSpace}": expTime,
@@ -374,10 +375,10 @@ class StarTrackerChannel(BaseChannel):
         dayObsStr = dayObsIntToString(dayObs)
 
         # this is horrible but temporary and all goes away in DM-4341
-        if channel == 'startracker_narrow_raw':  # this is horrible but temporary
-            channel = 'startracker_raw'
-        if channel == 'startracker_narrow_analysis':
-            channel = 'startracker_analysis'
+        if channel == "startracker_narrow_raw":  # this is horrible but temporary
+            channel = "startracker_raw"
+        if channel == "startracker_narrow_analysis":
+            channel = "startracker_analysis"
 
         filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
         return filename
@@ -394,8 +395,8 @@ class StarTrackerChannel(BaseChannel):
         """
         oldWcs = exp.getWcs()
 
-        basename = os.path.basename(filename).removesuffix('.fits')
-        fittedPngFilename = os.path.join(self.outputRoot, basename + '_fitted.png')
+        basename = os.path.basename(filename).removesuffix(".fits")
+        fittedPngFilename = os.path.join(self.outputRoot, basename + "_fitted.png")
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.heartbeaterAnalysis.beat()  # we're alive and at least trying to solve
 
@@ -408,7 +409,7 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: {f"nSources{self.camera.suffixWithSpace}": len(sourceCatalog)}}
         writeMetadataShard(self.shardsDir, dayObs, md)
         if not sourceCatalog:
-            raise RuntimeError('Failed to find any sources in image')
+            raise RuntimeError("Failed to find any sources in image")
 
         filteredSources = filterSourceCatOnBrightest(sourceCatalog, brightSourceFraction)
         md = {seqNum: {f"nSources filtered{self.camera.suffixWithSpace}": len(filteredSources)}}
@@ -420,7 +421,7 @@ class StarTrackerChannel(BaseChannel):
             filteredSources,
             saveAs=fittedPngFilename,
             doSmooth=self.camera.doSmoothPlot,
-            fig=self.fig
+            fig=self.fig,
         )
 
         # TODO: remove in DM-43413
@@ -429,8 +430,8 @@ class StarTrackerChannel(BaseChannel):
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument='startracker' + self.camera.suffix,
-            plotName='analysis',
+            instrument="startracker" + self.camera.suffix,
+            plotName="analysis",
             dayObs=dayObs,
             seqNum=seqNum,
             filename=fittedPngFilename,
@@ -441,10 +442,9 @@ class StarTrackerChannel(BaseChannel):
         # the regular camera, so try this and revert only if we start seeing
         # fit failures.
         isWide = True
-        result = self.solver.run(exp, filteredSources,
-                                 isWideField=isWide,
-                                 percentageScaleError=scaleError,
-                                 silent=True)
+        result = self.solver.run(
+            exp, filteredSources, isWideField=isWide, percentageScaleError=scaleError, silent=True
+        )
 
         if not result:
             self.log.warning(f"Failed to find solution for {basename}")
@@ -470,22 +470,21 @@ class StarTrackerChannel(BaseChannel):
         pressure = exp.visitInfo.weather.getAirPressure()
         if not np.isfinite(pressure):
             self.log.warning("Pressure not found in header, falling back nominal value=0.770 bar")
-            atmosphericOverrides['pressureOverride'] = 0.770
+            atmosphericOverrides["pressureOverride"] = 0.770
 
         temp = exp.visitInfo.weather.getAirTemperature()
         if not np.isfinite(temp):
             self.log.warning("Temperature not found in header, falling back nominal value=10 C")
-            atmosphericOverrides['temperatureOverride'] = 10
+            atmosphericOverrides["temperatureOverride"] = 10
 
         humidity = exp.visitInfo.weather.getHumidity()
         if not np.isfinite(humidity):
             self.log.warning("Humidity not found in header, falling back nominal value=0.1")
-            atmosphericOverrides['relativeHumidityOverride'] = 0.1
+            atmosphericOverrides["relativeHumidityOverride"] = 0.1
 
-        newAlt, newAz = getAltAzFromSkyPosition(newWcs.getSkyOrigin(),
-                                                exp.visitInfo,
-                                                doCorrectRefraction=True,
-                                                **atmosphericOverrides)
+        newAlt, newAz = getAltAzFromSkyPosition(
+            newWcs.getSkyOrigin(), exp.visitInfo, doCorrectRefraction=True, **atmosphericOverrides
+        )
 
         deltaAlt = geom.Angle.separation(newAlt, oldAlt)
         deltaAz = geom.Angle.separation(newAz, oldAz)
@@ -493,17 +492,17 @@ class StarTrackerChannel(BaseChannel):
         deltaRot = newWcs.getRelativeRotationToWcs(oldWcs).asArcseconds()
 
         result = {
-            'Calculated Ra': calculatedRa.asDegrees(),
-            'Calculated Dec': calculatedDec.asDegrees(),
-            'Calculated Alt': newAlt.asDegrees(),
-            'Calculated Az': newAz.asDegrees(),
-            'Delta Ra Arcsec': deltaRa.asArcseconds(),
-            'Delta Dec Arcsec': deltaDec.asArcseconds(),
-            'Delta Alt Arcsec': deltaAlt.asArcseconds(),
-            'Delta Az Arcsec': deltaAz.asArcseconds(),
-            'Delta Rot Arcsec': deltaRot,
-            'RMS scatter arcsec': result.rmsErrorArsec,
-            'RMS scatter pixels': result.rmsErrorPixels,
+            "Calculated Ra": calculatedRa.asDegrees(),
+            "Calculated Dec": calculatedDec.asDegrees(),
+            "Calculated Alt": newAlt.asDegrees(),
+            "Calculated Az": newAz.asDegrees(),
+            "Delta Ra Arcsec": deltaRa.asArcseconds(),
+            "Delta Dec Arcsec": deltaDec.asArcseconds(),
+            "Delta Alt Arcsec": deltaAlt.asArcseconds(),
+            "Delta Az Arcsec": deltaAz.asArcseconds(),
+            "Delta Rot Arcsec": deltaRot,
+            "RMS scatter arcsec": result.rmsErrorArsec,
+            "RMS scatter pixels": result.rmsErrorPixels,
         }
         contents = {k + self.camera.suffixWithSpace: v for k, v in result.items()}
         md = {seqNum: contents}
@@ -525,8 +524,8 @@ class StarTrackerChannel(BaseChannel):
         self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
 
         # plot the raw file and upload it
-        basename = os.path.basename(filename).removesuffix('.fits')
-        rawPngFilename = os.path.join(self.outputRoot, basename + '_raw.png')  # for saving to disk
+        basename = os.path.basename(filename).removesuffix(".fits")
+        rawPngFilename = os.path.join(self.outputRoot, basename + "_raw.png")  # for saving to disk
         plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
 
         # TODO: remove in DM-43413
@@ -535,8 +534,8 @@ class StarTrackerChannel(BaseChannel):
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument='startracker' + self.camera.suffix,
-            plotName='analysis',
+            instrument="startracker" + self.camera.suffix,
+            plotName="raw",
             dayObs=dayObs,
             seqNum=seqNum,
             filename=rawPngFilename,
@@ -547,8 +546,10 @@ class StarTrackerChannel(BaseChannel):
             del exp
             return
         if not exp.visitInfo.date.isValid():
-            self.log.warning(f"exp.visitInfo.date is not valid. {filename} will still be fitted"
-                             " but the alt/az values reported will be garbage")
+            self.log.warning(
+                f"exp.visitInfo.date is not valid. {filename} will still be fitted"
+                " but the alt/az values reported will be garbage"
+            )
 
         # metadata a shard with just the pointing info etc
         self.writeDefaultPointingShardForFilename(exp, filename)
@@ -585,8 +586,8 @@ class StarTrackerNightReportChannel(BaseChannel):
     """
 
     def __init__(self, locationConfig, *, dayObs=None, doRaise=False):
-        name = 'starTrackerNightReport'
-        log = logging.getLogger(f'lsst.rubintv.production.{name}')
+        name = "starTrackerNightReport"
+        log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
 
         # we have to pick a camera to watch for data on for now, and while we
@@ -595,15 +596,11 @@ class StarTrackerNightReportChannel(BaseChannel):
         # is also a DIMM and so is more likely to be relocated). This won't be
         # a problem once we move to ingesting data and using the butler, so the
         # temp/hacky nature of this is fine for now.
-        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath,
-                                     bucketName=locationConfig.bucketName,
-                                     camera=narrowCam)  # tie the night report to the narrow cam for now
+        watcher = StarTrackerWatcher(
+            rootDataPath=self.rootDataPath, bucketName=locationConfig.bucketName, camera=narrowCam
+        )  # tie the night report to the narrow cam for now
 
-        super().__init__(locationConfig=locationConfig,
-                         log=log,
-                         watcher=watcher,
-                         doRaise=doRaise
-                         )
+        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
 
         self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
 
@@ -616,11 +613,14 @@ class StarTrackerNightReportChannel(BaseChannel):
             The contents of the metadata table from the front end, or `None` if
             the file for ``self.dayObs`` does not exist (yet).
         """
-        sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
-                                       f'dayObs_{self.dayObs}.json')
+        sidecarFilename = os.path.join(
+            self.locationConfig.starTrackerMetadataPath, f"dayObs_{self.dayObs}.json"
+        )
         if not os.path.isfile(sidecarFilename):
-            self.log.info(f"No metadata table found for this night at {sidecarFilename}, "
-                          "so nothing to catch up on (yet)")
+            self.log.info(
+                f"No metadata table found for this night at {sidecarFilename}, "
+                "so nothing to catch up on (yet)"
+            )
             return None
 
         try:
@@ -647,20 +647,23 @@ class StarTrackerNightReportChannel(BaseChannel):
         if md is None:  # getMetadataTableContents logs about the lack of a file so no need to do it here
             return
 
-        self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
-                      f'{0 if md is None else len(md)} items in the metadata table')
+        self.log.info(
+            f"Creating plots for dayObs {self.dayObs} with: "
+            f"{0 if md is None else len(md)} items in the metadata table"
+        )
 
         for plotName in starTrackerNightReportPlots.PLOT_FACTORIES:
             try:
-                self.log.info(f'Creating plot {plotName}')
+                self.log.info(f"Creating plot {plotName}")
                 plotFactory = getattr(starTrackerNightReportPlots, plotName)
-                plot = plotFactory(dayObs=self.dayObs,
-                                   locationConfig=self.locationConfig,
-                                   # TODO: DM-43413 switch to MultiUploader and
-                                   # remove GCS
-                                   uploader=self.uploader,
-                                   s3Uploader=self.s3Uploader,
-                                   )
+                plot = plotFactory(
+                    dayObs=self.dayObs,
+                    locationConfig=self.locationConfig,
+                    # TODO: DM-43413 switch to MultiUploader and
+                    # remove GCS
+                    uploader=self.uploader,
+                    s3Uploader=self.s3Uploader,
+                )
                 plot.createAndUpload(md)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotName}")
@@ -672,9 +675,9 @@ class StarTrackerNightReportChannel(BaseChannel):
         Creates a final version of the plots at the end of the day and rolls
         ``self.dayObs`` over.
         """
-        self.log.info(f'Creating final plots for {self.dayObs}')
+        self.log.info(f"Creating final plots for {self.dayObs}")
         self.createPlotsAndUpload()
-        self.log.info(f'Starting new star tracker night report for dayObs {self.dayObs}')
+        self.log.info(f"Starting new star tracker night report for dayObs {self.dayObs}")
         self.dayObs = getCurrentDayObs_int()
         return
 
@@ -694,14 +697,14 @@ class StarTrackerNightReportChannel(BaseChannel):
         """
         try:
             if doCheckDay and hasDayRolledOver(self.dayObs):
-                self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
+                self.log.info(f"Day has rolled over, finalizing report for dayObs {self.dayObs}")
                 self.finalizeDay()
 
             else:
                 # make plots here, uploading one by one
                 # make all the automagic plots from nightReportPlots.py
                 self.createPlotsAndUpload()
-                self.log.info(f'Finished updating plots and table with most recent file {filename}')
+                self.log.info(f"Finished updating plots and table with most recent file {filename}")
 
         except Exception as e:
             msg = f"Skipped updating the night report for {filename}:"
@@ -724,6 +727,7 @@ class StarTrackerCatchup:
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
+
     loopSleep = 30
     catchupPeriod = 60
     endOfDayDelay = 200
@@ -731,21 +735,21 @@ class StarTrackerCatchup:
     HEARTBEAT_UPLOAD_PERIOD = 30
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 240
-    HEARTBEAT_HANDLE = 'starTrackerCatchup'
+    HEARTBEAT_HANDLE = "starTrackerCatchup"
 
-    def __init__(self,
-                 locationConfig,
-                 doRaise=False):
+    def __init__(self, locationConfig, doRaise=False):
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
         self.cameras = [narrowCam, wideCam, fastCam]
 
         self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
-        self.heartbeater = Heartbeater(self.HEARTBEAT_HANDLE,
-                                       self.locationConfig.bucketName,
-                                       self.HEARTBEAT_UPLOAD_PERIOD,
-                                       self.HEARTBEAT_FLATLINE_PERIOD)
+        self.heartbeater = Heartbeater(
+            self.HEARTBEAT_HANDLE,
+            self.locationConfig.bucketName,
+            self.HEARTBEAT_UPLOAD_PERIOD,
+            self.HEARTBEAT_FLATLINE_PERIOD,
+        )
 
     def getFullyProcessedSeqNums(self, camera, dayObs):
         """Get the seqNums for images which were fully processed.
@@ -762,18 +766,19 @@ class StarTrackerCatchup:
         processed : `list` [`int`]
             The processed seqNums.
         """
-        sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath,
-                                       f'dayObs_{dayObs}.json')
+        sidecarFilename = os.path.join(self.locationConfig.starTrackerMetadataPath, f"dayObs_{dayObs}.json")
         if not os.path.isfile(sidecarFilename):
-            self.log.info(f"No metadata table found for this night at {sidecarFilename}, "
-                          "so nothing to catch up on (yet)")
+            self.log.info(
+                f"No metadata table found for this night at {sidecarFilename}, "
+                "so nothing to catch up on (yet)"
+            )
             return []
 
         mdTable = pd.read_json(sidecarFilename).T
         mdTable = mdTable.sort_index()
 
         seqNums = list(mdTable.index)
-        successfulFitColumn = 'Calculated Ra' + camera.suffixWithSpace
+        successfulFitColumn = "Calculated Ra" + camera.suffixWithSpace
         if successfulFitColumn not in mdTable.columns:
             # if the table exists but nothing has fitted yet for a given
             # camera then the column won't exist and the process thrashes a bit
@@ -794,34 +799,37 @@ class StarTrackerCatchup:
             The camera to catch up.
         """
         dataPath = getDataDir(self.locationConfig.starTrackerDataPath, camera, dayObs)
-        allFiles = sorted(glob(os.path.join(dataPath, '*.fits')))
+        allFiles = sorted(glob(os.path.join(dataPath, "*.fits")))
         # filter before getting the seqNums as streaming mode must be excluded
         nonStreamingFiles = [f for f in allFiles if not isStreamingModeFile(f)]
         seqNums = [dayObsSeqNumFromFilename(f)[1] for f in nonStreamingFiles]
 
         processed = self.getFullyProcessedSeqNums(camera, dayObs)
         toProcess = [s for s in seqNums if s not in processed]
-        self.log.info(f'Found {len(processed)} processed files out of {len(nonStreamingFiles)} total,'
-                      f' leaving {len(toProcess)} left to process for {camera.cameraType}')
+        self.log.info(
+            f"Found {len(processed)} processed files out of {len(nonStreamingFiles)} total,"
+            f" leaving {len(toProcess)} left to process for {camera.cameraType}"
+        )
         if not toProcess:
             return
 
-        filenames = [getFilename(self.locationConfig.starTrackerDataPath,
-                                 camera,
-                                 self.dayObs,
-                                 seqNum) for seqNum in toProcess]
+        filenames = [
+            getFilename(self.locationConfig.starTrackerDataPath, camera, self.dayObs, seqNum)
+            for seqNum in toProcess
+        ]
         filenames = [f for f in filenames if os.path.isfile(f)]
-        self.log.info(f'of which {len(filenames)} had corresponding files')
+        self.log.info(f"of which {len(filenames)} had corresponding files")
 
         # send a heartbeat saying we'll be back in a while
         maxProcessingTimePerFile = 30  # a deliberate massive over-estimate, in seconds
         forecast = maxProcessingTimePerFile * len(filenames)
         self.heartbeater.beat(customFlatlinePeriod=forecast)
 
-        starTrackerChannel = StarTrackerChannel(locationConfig=self.locationConfig,
-                                                cameraType=camera.cameraType)
+        starTrackerChannel = StarTrackerChannel(
+            locationConfig=self.locationConfig, cameraType=camera.cameraType
+        )
         for file in filenames:
-            self.log.info(f'Catching up {file}')
+            self.log.info(f"Catching up {file}")
             try:
                 starTrackerChannel.callback(file)
             except Exception as e:
@@ -843,10 +851,9 @@ class StarTrackerCatchup:
         return
 
     def runCatchup(self):
-        """Run the catchup for all cameras.
-        """
+        """Run the catchup for all cameras."""
         for camera in self.cameras:
-            self.log.info(f'Starting catchup for the {camera.cameraType} camera')
+            self.log.info(f"Starting catchup for the {camera.cameraType} camera")
             self.catchupCamera(camera, self.dayObs)
 
     def runEndOfDay(self):
@@ -886,7 +893,7 @@ class StarTrackerCatchup:
                         self.runEndOfDay()  # sets new dayObs in a finally block
                 else:
                     remaining = self.catchupPeriod - timeSince
-                    self.log.info(f'Waiting for catchup period to elapse, {remaining:.2f}s to go...')
+                    self.log.info(f"Waiting for catchup period to elapse, {remaining:.2f}s to go...")
                     sleep(self.loopSleep)
 
                 self.heartbeater.beat()

@@ -19,22 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-from lsst.rubintv.production.slac import RawProcesser
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
-from lsst.summit.utils.utils import setupLogging
+import os
 
-setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running raw processor for detector 3 at {location}...')
+from lsst.rubintv.production.utils import expRecordFromJson, safeJsonOpen
 
-locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                        'LSSTComCamSim/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTComCamSim',
-                            detectors=3,
-                            doRaise=True)
-rawProcessor.run()
+__all__ = ("getSampleExpRecord",)
+
+
+def getSampleExpRecord():
+    """Get a sample exposure record for testing purposes."""
+    dirname = os.path.dirname(__file__)
+    expRecordFilename = os.path.join(dirname, "data", "sampleExpRecord.json")
+    expRecordJson = safeJsonOpen(expRecordFilename)
+    expRecord = expRecordFromJson(expRecordJson)
+    return expRecord

@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+
 from lsst.utils import getPackageDir
 
 isrRunnerScript = """# This file is part of rubintv_production.
@@ -64,15 +65,15 @@ rawProcessor = RawProcesser(butler=butler,
 rawProcessor.run()
 """
 
-packageDir = getPackageDir('rubintv_production')
-outputDir = os.path.join(packageDir, 'scripts', 'summit', 'comCam')
+packageDir = getPackageDir("rubintv_production")
+outputDir = os.path.join(packageDir, "scripts", "summit", "comCam")
 if os.path.isdir(outputDir) is False:
     print(f"Output directory {outputDir} does not exist, creating it")
     os.makedirs(outputDir)
 
 for detNum in range(0, 9):
     scriptName = os.path.join(outputDir, f"runIsrRunner_{detNum:03}.py")
-    with open(scriptName, 'w') as f:
+    with open(scriptName, "w") as f:
         contents = isrRunnerScript.format(detNum, detNum)
         f.write(contents)
         print(f"Wrote runner script for {detNum} to {scriptName}")

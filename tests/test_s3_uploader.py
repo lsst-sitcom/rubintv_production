@@ -18,13 +18,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import boto3
 import os
 import random
 import tempfile
 import unittest
 
+import boto3
 from moto import mock_s3
+
 from lsst.rubintv.production import S3Uploader
 
 
@@ -34,8 +35,8 @@ class TestS3Uploader(unittest.TestCase):
         # Create an S3 bucket using moto's mock_s3
         self._mock_s3 = mock_s3()
         self._mock_s3.start()
-        self._mocked_s3_bucket_name = 'mocked_s3_bucket'
-        self._s3_resource = boto3.resource('s3', region_name='us-east-1')
+        self._mocked_s3_bucket_name = "mocked_s3_bucket"
+        self._s3_resource = boto3.resource("s3", region_name="us-east-1")
         self._mock_bucket = self._s3_resource.create_bucket(Bucket=self._mocked_s3_bucket_name)
 
         # Create an instance of S3Uploader
@@ -48,7 +49,7 @@ class TestS3Uploader(unittest.TestCase):
     @staticmethod
     def get_file_content(filePath):
         content = ""
-        with open(filePath, 'r') as file:
+        with open(filePath, "r") as file:
             content = file.read()
         return content
 
@@ -59,17 +60,16 @@ class TestS3Uploader(unittest.TestCase):
     def test_uploadPerSeqNumPlot(self):
         """Test uploadPerSeqNumPlot for S3 Uploader"""
         observationDay = 20241515
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "files/test_file_0001.txt")
+        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files/test_file_0001.txt")
         sequenceNumber = 1
 
         fileContent = TestS3Uploader.get_file_content(filename)
         uploadedFile = self._s3_uploader.uploadPerSeqNumPlot(
-            instrument='auxtel',
-            plotName='testPlot',
+            instrument="auxtel",
+            plotName="testPlot",
             dayObs=observationDay,
             seqNum=sequenceNumber,
-            filename=filename
+            filename=filename,
         )
 
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
@@ -77,13 +77,12 @@ class TestS3Uploader(unittest.TestCase):
     def test_uploadNightReportData(self):
         """Test uploadNightReportData for S3 Uploader"""
         observationDay = 20241515
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "files/test_file_0001.txt")
+        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files/test_file_0001.txt")
         plotGroup = "group_01"
 
         fileContent = TestS3Uploader.get_file_content(filename)
         uploadedFile = self._s3_uploader.uploadNightReportData(
-            instrument='auxtel',
+            instrument="auxtel",
             dayObs=observationDay,
             filename=filename,
             plotGroup=plotGroup,
@@ -92,15 +91,16 @@ class TestS3Uploader(unittest.TestCase):
 
     def test_uploadMetdata(self):
         """test uploadMetdata method from S3Uploader"""
-        channels = ["startracker_metadata",
-                    "ts8_metadata",
-                    "comcam_metadata",
-                    "slac_lsstcam_metadata",
-                    "tma_metadata"]
+        channels = [
+            "startracker_metadata",
+            "ts8_metadata",
+            "comcam_metadata",
+            "slac_lsstcam_metadata",
+            "tma_metadata",
+        ]
         observationDay = 20241515
         channel = random.choice(channels)
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "files/test_file_0001.txt")
+        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files/test_file_0001.txt")
 
         fileContent = TestS3Uploader.get_file_content(filename)
         uploadedFile = self._s3_uploader.uploadMetdata(channel, dayObs=observationDay, filename=filename)
@@ -111,12 +111,13 @@ class TestS3Uploader(unittest.TestCase):
         when using a not metadata channel causes an exception"""
         channel = "auxtel_monitor"
         observationDay = 20241515
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "files/test_file_0001.txt")
+        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files/test_file_0001.txt")
         with self.assertRaises(ValueError) as context:
             self._s3_uploader.uploadMetdata(channel, dayObs=observationDay, filename=filename)
-        self.assertEqual(str(context.exception), "Tried to upload non-metadata file to metadata channel:" +
-                                                 f"{channel}, {filename}")
+        self.assertEqual(
+            str(context.exception),
+            "Tried to upload non-metadata file to metadata channel:" + f"{channel}, {filename}",
+        )
 
     def is_correct_check_uploaded_file(self, uploadedFile, file_content):
         """Support method to check that the file uploaded is correct"""
@@ -129,5 +130,5 @@ class TestS3Uploader(unittest.TestCase):
         self.assertEqual(download_content, file_content)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

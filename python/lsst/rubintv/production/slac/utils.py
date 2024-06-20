@@ -19,22 +19,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import time
-import logging
-import numpy as np
 import glob
-import os
 import json
+import logging
+import os
+import time
+
+import numpy as np
 from astropy.io import fits
 
 from lsst.utils import getPackageDir
 
-__all__ = ['fullAmpDictToPerCcdDicts',
-           'getCamera',
-           'getAmplifierRegions',
-           'getGains',
-           'gainsToPtcDataset',
-           ]
+__all__ = [
+    "fullAmpDictToPerCcdDicts",
+    "getCamera",
+    "getAmplifierRegions",
+    "getGains",
+    "gainsToPtcDataset",
+]
 
 
 def getCamera(butler, instrument):
@@ -57,19 +59,21 @@ def getCamera(butler, instrument):
         The camera object.
     """
     match instrument:
-        case 'LSSTCam':
-            return butler.get('camera', collections=['LSSTCam/calib/unbounded'], instrument='LSSTCam')
-        case 'LSST-TS8':
-            return butler.get('camera', collections=['LSST-TS8/calib/unbounded'], instrument='LSST-TS8')
-        case 'LSSTComCam':
-            return butler.get('camera', collections=['LSSTComCam/calib/unbounded'], instrument='LSSTComCam')
-        case 'LSSTComCamSim':
-            return butler.get('camera',
-                              collections=['LSSTComCamSim/calib/unbounded'],
-                              instrument='LSSTComCamSim')
+        case "LSSTCam":
+            return butler.get("camera", collections=["LSSTCam/calib/unbounded"], instrument="LSSTCam")
+        case "LSST-TS8":
+            return butler.get("camera", collections=["LSST-TS8/calib/unbounded"], instrument="LSST-TS8")
+        case "LSSTComCam":
+            return butler.get("camera", collections=["LSSTComCam/calib/unbounded"], instrument="LSSTComCam")
+        case "LSSTComCamSim":
+            return butler.get(
+                "camera", collections=["LSSTComCamSim/calib/unbounded"], instrument="LSSTComCamSim"
+            )
         case _:
-            raise ValueError("This utility function is just for getting LSST-TS8, LSSTCam, LSSTComCam and "
-                             f"LSSTComCamSim instruments, got {instrument}")
+            raise ValueError(
+                "This utility function is just for getting LSST-TS8, LSSTCam, LSSTComCam and "
+                f"LSSTComCamSim instruments, got {instrument}"
+            )
 
 
 def fullAmpDictToPerCcdDicts(fullDict):
@@ -102,10 +106,10 @@ def fullAmpDictToPerCcdDicts(fullDict):
         The per-ccd dict of dicts, keyed by full detector name, with the values
         keyed by amp name.
     """
-    detectors = set(name.split('_C')[0] for name in fullDict.keys())
+    detectors = set(name.split("_C")[0] for name in fullDict.keys())
     dicts = {k: {} for k in detectors}
     for k, v in fullDict.items():
-        detName, ampName = k.split('_C')
+        detName, ampName = k.split("_C")
         dicts[detName]["C" + ampName] = v
     return dicts
 
@@ -127,9 +131,14 @@ def getDetectorsWithData(butler, expRecord, dataset):
     detectorsWithData : `list` [`int`]
         The list of detector numbers for which the dataset exists.
     """
-    return sorted([det.id for det in butler.registry.queryDimensionRecords('detector',
-                                                                           dataId=expRecord.dataId,
-                                                                           datasets=dataset)])
+    return sorted(
+        [
+            det.id
+            for det in butler.registry.queryDimensionRecords(
+                "detector", dataId=expRecord.dataId, datasets=dataset
+            )
+        ]
+    )
 
 
 def waitForDataProduct(butler, expRecord, dataset, detector, timeout, cadence=1, logger=None):
@@ -177,7 +186,7 @@ def waitForDataProduct(butler, expRecord, dataset, detector, timeout, cadence=1,
             time.sleep(cadence)
 
     if not logger:
-        logger = logging.logger('lsst.rubintv.production.slac.utils.waitForDataProduct')
+        logger = logging.logger("lsst.rubintv.production.slac.utils.waitForDataProduct")
     logger.warning(f"Timed out waiting for {dataset} for {expRecord.dataId} on detector {detector}")
     return None
 
@@ -241,13 +250,13 @@ def getGains(instrument):
         amplifier gains, as floats, keyed by amplifier name.
     """
     match instrument:
-        case 'LSSTCam':
+        case "LSSTCam":
             return _getLsstCamGains()
-        case 'LSSTComCam':
+        case "LSSTComCam":
             return _getLsstComCamGains()
-        case 'LSSTComCamSim':  # for now, give the real ComCam gains. I think they're actually the same anyway
+        case "LSSTComCamSim":  # for now, give the real ComCam gains. I think they're actually the same anyway
             return _getLsstComCamGains()
-        case 'LSST-TS8':
+        case "LSST-TS8":
             return _getTs8Gains()
         case _:
             raise ValueError(f"Unknown instrument {instrument}")
@@ -262,9 +271,9 @@ def _getLsstComCamGains():
         A dict of dicts, keyed by detector name, with each being a dict of
         amplifier gains, as floats, keyed by amplifier name.
     """
-    lsstComCamGainsDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'LSSTComCam_gains')
+    lsstComCamGainsDir = os.path.join(getPackageDir("rubintv_production"), "data", "LSSTComCam_gains")
 
-    filename = os.path.join(lsstComCamGainsDir, 'approx_comcam_ptc_20220217_from_craig_lage.json')
+    filename = os.path.join(lsstComCamGainsDir, "approx_comcam_ptc_20220217_from_craig_lage.json")
     adjustmentFactor = 0.79  # this is for approx_comcam_ptc_20220217_from_craig_lage.json only!
     # these gains are very approximate, and Craig thinks they need this
     # fudge-factor. Once we get some proper gains from a recent PTC the json
@@ -274,7 +283,7 @@ def _getLsstComCamGains():
         gains = json.load(f)
 
     for ccdName, gainDict in gains.items():
-        gains[ccdName] = {ampName: gain*adjustmentFactor for ampName, gain in gainDict.items()}
+        gains[ccdName] = {ampName: gain * adjustmentFactor for ampName, gain in gainDict.items()}
     return gains
 
 
@@ -287,9 +296,9 @@ def _getLsstCamGains():
         A dict of dicts, keyed by detector name, with each being a dict of
         amplifier gains, as floats, keyed by amplifier name.
     """
-    lsstCamGainDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'LSSTCam_gains')
+    lsstCamGainDir = os.path.join(getPackageDir("rubintv_production"), "data", "LSSTCam_gains")
 
-    filename = os.path.join(lsstCamGainDir, 'curated_ptc_gains_run_13144_2022-02-10.json')
+    filename = os.path.join(lsstCamGainDir, "curated_ptc_gains_run_13144_2022-02-10.json")
 
     with open(filename) as f:
         gains = json.load(f)
@@ -314,17 +323,33 @@ def _getTs8Gains():
         The gains, keyed by detector's short name (S01 not R22_S01), with the
         values being dicts keyed by amp name.
     """
-    DATASET_NAME = '7045D_eotest_results'
+    DATASET_NAME = "7045D_eotest_results"
 
     # This is the order they're currently stored in in the fits file Yousuke
     # supplied. Unsure how stable this would be if were to update the files,
     # but for the 7045D dataset, this works correctly.
-    ampNameOrder = ['C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16', 'C17',
-                    'C07', 'C06', 'C05', 'C04', 'C03', 'C02', 'C01', 'C00']
+    ampNameOrder = [
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C14",
+        "C15",
+        "C16",
+        "C17",
+        "C07",
+        "C06",
+        "C05",
+        "C04",
+        "C03",
+        "C02",
+        "C01",
+        "C00",
+    ]
 
     raftGains = {}
-    ts8GainDir = os.path.join(getPackageDir('rubintv_production'), 'data', 'LSST-TS8_gains')
-    files = glob.glob(os.path.join(ts8GainDir, f'*_{DATASET_NAME}.fits'))
+    ts8GainDir = os.path.join(getPackageDir("rubintv_production"), "data", "LSST-TS8_gains")
+    files = glob.glob(os.path.join(ts8GainDir, f"*_{DATASET_NAME}.fits"))
 
     for filename in sorted(files):
         # Filenames are like R22_S20_7045D_eotest_results.fits
@@ -334,7 +359,7 @@ def _getTs8Gains():
         detectorName = os.path.basename(filename).split("_")[1]
 
         with fits.open(filename) as f:
-            gains = f[1].data['GAIN']
+            gains = f[1].data["GAIN"]
 
         # gains are np.float32 and this raises in isr, so cast to python float
         gains = {ampName: float(gains[i]) for i, ampName in enumerate(ampNameOrder)}
@@ -365,6 +390,7 @@ def gainsToPtcDataset(gains):
         The fake PTC dataset, which quacks enough like a real one for the
         isrTask.
     """
+
     class FakePtcDataset:
         def __init__(self, gains):
             self.gains = gains

@@ -1,4 +1,3 @@
-
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -21,19 +20,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import Plotter
-from lsst.summit.utils.utils import setupLogging
-from lsst.rubintv.production.utils import LocationConfig
+
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.slac import Plotter
+from lsst.rubintv.production.utils import LocationConfig
+from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running ComCam plotter...')
+print("Running ComCam plotter...")
 
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCam/raw/all'])
-plotter = Plotter(butler=butler,
-                  locationConfig=locationConfig,
-                  instrument='LSSTComCam',
-                  doRaise=True)
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCam/raw/all"])
+plotter = Plotter(butler=butler, locationConfig=locationConfig, instrument="LSSTComCam", doRaise=True)
 plotter.run()

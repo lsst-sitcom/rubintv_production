@@ -19,36 +19,43 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import glob
 import logging
-import json
-import matplotlib.pyplot as plt
-from time import sleep
-from functools import partial
+import os
 from dataclasses import dataclass
+from functools import partial
+from time import sleep
 from typing import Callable
 
-from lsst.eo.pipe.plotting import focal_plane_plotting
+import matplotlib.pyplot as plt
 
-from lsst.ip.isr import IsrTask
-
-import lsst.daf.butler as dafButler
-from lsst.utils.iteration import ensure_iterable
-import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
-from lsst.resources import ResourcePath
-
-from .utils import waitForDataProduct, getAmplifierRegions
-from ..utils import writeDataShard, getShardedData, writeMetadataShard, getGlobPatternForShardedData
-from ..uploaders import Uploader, MultiUploader
-from ..watchers import FileWatcher, writeDataIdFile
-from .mosaicing import writeBinnedImage, plotFocalPlaneMosaic, getBinnedImageFiles, getBinnedImageExpIds
-from .utils import fullAmpDictToPerCcdDicts, getCamera, getGains, gainsToPtcDataset
-
+import lsst.afw.math as afwMath
+import lsst.daf.butler as dafButler
+from lsst.eo.pipe.plotting import focal_plane_plotting
+from lsst.ip.isr import IsrTask
 from lsst.summit.utils.butlerUtils import getExpRecord
 from lsst.summit.utils.utils import getExpRecordAge
+from lsst.utils.iteration import ensure_iterable
 
+from ..uploaders import MultiUploader, Uploader
+from ..utils import (
+    getGlobPatternForShardedData,
+    getNumExpectedItems,
+    getShardedData,
+    writeDataShard,
+    writeMetadataShard,
+)
+from ..watchers import FileWatcher, writeDataIdFile
+from .mosaicing import getBinnedImageExpIds, getBinnedImageFiles, plotFocalPlaneMosaic, writeBinnedImage
+from .utils import (
+    fullAmpDictToPerCcdDicts,
+    gainsToPtcDataset,
+    getAmplifierRegions,
+    getCamera,
+    getGains,
+    waitForDataProduct,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -56,35 +63,123 @@ _LOG = logging.getLogger(__name__)
 # and pulled from the metadata dict because DM merges all the headers into
 # one dict, so we can't just use the full header from the relevant HDU as that
 # would mean going back to the raw FITS file, which we don't have/can't do.
-REB_HEADERS = ['EXTNAME', 'TEMP1', 'TEMP2', 'TEMP3', 'TEMP4', 'TEMP5', 'TEMP6', 'TEMP7', 'TEMP8', 'TEMP9',
-               'TEMP10', 'ATEMPU', 'ATEMPL', 'CCDTEMP', 'RTDTEMP', 'DIGPS_V', 'DIGPS_I', 'ANAPS_V', 'ANAPS_I',
-               'CLKHPS_V', 'CLKHPS_I', 'CLKLPS_V', 'CLKLPS_I', 'ODPS_V', 'ODPS_I', 'HTRPS_V', 'HTRPS_W',
-               'PCKU_V', 'PCKL_V', 'SCKU_V', 'SCKL_V', 'RGU_V', 'RGL_V', 'ODV', 'OGV', 'RDV', 'GDV', 'GDP',
-               'RDP', 'OGP', 'ODP', 'CSGATEP', 'SCK_LOWP', 'SCK_HIP', 'PCK_LOWP', 'PCK_HIP', 'RG_LOWP',
-               'RG_HIP', 'AP0_RC', 'AP1_RC', 'AP0_GAIN', 'AP1_GAIN', 'AP0_CLMP', 'AP1_CLMP', 'AP0_AF1',
-               'AP1_AF1', 'AP0_TM', 'AP1_TM', 'HVBIAS', 'IDLEFLSH', 'POWER', 'DIGVB', 'DIGIB', 'DIGVA',
-               'DIGIA', 'DIGVS', 'ANAVB', 'ANAIB', 'ANAVA', 'ANAIA', 'ANAIS', 'ODVB', 'ODIB', 'ODVA', 'ODVA2',
-               'ODIA', 'ODVS', 'CKHVB', 'CKHIB', 'CKHVA', 'CKHIA', 'CKHVS', 'CKLVB', 'CKLIB', 'CKLVA',
-               'CKLV2', 'CKLIA', 'CKLVS', 'HTRVB', 'HTRIB', 'HTRVA', 'HTRIA', 'HTRVAS', 'BSSVBS', 'BSSIBS',
-               'DATASUM']
+REB_HEADERS = [
+    "EXTNAME",
+    "TEMP1",
+    "TEMP2",
+    "TEMP3",
+    "TEMP4",
+    "TEMP5",
+    "TEMP6",
+    "TEMP7",
+    "TEMP8",
+    "TEMP9",
+    "TEMP10",
+    "ATEMPU",
+    "ATEMPL",
+    "CCDTEMP",
+    "RTDTEMP",
+    "DIGPS_V",
+    "DIGPS_I",
+    "ANAPS_V",
+    "ANAPS_I",
+    "CLKHPS_V",
+    "CLKHPS_I",
+    "CLKLPS_V",
+    "CLKLPS_I",
+    "ODPS_V",
+    "ODPS_I",
+    "HTRPS_V",
+    "HTRPS_W",
+    "PCKU_V",
+    "PCKL_V",
+    "SCKU_V",
+    "SCKL_V",
+    "RGU_V",
+    "RGL_V",
+    "ODV",
+    "OGV",
+    "RDV",
+    "GDV",
+    "GDP",
+    "RDP",
+    "OGP",
+    "ODP",
+    "CSGATEP",
+    "SCK_LOWP",
+    "SCK_HIP",
+    "PCK_LOWP",
+    "PCK_HIP",
+    "RG_LOWP",
+    "RG_HIP",
+    "AP0_RC",
+    "AP1_RC",
+    "AP0_GAIN",
+    "AP1_GAIN",
+    "AP0_CLMP",
+    "AP1_CLMP",
+    "AP0_AF1",
+    "AP1_AF1",
+    "AP0_TM",
+    "AP1_TM",
+    "HVBIAS",
+    "IDLEFLSH",
+    "POWER",
+    "DIGVB",
+    "DIGIB",
+    "DIGVA",
+    "DIGIA",
+    "DIGVS",
+    "ANAVB",
+    "ANAIB",
+    "ANAVA",
+    "ANAIA",
+    "ANAIS",
+    "ODVB",
+    "ODIB",
+    "ODVA",
+    "ODVA2",
+    "ODIA",
+    "ODVS",
+    "CKHVB",
+    "CKHIB",
+    "CKHVA",
+    "CKHIA",
+    "CKHVS",
+    "CKLVB",
+    "CKLIB",
+    "CKLVA",
+    "CKLV2",
+    "CKLIA",
+    "CKLVS",
+    "HTRVB",
+    "HTRIB",
+    "HTRVA",
+    "HTRIA",
+    "HTRVAS",
+    "BSSVBS",
+    "BSSIBS",
+    "DATASUM",
+]
 
 # The mapping of header keys to the human-readable names in the RubinTV table
 # columns. Each of these is necessarily the same for all CCDs in the
 # raft/camera, so these are pulled from a single detector and put in the table.
-PER_IMAGE_HEADERS = {'OBSID': 'Observation Id',
-                     'SEQFILE': 'Sequencer file',
-                     'FILTER': 'Filter',
-                     'FILTER1': 'Secondary filter',
-                     'TEMPLED1': 'CCOB daughter board front temp',
-                     'TEMPLED2': 'CCOB daughter board back temp',
-                     'TEMPBRD': 'CCOB board temp',
-                     'CCOBLED': 'Selected CCOB LED',
-                     'CCOBCURR': 'CCOB LED current',
-                     'CCOBADC': 'CCOB Photodiode value',
-                     'CCOBFLST': 'CCOB flash time (commanded)',
-                     'PROJTIME': 'CCOB flash time (measured)',
-                     'CCOBFLUX': 'CCOB target flux',
-                     }
+PER_IMAGE_HEADERS = {
+    "OBSID": "Observation Id",
+    "SEQFILE": "Sequencer file",
+    "FILTER": "Filter",
+    "FILTER1": "Secondary filter",
+    "TEMPLED1": "CCOB daughter board front temp",
+    "TEMPLED2": "CCOB daughter board back temp",
+    "TEMPBRD": "CCOB board temp",
+    "CCOBLED": "Selected CCOB LED",
+    "CCOBCURR": "CCOB LED current",
+    "CCOBADC": "CCOB Photodiode value",
+    "CCOBFLST": "CCOB flash time (commanded)",
+    "PROJTIME": "CCOB flash time (measured)",
+    "CCOBFLUX": "CCOB target flux",
+}
 
 # The magic detector which writes the per-image metadata shard
 TS8_METADATA_DETECTOR = 18
@@ -111,66 +206,7 @@ def isOneRaft(instrument):
     instrument : `str`
         The instrument.
     """
-    return instrument in ['LSST-TS8', 'LSSTComCam', 'LSSTComCamSim']
-
-
-def getNumExpectedItems(expRecord, logger=None):
-    """A placeholder function for getting the number of expected items.
-
-    For a given instrument, get the number of detectors which were read out or
-    for which we otherwise expect to have data for.
-
-    This method will be updated once we have a way of knowing, from the camera,
-    how many detectors were actually read out (the plan is the CCS writes a
-    JSON file with this info).
-
-    Parameters
-    ----------
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record. This is currently unused, but will be used once
-        we are doing this properly.
-    logger : `logging.Logger`
-        The logger, created if not supplied.
-    """
-    if logger is None:
-        logger = logging.getLogger(__name__)
-
-    instrument = expRecord.instrument
-
-    fallbackValue = None
-    if instrument == "LATISS":
-        fallbackValue = 1
-    elif instrument == "LSSTCam":
-        fallbackValue = 201
-    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
-        fallbackValue = 9
-    else:
-        raise ValueError(f"Unknown instrument {instrument}")
-
-    try:
-        resourcePath = (f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
-                        f"{expRecord.obs_id}_expectedSensors.json")
-        url = ResourcePath(resourcePath)
-        jsonData = url.read()
-        data = json.loads(jsonData)
-        nExpected = len(data['expectedSensors'])
-        if nExpected != fallbackValue:
-            # not a warning because this is it working as expected, but it's
-            # nice to see when we have a partial readout
-            logger.debug(f"Partial focal plane readout detected: expected number of items ({nExpected}) "
-                         f" is different from the nominal value of {fallbackValue} for {instrument}")
-        return nExpected
-    except FileNotFoundError:
-        if instrument in ['LSSTCam', 'LSST-TS8']:
-            # these instruments are expected to have this info, the other are
-            # not yet, so only warn when the file is expected and not found.
-            logger.warning(f"Unable to get number of expected items from {resourcePath}, "
-                           f"using fallback value of {fallbackValue}")
-        return fallbackValue
-    except Exception:
-        logger.exception("Error calculating expected number of items, using fallback value "
-                         f"of {fallbackValue}")
-        return fallbackValue
+    return instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]
 
 
 class RawProcesser:
@@ -191,32 +227,32 @@ class RawProcesser:
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
+
     def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
-        if instrument not in ['LSST-TS8', 'LSSTCam', 'LSSTComCam', 'LSSTComCamSim']:
-            raise ValueError(f'Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam')
+        if instrument not in ["LSST-TS8", "LSSTCam", "LSSTComCam", "LSSTComCamSim"]:
+            raise ValueError(f"Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam")
         self.locationConfig = locationConfig
         self.butler = butler
         self.instrument = instrument
         match instrument:
-            case 'LSST-TS8':
+            case "LSST-TS8":
                 metadataShardPath = locationConfig.ts8MetadataShardPath
-            case 'LSSTComCam':
+            case "LSSTComCam":
                 metadataShardPath = locationConfig.comCamMetadataShardPath
-            case 'LSSTComCamSim':
+            case "LSSTComCamSim":
                 metadataShardPath = locationConfig.comCamSimMetadataShardPath
-            case 'LSSTCam':
+            case "LSSTCam":
                 metadataShardPath = locationConfig.botMetadataShardPath
             case _:
-                raise ValueError(f'Instrument {instrument} not supported.')
+                raise ValueError(f"Instrument {instrument} not supported.")
         self.metadataShardPath = metadataShardPath
 
         self.detectors = list(ensure_iterable(detectors))
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
-        self.watcher = FileWatcher(locationConfig=locationConfig,
-                                   instrument=self.instrument,
-                                   dataProduct='raw',
-                                   doRaise=doRaise)
+        self.watcher = FileWatcher(
+            locationConfig=locationConfig, instrument=self.instrument, dataProduct="raw", doRaise=doRaise
+        )
 
         self.isrTask = self.makeIsrTask()
 
@@ -244,7 +280,7 @@ class RawProcesser:
         isrConfig.doSaturationInterpolation = False
         isrConfig.doWidenSaturationTrails = False
 
-        isrConfig.overscan.fitType = 'MEDIAN_PER_ROW'
+        isrConfig.overscan.fitType = "MEDIAN_PER_ROW"
         isrConfig.overscan.doParallelOverscan = True  # NB: doParallelOverscan *requires* MEDIAN_PER_ROW too
         isrConfig.doApplyGains = True
         isrConfig.usePtcGains = True
@@ -269,16 +305,16 @@ class RawProcesser:
             gains = getGains(self.instrument)
 
             match self.instrument:
-                case 'LSST-TS8':
+                case "LSST-TS8":
                     # The TS8 dict keys are just like S01 part as there is no
                     # raft
-                    detNameForGains = raw.detector.getName().split('_')[1]
-                case 'LSSTComCam':
+                    detNameForGains = raw.detector.getName().split("_")[1]
+                case "LSSTComCam":
                     # the dict is keyed by the detector's short name like TS8
-                    detNameForGains = raw.detector.getName().split('_')[1]
-                case 'LSSTComCamSim':  # treat as same as ComCam for now
-                    detNameForGains = raw.detector.getName().split('_')[1]
-                case 'LSSTCam':
+                    detNameForGains = raw.detector.getName().split("_")[1]
+                case "LSSTComCamSim":  # treat as same as ComCam for now
+                    detNameForGains = raw.detector.getName().split("_")[1]
+                case "LSSTCam":
                     # the dict is keyed by the detector's full name e.g R01_S21
                     detNameForGains = raw.detector.getName()
 
@@ -298,18 +334,19 @@ class RawProcesser:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
-        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
-                            else LSSTCOMCAM_METADATA_DETECTOR)
+        metadataDetector = (
+            TS8_METADATA_DETECTOR if self.instrument == "LSST-TS8" else LSSTCOMCAM_METADATA_DETECTOR
+        )
         if metadataDetector not in self.detectors:
             return
 
         md = {}
-        md['Exposure time'] = expRecord.exposure_time
-        md['Dark time'] = expRecord.dark_time
-        md['Image type'] = expRecord.observation_type
-        md['Test type'] = expRecord.observation_reason
-        md['Date'] = expRecord.timespan.begin.isot
-        md['Run number'] = expRecord.science_program
+        md["Exposure time"] = expRecord.exposure_time
+        md["Dark time"] = expRecord.dark_time
+        md["Image type"] = expRecord.observation_type
+        md["Test type"] = expRecord.observation_reason
+        md["Date"] = expRecord.timespan.begin.isot
+        md["Run number"] = expRecord.science_program
 
         seqNum = expRecord.seq_num
         dayObs = expRecord.day_obs
@@ -364,8 +401,9 @@ class RawProcesser:
         exposureMetadata : `dict`
             The exposure metadata as a dict.
         """
-        metadataDetector = (TS8_METADATA_DETECTOR if self.instrument == 'LSST-TS8'
-                            else LSSTCOMCAM_METADATA_DETECTOR)
+        metadataDetector = (
+            TS8_METADATA_DETECTOR if self.instrument == "LSST-TS8" else LSSTCOMCAM_METADATA_DETECTOR
+        )
         if metadataDetector not in self.detectors:
             return
 
@@ -401,20 +439,20 @@ class RawProcesser:
         detector = raw.detector
         exposureMetadata = raw.getMetadata().toDict()
 
-        if self.instrument == 'LSST-TS8':
+        if self.instrument == "LSST-TS8":
             detectorList = TS8_REB_HEADER_DETECTORS
-            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
-            itemName = f'REB{rebNumber} Header'
-        elif self.instrument in ['LSSTComCam', 'LSSTComCamSim']:
+            rebNumber = detector.getName().split("_")[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f"REB{rebNumber} Header"
+        elif self.instrument in ["LSSTComCam", "LSSTComCamSim"]:
             detectorList = LSSTCOMCAM_REB_HEADER_DETECTORS
-            rebNumber = detector.getName().split('_')[1][1]  # This is the X part of the S part of R12_SXY
-            itemName = f'REB{rebNumber} Header'
-        elif self.instrument == 'LSSTCam':
+            rebNumber = detector.getName().split("_")[1][1]  # This is the X part of the S part of R12_SXY
+            itemName = f"REB{rebNumber} Header"
+        elif self.instrument == "LSSTCam":
             detectorList = LSSTCAM_REB_HEADER_DETECTORS
             rebNumber = detector.getName()  # use the full name for now
-            itemName = f'REB{rebNumber} Header'
+            itemName = f"REB{rebNumber} Header"
         else:
-            raise ValueError(f'Unknown instrument {self.instrument}')
+            raise ValueError(f"Unknown instrument {self.instrument}")
 
         if not any(detNum in detectorList for detNum in self.detectors):
             return
@@ -425,7 +463,7 @@ class RawProcesser:
             if value:
                 md[headerKey] = value
 
-        md['DISPLAY_VALUE'] = "📖"
+        md["DISPLAY_VALUE"] = "📖"
 
         seqNum = expRecord.seq_num
         dayObs = expRecord.day_obs
@@ -456,22 +494,24 @@ class RawProcesser:
             # this only fires for a single detector, based on METADATA_DETECTOR
             self.writeExpRecordMetadataShard(expRecord)
         except Exception:
-            self.log.exception(f'Failed to write metadata shard for {expRecord.dataId}')
+            self.log.exception(f"Failed to write metadata shard for {expRecord.dataId}")
 
-        if expRecord.observation_type == 'scan':
-            self.log.info(f'Skipping scan-mode image {expRecord.dataId}')
+        if expRecord.observation_type == "scan":
+            self.log.info(f"Skipping scan-mode image {expRecord.dataId}")
             return
 
         for detNum in self.detectors:
             dataId = dafButler.DataCoordinate.standardize(expRecord.dataId, detector=detNum)
-            self.log.info(f'Processing raw for {dataId}')
+            self.log.info(f"Processing raw for {dataId}")
             ampNoises = {}
-            raw = waitForDataProduct(butler=self.butler,
-                                     expRecord=expRecord,
-                                     dataset='raw',
-                                     detector=detNum,
-                                     timeout=5,
-                                     logger=self.log)
+            raw = waitForDataProduct(
+                butler=self.butler,
+                expRecord=expRecord,
+                dataset="raw",
+                detector=detNum,
+                timeout=5,
+                logger=self.log,
+            )
             if not raw:
                 # Note to future: given that if we timeout here, everything
                 # downstream of this will fail, perhaps we should consider
@@ -497,24 +537,28 @@ class RawProcesser:
                 ampNoises[entryName] = float(noise)  # numpy float32 is not json serializable
 
             # write the data
-            writeDataShard(path=self.locationConfig.calculatedDataPath,
-                           instrument=self.instrument,
-                           dayObs=dayObs,
-                           seqNum=seqNum,
-                           dataSetName='rawNoises',
-                           dataDict=ampNoises)
-            self.log.info(f'Wrote rawNoises data shard for detector {detNum}')
+            writeDataShard(
+                path=self.locationConfig.calculatedDataPath,
+                instrument=self.instrument,
+                dayObs=dayObs,
+                seqNum=seqNum,
+                dataSetName="rawNoises",
+                dataDict=ampNoises,
+            )
+            self.log.info(f"Wrote rawNoises data shard for detector {detNum}")
             # then signal we're done for downstream
-            writeDataIdFile(self.locationConfig.dataIdScanPath, 'rawNoises', expRecord, self.log)
+            writeDataIdFile(self.locationConfig.dataIdScanPath, "rawNoises", expRecord, self.log)
 
             postIsr = self.runIsr(raw)
 
-            writeBinnedImage(exp=postIsr,
-                             instrument=self.instrument,
-                             outputPath=self.locationConfig.calculatedDataPath,
-                             binSize=self.locationConfig.binning)
-            writeDataIdFile(self.locationConfig.dataIdScanPath, 'binnedImage', expRecord, self.log)
-            self.log.info(f'Wrote binned image for detector {detNum}')
+            writeBinnedImage(
+                exp=postIsr,
+                instrument=self.instrument,
+                outputPath=self.locationConfig.calculatedDataPath,
+                binSize=self.locationConfig.binning,
+            )
+            writeDataIdFile(self.locationConfig.dataIdScanPath, "binnedImage", expRecord, self.log)
+            self.log.info(f"Wrote binned image for detector {detNum}")
 
             del raw
             del postIsr
@@ -550,6 +594,7 @@ class Plotter:
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
+
     def __init__(self, butler, locationConfig, instrument, doRaise=False):
         self.locationConfig = locationConfig
         self.butler = butler
@@ -559,10 +604,12 @@ class Plotter:
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
-        self.watcher = FileWatcher(locationConfig=locationConfig,
-                                   instrument=self.instrument,
-                                   dataProduct='binnedImage',
-                                   doRaise=doRaise)
+        self.watcher = FileWatcher(
+            locationConfig=locationConfig,
+            instrument=self.instrument,
+            dataProduct="binnedImage",
+            doRaise=doRaise,
+        )
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
@@ -585,18 +632,20 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         nExpected = getNumExpectedItems(expRecord)
-        noises, _ = getShardedData(path=self.locationConfig.calculatedDataPath,
-                                   instrument=self.instrument,
-                                   dayObs=dayObs,
-                                   seqNum=seqNum,
-                                   dataSetName='rawNoises',
-                                   nExpected=nExpected,
-                                   timeout=timeout,
-                                   logger=self.log,
-                                   deleteIfComplete=True)
+        noises, _ = getShardedData(
+            path=self.locationConfig.calculatedDataPath,
+            instrument=self.instrument,
+            dayObs=dayObs,
+            seqNum=seqNum,
+            dataSetName="rawNoises",
+            nExpected=nExpected,
+            timeout=timeout,
+            logger=self.log,
+            deleteIfComplete=True,
+        )
 
         if not noises:
-            self.log.warning(f'No noise data found for {expRecord.dataId}')
+            self.log.warning(f"No noise data found for {expRecord.dataId}")
             return None
 
         perCcdNoises = fullAmpDictToPerCcdDicts(noises)
@@ -609,16 +658,14 @@ class Plotter:
 
         instPrefix = self.getInstrumentChannelName(self.instrument)
 
-        plotName = f'{instPrefix}-noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        plotName = f"{instPrefix}-noise-map_dayObs_{dayObs}_seqNum_{seqNum}.png"
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
-        focal_plane_plotting.plot_focal_plane(ax, perCcdNoises,
-                                              x_range=xRange,
-                                              y_range=yRange,
-                                              z_range=(0, 15),
-                                              camera=self.camera)
+        focal_plane_plotting.plot_focal_plane(
+            ax, perCcdNoises, x_range=xRange, y_range=yRange, z_range=(0, 15), camera=self.camera
+        )
 
         self.fig.savefig(saveFile)
-        self.log.info(f'Wrote rawNoises plot for {expRecord.dataId} to {saveFile}')
+        self.log.info(f"Wrote rawNoises plot for {expRecord.dataId} to {saveFile}")
 
         return saveFile
 
@@ -644,23 +691,25 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        plotName = f'ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png'
+        plotName = f"ts8FocalPlane_dayObs_{dayObs}_seqNum_{seqNum}.png"
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         nExpected = getNumExpectedItems(expRecord)
 
         self.fig.clear()
-        plotFocalPlaneMosaic(butler=self.butler,
-                             figure=self.fig,
-                             expId=expId,
-                             camera=self.camera,
-                             binSize=self.locationConfig.binning,
-                             dataPath=self.locationConfig.calculatedDataPath,
-                             savePlotAs=saveFile,
-                             nExpected=nExpected,
-                             timeout=timeout,
-                             logger=self.log)
-        self.log.info(f'Wrote focal plane plot for {expRecord.dataId} to {saveFile}')
+        plotFocalPlaneMosaic(
+            butler=self.butler,
+            figure=self.fig,
+            expId=expId,
+            camera=self.camera,
+            binSize=self.locationConfig.binning,
+            dataPath=self.locationConfig.calculatedDataPath,
+            savePlotAs=saveFile,
+            nExpected=nExpected,
+            timeout=timeout,
+            logger=self.log,
+        )
+        self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
         return saveFile
 
     @staticmethod
@@ -680,16 +729,16 @@ class Plotter:
             The channel prefix name.
         """
         match instrument:
-            case 'LSST-TS8':
-                return 'ts8'
-            case 'LSSTComCam':
-                return 'comcam'
-            case 'LSSTComCamSim':  # treat as same as ComCam for now
-                return 'comcam_sim'
-            case 'LSSTCam':
-                return 'slac_lsstcam'
+            case "LSST-TS8":
+                return "ts8"
+            case "LSSTComCam":
+                return "comcam"
+            case "LSSTComCamSim":  # treat as same as ComCam for now
+                return "comcam_sim"
+            case "LSSTCam":
+                return "slac_lsstcam"
             case _:
-                raise ValueError(f'Unknown instrument {instrument}')
+                raise ValueError(f"Unknown instrument {instrument}")
 
     def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False, timeout=5):
         """Method called on each new expRecord as it is found in the repo.
@@ -713,7 +762,7 @@ class Plotter:
             How to wait for data products to land before giving up and plotting
             what we have.
         """
-        self.log.info(f'Making plots for {expRecord.dataId}')
+        self.log.info(f"Making plots for {expRecord.dataId}")
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         instPrefix = self.getInstrumentChannelName(self.instrument)
@@ -721,27 +770,27 @@ class Plotter:
         if doPlotNoises:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
             if noiseMapFile:  # only upload on plot success
-                channel = f'{instPrefix}_noise_map'
+                channel = f"{instPrefix}_noise_map"
                 self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument=instPrefix,
-                    plotName='noise_map',
+                    plotName="noise_map",
                     dayObs=dayObs,
                     seqNum=seqNum,
-                    filename=noiseMapFile
+                    filename=noiseMapFile,
                 )
 
         if doPlotMosaic:
             focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
             if focalPlaneFile:  # only upload on plot success
-                channel = f'{instPrefix}_focal_plane_mosaic'
+                channel = f"{instPrefix}_focal_plane_mosaic"
                 self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument=instPrefix,
-                    plotName='focal_plane_mosaic',
+                    plotName="focal_plane_mosaic",
                     dayObs=dayObs,
                     seqNum=seqNum,
-                    filename=focalPlaneFile
+                    filename=focalPlaneFile,
                 )
 
     def run(self):
@@ -754,7 +803,7 @@ class Plotter:
 class Replotter(Plotter):
 
     @dataclass
-    class ReplotterWorkload(Uploader):  # XXX why does this inherit from Uploader?!
+    class ReplotterWorkload(Uploader):  # TODO: DM-44166 why does this inherit from Uploader?!
         finderFunction: Callable
         workerFunction: Callable
         name: str
@@ -783,12 +832,12 @@ class Replotter(Plotter):
             return {}
 
         allFiles = getBinnedImageFiles(dataPath, self.instrument)
-        self.log.debug(f'Found {len(expIds)} expIds with binned images, and {len(allFiles)} associated files')
+        self.log.debug(f"Found {len(expIds)} expIds with binned images, and {len(allFiles)} associated files")
         for expId in expIds:
             record = getExpRecord(self.butler, self.instrument, expId=expId)
             # a list comp is *much* faster than re-globbing if there are a lot
             # of files.
-            binnedImages = [f for f in allFiles if f.find(f'{expId}') != -1]
+            binnedImages = [f for f in allFiles if f.find(f"{expId}") != -1]
             records[record] = binnedImages
 
         # Check to see if there is anything more recent than the most recent
@@ -800,7 +849,8 @@ class Replotter(Plotter):
         return records
 
     def run(self):
-        """Run continuously, looking for complete file sets and plotting them.
+        """Run continuously, looking for complete file sets and plotting
+        them.
         """
         # workloads are a dataclass, holding a callable called finderFunction,
         # which returns returns a dict of {expRecord: [corresponding files]}
@@ -811,12 +861,12 @@ class Replotter(Plotter):
         workload1 = self.ReplotterWorkload(
             finderFunction=self.getLeftoverMosaicDict,
             workerFunction=partial(self.callback, doPlotMosaic=True, timeout=0),
-            name='mosaic',
+            name="mosaic",
         )
         workload2 = self.ReplotterWorkload(
-            finderFunction=partial(self.getDataShardFilesDict, 'rawNoises'),
+            finderFunction=partial(self.getDataShardFilesDict, "rawNoises"),
             workerFunction=partial(self.callback, doPlotNoises=True, timeout=0),
-            name='noisePlot',
+            name="noisePlot",
         )
 
         while True:
@@ -836,19 +886,22 @@ class Replotter(Plotter):
                         # note that unless it's stale we don't process, ever,
                         # because this could collide with the normally running
                         # processes.
-                        self.log.info(f'Not processing {workload.name} for {expRecord.dataId},'
-                                      ' waiting for it to go stale')
+                        self.log.info(
+                            f"Not processing {workload.name} for {expRecord.dataId},"
+                            " waiting for it to go stale"
+                        )
                         continue
                     if isComplete:
                         # no need to delete here because it's complete and so
                         # will self-delete automatically
-                        self.log.info(f'Remaking full {workload.name} for {expRecord.dataId}')
+                        self.log.info(f"Remaking full {workload.name} for {expRecord.dataId}")
                         workload.workerFunction(expRecord)
                     else:
-                        self.log.info(f'Remaking partial, stale {workload.name} for {expRecord.dataId}')
+                        self.log.info(f"Remaking partial, stale {workload.name} for {expRecord.dataId}")
                         workload.workerFunction(expRecord)
-                        self.log.info(f'Removing {len(files)} stale {workload.name} files'
-                                      f' for {expRecord.dataId}')
+                        self.log.info(
+                            f"Removing {len(files)} stale {workload.name} files" f" for {expRecord.dataId}"
+                        )
                         for f in files:
                             os.remove(f)
 
@@ -892,8 +945,8 @@ class Replotter(Plotter):
         # files are like
         # dataShard-rawNoises-LSSTCam-dayObs_20230601_seqNum_000059_...json
         basename = os.path.basename(filename)  # in case of underscores and dayObs duplication in a full path
-        dayObs = int(basename.split('dayObs_')[1].split('_')[0])
-        seqNum = int(basename.split('seqNum_')[1].split('_')[0])
+        dayObs = int(basename.split("dayObs_")[1].split("_")[0])
+        seqNum = int(basename.split("seqNum_")[1].split("_")[0])
         return dayObs, seqNum
 
     def getDataShardFilesDict(self, dataSetName):
@@ -918,11 +971,13 @@ class Replotter(Plotter):
 
         shards = {}
         # get all the files for this data type
-        pattern = getGlobPatternForShardedData(path=self.locationConfig.calculatedDataPath,
-                                               dataSetName=dataSetName,
-                                               instrument=self.instrument,
-                                               dayObs='*',
-                                               seqNum='*')
+        pattern = getGlobPatternForShardedData(
+            path=self.locationConfig.calculatedDataPath,
+            dataSetName=dataSetName,
+            instrument=self.instrument,
+            dayObs="*",
+            seqNum="*",
+        )
         files = glob.glob(pattern)
 
         # get the ``set`` of (dayObs, seqNum)s this list of files covers, i.e.
@@ -948,6 +1003,9 @@ class Replotter(Plotter):
         # processes. Note this is <= not < to deliberately include that record
         # itself, because the complete ones are now only processed if also
         # stale.
-        shards = {record: fileList for record, fileList in shards.items()
-                  if record.timespan.end <= mostRecentExp.timespan.end}
+        shards = {
+            record: fileList
+            for record, fileList in shards.items()
+            if record.timespan.end <= mostRecentExp.timespan.end
+        }
         return shards

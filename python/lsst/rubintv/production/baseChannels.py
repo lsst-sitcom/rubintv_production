@@ -19,19 +19,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import time
 import logging
-from time import sleep
+import time
 from abc import ABC, abstractmethod
+from time import sleep
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
-from .watchers import FileWatcher
-from .uploaders import Uploader, MultiUploader
+from .uploaders import MultiUploader, Uploader
+from .watchers import FileWatcher, RedisWatcher
 
 __all__ = [
-    'BaseChannel',
-    'BaseButlerChannel',
+    "BaseChannel",
+    "BaseButlerChannel",
 ]
 
 
@@ -50,12 +50,7 @@ class BaseChannel(ABC):
         If ``True``, raise exceptions. If ``False``, log them.
     """
 
-    def __init__(self, *,
-                 locationConfig,
-                 log,
-                 watcher,
-                 doRaise
-                 ):
+    def __init__(self, *, locationConfig, log, watcher, doRaise):
         self.locationConfig = locationConfig
         self.log = log
         self.watcher = watcher
@@ -91,44 +86,67 @@ class BaseButlerChannel(BaseChannel):
     ----------
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The location configuration to use.
+    instrument : `str`
+        The instrument to process data for.
     butler : `lsst.daf.butler.Butler`
         The Butler to use.
     dataProduct : `str`
         The dataProduct to watch for.
+    detectors : `list` of `int`
+        The detectors to process the data for. TODO: This is unused in some
+        contexts - fix this, ideally fully removing it.
     channelName : `str`
         The name of the channel, used for uploads and logging.
+    watcherType : `str`
+        The type of watcher to use - either `"file"` or `"redis"`.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
+    queueName : `str`, optional
+        If using a `"redis"` type watcher, which queue should this consume
+        from.
     """
 
-    def __init__(self,
-                 *,
-                 locationConfig,
-                 instrument,
-                 butler,
-                 dataProduct,
-                 channelName,
-                 doRaise,
-                 ):
-        fileWatcher = FileWatcher(locationConfig=locationConfig,
-                                  instrument=instrument,
-                                  dataProduct=dataProduct,
-                                  heartbeatChannelName=channelName,
-                                  doRaise=doRaise)
-        log = logging.getLogger(f'lsst.rubintv.production.{channelName}')
-        super().__init__(locationConfig=locationConfig,
-                         log=log,
-                         watcher=fileWatcher,
-                         doRaise=doRaise)
+    def __init__(
+        self,
+        *,
+        locationConfig,
+        instrument,
+        butler,
+        dataProduct,
+        detectors,
+        channelName,
+        watcherType,
+        doRaise,
+        queueName=None,  # only needed for redis watcher. Not the neatest but will do for now
+    ):
+        if watcherType == "file":
+            watcher = FileWatcher(
+                locationConfig=locationConfig,
+                instrument=instrument,
+                dataProduct=dataProduct,
+                heartbeatChannelName=channelName,
+                doRaise=doRaise,
+            )
+        elif watcherType == "redis":
+            watcher = RedisWatcher(
+                butler=butler,
+                locationConfig=locationConfig,
+                queueName=queueName,
+            )
+        else:
+            raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
+        log = logging.getLogger(f"lsst.rubintv.production.{channelName}")
+        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
+        self.detectors = detectors
 
     @abstractmethod
     def callback(self, expRecord):
         raise NotImplementedError()
 
-    def _waitForDataProduct(self, dataId, timeout=20):
+    def _waitForDataProduct(self, dataId, timeout=20, gettingButler=None):
         """Wait for a dataProduct to land inside a repo.
 
         Wait for a maximum of ``timeout`` seconds for a dataProduct to land,
@@ -141,6 +159,9 @@ class BaseButlerChannel(BaseChannel):
         timeout : `float`
             The timeout, in seconds, to wait before giving up and returning
             ``None``.
+        gettingButler : `lsst.daf.butler.LimitedButler`
+            The butler to use. If ``None``, uses the butler attribute. Provided
+            so that a CachingLimitedButler can be used instead.
 
         Returns
         -------
@@ -148,12 +169,19 @@ class BaseButlerChannel(BaseChannel):
             Either the dataProduct being waited for, or ``None`` if timeout was
             exceeded.
         """
+        if self.dataProduct is None:
+            return
+
         cadence = 0.25
         start = time.time()
         while time.time() - start < timeout:
             if butlerUtils.datasetExists(self.butler, self.dataProduct, dataId):
-                return self.butler.get(self.dataProduct, dataId)
+                if gettingButler is None:
+                    return self.butler.get(self.dataProduct, dataId)
+                else:
+                    ref = self.butler.find_dataset(self.dataProduct, dataId)
+                    return gettingButler.get(ref)
             else:
                 sleep(cadence)
-        self.log.warning(f'Waited {timeout}s for {self.dataProduct} for {dataId} to no avail')
+        self.log.warning(f"Waited {timeout}s for {self.dataProduct} for {dataId} to no avail")
         return None

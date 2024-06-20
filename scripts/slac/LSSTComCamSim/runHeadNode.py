@@ -20,21 +20,33 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
+
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.processingControl import HeadProcessController
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running raw processor for detector 5 at {location}...')
+instrument = "LSSTComCamSim"
 
+setupLogging()
+location = "slac" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                        'LSSTComCamSim/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTComCamSim',
-                            detectors=5,
-                            doRaise=True)
-rawProcessor.run()
+print(f"Running {instrument} head node at {location}...")
+
+
+butler = dafButler.Butler(
+    locationConfig.comCamButlerPath,
+    instrument=instrument,
+    collections=[
+        "LSSTComCamSim/defaults",
+    ],
+    writeable=True,  # needed for defineVisits
+)
+
+controller = HeadProcessController(
+    butler=butler,
+    instrument=instrument,
+    locationConfig=locationConfig,
+    pipelineFile=locationConfig.sfmPipelineFile,
+)
+controller.run()

@@ -20,15 +20,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+
 from lsst.rubintv.production.allSky import AllSkyMovieChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f'Running allSky channel at {location}...')
+print(f"Running allSky channel at {location}...")
 
 allSky = AllSkyMovieChannel(locationConfig=locationConfig)
 allSky.run()

@@ -19,119 +19,124 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
-import time
-import logging
-import tempfile
 import json
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-from time import sleep
+import logging
+import os
+import tempfile
+import time
 from functools import partial
+from time import sleep
 
-import lsst.summit.utils.butlerUtils as butlerUtils
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from astro_metadata_translator import ObservationInfo
-from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 
-from lsst.utils import getPackageDir
-from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
-from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
-from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.daf.butler as dafButler
+import lsst.summit.utils.butlerUtils as butlerUtils
+from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
+from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.pipe.base import Instrument
+from lsst.pipe.tasks.calibrate import CalibrateConfig, CalibrateTask
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageConfig, CharacterizeImageTask
 from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
+from lsst.utils import getPackageDir
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
+
     HAS_EFD_CLIENT = True
 except ImportError:
     HAS_EFD_CLIENT = False
 
+from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
+from lsst.rubintv.production.monitorPlotting import plotExp
+from lsst.rubintv.production.mountTorques import (
+    MOUNT_IMAGE_BAD_LEVEL,
+    MOUNT_IMAGE_WARNING_LEVEL,
+    calculateMountErrors,
+)
+from lsst.summit.utils import NightReport
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.bestEffort import BestEffortIsr
-from lsst.summit.utils.imageExaminer import ImageExaminer
-from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-from lsst.summit.utils.utils import getCurrentDayObs_int
-from lsst.summit.utils.tmaUtils import (TMAEventMaker,
-                                        plotEvent,
-                                        getCommandsDuringEvent,
-                                        getAzimuthElevationDataForEvent,
-                                        )
 from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
+from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
 from lsst.summit.utils.m1m3.plots.inertia_compensation_system import plot_hp_measured_data
-
-from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
-from lsst.summit.utils import NightReport
-
-from lsst.rubintv.production.mountTorques import (calculateMountErrors, MOUNT_IMAGE_WARNING_LEVEL,
-                                                  MOUNT_IMAGE_BAD_LEVEL)
-from lsst.rubintv.production.monitorPlotting import plotExp
-from .utils import (
-    writeMetadataShard,
-    expRecordToUploadFilename,
-    raiseIf,
-    hasDayRolledOver,
-    catchPrintOutput,
-    NumpyEncoder,
+from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
+from lsst.summit.utils.tmaUtils import (
+    TMAEventMaker,
+    getAzimuthElevationDataForEvent,
+    getCommandsDuringEvent,
+    plotEvent,
 )
-from .uploaders import Heartbeater
-from .baseChannels import BaseButlerChannel
-from .exposureLogUtils import getLogsForDayObs, LOG_ITEM_MAPPINGS
-from .plotting import latissNightReportPlots
-from .metadataServers import TimedMetadataServer
+from lsst.summit.utils.utils import getCurrentDayObs_int
 
+from .baseChannels import BaseButlerChannel
+from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
+from .metadataServers import TimedMetadataServer
+from .plotting import latissNightReportPlots
+from .utils import (
+    NumpyEncoder,
+    catchPrintOutput,
+    expRecordToUploadFilename,
+    hasDayRolledOver,
+    raiseIf,
+    writeMetadataShard,
+)
 
 __all__ = [
-    'IsrRunner',
-    'ImExaminerChannel',
-    'SpecExaminerChannel',
-    'MonitorChannel',
-    'MountTorqueChannel',
-    'MetadataCreator',
-    'Heartbeater',
-    'CalibrateCcdRunner',
-    'NightReportChannel',
-    'TmaTelemetryChannel',
+    "IsrRunner",
+    "ImExaminerChannel",
+    "SpecExaminerChannel",
+    "MonitorChannel",
+    "MountTorqueChannel",
+    "MetadataCreator",
+    "CalibrateCcdRunner",
+    "NightReportChannel",
+    "TmaTelemetryChannel",
 ]
 
 
 _LOG = logging.getLogger(__name__)
 
-SIDECAR_KEYS_TO_REMOVE = ['instrument',
-                          'obs_id',
-                          'seq_start',
-                          'seq_end',
-                          'group_name',
-                          'has_simulated',
-                          ]
+SIDECAR_KEYS_TO_REMOVE = [
+    "instrument",
+    "obs_id",
+    "seq_start",
+    "seq_end",
+    "group_name",
+    "has_simulated",
+]
 
 # The values here are used in HTML so do not include periods in them, eg "Dec."
-MD_NAMES_MAP = {"id": 'Exposure id',
-                "exposure_time": 'Exposure time',
-                "dark_time": 'Darktime',
-                "observation_type": 'Image type',
-                "observation_reason": 'Observation reason',
-                "day_obs": 'dayObs',
-                "seq_num": 'seqNum',
-                "group_id": 'Group id',
-                "target_name": 'Target',
-                "science_program": 'Science program',
-                "tracking_ra": 'RA',
-                "tracking_dec": 'Dec',
-                "sky_angle": 'Sky angle',
-                "azimuth": 'Azimuth',
-                "zenith_angle": 'Zenith angle',
-                "time_begin_tai": 'TAI',
-                "filter": 'Filter',
-                "disperser": 'Disperser',
-                "airmass": 'Airmass',
-                "focus_z": 'Focus-Z',
-                "seeing": 'DIMM Seeing',
-                "altitude": 'Altitude',
-                }
+MD_NAMES_MAP = {
+    "id": "Exposure id",
+    "exposure_time": "Exposure time",
+    "dark_time": "Darktime",
+    "observation_type": "Image type",
+    "observation_reason": "Observation reason",
+    "day_obs": "dayObs",
+    "seq_num": "seqNum",
+    "group_id": "Group id",
+    "group": "Group",
+    "target_name": "Target",
+    "science_program": "Science program",
+    "tracking_ra": "RA",
+    "tracking_dec": "Dec",
+    "sky_angle": "Sky angle",
+    "azimuth": "Azimuth",
+    "zenith_angle": "Zenith angle",
+    "time_begin_tai": "TAI",
+    "filter": "Filter",
+    "disperser": "Disperser",
+    "airmass": "Airmass",
+    "focus_z": "Focus-Z",
+    "seeing": "DIMM Seeing",
+    "altitude": "Altitude",
+    "can_see_sky": "Can see the sky?",
+}
 
 
 class IsrRunner(BaseButlerChannel):
@@ -154,12 +159,16 @@ class IsrRunner(BaseButlerChannel):
 
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         self.bestEffort = BestEffortIsr(embargo=embargo)
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=self.bestEffort.butler,
-                         dataProduct='raw',
-                         channelName='auxtel_isr_runner',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=self.bestEffort.butler,
+            detectors=0,
+            watcherType="file",
+            dataProduct="raw",
+            channelName="auxtel_isr_runner",
+            doRaise=doRaise,
+        )
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
@@ -175,7 +184,7 @@ class IsrRunner(BaseButlerChannel):
         dataId = expRecord.dataId
         quickLookExp = self.bestEffort.getExposure(dataId, detector=0)  # noqa: F841 - automatically puts
         del quickLookExp
-        self.log.info(f'Put quickLookExp for {dataId}, awaiting next image...')
+        self.log.info(f"Put quickLookExp for {dataId}, awaiting next image...")
 
 
 class ImExaminerChannel(BaseButlerChannel):
@@ -194,12 +203,16 @@ class ImExaminerChannel(BaseButlerChannel):
     """
 
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-                         dataProduct='quickLookExp',
-                         channelName='summit_imexam',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+            detectors=0,
+            watcherType="file",
+            dataProduct="quickLookExp",
+            channelName="summit_imexam",
+            doRaise=doRaise,
+        )
         self.detector = 0
 
     def _imExamine(self, exp, outputFilename):
@@ -233,7 +246,7 @@ class ImExaminerChannel(BaseButlerChannel):
         doProcess : `bool`
             True if the image should be processed, False if we should skip it.
         """
-        if expRecord.observation_type in ['bias', 'dark', 'flat']:
+        if expRecord.observation_type in ["bias", "dark", "flat"]:
             self.log.info(f"Skipping calib image: {expRecord.observation_type}")
             return False
         return True
@@ -253,24 +266,25 @@ class ImExaminerChannel(BaseButlerChannel):
             if not self.doProcessImage(expRecord):
                 return
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            self.log.info(f'Running imexam on {dataId}')
-            tempFilename = tempfile.mktemp(suffix='.png')
+            self.log.info(f"Running imexam on {dataId}")
+            tempFilename = tempfile.mktemp(suffix=".png")
             uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
 
             if not exp:
-                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
             self._imExamine(exp, tempFilename)
 
             self.log.info("Uploading imExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
-                instrument='auxtel',
-                plotName='imexam',
+                instrument="auxtel",
+                plotName="imexam",
                 dayObs=expRecord.day_obs,
                 seqNum=expRecord.seq_num,
-                filename=tempFilename)
-            self.log.info('Upload complete')
+                filename=tempFilename,
+            )
+            self.log.info("Upload complete")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -290,12 +304,16 @@ class SpecExaminerChannel(BaseButlerChannel):
     """
 
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-                         dataProduct='quickLookExp',
-                         channelName='summit_specexam',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+            detectors=0,
+            watcherType="file",
+            dataProduct="quickLookExp",
+            channelName="summit_specexam",
+            doRaise=doRaise,
+        )
         self.detector = 0
 
     def _specExamine(self, exp, outputFilename):
@@ -327,28 +345,29 @@ class SpecExaminerChannel(BaseButlerChannel):
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            oldStyleDataId = {'day_obs': expRecord.day_obs, 'seq_num': expRecord.seq_num}
+            oldStyleDataId = {"day_obs": expRecord.day_obs, "seq_num": expRecord.seq_num}
             if not isDispersedDataId(oldStyleDataId, self.butler):
-                self.log.info(f'Skipping non dispersed image {dataId}')
+                self.log.info(f"Skipping non dispersed image {dataId}")
                 return
 
-            self.log.info(f'Running specExam on {dataId}')
-            tempFilename = tempfile.mktemp(suffix='.png')
+            self.log.info(f"Running specExam on {dataId}")
+            tempFilename = tempfile.mktemp(suffix=".png")
             uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
-                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
             self._specExamine(exp, tempFilename)
 
             self.log.info("Uploading specExam to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
-                instrument='auxtel',
-                plotName='specexam',
+                instrument="auxtel",
+                plotName="specexam",
                 dayObs=expRecord.day_obs,
                 seqNum=expRecord.seq_num,
-                filename=tempFilename)
-            self.log.info('Upload complete')
+                filename=tempFilename,
+            )
+            self.log.info("Upload complete")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -368,12 +387,16 @@ class MonitorChannel(BaseButlerChannel):
     """
 
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-                         dataProduct='quickLookExp',
-                         channelName='auxtel_monitor',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+            detectors=0,
+            watcherType="file",
+            dataProduct="quickLookExp",
+            channelName="auxtel_monitor",
+            doRaise=doRaise,
+        )
         self.fig = plt.figure(figsize=(12, 12))
         self.detector = 0
 
@@ -390,7 +413,7 @@ class MonitorChannel(BaseButlerChannel):
         if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
             self.log.warning(f"Skipping {outputFilename}")
             return
-        plotExp(exp, self.fig, outputFilename, doSmooth=False, scalingOption='CCS')
+        plotExp(exp, self.fig, outputFilename, doSmooth=False, scalingOption="CCS")
 
     def callback(self, expRecord):
         """Method called on each new expRecord as it is found in the repo.
@@ -405,24 +428,24 @@ class MonitorChannel(BaseButlerChannel):
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            self.log.info(f'Generating monitor image for {dataId}')
-            tempFilename = tempfile.mktemp(suffix='.png')
+            self.log.info(f"Generating monitor image for {dataId}")
+            tempFilename = tempfile.mktemp(suffix=".png")
             uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
-                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
             self._plotImage(exp, tempFilename)
 
             self.log.info("Uploading monitor image to storage bucket")
             self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
-                instrument='auxtel',
-                plotName='monitor',
+                instrument="auxtel",
+                plotName="monitor",
                 dayObs=expRecord.day_obs,
                 seqNum=expRecord.seq_num,
                 filename=tempFilename,
             )
-            self.log.info('Upload complete')
+            self.log.info("Upload complete")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -444,14 +467,19 @@ class MountTorqueChannel(BaseButlerChannel):
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
         if not HAS_EFD_CLIENT:
             from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
+
             raise RuntimeError(EFD_CLIENT_MISSING_MSG)
 
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-                         dataProduct='raw',
-                         channelName='auxtel_mount_torques',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+            detectors=0,
+            watcherType="file",
+            dataProduct="raw",
+            channelName="auxtel_mount_torques",
+            doRaise=doRaise,
+        )
         self.client = makeEfdClient()
         self.fig = plt.figure(figsize=(16, 16))
         self.detector = 0
@@ -478,31 +506,31 @@ class MountTorqueChannel(BaseButlerChannel):
 
         # the mount error itself, *not* the image component. No quality flags
         # on this part.
-        az_rms = errors['az_rms']
-        el_rms = errors['el_rms']
-        mountError = (az_rms ** 2 + el_rms ** 2) ** .5
+        az_rms = errors["az_rms"]
+        el_rms = errors["el_rms"]
+        mountError = (az_rms**2 + el_rms**2) ** 0.5
         if np.isnan(mountError):
             mountError = None
-        contents = {'Mount jitter RMS': mountError}
+        contents = {"Mount jitter RMS": mountError}
 
         # the contribution to the image error from the mount. This is the part
         # that matters and gets a quality flag. Note that the rotator error
         # contibution is zero and the field centre and increases radially, and
         # is usually very small, so we don't add that here as its contrinution
         # is not really well definited and including it would be misleading.
-        image_az_rms = errors['image_az_rms']
-        image_el_rms = errors['image_el_rms']
-        imageError = (image_az_rms ** 2 + image_el_rms ** 2) ** .5
+        image_az_rms = errors["image_az_rms"]
+        image_el_rms = errors["image_el_rms"]
+        imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
         if np.isnan(imageError):
             mountError = None
-        key = 'Mount motion image degradation'
-        flagKey = '_' + key  # color coding of cells always done by prepending with an underscore
+        key = "Mount motion image degradation"
+        flagKey = "_" + key  # color coding of cells always done by prepending with an underscore
         contents.update({key: imageError})
 
         if imageError > MOUNT_IMAGE_BAD_LEVEL:
-            contents.update({flagKey: 'bad'})
+            contents.update({flagKey: "bad"})
         elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
-            contents.update({flagKey: 'warning'})
+            contents.update({flagKey: "warning"})
 
         md = {seqNum: contents}
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
@@ -518,7 +546,7 @@ class MountTorqueChannel(BaseButlerChannel):
         """
         hasError = hasTimebaseErrors(expRecord, self.client)
         if hasError:
-            md = {expRecord.seq_num: {'Mount timebase errors': '⚠️'}}
+            md = {expRecord.seq_num: {"Mount timebase errors": "⚠️"}}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, expRecord.day_obs, md)
 
     def callback(self, expRecord):
@@ -534,7 +562,7 @@ class MountTorqueChannel(BaseButlerChannel):
         """
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            tempFilename = tempfile.mktemp(suffix='.png')
+            tempFilename = tempfile.mktemp(suffix=".png")
             uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
 
             # calculateMountErrors() calculates the errors, but also performs
@@ -545,13 +573,13 @@ class MountTorqueChannel(BaseButlerChannel):
                 self.log.info("Uploading mount torque plot to storage bucket")
                 self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
                 self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument='auxtel',
-                    plotName='mount',
+                    instrument="auxtel",
+                    plotName="mount",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFilename
+                    filename=tempFilename,
                 )
-                self.log.info('Upload complete')
+                self.log.info("Upload complete")
 
             # write the mount error shard, including the cell coloring flag
             if errors:  # if the mount torque fails or skips it returns False
@@ -579,12 +607,16 @@ class MetadataCreator(BaseButlerChannel):
     """
 
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-                         dataProduct='raw',
-                         channelName='auxtel_metadata_creator',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+            detectors=0,
+            watcherType="file",
+            dataProduct="raw",
+            channelName="auxtel_metadata_creator",
+            doRaise=doRaise,
+        )
         self.detector = 0  # can be removed once we have the requisite summit DBs
 
         # We inherit the uploaders, so be explicit about the fact we don't use
@@ -623,25 +655,25 @@ class MetadataCreator(BaseButlerChannel):
         d = expRecord.toDict()
 
         time_begin_tai = expRecord.timespan.begin.to_datetime().strftime("%H:%M:%S")
-        d['time_begin_tai'] = time_begin_tai
-        d.pop('timespan')
+        d["time_begin_tai"] = time_begin_tai
+        d.pop("timespan")
 
-        filt, disperser = d['physical_filter'].split(FILTER_DELIMITER)
-        d.pop('physical_filter')
-        d['filter'] = filt
-        d['disperser'] = disperser
+        filt, disperser = d["physical_filter"].split(FILTER_DELIMITER)
+        d.pop("physical_filter")
+        d["filter"] = filt
+        d["disperser"] = disperser
 
-        rawmd = self.butler.get('raw.metadata', expRecord.dataId, detector=self.detector)
+        rawmd = self.butler.get("raw.metadata", expRecord.dataId, detector=self.detector)
         obsInfo = ObservationInfo(rawmd)
-        d['airmass'] = obsInfo.boresight_airmass
-        d['focus_z'] = obsInfo.focus_z.value
+        d["airmass"] = obsInfo.boresight_airmass
+        d["focus_z"] = obsInfo.focus_z.value
 
-        d['altitude'] = None  # altaz_begin is None when not on sky so need check it's not None first
+        d["altitude"] = None  # altaz_begin is None when not on sky so need check it's not None first
         if obsInfo.altaz_begin is not None:
-            d['altitude'] = obsInfo.altaz_begin.alt.value
+            d["altitude"] = obsInfo.altaz_begin.alt.value
 
-        if 'SEEING' in rawmd:  # SEEING not yet in the obsInfo so take direct from header
-            d['seeing'] = rawmd['SEEING']
+        if "SEEING" in rawmd:  # SEEING not yet in the obsInfo so take direct from header
+            d["seeing"] = rawmd["SEEING"]
 
         for key in keysToRemove:
             if key in d:
@@ -689,7 +721,7 @@ class MetadataCreator(BaseButlerChannel):
         if not logs:
             return
 
-        itemsToInclude = ['message_text', 'level', 'urls', 'exposure_flag']
+        itemsToInclude = ["message_text", "level", "urls", "exposure_flag"]
 
         md = {seqNum: {} for seqNum in logs.keys()}
 
@@ -705,7 +737,7 @@ class MetadataCreator(BaseButlerChannel):
                     wasAnnotated = True
 
             if wasAnnotated:
-                md[seqNum].update({'Has annotations?': '🚩'})
+                md[seqNum].update({"Has annotations?": "🚩"})
 
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
 
@@ -720,12 +752,12 @@ class MetadataCreator(BaseButlerChannel):
             The exposure record.
         """
         try:
-            self.log.info(f'Writing metadata shard for {expRecord.dataId}')
+            self.log.info(f"Writing metadata shard for {expRecord.dataId}")
             self.writeShardForExpRecord(expRecord)
             # Note: we do not upload anythere here, as the TimedMetadataServer
             # does the collation and upload, and runs as a separate process.
 
-            self.log.info(f'Getting exposure log messages for {expRecord.day_obs}')
+            self.log.info(f"Getting exposure log messages for {expRecord.day_obs}")
             self.writeLogMessageShards(expRecord)
 
         except Exception as e:
@@ -749,17 +781,19 @@ class CalibrateCcdRunner(BaseButlerChannel):
     """
 
     def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         # writeable true is required to define visits
-                         butler=butlerUtils.makeDefaultLatissButler(
-                             extraCollections=['refcats/DM-42295'],
-                             embargo=embargo,
-                             writeable=True
-                         ),
-                         dataProduct='quickLookExp',
-                         channelName='auxtel_calibrateCcd',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            # writeable true is required to define visits
+            butler=butlerUtils.makeDefaultLatissButler(
+                extraCollections=["refcats/DM-42295"], embargo=embargo, writeable=True
+            ),
+            detectors=0,
+            watcherType="file",
+            dataProduct="quickLookExp",
+            channelName="auxtel_calibrateCcd",
+            doRaise=doRaise,
+        )
         self.detector = 0
         # TODO DM-37272 need to get the collection name from a central place
         self.outputRunName = "LATISS/runs/quickLook/1"
@@ -780,21 +814,22 @@ class CalibrateCcdRunner(BaseButlerChannel):
         config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
 
         # restrict to basic set of plugins
-        config.measurement.plugins.names = ['base_CircularApertureFlux',
-                                            'base_PsfFlux',
-                                            'base_NaiveCentroid',
-                                            'base_CompensatedGaussianFlux',
-                                            'base_LocalBackground',
-                                            'base_SdssCentroid',
-                                            'base_SdssShape',
-                                            'base_Variance',
-                                            'base_Jacobian',
-                                            'base_PixelFlags',
-                                            'base_GaussianFlux',
-                                            'base_SkyCoord',
-                                            'base_FPPosition',
-                                            'base_ClassificationSizeExtendedness',
-                                            ]
+        config.measurement.plugins.names = [
+            "base_CircularApertureFlux",
+            "base_PsfFlux",
+            "base_NaiveCentroid",
+            "base_CompensatedGaussianFlux",
+            "base_LocalBackground",
+            "base_SdssCentroid",
+            "base_SdssShape",
+            "base_Variance",
+            "base_Jacobian",
+            "base_PixelFlags",
+            "base_GaussianFlux",
+            "base_SkyCoord",
+            "base_FPPosition",
+            "base_ClassificationSizeExtendedness",
+        ]
         config.measurement.slots.shape = "base_SdssShape"
         config.measurement.slots.psfShape = "base_SdssShape_psf"
         # TODO DM-37426 add some more overrides to speed up runtime
@@ -826,17 +861,12 @@ class CalibrateCcdRunner(BaseButlerChannel):
         # generator not guaranteed to yield in the same order every iteration
         # therefore critical to materialize a list before iterating twice
         refs = list(refs)
-        handles = [dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None)
-                   for ref in refs]
+        handles = [
+            dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None) for ref in refs
+        ]
         dataIds = [ref.dataId for ref in refs]
 
-        loader = ReferenceObjectLoader(
-            dataIds,
-            handles,
-            name=refcatName,
-            log=self.log,
-            config=config
-        )
+        loader = ReferenceObjectLoader(dataIds, handles, name=refcatName, log=self.log, config=config)
         return loader
 
     def doProcessImage(self, expRecord):
@@ -854,9 +884,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
         doProcess : `bool`
             True if the image should be processed, False if we should skip it.
         """
-        if expRecord.observation_type != 'science':
-            if expRecord.science_program == 'CWFS' and expRecord.exposure_time == 5:
-                self.log.info('Processing 5s post-CWFS image as a special case')
+        if expRecord.observation_type != "science":
+            if expRecord.science_program == "CWFS" and expRecord.exposure_time == 5:
+                self.log.info("Processing 5s post-CWFS image as a special case")
                 return True
             self.log.info(f"Skipping non-science-type exposure {expRecord.observation_type}")
             return False
@@ -881,15 +911,15 @@ class CalibrateCcdRunner(BaseButlerChannel):
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tStart = time.time()
 
-            self.log.info(f'Running Image Characterization for {dataId}')
+            self.log.info(f"Running Image Characterization for {dataId}")
             exp = self._waitForDataProduct(dataId)
 
             if not exp:
-                raise RuntimeError(f'Failed to get {self.dataProduct} for {dataId}')
+                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
 
             # TODO DM-37427 dispersed images do not have a filter and fail
             if isDispersedExp(exp):
-                self.log.info(f'Skipping dispersed image: {dataId}')
+                self.log.info(f"Skipping dispersed image: {dataId}")
                 return
 
             visitDataId = self.getVisitDataId(expRecord)
@@ -897,11 +927,17 @@ class CalibrateCcdRunner(BaseButlerChannel):
                 self.defineVisit(expRecord)
                 visitDataId = self.getVisitDataId(expRecord)
 
-            loader = self._getRefObjLoader(self.calibrate.config.connections.astromRefCat, visitDataId,
-                                           config=self.calibrate.config.astromRefObjLoader)
+            loader = self._getRefObjLoader(
+                self.calibrate.config.connections.astromRefCat,
+                visitDataId,
+                config=self.calibrate.config.astromRefObjLoader,
+            )
             self.calibrate.astrometry.setRefObjLoader(loader)
-            loader = self._getRefObjLoader(self.calibrate.config.connections.photoRefCat, visitDataId,
-                                           config=self.calibrate.config.photoRefObjLoader)
+            loader = self._getRefObjLoader(
+                self.calibrate.config.connections.photoRefCat,
+                visitDataId,
+                config=self.calibrate.config.photoRefObjLoader,
+            )
             self.calibrate.photoCal.match.setRefObjLoader(loader)
 
             charRes = self.charImage.run(exp)
@@ -919,9 +955,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
 
-            calibrateRes = self.calibrate.run(charRes.exposure,
-                                              background=charRes.background,
-                                              icSourceCat=charRes.sourceCat)
+            calibrateRes = self.calibrate.run(
+                charRes.exposure, background=charRes.background, icSourceCat=charRes.sourceCat
+            )
             tCalibrate = time.time()
             self.log.info(f"Ran calibrateTask in {tCalibrate-tCharacterize:.2f} seconds")
 
@@ -929,20 +965,20 @@ class CalibrateCcdRunner(BaseButlerChannel):
             pixToArcseconds = calibrateRes.outputExposure.getWcs().getPixelScale().asArcseconds()
             SIGMA2FWHM = np.sqrt(8 * np.log(2))
             e1 = (summaryStats.psfIxx - summaryStats.psfIyy) / (summaryStats.psfIxx + summaryStats.psfIyy)
-            e2 = 2*summaryStats.psfIxy / (summaryStats.psfIxx + summaryStats.psfIyy)
+            e2 = 2 * summaryStats.psfIxy / (summaryStats.psfIxx + summaryStats.psfIyy)
 
             outputDict = {
-                '5-sigma source count': len(calibrateRes.outputCat),
-                'PSF FWHM': summaryStats.psfSigma * SIGMA2FWHM * pixToArcseconds,
-                'PSF e1': e1,
-                'PSF e2': e2,
-                'Sky mean': summaryStats.skyBg,
-                'Sky RMS': summaryStats.skyNoise,
-                'Variance plane mean': summaryStats.meanVar,
-                'PSF star count': summaryStats.nPsfStar,
-                'Astrometric bias': summaryStats.astromOffsetMean,
-                'Astrometric scatter': summaryStats.astromOffsetStd,
-                'Zeropoint': summaryStats.zeroPoint
+                "5-sigma source count": len(calibrateRes.outputCat),
+                "PSF FWHM": summaryStats.psfSigma * SIGMA2FWHM * pixToArcseconds,
+                "PSF e1": e1,
+                "PSF e2": e2,
+                "Sky mean": summaryStats.skyBg,
+                "Sky RMS": summaryStats.skyNoise,
+                "Variance plane mean": summaryStats.meanVar,
+                "PSF star count": summaryStats.nPsfStar,
+                "Astrometric bias": summaryStats.astromOffsetMean,
+                "Astrometric scatter": summaryStats.astromOffsetStd,
+                "Zeropoint": summaryStats.zeroPoint,
             }
 
             # flag all these as measured items to color the cell
@@ -951,7 +987,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
-            self.log.info(f'Wrote metadata shard. Putting calexp for {dataId}')
+            self.log.info(f"Wrote metadata shard. Putting calexp for {dataId}")
             self.clobber(calibrateRes.outputExposure, "calexp", visitDataId)
             tFinal = time.time()
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
@@ -976,14 +1012,15 @@ class CalibrateCcdRunner(BaseButlerChannel):
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record to define the visit for.
         """
-        instr = Instrument.from_string(self.butler.registry.defaults.dataId['instrument'],
-                                       self.butler.registry)
+        instr = Instrument.from_string(
+            self.butler.registry.defaults.dataId["instrument"], self.butler.registry
+        )
         config = DefineVisitsConfig()
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
         task = DefineVisitsTask(config=config, butler=self.butler)
 
-        task.run([{'exposure': expRecord.id}], collections=self.butler.collections)
+        task.run([{"exposure": expRecord.id}], collections=self.butler.collections)
 
     def getVisitDataId(self, expRecord):
         """Lookup visitId for an expRecord or dataId containing an exposureId
@@ -999,15 +1036,17 @@ class CalibrateCcdRunner(BaseButlerChannel):
         visitDataId : `lsst.daf.butler.DataCoordinate`
             Data Id containing a visitId.
         """
-        expIdDict = {'exposure': expRecord.id}
+        expIdDict = {"exposure": expRecord.id}
         visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expIdDict)
         visitDataIds = list(set(visitDataIds))
         if len(visitDataIds) == 1:
             visitDataId = visitDataIds[0]
             return visitDataId
         else:
-            self.log.warning(f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
-                             " define-visits?")
+            self.log.warning(
+                f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
+                " define-visits?"
+            )
             return None
 
     def clobber(self, object, datasetType, visitDataId):
@@ -1027,11 +1066,11 @@ class CalibrateCcdRunner(BaseButlerChannel):
         """
         self.butler.registry.registerRun(self.outputRunName)
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f'Overwriting existing {datasetType} for {visitDataId}')
+            self.log.warning(f"Overwriting existing {datasetType} for {visitDataId}")
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f'Put {datasetType} for {visitDataId}')
+        self.log.info(f"Put {datasetType} for {visitDataId}")
 
     def putVisitSummary(self, visitId):
         """Create and butler.put the visitSummary for this visit.
@@ -1047,17 +1086,19 @@ class CalibrateCcdRunner(BaseButlerChannel):
         visitId : `lsst.daf.butler.DataCoordinate`
             The visit id to create and put the visitSummary for.
         """
-        dRefs = list(self.butler.registry.queryDatasets('calexp',
-                                                        dataId=visitId,
-                                                        collections=self.outputRunName).expanded())
+        dRefs = list(
+            self.butler.registry.queryDatasets(
+                "calexp", dataId=visitId, collections=self.outputRunName
+            ).expanded()
+        )
         if len(dRefs) != 1:
-            raise RuntimeError(f'Found {len(dRefs)} calexps for {visitId} and it should have exactly 1')
+            raise RuntimeError(f"Found {len(dRefs)} calexps for {visitId} and it should have exactly 1")
 
         ddRef = self.butler.getDeferred(dRefs[0])
-        visit = ddRef.dataId.byName()['visit']  # this is a raw int
+        visit = ddRef.dataId.byName()["visit"]  # this is a raw int
         consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
         expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
-        self.clobber(expCatalog, 'visitSummary', visitId)
+        self.clobber(expCatalog, "visitSummary", visitId)
         return
 
 
@@ -1080,12 +1121,16 @@ class NightReportChannel(BaseButlerChannel):
     """
 
     def __init__(self, locationConfig, instrument, *, dayObs=None, embargo=False, doRaise=False):
-        super().__init__(locationConfig=locationConfig,
-                         instrument=instrument,
-                         butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-                         dataProduct='quickLookExp',
-                         channelName='auxtel_night_reports',
-                         doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
+            detectors=0,
+            watcherType="file",
+            dataProduct="quickLookExp",
+            channelName="auxtel_night_reports",
+            doRaise=doRaise,
+        )
 
         # we update when the quickLookExp lands, but we scrape for everything,
         # updating the CcdVisitSummaryTable in the hope that the
@@ -1104,7 +1149,7 @@ class NightReportChannel(BaseButlerChannel):
         # always attempt to resume on init
         saveFile = self.getSaveFile()
         if os.path.isfile(saveFile):
-            self.log.info(f'Resuming from {saveFile}')
+            self.log.info(f"Resuming from {saveFile}")
             self.report = NightReport(self.butler, self.dayObs, saveFile)
             self.report.rebuild()
         else:  # otherwise start a new report from scratch
@@ -1116,19 +1161,19 @@ class NightReportChannel(BaseButlerChannel):
         Creates a final version of the plots at the end of the day, starts a
         new NightReport object, and rolls ``self.dayObs`` over.
         """
-        self.log.info(f'Creating final plots for {self.dayObs}')
+        self.log.info(f"Creating final plots for {self.dayObs}")
         self.createPlotsAndUpload()
         # TODO: add final plotting of plots which live in the night reporter
         # class here somehow, perhaps by moving them to their own plot classes.
 
         self.dayObs = getCurrentDayObs_int()
         self.saveFile = self.getSaveFile()
-        self.log.info(f'Starting new report for dayObs {self.dayObs}')
+        self.log.info(f"Starting new report for dayObs {self.dayObs}")
         self.report = NightReport(self.butler, self.dayObs)
         return
 
     def getSaveFile(self):
-        return os.path.join(self.locationConfig.nightReportPath, f'report_{self.dayObs}.pickle')
+        return os.path.join(self.locationConfig.nightReportPath, f"report_{self.dayObs}.pickle")
 
     def getMetadataTableContents(self):
         """Get the measured data for the current night.
@@ -1140,7 +1185,7 @@ class NightReportChannel(BaseButlerChannel):
         """
         # TODO: need to find a better way of getting this path ideally,
         # but perhaps is OK?
-        sidecarFilename = os.path.join(self.locationConfig.auxTelMetadataPath, f'dayObs_{self.dayObs}.json')
+        sidecarFilename = os.path.join(self.locationConfig.auxTelMetadataPath, f"dayObs_{self.dayObs}.json")
 
         try:
             mdTable = pd.read_json(sidecarFilename).T
@@ -1167,16 +1212,17 @@ class NightReportChannel(BaseButlerChannel):
         visitSummaryTableOutputCatalog : `pandas.DataFrame` or `None`
             The visit summary table for the dayObs.
         """
-        visitSummaries = self.butler.registry.queryDatasets('visitSummary',
-                                                            where='visit.day_obs=dayObs',
-                                                            bind={'dayObs': dayObs},
-                                                            collections=["LATISS/runs/quickLook/1"]
-                                                            ).expanded()
+        visitSummaries = self.butler.registry.queryDatasets(
+            "visitSummary",
+            where="visit.day_obs=dayObs",
+            bind={"dayObs": dayObs},
+            collections=["LATISS/runs/quickLook/1"],
+        ).expanded()
         visitSummaries = list(visitSummaries)
         if len(visitSummaries) == 0:
-            self.log.warning(f'Found no visitSummaries for dayObs {dayObs}')
+            self.log.warning(f"Found no visitSummaries for dayObs {dayObs}")
             return None
-        self.log.info(f'Found {len(visitSummaries)} visitSummaries for dayObs {dayObs}')
+        self.log.info(f"Found {len(visitSummaries)} visitSummaries for dayObs {dayObs}")
         ddRefs = [self.butler.getDeferred(vs) for vs in visitSummaries]
         task = MakeCcdVisitTableTask()
         table = task.run(ddRefs)
@@ -1192,22 +1238,25 @@ class NightReportChannel(BaseButlerChannel):
         md = self.getMetadataTableContents()
         report = self.report
         ccdVisitTable = self.createCcdVisitTable(self.dayObs)
-        self.log.info(f'Creating plots for dayObs {self.dayObs} with: '
-                      f'{len(report.data)} items in the night report, '
-                      f'{0 if md is None else len(md)} items in the metadata table, and '
-                      f'{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable.')
+        self.log.info(
+            f"Creating plots for dayObs {self.dayObs} with: "
+            f"{len(report.data)} items in the night report, "
+            f"{0 if md is None else len(md)} items in the metadata table, and "
+            f"{0 if ccdVisitTable is None else len(ccdVisitTable)} items in the ccdVisitTable."
+        )
 
         for plotName in latissNightReportPlots.PLOT_FACTORIES:
             try:
-                self.log.info(f'Creating plot {plotName}')
+                self.log.info(f"Creating plot {plotName}")
                 plotFactory = getattr(latissNightReportPlots, plotName)
-                plot = plotFactory(dayObs=self.dayObs,
-                                   locationConfig=self.locationConfig,
-                                   # TODO: DM-43413 switch this to be the
-                                   # s3Uploader
-                                   uploader=self.uploader,
-                                   s3Uploader=self.s3Uploader
-                                   )
+                plot = plotFactory(
+                    dayObs=self.dayObs,
+                    locationConfig=self.locationConfig,
+                    # TODO: DM-43413 switch this to be the
+                    # s3Uploader
+                    uploader=self.uploader,
+                    s3Uploader=self.s3Uploader,
+                )
                 plot.createAndUpload(report, md, ccdVisitTable)
             except Exception:
                 self.log.exception(f"Failed to create plot {plotName}")
@@ -1230,7 +1279,7 @@ class NightReportChannel(BaseButlerChannel):
         md = {}
         try:
             if doCheckDay and hasDayRolledOver(self.dayObs):
-                self.log.info(f'Day has rolled over, finalizing report for dayObs {self.dayObs}')
+                self.log.info(f"Day has rolled over, finalizing report for dayObs {self.dayObs}")
                 self.finalizeDay()
 
             else:
@@ -1243,56 +1292,57 @@ class NightReportChannel(BaseButlerChannel):
 
                 # plots which come from the night report object itself:
                 # the per-object airmass plot
-                airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, 'airmass.png')
+                airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, "airmass.png")
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
-                self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObs=self.dayObs,
-                                                    filename=airMassPlotFile,
-                                                    plotGroup='Coverage')
-                self.s3Uploader.uploadNightReportData(
-                    instrument='auxtel',
+                self.uploader.uploadNightReportData(
+                    channel=self.channelName,
                     dayObs=self.dayObs,
                     filename=airMassPlotFile,
-                    plotGroup='Coverage'
+                    plotGroup="Coverage",
+                )
+                self.s3Uploader.uploadNightReportData(
+                    instrument="auxtel", dayObs=self.dayObs, filename=airMassPlotFile, plotGroup="Coverage"
                 )
 
                 # the alt/az coverage polar plot
-                altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, 'alt-az.png')
+                altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, "alt-az.png")
                 self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
-                self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObs=self.dayObs,
-                                                    filename=altAzCoveragePlotFile,
-                                                    plotGroup='Coverage')
-                self.s3Uploader.uploadNightReportData(
-                    instrument='auxtel',
+                self.uploader.uploadNightReportData(
+                    channel=self.channelName,
                     dayObs=self.dayObs,
                     filename=altAzCoveragePlotFile,
-                    plotGroup='Coverage'
+                    plotGroup="Coverage",
+                )
+                self.s3Uploader.uploadNightReportData(
+                    instrument="auxtel",
+                    dayObs=self.dayObs,
+                    filename=altAzCoveragePlotFile,
+                    plotGroup="Coverage",
                 )
 
                 # Add text items here
                 shutterTimes = catchPrintOutput(self.report.printShutterTimes)
-                md['text_010'] = shutterTimes
+                md["text_010"] = shutterTimes
 
                 obsGaps = catchPrintOutput(self.report.printObsGaps)
-                md['text_020'] = obsGaps
+                md["text_020"] = obsGaps
 
                 # Upload the text here
                 # Note this file must be called md.json because this filename
                 # is used for the upload, and that's what the frontend expects
-                jsonFilename = os.path.join(self.locationConfig.nightReportPath, 'md.json')
-                with open(jsonFilename, 'w') as f:
+                jsonFilename = os.path.join(self.locationConfig.nightReportPath, "md.json")
+                with open(jsonFilename, "w") as f:
                     json.dump(md, f, cls=NumpyEncoder)
-                self.uploader.uploadNightReportData(channel=self.channelName,
-                                                    dayObs=self.dayObs,
-                                                    filename=jsonFilename)
-                self.s3Uploader.uploadNightReportData(  # XXX need to check this actually works
-                    instrument='auxtel',
+                self.uploader.uploadNightReportData(
+                    channel=self.channelName, dayObs=self.dayObs, filename=jsonFilename
+                )
+                self.s3Uploader.uploadNightReportData(
+                    instrument="auxtel",
                     dayObs=self.dayObs,
                     filename=jsonFilename,
                 )
 
-                self.log.info(f'Finished updating plots and table for {dataId}')
+                self.log.info(f"Finished updating plots and table for {dataId}")
 
         except Exception as e:
             msg = f"Skipped updating the night report for {dataId}:"
@@ -1320,6 +1370,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
+
     # The time between sweeps of the EFD for today's data.
     cadence = 10
     # upload heartbeat every n seconds
@@ -1327,21 +1378,19 @@ class TmaTelemetryChannel(TimedMetadataServer):
     # consider service 'dead' if this time exceeded between heartbeats
     HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, *,
-                 locationConfig,
-                 metadataDirectory,
-                 shardsDirectory,
-                 doRaise=False):
+    def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, doRaise=False):
 
-        self.plotChannelName = 'tma_mount_motion_profile'
-        self.metadataChannelName = 'tma_metadata'
+        self.plotChannelName = "tma_mount_motion_profile"
+        self.metadataChannelName = "tma_metadata"
         self.doRaise = doRaise
 
-        super().__init__(locationConfig=locationConfig,
-                         metadataDirectory=metadataDirectory,
-                         shardsDirectory=shardsDirectory,
-                         channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
-                         doRaise=self.doRaise)
+        super().__init__(
+            locationConfig=locationConfig,
+            metadataDirectory=metadataDirectory,
+            shardsDirectory=shardsDirectory,
+            channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
+            doRaise=self.doRaise,
+        )
 
         self.client = makeEfdClient()
         self.eventMaker = TMAEventMaker(client=self.client)
@@ -1350,30 +1399,28 @@ class TmaTelemetryChannel(TimedMetadataServer):
         self.trackPrePadding = 1
         self.slewPostPadding = 2
         self.trackPostPadding = 0
-        self.commandsToPlot = ['raDecTarget', 'moveToTarget', 'startTracking', 'stopTracking']
-        self.hardpointCommandsToPlot = ['lsst.sal.MTM1M3.command_setSlewFlag',
-                                        'lsst.sal.MTM1M3.command_enableHardpointCorrections',
-                                        'lsst.sal.MTM1M3.command_clearSlewFlag',
-                                        ]
+        self.commandsToPlot = ["raDecTarget", "moveToTarget", "startTracking", "stopTracking"]
+        self.hardpointCommandsToPlot = [
+            "lsst.sal.MTM1M3.command_setSlewFlag",
+            "lsst.sal.MTM1M3.command_enableHardpointCorrections",
+            "lsst.sal.MTM1M3.command_clearSlewFlag",
+        ]
 
         # keeps track of which plots have been made on a given day
-        self.plotsMade = {'MountMotionAnalysis': set(),
-                          'M1M3HardpointAnalysis': set()}
+        self.plotsMade = {"MountMotionAnalysis": set(), "M1M3HardpointAnalysis": set()}
 
     def resetPlotsMade(self):
-        """Reset the tracking of made plots for day-rollover.
-        """
+        """Reset the tracking of made plots for day-rollover."""
         self.plotsMade = {k: set() for k in self.plotsMade}
 
     def runMountMotionAnalysis(self, event):
         # get the data separately so we can take some min/max on it etc
         dayObs = event.dayObs
-        prePadding = self.slewPrePadding if event.type.name == 'SLEWING' else self.trackPrePadding
-        postPadding = self.slewPostPadding if event.type.name == 'SLEWING' else self.trackPostPadding
-        azimuthData, elevationData = getAzimuthElevationDataForEvent(self.client,
-                                                                     event,
-                                                                     prePadding=prePadding,
-                                                                     postPadding=postPadding)
+        prePadding = self.slewPrePadding if event.type.name == "SLEWING" else self.trackPrePadding
+        postPadding = self.slewPostPadding if event.type.name == "SLEWING" else self.trackPostPadding
+        azimuthData, elevationData = getAzimuthElevationDataForEvent(
+            self.client, event, prePadding=prePadding, postPadding=postPadding
+        )
 
         clippedAz = clipDataToEvent(azimuthData, event)
         clippedEl = clipDataToEvent(elevationData, event)
@@ -1390,30 +1437,30 @@ class TmaTelemetryChannel(TimedMetadataServer):
         maxAzTorque = None
 
         if len(clippedAz) > 0:
-            azStart = clippedAz.iloc[0]['actualPosition']
-            azStop = clippedAz.iloc[-1]['actualPosition']
+            azStart = clippedAz.iloc[0]["actualPosition"]
+            azStop = clippedAz.iloc[-1]["actualPosition"]
             azMove = azStop - azStart
             # key=abs gets the item with the largest absolute value but
             # keeps the sign so we don't deal with min/max depending on
             # the direction of the move etc
-            maxAzTorque = max(clippedAz['actualTorque'], key=abs)
+            maxAzTorque = max(clippedAz["actualTorque"], key=abs)
 
         if len(clippedEl) > 0:
-            elStart = clippedEl.iloc[0]['actualPosition']
-            elStop = clippedEl.iloc[-1]['actualPosition']
+            elStart = clippedEl.iloc[0]["actualPosition"]
+            elStop = clippedEl.iloc[-1]["actualPosition"]
             elMove = elStop - elStart
-            maxElTorque = max(clippedEl['actualTorque'], key=abs)
+            maxElTorque = max(clippedEl["actualTorque"], key=abs)
 
         # values could be None by design, for when there is no data
         # in the clipped dataframes, i.e. from the event window exactly
-        md['Azimuth start'] = azStart
-        md['Elevation start'] = elStart
-        md['Azimuth move'] = azMove
-        md['Elevation move'] = elMove
-        md['Azimuth stop'] = azStop
-        md['Elevation stop'] = elStop
-        md['Largest azimuth torque'] = maxAzTorque
-        md['Largest elevation torque'] = maxElTorque
+        md["Azimuth start"] = azStart
+        md["Elevation start"] = elStart
+        md["Azimuth move"] = azMove
+        md["Elevation move"] = elMove
+        md["Azimuth stop"] = azStop
+        md["Elevation stop"] = elStop
+        md["Largest azimuth torque"] = maxAzTorque
+        md["Largest elevation torque"] = maxElTorque
 
         rowData = {event.seqNum: md}
         writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
@@ -1424,40 +1471,35 @@ class TmaTelemetryChannel(TimedMetadataServer):
             self.commandsToPlot,
             prePadding=prePadding,
             postPadding=postPadding,
-            doLog=False)
+            doLog=False,
+        )
         if not all([time is None for time in commands.values()]):
-            rowData = {event.seqNum: {'Has commands?': '✅'}}
+            rowData = {event.seqNum: {"Has commands?": "✅"}}
             writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
         metadataWriter = partial(writeMetadataShard, path=self.shardsDirectory)
 
-        plotEvent(self.client,
-                  event,
-                  fig=self.figure,
-                  prePadding=prePadding,
-                  postPadding=postPadding,
-                  commands=commands,
-                  azimuthData=azimuthData,
-                  elevationData=elevationData,
-                  doFilterResiduals=True,
-                  metadataWriter=metadataWriter,
-                  )
+        plotEvent(
+            self.client,
+            event,
+            fig=self.figure,
+            prePadding=prePadding,
+            postPadding=postPadding,
+            commands=commands,
+            azimuthData=azimuthData,
+            elevationData=elevationData,
+            doFilterResiduals=True,
+            metadataWriter=metadataWriter,
+        )
 
-        plotName = 'tma_mount_motion_profile'
+        plotName = "tma_mount_motion_profile"
         filename = self._getSaveFilename(plotName, dayObs, event)
         self.figure.savefig(filename)
-        self.uploader.uploadPerSeqNumPlot(plotName,
-                                          dayObs=dayObs,
-                                          seqNum=event.seqNum,
-                                          filename=filename,
-                                          isLiveFile=False
-                                          )
+        self.uploader.uploadPerSeqNumPlot(
+            plotName, dayObs=dayObs, seqNum=event.seqNum, filename=filename, isLiveFile=False
+        )
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument='tma',
-            plotName='mount',
-            dayObs=event.dayObs,
-            seqNum=event.seqNum,
-            filename=filename
+            instrument="tma", plotName="mount", dayObs=event.dayObs, seqNum=event.seqNum, filename=filename
         )
 
     def runM1M3HardpointAnalysis(self, event):
@@ -1476,127 +1518,120 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         # package all the items we want into dicts
         m1m3ICSHPMaxForces = {
-            'measuredForceMax0': m1m3IcsResult.stats.measuredForceMax0,
-            'measuredForceMax1': m1m3IcsResult.stats.measuredForceMax1,
-            'measuredForceMax2': m1m3IcsResult.stats.measuredForceMax2,
-            'measuredForceMax3': m1m3IcsResult.stats.measuredForceMax3,
-            'measuredForceMax4': m1m3IcsResult.stats.measuredForceMax4,
-            'measuredForceMax5': m1m3IcsResult.stats.measuredForceMax5,
+            "measuredForceMax0": m1m3IcsResult.stats.measuredForceMax0,
+            "measuredForceMax1": m1m3IcsResult.stats.measuredForceMax1,
+            "measuredForceMax2": m1m3IcsResult.stats.measuredForceMax2,
+            "measuredForceMax3": m1m3IcsResult.stats.measuredForceMax3,
+            "measuredForceMax4": m1m3IcsResult.stats.measuredForceMax4,
+            "measuredForceMax5": m1m3IcsResult.stats.measuredForceMax5,
         }
         m1m3ICSHPMeanForces = {
-            'measuredForceMean0': m1m3IcsResult.stats.measuredForceMean0,
-            'measuredForceMean1': m1m3IcsResult.stats.measuredForceMean1,
-            'measuredForceMean2': m1m3IcsResult.stats.measuredForceMean2,
-            'measuredForceMean3': m1m3IcsResult.stats.measuredForceMean3,
-            'measuredForceMean4': m1m3IcsResult.stats.measuredForceMean4,
-            'measuredForceMean5': m1m3IcsResult.stats.measuredForceMean5,
+            "measuredForceMean0": m1m3IcsResult.stats.measuredForceMean0,
+            "measuredForceMean1": m1m3IcsResult.stats.measuredForceMean1,
+            "measuredForceMean2": m1m3IcsResult.stats.measuredForceMean2,
+            "measuredForceMean3": m1m3IcsResult.stats.measuredForceMean3,
+            "measuredForceMean4": m1m3IcsResult.stats.measuredForceMean4,
+            "measuredForceMean5": m1m3IcsResult.stats.measuredForceMean5,
         }
 
         # do the max of the absolute values of the forces
-        md['M1M3 ICS Hardpoint AbsMax-Max Force'] = max(m1m3ICSHPMaxForces.values(), key=abs)
-        md['M1M3 ICS Hardpoint AbsMax-Mean Force'] = max(m1m3ICSHPMeanForces.values(), key=abs)
+        md["M1M3 ICS Hardpoint AbsMax-Max Force"] = max(m1m3ICSHPMaxForces.values(), key=abs)
+        md["M1M3 ICS Hardpoint AbsMax-Mean Force"] = max(m1m3ICSHPMeanForces.values(), key=abs)
 
         # then repackage as strings with 1 dp for display
         m1m3ICSHPMaxForces = {k: f"{v:.1f}" for k, v in m1m3ICSHPMaxForces.items()}
         m1m3ICSHPMeanForces = {k: f"{v:.1f}" for k, v in m1m3ICSHPMeanForces.items()}
 
-        md['M1M3 ICS Hardpoint Max Forces'] = m1m3ICSHPMaxForces  # dict
-        md['M1M3 ICS Hardpoint Mean Forces'] = m1m3ICSHPMeanForces  # dict
+        md["M1M3 ICS Hardpoint Max Forces"] = m1m3ICSHPMaxForces  # dict
+        md["M1M3 ICS Hardpoint Mean Forces"] = m1m3ICSHPMeanForces  # dict
 
         # must set string value in dict only after doing the max of the values
-        m1m3ICSHPMaxForces['DISPLAY_VALUE'] = "📖" if m1m3ICSHPMaxForces else ''
-        m1m3ICSHPMeanForces['DISPLAY_VALUE'] = "📖" if m1m3ICSHPMeanForces else ''
+        m1m3ICSHPMaxForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMaxForces else ""
+        m1m3ICSHPMeanForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMeanForces else ""
 
         rowData = {event.seqNum: md}
         writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
-        plotName = 'tma_m1m3_hardpoint_profile'
+        plotName = "tma_m1m3_hardpoint_profile"
         filename = self._getSaveFilename(plotName, event.dayObs, event)
 
-        commands = getCommandsDuringEvent(
-            self.client,
-            event,
-            self.hardpointCommandsToPlot,
-            doLog=False)
+        commands = getCommandsDuringEvent(self.client, event, self.hardpointCommandsToPlot, doLog=False)
 
-        plot_hp_measured_data(m1m3IcsResult,
-                              fig=self.figure,
-                              commands=commands,
-                              log=self.log)
+        plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)
         self.figure.savefig(filename)
         self.uploader.uploadPerSeqNumPlot(
-            plotName,
-            dayObs=event.dayObs,
-            seqNum=event.seqNum,
-            filename=filename,
-            isLiveFile=False
+            plotName, dayObs=event.dayObs, seqNum=event.seqNum, filename=filename, isLiveFile=False
         )
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument='tma',
-            plotName='m1m3_hardpoint',
+            instrument="tma",
+            plotName="m1m3_hardpoint",
             dayObs=event.dayObs,
             seqNum=event.seqNum,
             filename=filename,
         )
 
     def processDay(self, dayObs):
-        """
-        """
+        """ """
         events = self.eventMaker.getEvents(dayObs)
 
         # check if every event seqNum is in both the M1M3HardpointAnalysis and
         # MountMotionAnalysis sets, and if not, return immediately
-        if (all([event.seqNum in self.plotsMade['MountMotionAnalysis'] for event in events]) and
-                all([event.seqNum in self.plotsMade['M1M3HardpointAnalysis'] for event in events])):
-            self.log.info(f'No new events found for {dayObs} (currently {len(events)} events).')
+        if all([event.seqNum in self.plotsMade["MountMotionAnalysis"] for event in events]) and all(
+            [event.seqNum in self.plotsMade["M1M3HardpointAnalysis"] for event in events]
+        ):
+            self.log.info(f"No new events found for {dayObs} (currently {len(events)} events).")
             return
 
         for event in events:
             assert event.dayObs == dayObs
 
-            nMountMotionPlots = len(self.plotsMade['MountMotionAnalysis'])
-            nM1M3HardpointPlots = len(self.plotsMade['M1M3HardpointAnalysis'])
+            nMountMotionPlots = len(self.plotsMade["MountMotionAnalysis"])
+            nM1M3HardpointPlots = len(self.plotsMade["M1M3HardpointAnalysis"])
             # the interesting phrasing in the message is because these plots
             # don't necessarily exist, due either to failures or M1M3 analyses
             # only being valid for some events so this is to make it clear
             # they've been processed.
-            self.log.info(f'Found {len(events)} events for {dayObs=} of which '
-                          f'{nMountMotionPlots} have been mount-motion plotted and '
-                          f'{nM1M3HardpointPlots} have been M1M3-hardpoint-analysed plots.')
+            self.log.info(
+                f"Found {len(events)} events for {dayObs=} of which "
+                f"{nMountMotionPlots} have been mount-motion plotted and "
+                f"{nM1M3HardpointPlots} have been M1M3-hardpoint-analysed plots."
+            )
 
             # kind of worrying that this clear _is_ needed out here, but is
             # _not_ needed inside each of the plotting parts... maybe either
             # remove this or add it to the other parts?
-            self.log.info(f'Plotting event {event.seqNum}')
+            self.log.info(f"Plotting event {event.seqNum}")
             self.figure.clear()
             ax = self.figure.gca()
             ax.clear()
 
-            newEvent = (event.seqNum not in self.plotsMade['MountMotionAnalysis'] or
-                        event.seqNum not in self.plotsMade['M1M3HardpointAnalysis'])
+            newEvent = (
+                event.seqNum not in self.plotsMade["MountMotionAnalysis"]
+                or event.seqNum not in self.plotsMade["M1M3HardpointAnalysis"]
+            )
 
             rowData = {}
-            if event.seqNum not in self.plotsMade['MountMotionAnalysis']:
+            if event.seqNum not in self.plotsMade["MountMotionAnalysis"]:
                 try:
                     self.runMountMotionAnalysis(event)  # writes its own shard
                 except Exception as e:
-                    data = {event.seqNum: {'Plotting failed?': '😔'}}
+                    data = {event.seqNum: {"Plotting failed?": "😔"}}
                     rowData.update(data)
-                    self.log.exception(f'Failed to plot event {event.seqNum}')
+                    self.log.exception(f"Failed to plot event {event.seqNum}")
                     raiseIf(self.doRaise, e, self.log)
                 finally:  # don't retry plotting on failure
-                    self.plotsMade['MountMotionAnalysis'].add(event.seqNum)
+                    self.plotsMade["MountMotionAnalysis"].add(event.seqNum)
 
-            if event.seqNum not in self.plotsMade['M1M3HardpointAnalysis']:
+            if event.seqNum not in self.plotsMade["M1M3HardpointAnalysis"]:
                 try:
                     self.runM1M3HardpointAnalysis(event)  # writes its own shard
                 except Exception as e:
-                    data = {event.seqNum: {'ICS processing error?': '😔'}}
+                    data = {event.seqNum: {"ICS processing error?": "😔"}}
                     rowData.update(data)
-                    self.log.exception(f'Failed to plot event {event.seqNum}')
+                    self.log.exception(f"Failed to plot event {event.seqNum}")
                     raiseIf(self.doRaise, e, self.log)
                 finally:  # don't retry plotting on failure
-                    self.plotsMade['M1M3HardpointAnalysis'].add(event.seqNum)
+                    self.plotsMade["M1M3HardpointAnalysis"].add(event.seqNum)
 
             if newEvent:
                 data = self.eventToMetadataRow(event)
@@ -1608,12 +1643,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
     def eventToMetadataRow(self, event):
         rowData = {}
         seqNum = event.seqNum
-        rowData['Seq. No.'] = event.seqNum
-        rowData['Event version number'] = event.version
-        rowData['Event type'] = event.type.name
-        rowData['End reason'] = event.endReason.name
-        rowData['Duration'] = event.duration
-        rowData['Time UTC'] = event.begin.isot
+        rowData["Seq. No."] = event.seqNum
+        rowData["Event version number"] = event.version
+        rowData["Event type"] = event.type.name
+        rowData["End reason"] = event.endReason.name
+        rowData["Duration"] = event.duration
+        rowData["Time UTC"] = event.begin.isot
         return {seqNum: rowData}
 
     def _getSaveFilename(self, plotName, dayObs, event):
@@ -1622,8 +1657,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
         return filename
 
     def run(self):
-        """Run continuously, updating the plots and uploading the shards.
-        """
+        """Run continuously, updating the plots and uploading the shards."""
         dayObs = getCurrentDayObs_int()
         while True:
             try:

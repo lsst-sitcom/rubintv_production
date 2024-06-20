@@ -1,4 +1,3 @@
-
 # This file is part of rubintv_production.
 #
 # Developed for the LSST Data Management System.
@@ -21,20 +20,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production import ButlerWatcher
+
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production import ButlerWatcher
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running BOT butler watcher...')
+print("Running BOT butler watcher...")
 
-location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
+location = "slac" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTCam/raw/all', 'LSSTCam/calib'])
-butlerWatcher = ButlerWatcher(butler=butler,
-                              locationConfig=locationConfig,
-                              instrument='LSSTCam',
-                              dataProducts='raw',
-                              doRaise=True)
+butler = dafButler.Butler(locationConfig.botButlerPath, collections=["LSSTCam/raw/all", "LSSTCam/calib"])
+butlerWatcher = ButlerWatcher(
+    butler=butler, locationConfig=locationConfig, instrument="LSSTCam", dataProducts="raw", doRaise=True
+)
 butlerWatcher.run()

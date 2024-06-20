@@ -20,20 +20,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
+
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.slac import RawProcesser
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print('Running raw processor for detector 134...')
+print("Running raw processor for detector 134...")
 
-location = 'slac' if len(sys.argv) < 2 else sys.argv[1]
+location = "slac" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.botButlerPath, collections=['LSSTCam/raw/all', 'LSSTCam/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTCam',
-                            detectors=134,
-                            doRaise=True)
+butler = dafButler.Butler(locationConfig.botButlerPath, collections=["LSSTCam/raw/all", "LSSTCam/calib"])
+rawProcessor = RawProcesser(
+    butler=butler, locationConfig=locationConfig, instrument="LSSTCam", detectors=134, doRaise=True
+)
 rawProcessor.run()

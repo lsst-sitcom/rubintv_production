@@ -20,21 +20,20 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-from lsst.rubintv.production.slac import RawProcesser
+
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production import ButlerWatcher
+from lsst.rubintv.production.utils import LocationConfig, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
-print(f'Running raw processor for detector 6 at {location}...')
+location = "slac" if len(sys.argv) < 2 else sys.argv[1]
+print(f"Running ComCam butler watcher at {location}...")
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=['LSSTComCamSim/raw/all',
-                                                                        'LSSTComCamSim/calib'])
-rawProcessor = RawProcesser(butler=butler,
-                            locationConfig=locationConfig,
-                            instrument='LSSTComCamSim',
-                            detectors=6,
-                            doRaise=True)
-rawProcessor.run()
+butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+writeDimensionUniverseFile(butler, locationConfig)
+butlerWatcher = ButlerWatcher(
+    butler=butler, locationConfig=locationConfig, instrument="LSSTComCamSim", dataProducts="raw", doRaise=True
+)
+butlerWatcher.run()

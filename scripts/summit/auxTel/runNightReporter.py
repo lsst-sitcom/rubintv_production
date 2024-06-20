@@ -20,16 +20,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+
 from lsst.rubintv.production.rubinTv import NightReportChannel
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = 'summit' if len(sys.argv) < 2 else sys.argv[1]
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 
-print(f'Running night reporter at {location}...')
-nightReport = NightReportChannel(locationConfig=locationConfig,
-                                 instrument='LATISS',
-                                 )
+print(f"Running night reporter at {location}...")
+nightReport = NightReportChannel(
+    locationConfig=locationConfig,
+    instrument="LATISS",
+)
 nightReport.run()

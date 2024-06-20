@@ -22,18 +22,18 @@
 import json
 import logging
 import os
-import time
-
-from abc import abstractmethod, ABC
-from boto3.exceptions import S3UploadFailedError, S3TransferFailedError
-from boto3.session import Session as S3_session
-from boto3.resources.base import ServiceResource
-from botocore.config import Config
-from botocore.exceptions import ClientError, BotoCoreError
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
 import tempfile
+import time
+import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+
+from boto3.exceptions import S3TransferFailedError, S3UploadFailedError
+from boto3.resources.base import ServiceResource
+from boto3.session import Session as S3_session
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 from typing_extensions import Optional, override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
@@ -57,11 +57,11 @@ __all__ = [
     "Heartbeater",
     "Uploader",
     "S3Uploader",
-    "UploadError"
+    "UploadError",
 ]
 
 
-def createLocalS3UploaderForSite(httpsProxy=''):
+def createLocalS3UploaderForSite(httpsProxy=""):
     """Create the S3Uploader with the correct config for the site
     automatically.
 
@@ -74,27 +74,19 @@ def createLocalS3UploaderForSite(httpsProxy=''):
     match site:
         case "base":
             return S3Uploader.from_information(
-                endPoint=EndPoint.BASE,
-                bucket=Bucket.BTS,
-                httpsProxy=httpsProxy
+                endPoint=EndPoint.BASE, bucket=Bucket.BTS, httpsProxy=httpsProxy
             )
         case "summit":
             return S3Uploader.from_information(
-                endPoint=EndPoint.SUMMIT,
-                bucket=Bucket.SUMMIT,
-                httpsProxy=httpsProxy
+                endPoint=EndPoint.SUMMIT, bucket=Bucket.SUMMIT, httpsProxy=httpsProxy
             )
-        case site if site in ['usdf-k8s', 'rubin-devl', 'staff-rsp']:
+        case site if site in ["usdf-k8s", "rubin-devl", "staff-rsp"]:
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF,
-                bucket=Bucket.USDF,
-                httpsProxy=httpsProxy
+                endPoint=EndPoint.USDF, bucket=Bucket.USDF, httpsProxy=httpsProxy
             )
         case "tucson":
             return S3Uploader.from_information(
-                endPoint=EndPoint.TUCSON,
-                bucket=Bucket.TTS,
-                httpsProxy=httpsProxy
+                endPoint=EndPoint.TUCSON, bucket=Bucket.TTS, httpsProxy=httpsProxy
             )
         case _:
             raise ValueError(f"Unknown site: {site}")
@@ -117,14 +109,12 @@ def createRemoteS3UploaderForSite():
                 bucket=Bucket.BTS,
             )
         case "summit":
-            httpsProxy = 'http://ocio-gpu03.slac.stanford.edu:3128'
+            httpsProxy = "http://ocio-gpu03.slac.stanford.edu:3128"
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF,
-                bucket=Bucket.SUMMIT,
-                httpsProxy=httpsProxy
+                endPoint=EndPoint.USDF, bucket=Bucket.SUMMIT, httpsProxy=httpsProxy
             )
         case "usdf":
-            _LOG.info('No remote uploader is necessary for USDF')
+            _LOG.info("No remote uploader is necessary for USDF")
             return None
         case "tucson":
             return S3Uploader.from_information(
@@ -157,43 +147,25 @@ class EndPoint(Enum):
     USDF = {
         "end_point": "https://s3dfrgw.slac.stanford.edu",
         "buckets_available": {
-            Bucket.SUMMIT: BucketInformation(
-                "rubin-rubintv-data-summit",
-                "rubin-rubintv-data-summit"
-            ),
-            Bucket.USDF: BucketInformation(
-                "rubin-rubintv-data-usdf",
-                "rubin-rubintv-data-usdf"
-            ),
-            Bucket.BTS: BucketInformation(
-                "rubin-rubintv-data-base",
-                "rubin-rubintv-data-base"
-            ),
+            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
+            Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
+            Bucket.BTS: BucketInformation("rubin-rubintv-data-base", "rubin-rubintv-data-base"),
         },
     }
 
     SUMMIT = {
         "end_point": "https://s3.rubintv.cp.lsst.org",
-        "buckets_available": {
-            Bucket.SUMMIT: BucketInformation("summit-data-summit",
-                                             "rubintv")
-        },
+        "buckets_available": {Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")},
     }
 
     BASE = {
         "end_point": "https://s3.rubintv.ls.lsst.org",
-        "buckets_available": {
-            Bucket.BTS: BucketInformation("base-data-base",
-                                          "rubintv")
-        },
+        "buckets_available": {Bucket.BTS: BucketInformation("base-data-base", "rubintv")},
     }
 
     TUCSON = {
         "end_point": "https://s3.rubintv.tu.lsst.org",
-        "buckets_available": {
-            Bucket.TTS: BucketInformation("tucson-data-tucson",
-                                          "rubintv")
-        },
+        "buckets_available": {Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")},
     }
 
 
@@ -208,8 +180,7 @@ class UploadError(Exception):
 
 
 class IUploader(ABC):
-    """Uploader interface
-    """
+    """Uploader interface"""
 
     def __init__(self):
         super().__init__()
@@ -277,7 +248,7 @@ class MultiUploader(IUploader):
         except Exception:
             self.remoteUploader = None
 
-        remoteRequired = getSite() in ['summit', 'tucson', 'base']
+        remoteRequired = getSite() in ["summit", "tucson", "base"]
         if remoteRequired and not self.hasRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
         elif remoteRequired and self.hasRemote:
@@ -286,8 +257,9 @@ class MultiUploader(IUploader):
                 raise RuntimeError("Failed to connect to remote S3 bucket")
 
         self.log = _LOG.getChild("MultiUploader")
-        self.log.info(f"Created MultiUploader with local: {self.localUploader}"
-                      f" and remote: {self.remoteUploader}")
+        self.log.info(
+            f"Created MultiUploader with local: {self.localUploader}" f" and remote: {self.remoteUploader}"
+        )
 
     @property
     def hasRemote(self):
@@ -295,11 +267,11 @@ class MultiUploader(IUploader):
 
     def uploadPerSeqNumPlot(self, *args, **kwargs):
         self.localUploader.uploadPerSeqNumPlot(*args, **kwargs)
-        self.log.info('uploaded to local')
+        self.log.info("uploaded to local")
 
         if self.hasRemote:
             self.remoteUploader.uploadPerSeqNumPlot(*args, **kwargs)
-            self.log.info('uploaded to remote')
+            self.log.info("uploaded to remote")
 
     def uploadNightReportData(self, *args, **kwargs):
         self.localUploader.uploadNightReportData(*args, **kwargs)
@@ -325,12 +297,6 @@ class MultiUploader(IUploader):
         if self.hasRemote:
             self.remoteUploader.uploadMovie(*args, **kwargs)
 
-    def uploadStarTrackerPlot(self, *args, **kwargs):
-        self.localUploader.uploadStarTrackerPlot(*args, **kwargs)
-
-        if self.hasRemote:
-            self.remoteUploader.uploadStarTrackerPlot(*args, **kwargs)
-
     def uploadAllSkyStill(self, *args, **kwargs):
         self.localUploader.uploadAllSkyStill(*args, **kwargs)
 
@@ -347,6 +313,7 @@ class S3Uploader(IUploader):
     s3Bucket : `ServiceResource`
         S3 Bucket to upload files to.
     """
+
     def __init__(self, s3Bucket: ServiceResource) -> None:
         super().__init__()
         self._log = _LOG.getChild("S3Uploader")
@@ -370,10 +337,9 @@ class S3Uploader(IUploader):
         return cls(s3Bucket=s3Bucket)
 
     @classmethod
-    def from_information(cls,
-                         endPoint: EndPoint = EndPoint.USDF,
-                         bucket: Bucket = Bucket.USDF,
-                         httpsProxy: str = ""):
+    def from_information(
+        cls, endPoint: EndPoint = EndPoint.USDF, bucket: Bucket = Bucket.USDF, httpsProxy: str = ""
+    ):
         """S3 Uploader initialization from bucket information.
 
         Parameters
@@ -399,19 +365,19 @@ class S3Uploader(IUploader):
         uploader: `S3Uploader`
             S3Uploader instance ready to use for file transfer.
         """
-        if bucket not in endPoint.value['buckets_available'].keys():
-            raise ValueError('Invalid bucket')
+        if bucket not in endPoint.value["buckets_available"].keys():
+            raise ValueError("Invalid bucket")
         endPointValue = endPoint.value["end_point"]
         bucketInfo = endPoint.value["buckets_available"][bucket]  # type: BucketInformation
-        bucket = cls._createBucketConnection(endPoint=endPointValue,
-                                             bucketInfo=bucketInfo,
-                                             proxyUrl=httpsProxy)
+        bucket = cls._createBucketConnection(
+            endPoint=endPointValue, bucketInfo=bucketInfo, proxyUrl=httpsProxy
+        )
         return cls(bucket)
 
     @staticmethod
-    def _createBucketConnection(endPoint: str,
-                                bucketInfo: BucketInformation,
-                                proxyUrl: str = "") -> ServiceResource:
+    def _createBucketConnection(
+        endPoint: str, bucketInfo: BucketInformation, proxyUrl: str = ""
+    ) -> ServiceResource:
         """Create bucket connection used to upload files.
 
         Parameters
@@ -441,8 +407,7 @@ class S3Uploader(IUploader):
             session = S3_session(profile_name=bucketInfo.profileName)
 
             # Create an S3 resource with the custom botocore session
-            s3Resource = session.resource('s3', endpoint_url=endPoint,
-                                          config=Config(proxies=proxyDict))
+            s3Resource = session.resource("s3", endpoint_url=endPoint, config=Config(proxies=proxyDict))
             return s3Resource.Bucket(bucketInfo.bucketName)
         except ClientError:
             raise ConnectionError(f"Failed client connection: {bucketInfo.profileName}")
@@ -500,14 +465,12 @@ class S3Uploader(IUploader):
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
-            self._log.exception(
-                f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}"
-            )
+            self._log.exception(f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}")
             raise e
 
         return uploadAs
 
-    def checkAccess(self, tempFilePrefix: str | None = 'connection_test') -> bool:
+    def checkAccess(self, tempFilePrefix: str | None = "connection_test") -> bool:
         """Checks the read, write, and delete access to the S3 bucket.
 
         This method uploads a test file to the S3 bucket, downloads it,
@@ -528,33 +491,33 @@ class S3Uploader(IUploader):
             ``True`` if all operations succeed, ``False`` otherwise.
         """
         testContent = b"Connection Test"
-        dateStr = datetime.now().strftime('%Y%m%d_%H%M%S')
-        fileName = f'test/{tempFilePrefix}_{dateStr}_file.txt'
+        uniqueStr = uuid.uuid4().hex
+        fileName = f"test/{tempFilePrefix}_{uniqueStr}_file.txt"
         with tempfile.NamedTemporaryFile() as testFile:
             testFile.write(testContent)
             testFile.flush()
             try:
                 self._s3Bucket.upload_file(testFile.name, fileName)
             except (BotoCoreError, ClientError, S3UploadFailedError) as e:
-                self._log.exception(f"S3Uploader Write Access check failed: {e}")
+                self._log.info(f"S3Uploader Write Access check failed: {e}")
                 return False
 
         with tempfile.NamedTemporaryFile() as fixedFile:
             try:
                 self._s3Bucket.download_file(fileName, fixedFile.name)
-                with open(fixedFile.name, 'rb') as downloadedFile:
+                with open(fixedFile.name, "rb") as downloadedFile:
                     downloadedContent = downloadedFile.read()
                     if downloadedContent != testContent:
                         self._log.error("Read Access failed")
                         return False
             except (BotoCoreError, ClientError, S3TransferFailedError) as e:
-                self._log.exception(f"S3Uploader Read Access check failed: {e}")
+                self._log.info(f"S3Uploader Read Access check failed: {e}")
                 return False
 
         try:
             self._s3Bucket.Object(fileName).delete()
         except (BotoCoreError, ClientError) as e:
-            self._log.exception(f"S3Uploader Delete Access check failed: {e}")
+            self._log.info(f"S3Uploader Delete Access check failed: {e}")
             return False
 
         self._log.debug("S3 Access check was successful")
@@ -598,7 +561,6 @@ class S3Uploader(IUploader):
         uploadAs: `str``
             Path and filename for the destination file in the bucket
         """
-        # XXX fix use in nightReportPlotBase
         # this is called from createAndUpload() in nightReportPlotBase.py so if
         # you change the args here (like renaming the channel to be the
         # instrument) then make sure to catch it everywhere
@@ -606,12 +568,12 @@ class S3Uploader(IUploader):
         checkInstrument(instrument)
 
         if plotGroup is None:
-            plotGroup = 'default'
+            plotGroup = "default"
 
         basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
 
-        if basename == 'md.json':  # it's not a plot, so special case this one case
+        if basename == "md.json":  # it's not a plot, so special case this one case
             uploadAs = (
                 f"{instrument}/{dayObsStr}/night_report/{instrument}_night_report_{dayObsStr}_{basename}"
             )
@@ -619,17 +581,15 @@ class S3Uploader(IUploader):
             # the plot filenames have the channel name saved into them in the
             # form path/channelName-plotName.png, so remove the channel name
             # and dash
-            plotName = basename.replace(instrument + '_night_reports' + "-", "")
-            plotFilename = f'{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}'
-            uploadAs = (f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}")
+            plotName = basename.replace(instrument + "_night_reports" + "-", "")
+            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}"
+            uploadAs = f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}"
 
         try:
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
-            self._log.exception(
-                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
-            )
+            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
             raise ex
 
         return uploadAs
@@ -651,14 +611,10 @@ class S3Uploader(IUploader):
             Raised if uploading the file to the Bucket was not possible
         """
         try:
-            self._s3Bucket.upload_file(
-                Filename=sourceFilename, Key=destinationFilename
-            )
+            self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
         except ClientError as e:
             logging.error(e)
-            raise UploadError(
-                f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
-            )
+            raise UploadError(f"Failed uploading file {sourceFilename} as Key: {destinationFilename}")
         return destinationFilename
 
     def uploadMovie(
@@ -674,7 +630,7 @@ class S3Uploader(IUploader):
         ext = os.path.splitext(filename)[1]  # contains the perdiod
 
         if seqNum is None:
-            seqNum = 'final'
+            seqNum = "final"
         else:
             seqNum = f"{seqNum:06}"
 
@@ -689,22 +645,8 @@ class S3Uploader(IUploader):
 
         return uploadAs
 
-    def uploadStarTrackerPlot(
-        self,
-        camera,
-        dayObs: int,
-        seqNum: int,
-        filename: str,
-        isFitted: bool,
-    ) -> str:
-        # XXX write this
-        raise NotImplementedError()
-
     def uploadMetdata(
-        self,
-        channel: str,  # TODO: DM-43413 change this to instrument
-        dayObs: int,
-        filename: str
+        self, channel: str, dayObs: int, filename: str  # TODO: DM-43413 change this to instrument
     ) -> str:
         """Upload a file to a storage bucket.
 
@@ -727,8 +669,9 @@ class S3Uploader(IUploader):
         dayObsStr = dayObsIntToString(dayObs)
         camera, plotName = getCameraAndPlotName(channel)
         if plotName != "metadata":
-            raise ValueError("Tried to upload non-metadata file to metadata channel:"
-                             f"{channel}, {filename}")
+            raise ValueError(
+                "Tried to upload non-metadata file to metadata channel:" f"{channel}, {filename}"
+            )
 
         uploadAs = f"{camera}/{dayObsStr}/metadata.json"
         self.upload(destinationFilename=uploadAs, sourceFilename=filename)
@@ -788,15 +731,11 @@ class Uploader:
 
         # heartbeat retry strategy
         modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
 
         try:
             blob.upload_from_string(heartbeatJson, retry=modified_retry)
-            self.log.debug(
-                f"Uploaded heartbeat to channel {channel} with datetime {currTime}"
-            )
+            self.log.debug(f"Uploaded heartbeat to channel {channel} with datetime {currTime}")
             return True
         except Exception:
             return False
@@ -856,16 +795,12 @@ class Uploader:
         timeout = 1000 if isLargeFile else 60  # default is 60s
         deadline = timeout if isLargeFile else 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception:
-            self.log.exception(
-                f"Failed to upload {filename} as {uploadAs} to {channel}"
-            )
+            self.log.exception(f"Failed to upload {filename} as {uploadAs} to {channel}")
             return None
 
         return blob
@@ -907,9 +842,7 @@ class Uploader:
         # the plot filenames have the channel name saved into them in the form
         # path/channelName-plotName.png, so remove the channel name and dash
         basename = basename.replace(channel + "-", "")
-        uploadAs = (
-            f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
-        )
+        uploadAs = f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
 
         blob = self.bucket.blob(uploadAs)
         blob.cache_control = "no-store"
@@ -919,16 +852,12 @@ class Uploader:
         timeout = 60  # default is 60s
         deadline = 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
-            self.log.warning(
-                f"Failed to upload {uploadAs} to {channel} because {repr(e)}"
-            )
+            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
             return None
 
         return blob
@@ -982,18 +911,12 @@ class Uploader:
         timeout = 1000 if isLargeFile else 60  # default is 60s
         deadline = timeout if isLargeFile else 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
         try:
-            blob.upload_from_filename(
-                sourceFilename, retry=modified_retry, timeout=timeout
-            )
+            blob.upload_from_filename(sourceFilename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {sourceFilename} to {finalName}")
         except Exception as e:
-            self.log.warning(
-                f"Failed to upload {finalName} to {channel} because {repr(e)}"
-            )
+            self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
             return None
 
         return blob
@@ -1043,14 +966,10 @@ class Heartbeater:
             Upload with a different flatline period. Use before starting long
             running jobs.
         """
-        forecast = (
-            self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
-        )
+        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
 
         now = time.time()
         elapsed = now - self.lastUpload
         if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
-            if self.uploader.uploadHeartbeat(
-                self.handle, forecast
-            ):  # returns True on successful upload
+            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
                 self.lastUpload = now  # only reset this if the upload was successful

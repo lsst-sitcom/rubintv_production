@@ -1,54 +1,60 @@
+bucketName: rubintv_data
+
 # Required items:
-dataIdScanPath: '/project/rubintv/dataIds'
-bucketName: 'rubintv_data'
-dimensionUniverseFile: '/project/rubintv/butlerDimensionUniverse.json'
+dataIdScanPath: /project/rubintv/dataIds
+dimensionUniverseFile: /project/rubintv/butlerDimensionUniverse.json
 
 # Summit items:
-nightReportPath:     '/project/rubintv/nightReportData'
+nightReportPath: /project/rubintv/nightReportData
 
 # AuxTel metadata
-auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
-auxTelMetadataShardPath: '/project/rubintv/sidecar_metadata/shards'
+auxTelMetadataPath: /project/rubintv/sidecar_metadata
+auxTelMetadataShardPath: /project/rubintv/sidecar_metadata/shards
 
 # all sky
-allSkyRootDataPath: '/project/rubintv/allsky/raw'
-allSkyOutputPath: '/project/rubintv/allsky'
+allSkyRootDataPath: /project/rubintv/allsky/raw
+allSkyOutputPath: /project/rubintv/allsky
 
 # animation
-moviePngPath: '/project/rubintv/auxTel_animation'
+moviePngPath: /project/rubintv/auxTel_animation
 
 # Star Trackers paths:
 # The path at which to find the data on disk. Does not include the
 # GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
-starTrackerDataPath: '/project'
+starTrackerDataPath: /project
+starTrackerOutputPath: /project/rubintv/starTracker/output
+starTrackerMetadataPath: /project/rubintv/starTracker/sidecar_metadata
+starTrackerMetadataShardPath: /project/rubintv/starTracker/sidecar_metadata/shards
 
-# for writing the per-day json files and shards to for the star tracker channels
-starTrackerMetadataPath: '/project/rubintv/starTracker/sidecar_metadata'
-starTrackerMetadataShardPath: '/project/rubintv/starTracker/sidecar_metadata/shards'
-
-# for writing the rendered pngs of the a.net fits out to
-starTrackerOutputPath: '/project/rubintv/starTracker/output'
 
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
-astrometryNetRefCatPath: '/project/shared/ref_cats/astrometry_net'
+astrometryNetRefCatPath: /project/shared/ref_cats/astrometry_net
 
 # ComCam configuration:
-comCamButlerPath: '/repo/LSSTComCam/butler.yaml'
+comCamButlerPath: /repo/LSSTComCam/butler.yaml
 binning: 8
 # # paths for serving TS8 metadata at SLAC
-comCamMetadataPath: '/project/rubintv/LSSTComCam/sidecar_metadata'
-comCamMetadataShardPath: '/project/rubintv/LSSTComCam/sidecar_metadata/shards'
+comCamMetadataPath: /project/rubintv/LSSTComCam/sidecar_metadata
+comCamMetadataShardPath: /project/rubintv/LSSTComCam/sidecar_metadata/shards
 
-comCamSimMetadataPath: '/project/rubintv/LSSTComCamSim/sidecar_metadata'
-comCamSimMetadataShardPath: '/project/rubintv/LSSTComCamSim/sidecar_metadata/shards'
+comCamSimMetadataPath: /project/rubintv/LSSTComCamSim/sidecar_metadata
+comCamSimMetadataShardPath: /project/rubintv/LSSTComCamSim/sidecar_metadata/shards
 
-# Not prefixed with ComCam because we're currently just pretending that ComCam is TS8
-scratchPath: '/project/rubintv'
-plotPath: '/project/rubintv/plots'
-binnedImagePath: '/project/rubintv/binnedImages'
-calculatedDataPath: '/project/rubintv/calculatedData'
+# Not prefixed with ComCam because were currently just pretending that ComCam is TS8
+scratchPath: /project/rubintv/
+plotPath: /project/rubintv/plots
+binnedImagePath: /project/rubintv/binnedImages
+calculatedDataPath: /project/rubintv/calculatedData
+binnedCalexpPath: /project/rubintv/calculatedData/calexps
 
 # TMA config:
-tmaMetadataPath: '/project/rubintv/tma/sidecar_metadata'
-tmaMetadataShardPath: '/project/rubintv/tma/sidecar_metadata/shards'
+tmaMetadataPath: /project/rubintv/tma/sidecar_metadata
+tmaMetadataShardPath: /project/rubintv/tma/sidecar_metadata/shards
+
+sfmPipelineFile: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
+
+outputChains:
+  LSSTComCam: LSSTComCam/quickLook
+  LSSTComCamSim: LSSTComCamSim/quickLook
+  LSSTCam: LSSTCam/quickLook
