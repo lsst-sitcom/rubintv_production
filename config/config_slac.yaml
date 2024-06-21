@@ -25,7 +25,7 @@ botMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadat
 binning: 8
 
 # ComCam configuration:
-comCamButlerPath: '/sdf/group/rubin/repo/embargo/butler+sasquatch_dev.yaml'
+comCamButlerPath: 's3://embargo@rubin-summit-users/butler.yaml'
 # # paths for serving TS8 metadata at SLAC
 comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
