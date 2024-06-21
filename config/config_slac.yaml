@@ -31,12 +31,12 @@ comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metada
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
 # Redis work distribution configs
-sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation-ops-rehearsal-3.yaml'
+sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml'
 
 outputChains:
-  LSSTComCam: LSSTComCam/quickLook
-  LSSTComCamSim: LSSTComCamSim/quickLook
-  LSSTCam: LSSTCam/quickLook
+  LSSTComCam: LSSTComCam/nightlyValidation
+  LSSTComCamSim: LSSTComCamSim/nightlyValidation
+  LSSTCam: LSSTCam/nightlyValidation
 
 comCamSimMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata'
 comCamSimMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata/shards'
