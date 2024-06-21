@@ -35,9 +35,8 @@ from requests import HTTPError
 from lsst.afw.image import ExposureSummaryStats  # type: ignore
 from lsst.afw.table import ExposureCatalog  # type: ignore
 from lsst.daf.butler import Butler, DimensionRecord
-from lsst.obs.lsst import Latiss, LsstCam, LsstComCam  # type: ignore
 from lsst.summit.utils import ConsDbClient
-from lsst.summit.utils.utils import computeCcdExposureId
+from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
 CCD_VISIT_MAPPING = {
     "astromOffsetMean": "astrom_offset_mean",
@@ -94,21 +93,6 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _getDetectorIds(instrumentName: str) -> list[int]:
-    _instrument = instrumentName.lower()
-
-    match _instrument:
-        case "lsstcam":
-            camera = LsstCam.getCamera()
-        case instrument if instrument in ("lsstcomcam", "lsstcomcamsim"):
-            camera = LsstComCam.getCamera()
-        case "latiss":
-            camera = Latiss.getCamera()
-        case _:
-            raise ValueError(f"Unsupported instrument: {instrumentName}")
-    return [detector.getId() for detector in camera]
-
-
 class ConsDBPopulator:
     def __init__(self, client: ConsDbClient) -> None:
         self.client = client
@@ -158,7 +142,7 @@ class ConsDBPopulator:
             Allow updating existing rows in the tables. Default is ``False``
         """
         if detectorNum is None:
-            detectorNums = _getDetectorIds(expRecord.instrument)
+            detectorNums = getDetectorIds(expRecord.instrument)
         else:
             detectorNums = [detectorNum]
 
@@ -216,7 +200,7 @@ class ConsDBPopulator:
             self._createCcdExposureRows(expRecord, allowUpdate=allowUpdate)
             print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id})")
 
-        detectorNums = _getDetectorIds(expRecord.instrument)
+        detectorNums = getDetectorIds(expRecord.instrument)
         for detectorNum in detectorNums:
             self.populateCcdVisitRowWithButler(butler, expRecord, detectorNum, allowUpdate=allowUpdate)
 

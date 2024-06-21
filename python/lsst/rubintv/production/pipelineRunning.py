@@ -264,6 +264,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # finished looping over nodes
             if self.step == "step2a":
                 self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
+                # TODO: probably add a utility function on the helper for this
+                # and one for getting the most recent visit from the queue
+                # which does the decoding too to provide a unified interface.
+                self.watcher.redisHelper.redis.lpush("LSSTComCamSim-PSFPLOTTER", f"{payload.dataId['visit']}")
             if self.step == "nightlyRollup":
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
 

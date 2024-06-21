@@ -19,14 +19,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["DonutLauncher"]
+__all__ = [
+    "DonutLauncher",
+    "PsfAzElPlotter",
+]
 
 import logging
 import subprocess
+import tempfile
 import threading
 from time import sleep, time
 
+import numpy as np
+from astropy.table import vstack
+
+from lsst.daf.butler import DatasetNotFoundError
+from lsst.geom import radians
+from lsst.summit.extras.plotting.psfPlotting import extendTable, makeAzElPlot, makeFigureAndAxes
+from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
+
 from .redisUtils import RedisHelper
+from .uploaders import MultiUploader
 
 
 class DonutLauncher:
@@ -217,3 +230,141 @@ class DonutLauncher:
                 else:
                     self.log.info(f"Waiting for donut exposure arrival at {self.queueName}")
                 lastLogTime = currentTime
+
+
+class PsfAzElPlotter:
+    """
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    queueName : `str`
+        The name of the redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler,
+        locationConfig,
+        queueName,
+    ):
+        self.butler = butler
+        self.locationConfig = locationConfig
+        self.queueName = queueName
+
+        self.instrument = "LSSTComCamSim"
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.uploader = MultiUploader()
+        self.fig, self.axes = makeFigureAndAxes()
+
+    def makePlot(self, visitId):
+        """Extract the exposure IDs from the byte string.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The byte string containing the exposure IDs.
+
+        Returns
+        -------
+        expIds : `list` of `int`
+            A list of two exposure IDs extracted from the byte string.
+
+        Raises
+        ------
+        ValueError
+            If the number of exposure IDs extracted is not equal to 2.
+        """
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
+        detectorIds = getDetectorIds(self.instrument)
+        icSrcDict = {}
+        for detectorId in detectorIds:
+            try:
+                icSrcDict[detectorId] = self.butler.get("icSrc", visit=visitId, detector=detectorId)
+            except DatasetNotFoundError:
+                pass
+
+        visitInfo = None
+        for detectorId in detectorIds:
+            try:
+                visitInfo = self.butler.get("calexp.visitInfo", visit=visitId, detector=detectorId)
+                break
+            except DatasetNotFoundError:
+                pass
+        if visitInfo is None:
+            self.log.error(f"Could not find visitInfo for visitId {visitId}")
+            return
+
+        table = self.makeTableFromIcSrc(icSrcDict, visitInfo)
+
+        tempFilename = tempfile.mktemp(suffix=".png")
+        self.fig.clf()
+        self.axes = self.fig.subplots(nrows=2, ncols=2)
+        makeAzElPlot(self.fig, self.axes, table, self.camera, tempFilename)
+
+        self.uploader.uploadPerSeqNumPlot(
+            instrument="comcam_sim",
+            plotName="psf_shape_azel",
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=tempFilename,
+        )
+
+    def makeTableFromIcSrc(self, icSrcs, visitInfo):
+        tables = []
+
+        for detectorNum, icSrc in icSrcs.items():
+            icSrc = icSrc.asAstropy()
+            icSrc = icSrc[icSrc["calib_psf_candidate"]]
+            icSrc["detector"] = detectorNum
+            tables.append(icSrc)
+
+        table = vstack(tables)
+        # Add shape columns
+        table["Ixx"] = table["slot_Shape_xx"] * (0.2) ** 2
+        table["Ixy"] = table["slot_Shape_xy"] * (0.2) ** 2
+        table["Iyy"] = table["slot_Shape_yy"] * (0.2) ** 2
+        table["T"] = table["Ixx"] + table["Iyy"]
+        table["e1"] = (table["Ixx"] - table["Iyy"]) / table["T"]
+        table["e2"] = 2 * table["Ixy"] / table["T"]
+        table["e"] = np.hypot(table["e1"], table["e2"])
+        table["x"] = table["base_FPPosition_x"]
+        table["y"] = table["base_FPPosition_y"]
+
+        table.meta["rotTelPos"] = (
+            visitInfo.boresightParAngle - visitInfo.boresightRotAngle - (np.pi / 2 * radians)
+        ).asRadians()
+        table.meta["rotSkyPos"] = visitInfo.boresightRotAngle.asRadians()
+
+        rtp = table.meta["rotTelPos"]
+        srtp, crtp = np.sin(rtp), np.cos(rtp)
+        aaRot = (
+            np.array([[crtp, srtp], [-srtp, crtp]]) @ np.array([[0, 1], [1, 0]]) @ np.array([[-1, 0], [0, 1]])
+        )
+        table = extendTable(table, aaRot, "aa")
+        table.meta["aaRot"] = aaRot
+
+        rsp = table.meta["rotSkyPos"]
+        srsp, crsp = np.sin(rsp), np.cos(rsp)
+        nwRot = np.array([[crsp, -srsp], [srsp, crsp]])
+        table = extendTable(table, nwRot, "nw")
+        table.meta["nwRot"] = nwRot
+
+        return table
+
+    def run(self):
+        """Start the event loop, listening for data and launching plotting."""
+        while True:
+            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
+            if visitIdBytes is not None:
+                visitId = int(visitIdBytes.decode("utf-8"))
+                self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
+                self.makePlot(visitId)
+            else:
+                sleep(0.5)
