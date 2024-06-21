@@ -11,6 +11,7 @@ class TestScript:
     delay: float = 0.0
     display_on_pass: bool = False
     tee_output: bool = False
+    do_debug: bool = False
 
     def __post_init__(self):
         if self.args is None:
@@ -18,7 +19,7 @@ class TestScript:
 
     def __str__(self):
         args_str = ":".join(self.args)
-        return f"{self.path}:{args_str}"
+        return f"{self.path}:{args_str}{'+debug' if self.do_debug else ''}"
 
     def __repr__(self):
         return str(self)
@@ -34,6 +35,7 @@ class TestScript:
             delay=existing.delay,
             display_on_pass=existing.display_on_pass,
             tee_output=existing.tee_output,
+            do_debug=existing.do_debug,
         )
 
 

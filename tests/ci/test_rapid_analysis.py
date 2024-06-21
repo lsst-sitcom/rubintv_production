@@ -66,6 +66,7 @@ TEST_SCRIPTS_ROUND_1 = [
         ["slac_testing", "0"],
         display_on_pass=True,
         tee_output=True,
+        do_debug=True,
     ),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
@@ -100,6 +101,7 @@ META_TESTS_FAIL_EXPECTED = [
 
 META_TESTS_PASS_EXPECTED = [
     TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
+    TestScript("meta_test_debug_config.py", do_debug=True),  # check the remote connection magic works
     TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
     TestScript("meta_test_env.py"),  # Confirms things we're manipulating via the env are set in workers
     TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
@@ -180,6 +182,20 @@ def exec_script(test_script: TestScript, output_queue):
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
+    lsstDebug = None
+    if test_script.do_debug:
+        import ciutils
+        import lsstDebug
+
+        def getConnection():
+            debugConfig = {
+                "port": 4444,
+                "addr": "127.0.0.1",
+            }
+            return debugConfig
+
+        ciutils.getConnection = getConnection
+
     try:
         with conditional_redirect(test_script.tee_output, f_stdout, f_stderr, log_handler, root_logger):
             with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
@@ -192,6 +208,7 @@ def exec_script(test_script: TestScript, output_queue):
                     "logging": logging,  # Pass the logging module to the script
                     "lsst.daf.butler.cli.cliLog": CliLog,
                     "CliLog": CliLog,
+                    "lsstDebug": lsstDebug,
                 }
                 sys.argv = [script_path] + script_args
                 time.sleep(test_script.delay)
@@ -430,10 +447,17 @@ def terminate_redis():
         print("Terminated Redis process")
 
 
-def run_test_scripts(scripts, timeout):
+def run_test_scripts(scripts, timeout, is_meta_tests=False):
     start_time = time.time()
     processes = {}
     output_queue = multiprocessing.Queue()
+
+    # allow_debug is so we don't increase timeout on the meta tests
+    doing_debug = not is_meta_tests and any(s.do_debug for s in scripts)
+    if doing_debug:
+        print("\n\n⚠️⚠️ INTERACTIVE SCRIPT DEBUG MODE ENABLED ⚠️⚠️")
+        print("   tests will continue until killed maually\n\n")
+        timeout = 9999999  # keeping thigns alive forever when debugging
 
     for script in scripts:
         p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
@@ -570,7 +594,9 @@ def main():
             if not os.path.isfile(test_script.path):
                 raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
         print(f"Running meta-tests to test the CI suite for the next {META_TEST_DURATION}s...")
-        run_test_scripts(META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION)
+        run_test_scripts(
+            META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION, is_meta_tests=True
+        )
         check_meta_test_results()
         print("✅ All meta-tests passed, running real tests now...\n")
 
