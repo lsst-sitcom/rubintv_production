@@ -59,7 +59,12 @@ DEBUG = False
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
     TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
-    TestScript("scripts/summit/LSSTComCamSim/runStep2aWorker.py", ["slac_testing", "0"], tee_output=True),
+    TestScript(
+        "scripts/summit/LSSTComCamSim/runStep2aWorker.py",
+        ["slac_testing", "0"],
+        tee_output=True,
+        # do_debug=True,
+    ),
     TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"], tee_output=True),
     TestScript(
         "scripts/summit/LSSTComCamSim/runSfmRunner.py",
@@ -80,6 +85,7 @@ TEST_SCRIPTS_ROUND_1 = [
         "scripts/summit/LSSTComCamSim/runHeadNode.py",
         ["slac_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
+        tee_output=True,
         display_on_pass=True,
     ),
     TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, display_on_pass=True),
@@ -455,8 +461,13 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
     # allow_debug is so we don't increase timeout on the meta tests
     doing_debug = not is_meta_tests and any(s.do_debug for s in scripts)
     if doing_debug:
-        print("\n\n⚠️⚠️ INTERACTIVE SCRIPT DEBUG MODE ENABLED ⚠️⚠️")
-        print("   tests will continue until killed maually\n\n")
+        if sum(s.do_debug for s in scripts) > 1:
+            debug_attempts = [s for s in scripts if s.do_debug]
+            script_string = "\n".join([str(s) for s in debug_attempts])
+            err_msg = f"You can only interactively debug one script at a time! Attempted:\n{script_string}"
+            raise RuntimeError(err_msg)
+        print("\n\n⚠️ ⚠️ INTERACTIVE SCRIPT DEBUG MODE ENABLED ⚠️ ⚠️")
+        print("     tests will continue until killed maually\n\n")
         timeout = 9999999  # keeping thigns alive forever when debugging
 
     for script in scripts:
