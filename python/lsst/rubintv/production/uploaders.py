@@ -27,7 +27,6 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from typing import TypedDict
 
@@ -36,8 +35,9 @@ from boto3.resources.base import ServiceResource
 from boto3.session import Session as S3_session
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
-from lsst.summit.utils.utils import dayObsIntToString, getSite
 from typing_extensions import Optional, override
+
+from lsst.summit.utils.utils import dayObsIntToString, getSite
 
 from .channels import CHANNELS, KNOWN_INSTRUMENTS, getCameraAndPlotName
 
@@ -85,23 +85,15 @@ class EndPoint(Enum):
     USDF = BucketDetails(
         endPoint="https://s3dfrgw.slac.stanford.edu",
         bucketsAvailable={
-            Bucket.SUMMIT: BucketInformation(
-                "rubin-rubintv-data-summit", "rubin-rubintv-data-summit"
-            ),
-            Bucket.USDF: BucketInformation(
-                "rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"
-            ),
-            Bucket.BTS: BucketInformation(
-                "rubin-rubintv-data-base", "rubin-rubintv-data-base"
-            ),
+            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
+            Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
+            Bucket.BTS: BucketInformation("rubin-rubintv-data-base", "rubin-rubintv-data-base"),
         },
     )
 
     SUMMIT = BucketDetails(
         endPoint="https://s3.rubintv.cp.lsst.org",
-        bucketsAvailable={
-            Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")
-        },
+        bucketsAvailable={Bucket.SUMMIT: BucketInformation("summit-data-summit", "rubintv")},
     )
 
     BASE = BucketDetails(
@@ -111,9 +103,7 @@ class EndPoint(Enum):
 
     TUCSON = BucketDetails(
         endPoint="https://s3.rubintv.tu.lsst.org",
-        bucketsAvailable={
-            Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")
-        },
+        bucketsAvailable={Bucket.TTS: BucketInformation("tucson-data-tucson", "rubintv")},
     )
 
 
@@ -300,8 +290,7 @@ class MultiUploader:
 
         self.log = _LOG.getChild("MultiUploader")
         self.log.info(
-            f"Created MultiUploader with local: {self.localUploader}"
-            f" and remote: {self.remoteUploader}"
+            f"Created MultiUploader with local: {self.localUploader}" f" and remote: {self.remoteUploader}"
         )
 
     @property
@@ -311,14 +300,10 @@ class MultiUploader:
     def _callMethod(self, uploader, name, *args, **kwargs):
         # Check conditions for calling the method in local and remote uploader
         if not hasattr(uploader, name):
-            raise AttributeError(
-                f"'{type(uploader).__name__}' object has no attribute '{name}'"
-            )
+            raise AttributeError(f"'{type(uploader).__name__}' object has no attribute '{name}'")
         method = getattr(uploader, name)
         if not callable(method):
-            raise AttributeError(
-                f"'{type(uploader).__name__}' object is not method '{name}'"
-            )
+            raise AttributeError(f"'{type(uploader).__name__}' object is not method '{name}'")
         method(*args, **kwargs)
 
     def __getattr__(self, name):
@@ -447,9 +432,7 @@ class S3Uploader(UploaderInterface):
             session = S3_session(profile_name=bucketInfo.profileName)
 
             # Create an S3 resource with the custom botocore session
-            s3Resource = session.resource(
-                "s3", endpoint_url=endPoint, config=Config(proxies=proxyDict)
-            )
+            s3Resource = session.resource("s3", endpoint_url=endPoint, config=Config(proxies=proxyDict))
             return s3Resource.Bucket(bucketInfo.bucketName)
         except ClientError:
             raise ConnectionError(f"Failed client connection: {bucketInfo.profileName}")
@@ -494,9 +477,7 @@ class S3Uploader(UploaderInterface):
 
         dayObsStr = dayObsIntToString(dayObs)
         paddedSeqNum = f"{seqNum:06}"
-        extension = os.path.splitext(filename)[
-            1
-        ]  # contains the period so don't add back later
+        extension = os.path.splitext(filename)[1]  # contains the period so don't add back later
         uploadAs = (
             f"{instrument}"
             f"/{dayObsStr}"
@@ -509,9 +490,7 @@ class S3Uploader(UploaderInterface):
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
-            self._log.exception(
-                f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}"
-            )
+            self._log.exception(f"Failed to upload {filename} for {instrument}+{plotName} as {uploadAs}")
             raise e
 
         return uploadAs
@@ -622,28 +601,21 @@ class S3Uploader(UploaderInterface):
 
         if basename == "md.json":  # it's not a plot, so special case this one case
             uploadAs = (
-                f"{instrument}/{dayObsStr}/night_report/"
-                f"{instrument}_night_report_{dayObsStr}_{basename}"
+                f"{instrument}/{dayObsStr}/night_report/" f"{instrument}_night_report_{dayObsStr}_{basename}"
             )
         else:
             # the plot filenames have the channel name saved into them in
             # the form path/channelName-plotName.png, so remove the channel
             # name and dash
             plotName = basename.replace(instrument + "_night_reports" + "-", "")
-            plotFilename = (
-                f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}"
-            )
-            uploadAs = (
-                f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}"
-            )
+            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}"
+            uploadAs = f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}"
 
         try:
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
-            self._log.exception(
-                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
-            )
+            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
             raise ex
 
         return uploadAs
@@ -668,9 +640,7 @@ class S3Uploader(UploaderInterface):
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
         except ClientError as e:
             logging.error(e)
-            raise UploadError(
-                f"Failed uploading file {sourceFilename} as Key: {destinationFilename}"
-            )
+            raise UploadError(f"Failed uploading file {sourceFilename} as Key: {destinationFilename}")
         return destinationFilename
 
     def uploadMovie(
@@ -720,9 +690,7 @@ class S3Uploader(UploaderInterface):
             self.upload(destinationFilename=uploadAs, sourceFilename=filename)
             self._log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as ex:
-            self._log.exception(
-                f"Failed to upload {filename} as {uploadAs} for {instrument} night report"
-            )
+            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
             raise ex
 
         return uploadAs
@@ -798,8 +766,7 @@ class S3Uploader(UploaderInterface):
         camera, plotName = getCameraAndPlotName(channel)
         if plotName != "metadata":
             raise ValueError(
-                "Tried to upload non-metadata file to metadata channel:"
-                f"{channel}, {filename}"
+                "Tried to upload non-metadata file to metadata channel:" f"{channel}, {filename}"
             )
 
         uploadAs = f"{camera}/{dayObsStr}/metadata.json"
@@ -860,15 +827,11 @@ class Uploader:
 
         # heartbeat retry strategy
         modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
 
         try:
             blob.upload_from_string(heartbeatJson, retry=modified_retry)
-            self.log.debug(
-                f"Uploaded heartbeat to channel {channel} with datetime {currTime}"
-            )
+            self.log.debug(f"Uploaded heartbeat to channel {channel} with datetime {currTime}")
             return True
         except Exception:
             return False
@@ -928,16 +891,12 @@ class Uploader:
         timeout = 1000 if isLargeFile else 60  # default is 60s
         deadline = timeout if isLargeFile else 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception:
-            self.log.exception(
-                f"Failed to upload {filename} as {uploadAs} to {channel}"
-            )
+            self.log.exception(f"Failed to upload {filename} as {uploadAs} to {channel}")
             return None
 
         return blob
@@ -979,9 +938,7 @@ class Uploader:
         # the plot filenames have the channel name saved into them in the form
         # path/channelName-plotName.png, so remove the channel name and dash
         basename = basename.replace(channel + "-", "")
-        uploadAs = (
-            f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
-        )
+        uploadAs = f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
 
         blob = self.bucket.blob(uploadAs)
         blob.cache_control = "no-store"
@@ -991,16 +948,12 @@ class Uploader:
         timeout = 60  # default is 60s
         deadline = 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
         try:
             blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception as e:
-            self.log.warning(
-                f"Failed to upload {uploadAs} to {channel} because {repr(e)}"
-            )
+            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
             return None
 
         return blob
@@ -1054,18 +1007,12 @@ class Uploader:
         timeout = 1000 if isLargeFile else 60  # default is 60s
         deadline = timeout if isLargeFile else 2.0
         modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(
-            initial=0.5, multiplier=1.2, maximum=2
-        )
+        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
         try:
-            blob.upload_from_filename(
-                sourceFilename, retry=modified_retry, timeout=timeout
-            )
+            blob.upload_from_filename(sourceFilename, retry=modified_retry, timeout=timeout)
             self.log.info(f"Uploaded {sourceFilename} to {finalName}")
         except Exception as e:
-            self.log.warning(
-                f"Failed to upload {finalName} to {channel} because {repr(e)}"
-            )
+            self.log.warning(f"Failed to upload {finalName} to {channel} because {repr(e)}")
             return None
 
         return blob
@@ -1115,14 +1062,10 @@ class Heartbeater:
             Upload with a different flatline period. Use before starting long
             running jobs.
         """
-        forecast = (
-            self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
-        )
+        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
 
         now = time.time()
         elapsed = now - self.lastUpload
         if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
-            if self.uploader.uploadHeartbeat(
-                self.handle, forecast
-            ):  # returns True on successful upload
+            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
                 self.lastUpload = now  # only reset this if the upload was successful
