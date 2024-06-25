@@ -208,6 +208,7 @@ class DonutLauncher:
             "-o", self.outputCollection,
             "-p", self.pipelineFile,
             "-d", query,
+            "--rebase",
             # fmt: on
         ]
         if doRegister:
