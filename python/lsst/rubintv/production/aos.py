@@ -459,7 +459,7 @@ class FocusSweepAnalysis:
         plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
 
         self.uploader.uploadPerSeqNumPlot(
-            instrument="comcam_sim",
+            instrument="comcam_sim_aos",
             plotName="focus_sweep",
             dayObs=lastRecord.day_obs,
             seqNum=lastRecord.seq_num,
