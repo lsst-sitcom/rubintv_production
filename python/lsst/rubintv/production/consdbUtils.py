@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 __all__ = [
     "CCD_VISIT_MAPPING",
     "VISIT_MIN_MED_MAX_MAPPING",
@@ -37,6 +39,8 @@ from lsst.afw.table import ExposureCatalog  # type: ignore
 from lsst.daf.butler import Butler, DimensionRecord
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
+
+from .redisUtils import RedisHelper
 
 CCD_VISIT_MAPPING = {
     "astromOffsetMean": "astrom_offset_mean",
@@ -94,8 +98,9 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 
 
 class ConsDBPopulator:
-    def __init__(self, client: ConsDbClient) -> None:
+    def __init__(self, client: ConsDbClient, redisHelper: RedisHelper) -> None:
         self.client = client
+        self.redisHelper = redisHelper
 
     def _createExposureRow(self, expRecord: DimensionRecord, allowUpdate: bool = False) -> None:
         """Create a row for the exp in the cdb_<instrument>.exposure table.
@@ -179,15 +184,17 @@ class ConsDBPopulator:
     ) -> None:
         obsId = computeCcdExposureId(expRecord.instrument, expRecord.id, detectorNum)
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
+        table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
         try:
             self.client.insert(
                 instrument=expRecord.instrument,
-                table=f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook",
+                table=table,
                 obs_id=obsId,
                 values=values,
                 allow_update=allowUpdate,
             )
+            self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
         except HTTPError as e:
             print(e.response.json())
             raise RuntimeError from e
@@ -255,11 +262,12 @@ class ConsDBPopulator:
             raise RuntimeError("visitSummary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
-
+        table = f"cdb_{instrument.lower()}.visit1_quicklook"
         self.client.insert(
             instrument=instrument,
-            table=f"cdb_{instrument.lower()}.visit1_quicklook",
+            table=table,
             obs_id=visit,
             values=values,
             allow_update=allowUpdate,
         )
+        self.redisHelper.announceResultInConsDb(instrument, table, visit)
