@@ -128,7 +128,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.info(f"Pipeline running configured to consume from {queueName}")
 
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.watcher.redisHelper)
 
     def makeLimitedButler(self, butler):
         cachedOnGet = set()

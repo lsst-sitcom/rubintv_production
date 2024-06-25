@@ -43,8 +43,9 @@ from lsst.summit.extras.plotting.focusSweep import (
     plotSweepParabola,
 )
 from lsst.summit.extras.plotting.psfPlotting import extendTable, makeAzElPlot, makeFigureAndAxes
+from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import makeEfdClient
-from lsst.summit.utils.utils import ConsDbClient, getCameraFromInstrumentName, getDetectorIds
+from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
