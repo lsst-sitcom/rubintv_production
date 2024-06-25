@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.aos import PsfAzElPlotter
+from lsst.rubintv.production.aos import FocusSweepAnalysis
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
@@ -36,12 +36,12 @@ butler = dafButler.Butler(
         "LSSTComCamSim/quickLook",
     ],
 )
-print(f"Running psf plotter launcher at {locationConfig.location}")
+print(f"Running focus sweep plotter at {locationConfig.location}")
 
-queueName = "LSSTComCamSim-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(
+queueName = "LSSTComCamSim-FROM-OCS_FOCUSSWEEP"
+focusSweepAnalyzer = FocusSweepAnalysis(
     butler=butler,
     locationConfig=locationConfig,
     queueName=queueName,
 )
-psfPlotter.run()
+focusSweepAnalyzer.run()

@@ -32,14 +32,45 @@ from time import sleep, time
 
 import numpy as np
 from astropy.table import vstack
+from matplotlib.figure import Figure
 
 from lsst.daf.butler import DatasetNotFoundError
 from lsst.geom import radians
+from lsst.summit.extras.plotting.focusSweep import (
+    collectSweepData,
+    fitSweepParabola,
+    inferSweepVariable,
+    plotSweepParabola,
+)
 from lsst.summit.extras.plotting.psfPlotting import extendTable, makeAzElPlot, makeFigureAndAxes
-from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
+from lsst.summit.utils.efdUtils import makeEfdClient
+from lsst.summit.utils.utils import ConsDbClient, getCameraFromInstrumentName, getDetectorIds
 
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
+
+
+def _extractExposureIds(exposureBytes):
+    """Extract the exposure IDs from the byte string.
+
+    Parameters
+    ----------
+    exposureBytes : `bytes`
+        The byte string containing the exposure IDs.
+
+    Returns
+    -------
+    expIds : `list` of `int`
+        A list of two exposure IDs extracted from the byte string.
+
+    Raises
+    ------
+    ValueError
+        If the number of exposure IDs extracted is not equal to 2.
+    """
+    exposureIds = exposureBytes.decode("utf-8").split(",")
+    exposureIds = [int(v) for v in exposureIds]
+    return exposureIds
 
 
 class DonutLauncher:
@@ -105,30 +136,6 @@ class DonutLauncher:
             else:
                 raise RuntimeError("Missing dependencies - can't launch donut pipelines like this")
 
-    def _extractExposureIds(self, exposureBytes):
-        """Extract the exposure IDs from the byte string.
-
-        Parameters
-        ----------
-        exposureBytes : `bytes`
-            The byte string containing the exposure IDs.
-
-        Returns
-        -------
-        expIds : `list` of `int`
-            A list of two exposure IDs extracted from the byte string.
-
-        Raises
-        ------
-        ValueError
-            If the number of exposure IDs extracted is not equal to 2.
-        """
-        exposureIds = exposureBytes.decode("utf-8").split(",")
-        exposureIds = [int(v) for v in exposureIds]
-        if len(exposureIds) != 2:
-            raise ValueError(f"Expected two exposureIds, got {exposureIds}")
-        return exposureIds
-
     def _run_command(self, command):
         """Run a command as a subprocess.
 
@@ -176,7 +183,11 @@ class DonutLauncher:
         recorded in the butler. The command is executed in a separate thread,
         and recorded as being in progress on the class.
         """
-        expId1, expId2 = self._extractExposureIds(exposureBytes)
+        exposureIds = _extractExposureIds(exposureBytes)
+        if len(exposureIds) != 2:
+            raise ValueError(f"Expected two exposureIds, got {exposureIds}")
+        expId1, expId2 = exposureIds
+
         if self.instrument == "LSSTComCamSim":
             # simulated exp ids are in the year 702X so add this manually, as
             # OCS doesn't know about the fact the butler will add this on. This
@@ -366,5 +377,102 @@ class PsfAzElPlotter:
                 visitId = int(visitIdBytes.decode("utf-8"))
                 self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
                 self.makePlot(visitId)
+            else:
+                sleep(0.5)
+
+
+class FocusSweepAnalysis:
+    """
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    queueName : `str`
+        The name of the redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler,
+        locationConfig,
+        queueName,
+    ):
+        self.butler = butler
+        self.locationConfig = locationConfig
+        self.queueName = queueName
+
+        self.instrument = "LSSTComCamSim"
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.uploader = MultiUploader()
+        self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.efdClient = makeEfdClient()
+        self.fig = Figure(figsize=(12, 9))
+        self.fig, self.axes = makeFigureAndAxes()
+
+    def makePlot(self, visitIds):
+        """Extract the exposure IDs from the byte string.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The byte string containing the exposure IDs.
+
+        Returns
+        -------
+        expIds : `list` of `int`
+            A list of two exposure IDs extracted from the byte string.
+
+        Raises
+        ------
+        ValueError
+            If the number of exposure IDs extracted is not equal to 2.
+        """
+        visitIds = sorted(visitIds)
+        lastVisit = visitIds[-1]
+
+        # blocking call which waits for RA to announce that visit level info
+        # is in consDB.
+        self.redisHelper.waitForResultInConsdDb(
+            self.instrument, "cdb_lsstcomcamsim.visit1_quicklook", lastVisit, timeout=600
+        )
+
+        records = []
+        for visitId in visitIds:
+            (record,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
+            records.append(record)
+        lastRecord = records[-1]  # this is the one the plot is "for" on RubinTV
+
+        data = collectSweepData(records, self.consDbClient, self.efdClient)
+        varName = inferSweepVariable(data)
+        fit = fitSweepParabola(data, varName)
+
+        self.fig.clf()
+        axes = self.fig.subplots(nrows=3, ncols=4)
+
+        tempFilename = tempfile.mktemp(suffix=".png")
+        plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
+
+        self.uploader.uploadPerSeqNumPlot(
+            instrument="comcam_sim",
+            plotName="focus_sweep",
+            dayObs=lastRecord.day_obs,
+            seqNum=lastRecord.seq_num,
+            filename=tempFilename,
+        )
+
+    def run(self):
+        """Start the event loop, listening for data and launching plotting."""
+        while True:
+            visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
+            if visitIdsBytes is not None:
+                visitIds = _extractExposureIds(visitIdsBytes)
+                self.log.info(f"Making for focus sweep plots for visitIds: {visitIds}")
+                self.makePlot(visitIds)
             else:
                 sleep(0.5)
