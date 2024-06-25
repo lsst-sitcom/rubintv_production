@@ -63,7 +63,6 @@ TEST_SCRIPTS_ROUND_1 = [
         "scripts/summit/LSSTComCamSim/runStep2aWorker.py",
         ["slac_testing", "0"],
         tee_output=True,
-        # do_debug=True,
     ),
     TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"], tee_output=True),
     TestScript(
@@ -71,7 +70,6 @@ TEST_SCRIPTS_ROUND_1 = [
         ["slac_testing", "0"],
         display_on_pass=True,
         tee_output=True,
-        do_debug=True,
     ),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
     TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
@@ -373,6 +371,13 @@ def check_redis_final_contents():
         passed = False
     else:
         print(f"✅ {n_visits} nightly rollup finished")
+
+    allKeys = redisHelper.redis.keys()
+    failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
+    if failed_keys:
+        print(f"❌ Found failed keys: {failed_keys}")
+        passed = False
+
     return passed
 
 
