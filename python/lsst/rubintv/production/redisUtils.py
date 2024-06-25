@@ -587,7 +587,7 @@ class RedisHelper:
                 loaded = json.loads(jsonData)
                 _ = loaded["dataId"]
                 return True
-            except (KeyError, json.JSONDecodeError):
+            except (KeyError, json.JSONDecodeError, TypeError):
                 pass
             return False
 
@@ -596,7 +596,7 @@ class RedisHelper:
                 loaded = json.loads(jsonData)
                 _ = loaded["definition"]
                 return True
-            except (KeyError, json.JSONDecodeError):
+            except (KeyError, json.JSONDecodeError, KeyError):
                 pass
             return False
 
