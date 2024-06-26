@@ -354,7 +354,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
             self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
         except Exception:
-            self.log.exception("Failed to populate ccd-visit row in ConsDB")
+            if self.locationConfig.location == "summit":
+                self.log.exception("Failed to populate ccd-visit row in ConsDB")
+            else:
+                self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
     def postProcessVisitSummary(self, quantum):
         dRef = quantum.outputs["visitSummary"][0]
