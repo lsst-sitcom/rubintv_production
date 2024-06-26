@@ -34,6 +34,7 @@ butler = dafButler.Butler(
     collections=[
         "LSSTComCamSim/defaults",
     ],
+    instrument=instrument,
     writeable=True,
 )
 print(f"Running donut launcher at {locationConfig.location}")
