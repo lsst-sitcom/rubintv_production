@@ -52,7 +52,7 @@ from .uploaders import MultiUploader
 from .utils import writeExpRecordMetadataShard
 
 
-def _extractExposureIds(exposureBytes):
+def _extractExposureIds(exposureBytes, instrument):
     """Extract the exposure IDs from the byte string.
 
     Parameters
@@ -72,6 +72,14 @@ def _extractExposureIds(exposureBytes):
     """
     exposureIds = exposureBytes.decode("utf-8").split(",")
     exposureIds = [int(v) for v in exposureIds]
+
+    if instrument == "LSSTComCamSim":
+        # simulated exp ids are in the year 702X so add this manually, as
+        # OCS doesn't know about the fact the butler will add this on. This
+        # is only true for LSSTComCamSim though.
+        log = logging.getLogger("lsst.rubintv.production.aos._extractExposureIds")
+        log.info("Adding 5000000000000 to exposure ids to adjust for simulated LSSTComCamSim data")
+        exposureIds = [expId + 5000000000000 for expId in exposureIds]
     return exposureIds
 
 
@@ -187,21 +195,14 @@ class DonutLauncher:
         recorded in the butler. The command is executed in a separate thread,
         and recorded as being in progress on the class.
         """
-        exposureIds = _extractExposureIds(exposureBytes)
+        exposureIds = _extractExposureIds(exposureBytes, self.instrument)
         if len(exposureIds) != 2:
             raise ValueError(f"Expected two exposureIds, got {exposureIds}")
         expId1, expId2 = exposureIds
 
-        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": expId2})
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId2})
         writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
 
-        if self.instrument == "LSSTComCamSim":
-            # simulated exp ids are in the year 702X so add this manually, as
-            # OCS doesn't know about the fact the butler will add this on. This
-            # is only true for LSSTComCamSim though.
-            self.log.info("Adding 50000000000000 to exposure ids to adjust for simulated LSSTComCamSim data")
-            expId1 += 5000000000000
-            expId2 += 5000000000000
         self.log.info(f"Launching donut processing for donut pair: {expId1, expId2}")
         query = f"exposure in ({expId1},{expId2}) and instrument='{self.instrument}'"
         command = [
@@ -482,7 +483,7 @@ class FocusSweepAnalysis:
         while True:
             visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdsBytes is not None:
-                visitIds = _extractExposureIds(visitIdsBytes)
+                visitIds = _extractExposureIds(visitIdsBytes, self.instrument)
                 self.log.info(f"Making for focus sweep plots for visitIds: {visitIds}")
                 self.makePlot(visitIds)
             else:
