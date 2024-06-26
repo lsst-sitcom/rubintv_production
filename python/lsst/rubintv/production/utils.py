@@ -562,14 +562,14 @@ def getAutomaticLocationConfig():
         try:  # try using this, because anything could be in argv[1]
             location = sys.argv[1]
             # TODO: post OR4 change this to inject slac instead of USDF
-            if location == "usdf":
+            if location in ("usdf", "USDF"):
                 location = "slac"
-            return LocationConfig(location)
+            return LocationConfig(location.lower())
         except FileNotFoundError:
             pass
 
     location = os.getenv("RAPID_ANALYSIS_LOCATION")
-    if location == "usdf":
+    if location in ("usdf", "USDF"):
         location = "slac"
     if not location:
         raise RuntimeError("No location was supplied on the command line or via RAPID_ANALYSIS_LOCATION.")
