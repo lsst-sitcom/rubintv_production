@@ -78,7 +78,7 @@ def _extractExposureIds(exposureBytes, instrument):
         # OCS doesn't know about the fact the butler will add this on. This
         # is only true for LSSTComCamSim though.
         log = logging.getLogger("lsst.rubintv.production.aos._extractExposureIds")
-        log.info("Adding 5000000000000 to exposure ids to adjust for simulated LSSTComCamSim data")
+        log.info(f"Adding 5000000000000 to {exposureIds=} to adjust for simulated LSSTComCamSim data")
         exposureIds = [expId + 5000000000000 for expId in exposureIds]
     return exposureIds
 
@@ -200,6 +200,7 @@ class DonutLauncher:
             raise ValueError(f"Expected two exposureIds, got {exposureIds}")
         expId1, expId2 = exposureIds
 
+        sleep(5)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId2})
         writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
 
