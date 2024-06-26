@@ -40,7 +40,7 @@ butler = dafButler.Butler(
 print(f"Running donut launcher at {locationConfig.location}")
 
 inputCollection = "LSSTComCamSim/defaults"
-outputCollection = "u/saluser/ra_wep_testing2"
+outputCollection = "u/saluser/ra_wep_testing3"
 pipelineFile = "/project/rubintv/temp/donut_pipeline.yaml"
 queueName = "LSSTComCamSim-FROM-OCS_DONUTPAIR"
 donutLauncher = DonutLauncher(
