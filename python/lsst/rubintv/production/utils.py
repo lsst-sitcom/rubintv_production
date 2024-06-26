@@ -549,6 +549,9 @@ def getAutomaticLocationConfig():
     if len(sys.argv) >= 2:
         try:  # try using this, because anything could be in argv[1]
             location = sys.argv[1]
+            # TODO: post OR4 change this to inject slac instead of USDF
+            if location == "usdf":
+                location = "slac"
             return LocationConfig(location)
         except FileNotFoundError:
             pass
