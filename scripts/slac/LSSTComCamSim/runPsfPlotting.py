@@ -33,7 +33,7 @@ butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
         "LSSTComCamSim/defaults",
-        "LSSTComCamSim/quickLook",
+        "LSSTComCamSim/nightlyValidation",
     ],
 )
 print(f"Running psf plotter launcher at {locationConfig.location}")
