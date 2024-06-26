@@ -19,36 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.aos import DonutLauncher
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+import sys
+
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+checkRubinTvExternalPackages()
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,
-)
-print(f"Running donut launcher at {locationConfig.location}")
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+locationConfig = LocationConfig(location)
+print(f"Running ComCamSim AOS metadata server at {location}...")
 
-inputCollection = "LSSTComCamSim/defaults"
-outputCollection = "u/saluser/ra_wep_testing2"
-pipelineFile = "/project/rubintv/temp/donut_pipeline.yaml"
-queueName = "LSSTComCamSim-FROM-OCS_DONUTPAIR"
-donutLauncher = DonutLauncher(
-    butler=butler,
+metadataDirectory = locationConfig.comCamSimAosMetadataPath
+shardsDirectory = locationConfig.comCamSimAosMetadataShardPath
+channelName = "comcam_sim_aos_metadata"
+
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
-    inputCollection=inputCollection,
-    outputCollection=outputCollection,
-    pipelineFile=pipelineFile,
-    queueName=queueName,
-    metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+    doRaise=getDoRaise(),
 )
-donutLauncher.run()
+metadataServer.run()

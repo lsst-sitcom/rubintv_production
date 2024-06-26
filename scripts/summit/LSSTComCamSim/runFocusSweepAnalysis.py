@@ -43,5 +43,6 @@ focusSweepAnalyzer = FocusSweepAnalysis(
     butler=butler,
     locationConfig=locationConfig,
     queueName=queueName,
+    metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
 )
 focusSweepAnalyzer.run()

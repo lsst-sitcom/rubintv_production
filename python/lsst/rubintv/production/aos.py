@@ -49,6 +49,7 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
+from .utils import writeExpRecordMetadataShard
 
 
 def _extractExposureIds(exposureBytes):
@@ -104,6 +105,7 @@ class DonutLauncher:
         outputCollection,
         pipelineFile,
         queueName,
+        metadataShardPath,
         allowMissingDependencies=False,
     ):
         self.butler = butler
@@ -112,6 +114,7 @@ class DonutLauncher:
         self.outputCollection = outputCollection
         self.pipelineFile = pipelineFile
         self.queueName = queueName
+        self.metadataShardPath = metadataShardPath
         self.allowMissingDependencies = allowMissingDependencies
 
         self.instrument = "LSSTComCamSim"
@@ -188,6 +191,9 @@ class DonutLauncher:
         if len(exposureIds) != 2:
             raise ValueError(f"Expected two exposureIds, got {exposureIds}")
         expId1, expId2 = exposureIds
+
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": expId2})
+        writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
 
         if self.instrument == "LSSTComCamSim":
             # simulated exp ids are in the year 702X so add this manually, as
@@ -402,10 +408,12 @@ class FocusSweepAnalysis:
         butler,
         locationConfig,
         queueName,
+        metadataShardPath,
     ):
         self.butler = butler
         self.locationConfig = locationConfig
         self.queueName = queueName
+        self.metadataShardPath = metadataShardPath
 
         self.instrument = "LSSTComCamSim"
         self.camera = getCameraFromInstrumentName(self.instrument)
@@ -449,6 +457,7 @@ class FocusSweepAnalysis:
             (record,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
             records.append(record)
         lastRecord = records[-1]  # this is the one the plot is "for" on RubinTV
+        writeExpRecordMetadataShard(lastRecord, self.metadataShardPath)
 
         data = collectSweepData(records, self.consDbClient, self.efdClient)
         varName = inferSweepVariable(data)
