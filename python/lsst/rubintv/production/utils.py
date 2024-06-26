@@ -801,8 +801,10 @@ def writeMetadataShard(path, dayObs, mdDict):
     with open(filename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
-        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-
+        try:
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        except FileNotFoundError:
+            pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 
@@ -884,8 +886,10 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
     with open(filename, "w") as f:
         json.dump(dataDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
-        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-
+        try:
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        except FileNotFoundError:
+            pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 
