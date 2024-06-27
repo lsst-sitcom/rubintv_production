@@ -1,59 +1,59 @@
 bucketName: rubintv_data
 
 # Required items:
-dataIdScanPath: /sdf/home/m/mfl/u/rubintv/dataIds
-dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
+dataIdScanPath: /sdf/home/c/cpio/u/rubintv/dataIds
+dimensionUniverseFile: /sdf/home/c/cpio/u/rubintv/butlerDimensionUniverse.json
 
 # Summit items:
-nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
+nightReportPath:     /sdf/home/c/cpio/u/rubintv/nightReportData
 
 # AuxTel metadata
-auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
-auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
+auxTelMetadataPath: /sdf/home/c/cpio/u/rubintv/sidecar_metadata
+auxTelMetadataShardPath: /sdf/home/c/cpio/u/rubintv/sidecar_metadata/shards
 
 # all sky
-allSkyRootDataPath: /sdf/home/m/mfl/u/rubintv/allsky/raw
-allSkyOutputPath: /sdf/home/m/mfl/u/rubintv/allsky
+allSkyRootDataPath: /sdf/home/c/cpio/u/rubintv/allsky/raw
+allSkyOutputPath: /sdf/home/c/cpio/u/rubintv/allsky
 
 # animation
-moviePngPath: /sdf/home/m/mfl/u/rubintv/auxTel_animation
+moviePngPath: /sdf/home/c/cpio/u/rubintv/auxTel_animation
 
 # Star Trackers paths:
 # The path at which to find the data on disk. Does not include the
 # GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
-starTrackerDataPath: /sdf/home/m/mfl/u/starTracker
-starTrackerOutputPath: /sdf/home/m/mfl/u/rubintv/starTracker/output
-starTrackerMetadataPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata
-starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata/shards
+starTrackerDataPath: /sdf/home/c/cpio/u/starTracker
+starTrackerOutputPath: /sdf/home/c/cpio/u/rubintv/starTracker/output
+starTrackerMetadataPath: /sdf/home/c/cpio/u/rubintv/starTracker/sidecar_metadata
+starTrackerMetadataShardPath: /sdf/home/c/cpio/u/rubintv/starTracker/sidecar_metadata/shards
 
 
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
-astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
+astrometryNetRefCatPath: /sdf/home/c/cpio/u/astrometry_net
 
 # ComCam configuration:
 comCamButlerPath: /sdf/group/rubin/repo/embargo/butler.yaml
 binning: 8
 # # paths for serving TS8 metadata at SLAC
-comCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata
-comCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards
+comCamMetadataPath: /sdf/home/c/cpio/u/rubintv/LSSTComCam/sidecar_metadata
+comCamMetadataShardPath: /sdf/home/c/cpio/u/rubintv/LSSTComCam/sidecar_metadata/shards
 
-comCamSimMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata
-comCamSimMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata/shards
+comCamSimMetadataPath: /sdf/home/c/cpio/u/rubintv/LSSTComCamSim/sidecar_metadata
+comCamSimMetadataShardPath: /sdf/home/c/cpio/u/rubintv/LSSTComCamSim/sidecar_metadata/shards
 
 comCamSimAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata
 comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata/shards
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
-scratchPath: /sdf/home/m/mfl/u/rubintv
-plotPath: /sdf/home/m/mfl/u/rubintv/plots
-binnedImagePath: /sdf/home/m/mfl/u/rubintv/binnedImages
-calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
-binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
+scratchPath: /sdf/home/c/cpio/u/rubintv
+plotPath: /sdf/home/c/cpio/u/rubintv/plots
+binnedImagePath: /sdf/home/c/cpio/u/rubintv/binnedImages
+calculatedDataPath: /sdf/home/c/cpio/u/rubintv/calculatedData
+binnedCalexpPath: /sdf/home/c/cpio/u/rubintv/calculatedData/calexps
 
 # TMA config:
-tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
-tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
+tmaMetadataPath: /sdf/home/c/cpio/u/rubintv/tma/sidecar_metadata
+tmaMetadataShardPath: /sdf/home/c/cpio/u/rubintv/tma/sidecar_metadata/shards
 
 sfmPipelineFile: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
 
