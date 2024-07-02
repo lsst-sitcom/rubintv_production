@@ -478,7 +478,7 @@ class LocationConfig:
     @cached_property
     def comCamButlerPath(self):
         file = self._config["comCamButlerPath"]
-        self._checkFile(file)
+        # self._checkFile(file)
         return file
 
     @cached_property
@@ -502,6 +502,18 @@ class LocationConfig:
     @cached_property
     def comCamSimMetadataShardPath(self):
         directory = self._config["comCamSimMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamSimAosMetadataPath(self):
+        directory = self._config["comCamSimAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamSimAosMetadataShardPath(self):
+        directory = self._config["comCamSimAosMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
@@ -549,11 +561,16 @@ def getAutomaticLocationConfig():
     if len(sys.argv) >= 2:
         try:  # try using this, because anything could be in argv[1]
             location = sys.argv[1]
-            return LocationConfig(location)
+            # TODO: post OR4 change this to inject slac instead of USDF
+            if location in ("usdf", "USDF"):
+                location = "slac"
+            return LocationConfig(location.lower())
         except FileNotFoundError:
             pass
 
     location = os.getenv("RAPID_ANALYSIS_LOCATION")
+    if location in ("usdf", "USDF"):
+        location = "slac"
     if not location:
         raise RuntimeError("No location was supplied on the command line or via RAPID_ANALYSIS_LOCATION.")
     return LocationConfig(location.lower())
@@ -801,8 +818,10 @@ def writeMetadataShard(path, dayObs, mdDict):
     with open(filename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
-        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-
+        try:
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        except FileNotFoundError:
+            pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 
@@ -884,8 +903,10 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
     with open(filename, "w") as f:
         json.dump(dataDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
-        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-
+        try:
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        except FileNotFoundError:
+            pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 

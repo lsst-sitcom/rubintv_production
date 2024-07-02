@@ -41,6 +41,9 @@ comCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/s
 comCamSimMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata
 comCamSimMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata/shards
 
+comCamSimAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata
+comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata/shards
+
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /sdf/home/m/mfl/u/rubintv
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
