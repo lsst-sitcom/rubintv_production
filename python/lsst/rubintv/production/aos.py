@@ -325,7 +325,7 @@ class PsfAzElPlotter:
         tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
         self.axes = self.fig.subplots(nrows=2, ncols=2)
-        makeAzElPlot(self.fig, self.axes, table, self.camera, tempFilename)
+        makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
 
         self.uploader.uploadPerSeqNumPlot(
             instrument="comcam_sim",
