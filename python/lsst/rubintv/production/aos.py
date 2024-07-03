@@ -30,19 +30,20 @@ import tempfile
 import threading
 from time import sleep, time
 
-import numpy as np
-from astropy.table import vstack
 from matplotlib.figure import Figure
 
 from lsst.daf.butler import DatasetNotFoundError
-from lsst.geom import radians
 from lsst.summit.extras.plotting.focusSweep import (
     collectSweepData,
     fitSweepParabola,
     inferSweepVariable,
     plotSweepParabola,
 )
-from lsst.summit.extras.plotting.psfPlotting import extendTable, makeAzElPlot, makeFigureAndAxes
+from lsst.summit.extras.plotting.psfPlotting import (
+    makeAzElPlot,
+    makeFigureAndAxes,
+    makeTableFromSourceCatalogs,
+)
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
@@ -322,7 +323,7 @@ class PsfAzElPlotter:
             self.log.error(f"Could not find visitInfo for visitId {visitId}")
             return
 
-        table = self.makeTableFromIcSrc(icSrcDict, visitInfo)
+        table = makeTableFromSourceCatalogs(icSrcDict, visitInfo)
 
         tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
@@ -336,48 +337,6 @@ class PsfAzElPlotter:
             seqNum=expRecord.seq_num,
             filename=tempFilename,
         )
-
-    def makeTableFromIcSrc(self, icSrcs, visitInfo):
-        tables = []
-
-        for detectorNum, icSrc in icSrcs.items():
-            icSrc = icSrc.asAstropy()
-            icSrc = icSrc[icSrc["calib_psf_candidate"]]
-            icSrc["detector"] = detectorNum
-            tables.append(icSrc)
-
-        table = vstack(tables)
-        # Add shape columns
-        table["Ixx"] = table["slot_Shape_xx"] * (0.2) ** 2
-        table["Ixy"] = table["slot_Shape_xy"] * (0.2) ** 2
-        table["Iyy"] = table["slot_Shape_yy"] * (0.2) ** 2
-        table["T"] = table["Ixx"] + table["Iyy"]
-        table["e1"] = (table["Ixx"] - table["Iyy"]) / table["T"]
-        table["e2"] = 2 * table["Ixy"] / table["T"]
-        table["e"] = np.hypot(table["e1"], table["e2"])
-        table["x"] = table["base_FPPosition_x"]
-        table["y"] = table["base_FPPosition_y"]
-
-        table.meta["rotTelPos"] = (
-            visitInfo.boresightParAngle - visitInfo.boresightRotAngle - (np.pi / 2 * radians)
-        ).asRadians()
-        table.meta["rotSkyPos"] = visitInfo.boresightRotAngle.asRadians()
-
-        rtp = table.meta["rotTelPos"]
-        srtp, crtp = np.sin(rtp), np.cos(rtp)
-        aaRot = (
-            np.array([[crtp, srtp], [-srtp, crtp]]) @ np.array([[0, 1], [1, 0]]) @ np.array([[-1, 0], [0, 1]])
-        )
-        table = extendTable(table, aaRot, "aa")
-        table.meta["aaRot"] = aaRot
-
-        rsp = table.meta["rotSkyPos"]
-        srsp, crsp = np.sin(rsp), np.cos(rsp)
-        nwRot = np.array([[crsp, -srsp], [srsp, crsp]])
-        table = extendTable(table, nwRot, "nw")
-        table.meta["nwRot"] = nwRot
-
-        return table
 
     def run(self):
         """Start the event loop, listening for data and launching plotting."""
