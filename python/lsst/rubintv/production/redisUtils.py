@@ -682,19 +682,20 @@ class RedisHelper:
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
         keys = sorted(r.keys("*"))
-        keys = [decode_string(key) for key in keys]
 
         if not keys:
             print("Nothing in the Redis database.")
             return
 
-        keys = [key for key in keys if "consdb" not in key]
+        # Remove consDB announcements from the list
+        keys = [key for key in keys if "consdb" not in decode_string(key)]
         if not keys:
             print("Nothing but consDB announcements in the Redis database.")
             return
 
         if instrument is not None:
-            keys = [key for key in keys if instrument in key]
+            # filter to only the instrument-relevant ones if specified
+            keys = [key for key in keys if instrument.lower() in decode_string(key).lower()]
 
         # TODO: DM-44102 Improve how all the redis monitoring stuff is done
 
