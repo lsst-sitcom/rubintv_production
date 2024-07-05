@@ -73,7 +73,7 @@ class Plotter:
             locationConfig=locationConfig,
             queueName=queueName,
         )
-        self.fig = plt.figure(figsize=(12, 12))
+        # self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
@@ -183,6 +183,7 @@ class Plotter:
             How to wait for data products to land before giving up and plotting
             what we have.
         """
+        self.log.info("#############Inside Callback!")
         dataId = payload.dataId
         dataProduct = payload.run  # TODO: this really needs improving
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
