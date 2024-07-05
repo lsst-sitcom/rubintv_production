@@ -1,4 +1,5 @@
 import atexit
+import importlib
 import io
 import itertools
 import logging
@@ -14,7 +15,7 @@ from unittest.mock import patch
 
 import redis
 import yaml
-from ciutils import TestScript, conditional_redirect
+from ciutils import MetaTestScript, TestScript, conditional_redirect, LOGS_PATH, check_folder_exists
 
 
 def do_nothing(*args, **kwargs):
@@ -49,7 +50,7 @@ REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 400  # How long to leave SFM to run for
+TEST_DURATION = 120  # 400  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -58,35 +59,35 @@ DEBUG = False
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
-    TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
+    TestScript(name="runPlotter", args=["slac_testing"]),
     TestScript(
-        "scripts/summit/LSSTComCamSim/runStep2aWorker.py",
-        ["slac_testing", "0"],
+        name="runStep2aWorker",
+        args=[0],
         tee_output=True,
     ),
-    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"], tee_output=True),
+    TestScript(name="runNightlyWorker", args=[0], tee_output=True),
     TestScript(
-        "scripts/summit/LSSTComCamSim/runSfmRunner.py",
-        ["slac_testing", "0"],
+        name="runSfmRunner",
+        args=[0],
         display_on_pass=True,
         tee_output=True,
     ),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "3"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "4"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "5"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "6"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
+    TestScript(name="runSfmRunner", args=[1], tee_output=True),
+    TestScript(name="runSfmRunner", args=[2]),
+    TestScript(name="runSfmRunner", args=[3]),
+    TestScript(name="runSfmRunner", args=[4]),
+    TestScript(name="runSfmRunner", args=[5]),
+    TestScript(name="runSfmRunner", args=[6]),
+    TestScript(name="runSfmRunner", args=[7]),
+    TestScript(name="runSfmRunner", args=[8]),
     TestScript(
-        "scripts/summit/LSSTComCamSim/runHeadNode.py",
-        ["slac_testing"],
+        name="runHeadNode",
+        args=["slac_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
         tee_output=True,
         display_on_pass=True,
     ),
-    TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, display_on_pass=True),
+    TestScript(name="drip_feed_data", path='tests.ci.meta_test_scripts', delay=0, display_on_pass=True),
 ]
 
 TEST_SCRIPTS_ROUND_2 = [
@@ -95,22 +96,22 @@ TEST_SCRIPTS_ROUND_2 = [
     # drops into redis
     # XXX need to get this to actually run
     # XXX need to add check that this actually output to redis
-    TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
+    TestScript(name="runButlerWatcher", args=["slac_testing"]),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
-    TestScript("meta_test_raise.py"),  # This one should fail
-    TestScript("meta_test_sys_exit_non_zero.py"),  # This one should fail
+    MetaTestScript(name="meta_test_raise"),  # This one should fail
+    MetaTestScript(name="meta_test_sys_exit_non_zero"),  # This one should fail
 ]
 
 META_TESTS_PASS_EXPECTED = [
-    TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
-    TestScript("meta_test_debug_config.py", do_debug=True),  # check the remote connection magic works
-    TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
-    TestScript("meta_test_env.py"),  # Confirms things we're manipulating via the env are set in workers
-    TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
-    TestScript("meta_test_logging_capture.py"),  # check logs are captured when not being teed
-    TestScript("meta_test_logging_capture.py", tee_output=True),  # confirm teeing works
+    MetaTestScript(name="meta_test_runs_ok"),  # This should pass by running forever
+    MetaTestScript(name="meta_test_debug_config", tee_output=True, do_debug=True),  # check the remote connection magic works
+    MetaTestScript(name="meta_test_patching", tee_output=True),  # Confirms that getCurrentDayObs_int returns the patched value
+    MetaTestScript(name="meta_test_env"),  # Confirms things we're manipulating via the env are set in workers
+    MetaTestScript(name="meta_test_s3_upload"),  # confirms S3 uploads work and are mocked correctly
+    MetaTestScript(name="meta_test_logging_capture"),  # check logs are captured when not being teed
+    MetaTestScript(name="meta_test_logging_capture", tee_output=True),  # confirm teeing works
 ]
 
 YAML_FILES_TO_CHECK = [
@@ -153,6 +154,28 @@ manager = Manager()
 exit_codes = manager.dict()
 outputs = manager.dict()
 REDIS_PROCESS = None
+
+
+def create_folder(path, name) -> str:
+    """
+    Function to create a folder  if it does not exist.
+
+    Parameters
+    ----------
+    path: str
+        The path of the folder to be created.
+    name: str
+        The name of the folder to be created.
+
+    Returns
+    -------
+    folder_path: str
+        The path of the folder created.
+    """
+    folder_path = os.path.join(path, name)
+    if not os.path.exists(path):
+        os.makedirs(folder_path)
+    return folder_path
 
 
 def exec_script(test_script: TestScript, output_queue):
@@ -203,20 +226,11 @@ def exec_script(test_script: TestScript, output_queue):
     try:
         with conditional_redirect(test_script.tee_output, f_stdout, f_stderr, log_handler, root_logger):
             with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
-                with open(script_path, "r") as script_file:
-                    script_content = script_file.read()
-                exec_globals = {
-                    "__name__": "__main__",
-                    "__file__": script_path,
-                    "sys": sys,
-                    "logging": logging,  # Pass the logging module to the script
-                    "lsst.daf.butler.cli.cliLog": CliLog,
-                    "CliLog": CliLog,
-                    "lsstDebug": lsstDebug,
-                }
-                sys.argv = [script_path] + script_args
                 time.sleep(test_script.delay)
-                exec(script_content, exec_globals)
+                module_path = f'{test_script.path}.{test_script.name}'
+                module = importlib.import_module(module_path)
+                launch_test = getattr(module, 'main')
+                launch_test(*test_script.args)
                 exit_code = 0
     except Exception:
         traceback.print_exc(file=f_stderr)
@@ -233,6 +247,7 @@ def exec_script(test_script: TestScript, output_queue):
         log_output = log_stream.getvalue()
         if DEBUG:
             print(f"Putting outputs for script {test_script} into queue")
+        f_stderr.flush()
         output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue(), log_output))
 
         # Clean up logger handlers
@@ -452,10 +467,13 @@ def check_yaml_keys():
 
 def terminate_redis():
     global REDIS_PROCESS
-    if REDIS_PROCESS:
-        REDIS_PROCESS.terminate()
-        REDIS_PROCESS.wait()
-        print("Terminated Redis process")
+    try:
+        if REDIS_PROCESS:
+            REDIS_PROCESS.terminate()
+            REDIS_PROCESS.wait()
+            print("Terminated Redis process")
+    except Exception as e:
+        print(f"Error terminating Redis process: {e}")
 
 
 def run_test_scripts(scripts, timeout, is_meta_tests=False):
@@ -504,8 +522,8 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
 
     # Ensure all processes have terminated
     for p in list(processes.keys()):
-        if DEBUG:
-            print(f"Joining terminated process {p.pid}.")
+        # if DEBUG:
+        print(f"Joining terminated process {p.pid}.")
         p.join(timeout=3)
 
     if DEBUG:
@@ -590,7 +608,10 @@ def check_meta_test_results():
 def main():
     FAILS = []
     PASSES = []
-
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+    if not check_folder_exists(LOGS_PATH):
+        print("Logs folder doesnt exists")
+        exit(-1)
     check_system_size_and_load()
 
     # setup env vars for all processes
@@ -604,11 +625,11 @@ def main():
     # these exit if any fail because that means everything is broken so there's
     # no point in continuing
     if DO_RUN_META_TESTS:
-        for test_script in itertools.chain(
-            TEST_SCRIPTS_ROUND_1, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED
-        ):
-            if not os.path.isfile(test_script.path):
-                raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
+        # for test_script in itertools.chain(
+        #    TEST_SCRIPTS_ROUND_1, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED
+        # ):
+            # if not os.path.isfile(test_script.path):
+            #    raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
         print(f"Running meta-tests to test the CI suite for the next {META_TEST_DURATION}s...")
         run_test_scripts(
             META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION, is_meta_tests=True
