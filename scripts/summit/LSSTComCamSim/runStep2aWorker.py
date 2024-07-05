@@ -29,44 +29,50 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
 
-workerName = os.getenv("WORKER_NAME")  # when using statefulSets
-if workerName:
-    workerNum = int(workerName.split("-")[-1])
-    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
-else:
-    workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f"Found WORKER_NUMBER={workerNum} in the env")
-    if not workerNum:
-        if len(sys.argv) < 2:
-            print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
-            sys.exit(1)
-        workerNum = int(sys.argv[2])
+def main(workerNum: int):
+    setupLogging()
 
-workerNum = int(workerNum)
+    queueName = f"STEP2A-WORKER-{workerNum:02}"
+    print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-queueName = f"STEP2A-WORKER-{workerNum:02}"
-print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
+    locationConfig = getAutomaticLocationConfig()
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        collections=[
+            "LSSTComCamSim/defaults",
+        ],
+        writeable=True,
+    )
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,
-)
+    step2aRunner = SingleCorePipelineRunner(
+        butler=butler,
+        locationConfig=locationConfig,
+        instrument=instrument,
+        pipeline=locationConfig.sfmPipelineFile,
+        step="step2a",
+        awaitsDataProduct=None,
+        doRaise=getDoRaise(),
+        queueName=queueName,
+    )
+    step2aRunner.run()
+    sys.exit(1)  # run is an infinite loop, so we should never get here
 
-step2aRunner = SingleCorePipelineRunner(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument=instrument,
-    pipeline=locationConfig.sfmPipelineFile,
-    step="step2a",
-    awaitsDataProduct=None,
-    doRaise=getDoRaise(),
-    queueName=queueName,
-)
-step2aRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+
+if __name__ == '__main__':
+    workerName = os.getenv("WORKER_NAME")  # when using statefulSets
+    if workerName:
+        workerNum: str | None = workerName.split("-")[-1]
+        print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
+    else:
+        # here for *forward* compatibility for next Kubernetes release
+        workerNum: str | None = os.getenv("WORKER_NUMBER")
+        print(f"Found WORKER_NUMBER={workerNum} in the env")
+        if not workerNum:
+            if len(sys.argv) < 2:
+                print("Must supply worker number either as WORKER_NUMBER env var"
+                      " or as a command line argument")
+                sys.exit(1)
+            workerNum = sys.argv[2]
+    iWorkerNum = int(workerNum)
+    main(workerNum=iWorkerNum)

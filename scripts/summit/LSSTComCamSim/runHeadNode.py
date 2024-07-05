@@ -28,25 +28,30 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running {instrument} head node at {location}...")
+
+def main(location: str = "summit"):
+    setupLogging()
+    locationConfig = LocationConfig(location)
+    print(f"Running {instrument} head node at {location}...")
+
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        instrument=instrument,
+        collections=[
+            "LSSTComCamSim/defaults",
+        ],
+        writeable=True,  # needed for defineVisits
+    )
+
+    controller = HeadProcessController(
+        butler=butler,
+        instrument=instrument,
+        locationConfig=locationConfig,
+        pipelineFile=locationConfig.sfmPipelineFile,
+    )
+    controller.run()
 
 
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    instrument=instrument,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,  # needed for defineVisits
-)
-
-controller = HeadProcessController(
-    butler=butler,
-    instrument=instrument,
-    locationConfig=locationConfig,
-    pipelineFile=locationConfig.sfmPipelineFile,
-)
-controller.run()
+if __name__ == '__main__':
+    location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+    main(location)

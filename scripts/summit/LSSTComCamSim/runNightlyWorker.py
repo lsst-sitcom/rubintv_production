@@ -29,44 +29,49 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
 
-workerName = os.getenv("WORKER_NAME")  # when using statefulSets
-if workerName:
-    workerNum = int(workerName.split("-")[-1])
-    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
-else:
-    workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f"Found WORKER_NUMBER={workerNum} in the env")
-    if not workerNum:
-        if len(sys.argv) < 2:
-            print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
-            sys.exit(1)
-        workerNum = int(sys.argv[2])
+def main(workerNum: int):
+    setupLogging()
+    queueName = f"NIGHTLYROLLUP-WORKER-{workerNum:02}"
+    print(f"Running nightly rollup worker {workerNum}, queueName={queueName}")
 
-workerNum = int(workerNum)
+    locationConfig = getAutomaticLocationConfig()
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        collections=[
+            "LSSTComCamSim/defaults",
+        ],
+        writeable=True,
+    )
 
-queueName = f"NIGHTLYROLLUP-WORKER-{workerNum:02}"
-print(f"Running nightly rollup worker {workerNum}, queueName={queueName}")
+    rollupRunner = SingleCorePipelineRunner(
+        butler=butler,
+        locationConfig=locationConfig,
+        instrument=instrument,
+        pipeline=locationConfig.sfmPipelineFile,
+        step="nightlyRollup",
+        awaitsDataProduct=None,
+        doRaise=getDoRaise(),
+        queueName=queueName,
+    )
+    rollupRunner.run()
+    sys.exit(1)  # run is an infinite loop, so we should never get here
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,
-)
 
-rollupRunner = SingleCorePipelineRunner(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument=instrument,
-    pipeline=locationConfig.sfmPipelineFile,
-    step="nightlyRollup",
-    awaitsDataProduct=None,
-    doRaise=getDoRaise(),
-    queueName=queueName,
-)
-rollupRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+if __name__ == '__main__':
+    workerName = os.getenv("WORKER_NAME")  # when using statefulSets
+    if workerName:
+        workerNum = workerName.split("-")[-1]
+        print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
+    else:
+        # here for *forward* compatibility for next Kubernetes release
+        workerNum = os.getenv("WORKER_NUMBER")  
+        print(f"Found WORKER_NUMBER={workerNum} in the env")
+        if not workerNum:
+            if len(sys.argv) < 2:
+                print("Must supply worker number either as WORKER_NUMBER env var or as a"
+                      " command line argument")
+                sys.exit(1)
+            workerNum = sys.argv[2]
+    workerNum = int(workerNum)
+    main(workerNum)

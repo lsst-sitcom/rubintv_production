@@ -25,22 +25,28 @@ from lsst.rubintv.production.metadataServers import TimedMetadataServer
 from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
-checkRubinTvExternalPackages()
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running ComCamSim AOS metadata server at {location}...")
+def main(location: str = "summit"):
+    setupLogging()
+    checkRubinTvExternalPackages()
 
-metadataDirectory = locationConfig.comCamSimAosMetadataPath
-shardsDirectory = locationConfig.comCamSimAosMetadataShardPath
-channelName = "comcam_sim_aos_metadata"
+    locationConfig = LocationConfig(location)
+    print(f"Running ComCamSim AOS metadata server at {location}...")
 
-metadataServer = TimedMetadataServer(
-    locationConfig=locationConfig,
-    metadataDirectory=metadataDirectory,
-    shardsDirectory=shardsDirectory,
-    channelName=channelName,
-    doRaise=getDoRaise(),
-)
-metadataServer.run()
+    metadataDirectory = locationConfig.comCamSimAosMetadataPath
+    shardsDirectory = locationConfig.comCamSimAosMetadataShardPath
+    channelName = "comcam_sim_aos_metadata"
+
+    metadataServer = TimedMetadataServer(
+        locationConfig=locationConfig,
+        metadataDirectory=metadataDirectory,
+        shardsDirectory=shardsDirectory,
+        channelName=channelName,
+        doRaise=getDoRaise(),
+    )
+    metadataServer.run()
+
+
+if __name__ == '__main__':
+    location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+    main(location)

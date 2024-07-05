@@ -26,30 +26,34 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    instrument=instrument,
-    writeable=True,
-)
-print(f"Running donut launcher at {locationConfig.location}")
+def main():
+    locationConfig = getAutomaticLocationConfig()
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        collections=[
+            "LSSTComCamSim/defaults",
+        ],
+        instrument=instrument,
+        writeable=True,
+    )
+    print(f"Running donut launcher at {locationConfig.location}")
 
-inputCollection = "LSSTComCamSim/defaults"
-outputCollection = "u/saluser/ra_wep_testing3"
-pipelineFile = "/project/rubintv/temp/donut_pipeline.yaml"
-queueName = "LSSTComCamSim-FROM-OCS_DONUTPAIR"
-donutLauncher = DonutLauncher(
-    butler=butler,
-    locationConfig=locationConfig,
-    inputCollection=inputCollection,
-    outputCollection=outputCollection,
-    pipelineFile=pipelineFile,
-    queueName=queueName,
-    metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
-)
-donutLauncher.run()
+    inputCollection = "LSSTComCamSim/defaults"
+    outputCollection = "u/saluser/ra_wep_testing3"
+    pipelineFile = "/project/rubintv/temp/donut_pipeline.yaml"
+    queueName = "LSSTComCamSim-FROM-OCS_DONUTPAIR"
+    donutLauncher = DonutLauncher(
+        butler=butler,
+        locationConfig=locationConfig,
+        inputCollection=inputCollection,
+        outputCollection=outputCollection,
+        pipelineFile=pipelineFile,
+        queueName=queueName,
+        metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
+    )
+    donutLauncher.run()
+
+
+if __name__ == '__main__':
+    main()

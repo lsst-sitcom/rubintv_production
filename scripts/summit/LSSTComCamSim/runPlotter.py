@@ -26,20 +26,26 @@ from lsst.rubintv.production.slac.newPlotting import Plotter
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-queueName = "MOSAIC-WORKER-00"
-print(f"Running LSSTComCamSim plotter at {location}, consuming from {queueName}")
+def main(location: str = "summit"):
+    setupLogging()
 
-locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
-plotter = Plotter(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument="LSSTComCamSim",
-    queueName=queueName,
-    doRaise=getDoRaise(),
-)
+    queueName = "MOSAIC-WORKER-00"
+    print(f"Running LSSTComCamSim plotter at {location}, consuming from {queueName}")
 
-plotter.run()
+    locationConfig = LocationConfig(location)
+    butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+    plotter = Plotter(
+        butler=butler,
+        locationConfig=locationConfig,
+        instrument="LSSTComCamSim",
+        queueName=queueName,
+        doRaise=getDoRaise(),
+    )
+
+    plotter.run()
+
+
+if __name__ == '__main__':
+    location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+    main(location)

@@ -26,23 +26,29 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-        "LSSTComCamSim/quickLook",
-    ],
-)
-print(f"Running focus sweep plotter at {locationConfig.location}")
+def main():
+    setupLogging()
 
-queueName = "LSSTComCamSim-FROM-OCS_FOCUSSWEEP"
-focusSweepAnalyzer = FocusSweepAnalysis(
-    butler=butler,
-    locationConfig=locationConfig,
-    queueName=queueName,
-    metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
-)
-focusSweepAnalyzer.run()
+    locationConfig = getAutomaticLocationConfig()
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        collections=[
+            "LSSTComCamSim/defaults",
+            "LSSTComCamSim/quickLook",
+        ],
+    )
+    print(f"Running focus sweep plotter at {locationConfig.location}")
+
+    queueName = "LSSTComCamSim-FROM-OCS_FOCUSSWEEP"
+    focusSweepAnalyzer = FocusSweepAnalysis(
+        butler=butler,
+        locationConfig=locationConfig,
+        queueName=queueName,
+        metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
+    )
+    focusSweepAnalyzer.run()
+
+
+if __name__ == '__main__':
+    main()

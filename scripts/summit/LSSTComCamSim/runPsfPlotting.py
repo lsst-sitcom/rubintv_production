@@ -26,22 +26,28 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-        "LSSTComCamSim/quickLook",
-    ],
-)
-print(f"Running psf plotter launcher at {locationConfig.location}")
+def main():
+    setupLogging()
 
-queueName = "LSSTComCamSim-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(
-    butler=butler,
-    locationConfig=locationConfig,
-    queueName=queueName,
-)
-psfPlotter.run()
+    locationConfig = getAutomaticLocationConfig()
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        collections=[
+            "LSSTComCamSim/defaults",
+            "LSSTComCamSim/quickLook",
+        ],
+    )
+    print(f"Running psf plotter launcher at {locationConfig.location}")
+
+    queueName = "LSSTComCamSim-PSFPLOTTER"
+    psfPlotter = PsfAzElPlotter(
+        butler=butler,
+        locationConfig=locationConfig,
+        queueName=queueName,
+    )
+    psfPlotter.run()
+
+
+if __name__ == '__main__':
+    main()

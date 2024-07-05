@@ -29,46 +29,52 @@ from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
-setupLogging()
 
-workerName = os.getenv("WORKER_NAME")  # when using statefulSets
-if workerName:
-    workerNum = int(workerName.split("-")[-1])
-    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
-else:
-    workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f"Found WORKER_NUMBER={workerNum} in the env")
-    if not workerNum:
-        if len(sys.argv) < 3:
-            print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
-            sys.exit(1)
-        workerNum = int(sys.argv[2])
+def main(workerNum: int):
+    setupLogging()
 
-workerNum = int(workerNum)
+    detectorNum = workerNum % 9
+    detectorDepth = workerNum // 9
+    queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
 
-detectorNum = workerNum % 9
-detectorDepth = workerNum // 9
-queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
+    locationConfig = getAutomaticLocationConfig()
+    butler = dafButler.Butler(
+        locationConfig.comCamButlerPath,
+        collections=[
+            "LSSTComCamSim/defaults",
+        ],
+        writeable=True,
+    )
 
-locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,
-)
+    print(f"Running sfmRunner for worker {workerNum}, queueName={queueName} at {locationConfig.location}")
 
-print(f"Running sfmRunner for worker {workerNum}, queueName={queueName} at {locationConfig.location}")
+    sfmRunner = SingleCorePipelineRunner(
+        butler=butler,
+        locationConfig=locationConfig,
+        instrument=instrument,
+        pipeline=locationConfig.sfmPipelineFile,
+        step="step1",
+        awaitsDataProduct="raw",
+        doRaise=getDoRaise(),
+        queueName=queueName,
+    )
+    sfmRunner.run()
 
-sfmRunner = SingleCorePipelineRunner(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument=instrument,
-    pipeline=locationConfig.sfmPipelineFile,
-    step="step1",
-    awaitsDataProduct="raw",
-    doRaise=getDoRaise(),
-    queueName=queueName,
-)
-sfmRunner.run()
+
+if __name__ == '__main__':
+    workerName = os.getenv("WORKER_NAME")  # when using statefulSets
+    if workerName:
+        workerNum = workerName.split("-")[-1]
+        print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
+    else:
+        # here for *forward* compatibility for next Kubernetes release
+        workerNum = os.getenv("WORKER_NUMBER") 
+        print(f"Found WORKER_NUMBER={workerNum} in the env")
+        if not workerNum:
+            if len(sys.argv) < 3:
+                print("Must supply worker number either as WORKER_NUMBER env var "
+                      "or as a command line argument")
+                sys.exit(1)
+            workerNum = sys.argv[2]
+    workerNum = int(workerNum)
+    main(workerNum)

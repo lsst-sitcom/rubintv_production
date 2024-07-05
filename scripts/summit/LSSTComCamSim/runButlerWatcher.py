@@ -26,18 +26,24 @@ from lsst.rubintv.production import ButlerWatcher
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-print(f"Running ComCam butler watcher at {location}...")
 
-locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
-writeDimensionUniverseFile(butler, locationConfig)
-butlerWatcher = ButlerWatcher(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument="LSSTComCamSim",
-    dataProducts="raw",
-    doRaise=getDoRaise(),
-)
-butlerWatcher.run()
+def main(location: str = "summit"):
+    setupLogging()
+    print(f"Running ComCam butler watcher at {location}...")
+
+    locationConfig = LocationConfig(location)
+    butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+    writeDimensionUniverseFile(butler, locationConfig)
+    butlerWatcher = ButlerWatcher(
+        butler=butler,
+        locationConfig=locationConfig,
+        instrument="LSSTComCamSim",
+        dataProducts="raw",
+        doRaise=getDoRaise(),
+    )
+    butlerWatcher.run()
+
+
+if __name__ == '__main__':
+    location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+    main(location)

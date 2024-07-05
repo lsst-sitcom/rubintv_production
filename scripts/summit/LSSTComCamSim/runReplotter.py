@@ -26,16 +26,22 @@ from lsst.rubintv.production.slac import Replotter
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
-print("Running ComCamSim replotter...")
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
-plotter = Replotter(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument="LSSTComCamSim",
-    doRaise=getDoRaise(),
-)
-plotter.run()
+def main(location: str = "summit"):
+    setupLogging()
+    print("Running ComCamSim replotter...")
+
+    locationConfig = LocationConfig(location)
+    butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+    plotter = Replotter(
+        butler=butler,
+        locationConfig=locationConfig,
+        instrument="LSSTComCamSim",
+        doRaise=getDoRaise(),
+    )
+    plotter.run()
+
+
+if __name__ == '__main__':
+    location = "summit" if len(sys.argv) < 2 else sys.argv[1]
+    main()
