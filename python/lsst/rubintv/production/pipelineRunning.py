@@ -271,7 +271,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     visit = f"{payload.dataId['visit']}"
                 else:
                     visit = f"{payload.dataId['exposure']}"
-                self.watcher.redisHelper.redis.lpush("LSSTComCamSim-PSFPLOTTER", visit)
+                self.watcher.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", visit)
             if self.step == "nightlyRollup":
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
 

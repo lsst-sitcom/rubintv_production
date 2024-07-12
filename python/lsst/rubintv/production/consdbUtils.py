@@ -224,7 +224,7 @@ class ConsDBPopulator:
     def populateVisitRow(
         self, visitSummary: ExposureCatalog, instrument: str, allowUpdate: bool = False
     ) -> None:
-        schema = self.client.schema("lsstcomcamsim", "visit1_quicklook")
+        schema = self.client.schema(instrument.lower(), "visit1_quicklook")
         schema = cast(dict[str, tuple[str, str]], schema)
         typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
 
