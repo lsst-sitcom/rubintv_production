@@ -27,7 +27,7 @@ from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print("Running ComCamSim replotter...")
+print("Running ComCam replotter...")
 
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
