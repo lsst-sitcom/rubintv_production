@@ -311,7 +311,7 @@ class HeadProcessController:
             return lastRun
 
         allRunNums = [int(run.removeprefix(self.outputChain + "/")) for run in allRuns]
-        lastRunNum = max(allRunNums)
+        lastRunNum = max(allRunNums) if allRunNums else 0
         lastRun = f"{self.outputChain}/{lastRunNum}"
 
         if forceNewRun or self.checkIfNewRunNeeded(lastRun, packages):
