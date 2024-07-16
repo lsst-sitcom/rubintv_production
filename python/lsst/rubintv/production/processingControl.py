@@ -30,7 +30,7 @@ import numpy as np
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.ctrl.mpexec import TaskFactory
-from lsst.daf.butler import CollectionType, DataCoordinate, MissingCollectionError
+from lsst.daf.butler import CollectionType, DataCoordinate, MissingCollectionError, DatasetNotFoundError
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
@@ -340,7 +340,10 @@ class HeadProcessController:
         notebook users always set a manual outputChain and don't squat on
         quickLook this is sufficient.
         """
-        oldPackages = self.butler.get("packages", collections=[lastRun])
+        try:
+            oldPackages = self.butler.get("packages", collections=[lastRun])
+        except DatasetNotFoundError:  # for bootstrapping a new collection
+            return False
         if packages.difference(oldPackages):  # checks if any of the versions are different
             return True
         return False
