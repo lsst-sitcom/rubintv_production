@@ -19,11 +19,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
+import logging
+import signal
 import sys
 
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
 from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
+
+_log = logging.getLogger()
+
+
+class SignalHandler:
+    def __init__(self, core_runner: TimedMetadataServer):
+        self._core_runner = core_runner
+
+    def handler(self, signum, frame):
+        _log.info(f"Received signal {signum}")
+        if signum == signal.SIGTERM:
+            _log.info("Stopping core runner")
+            self._core_runner.stop()
 
 
 def main(location: str = "summit"):
@@ -44,6 +60,8 @@ def main(location: str = "summit"):
         channelName=channelName,
         doRaise=getDoRaise(),
     )
+    handler_instance = SignalHandler(metadataServer)
+    signal.signal(signal.SIGTERM, handler_instance.handler)
     metadataServer.run()
 
 

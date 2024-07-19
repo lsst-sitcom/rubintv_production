@@ -19,7 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import os
+import signal
 import sys
 
 import lsst.daf.butler as dafButler
@@ -27,7 +29,20 @@ from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
+
 instrument = "LSSTComCamSim"
+_log = logging.getLogger()
+
+
+class SignalHandler:
+    def __init__(self, core_runner: SingleCorePipelineRunner):
+        self._core_runner = core_runner
+
+    def handler(self, signum, frame):
+        _log.info(f"Received signal {signum}")
+        if signum == signal.SIGTERM:
+            _log.info("Stopping core runner")
+            self._core_runner.stop()
 
 
 def main(workerNum: int):
@@ -54,6 +69,8 @@ def main(workerNum: int):
         doRaise=getDoRaise(),
         queueName=queueName,
     )
+    handler_instance = SignalHandler(rollupRunner)
+    signal.signal(signal.SIGTERM, handler_instance.handler)
     rollupRunner.run()
     sys.exit(1)  # run is an infinite loop, so we should never get here
 

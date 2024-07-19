@@ -19,12 +19,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
+import signal
 import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production import ButlerWatcher
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
+
+_log = logging.getLogger()
+
+
+class SignalHandler:
+    def __init__(self, core_runner: ButlerWatcher):
+        self._core_runner = core_runner
+
+    def handler(self, signum, frame):
+        _log.info(f"Received signal {signum}")
+        if signum == signal.SIGTERM:
+            _log.info("Stopping core runner")
+            self._core_runner.stop()
 
 
 def main(location: str = "summit"):
@@ -41,6 +56,8 @@ def main(location: str = "summit"):
         dataProducts="raw",
         doRaise=getDoRaise(),
     )
+    handler_instance = SignalHandler(butlerWatcher)
+    signal.signal(signal.SIGTERM, handler_instance.handler)
     butlerWatcher.run()
 
 

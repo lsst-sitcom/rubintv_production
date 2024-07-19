@@ -19,12 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
+import signal
 import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.slac.newPlotting import Plotter
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
+
+
+_log = logging.getLogger()
+
+
+class SignalHandler:
+    def __init__(self, core_runner: Plotter):
+        self._core_runner = core_runner
+
+    def handler(self, signum, frame):
+        _log.info(f"Received signal {signum}")
+        if signum == signal.SIGTERM:
+            _log.info("Stopping core runner")
+            self._core_runner.stop()
 
 
 def main(location: str = "summit"):
@@ -42,7 +58,8 @@ def main(location: str = "summit"):
         queueName=queueName,
         doRaise=getDoRaise(),
     )
-
+    handler_instance = SignalHandler(plotter)
+    signal.signal(signal.SIGTERM, handler_instance.handler)
     plotter.run()
 
 

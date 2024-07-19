@@ -19,12 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
+import signal
+
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.aos import FocusSweepAnalysis
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
+
 instrument = "LSSTComCamSim"
+_log = logging.getLogger()
+
+
+class SignalHandler:
+    def __init__(self, core_runner: FocusSweepAnalysis):
+        self._core_runner = core_runner
+
+    def handler(self, signum, frame):
+        _log.info(f"Received signal {signum}")
+        if signum == signal.SIGTERM:
+            _log.info("Stopping core runner")
+            self._core_runner.stop()
 
 
 def main():
@@ -47,6 +63,8 @@ def main():
         queueName=queueName,
         metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
     )
+    handler_instance = SignalHandler(focusSweepAnalyzer)
+    signal.signal(signal.SIGTERM, handler_instance.handler)
     focusSweepAnalyzer.run()
 
 

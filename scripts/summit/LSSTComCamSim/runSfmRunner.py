@@ -19,15 +19,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import os
 import sys
+import signal
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
+
 instrument = "LSSTComCamSim"
+_log = logging.getLogger()
+
+
+class SignalHandler:
+    def __init__(self, core_runner: SingleCorePipelineRunner):
+        self._core_runner = core_runner
+
+    def handler(self, signum, frame):
+        _log.info(f"Received signal {signum}")
+        if signum == signal.SIGTERM:
+            _log.info("Stopping core runner")
+            self._core_runner.stop()
 
 
 def main(workerNum: int):
@@ -58,17 +73,19 @@ def main(workerNum: int):
         doRaise=getDoRaise(),
         queueName=queueName,
     )
+    handler_instance = SignalHandler(sfmRunner)
+    signal.signal(signal.SIGTERM, handler_instance.handler)
     sfmRunner.run()
 
 
 if __name__ == '__main__':
     workerName = os.getenv("WORKER_NAME")  # when using statefulSets
     if workerName:
-        workerNum = workerName.split("-")[-1]
+        workerNum: str | None = workerName.split("-")[-1]
         print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
     else:
         # here for *forward* compatibility for next Kubernetes release
-        workerNum = os.getenv("WORKER_NUMBER") 
+        workerNum = os.getenv("WORKER_NUMBER")
         print(f"Found WORKER_NUMBER={workerNum} in the env")
         if not workerNum:
             if len(sys.argv) < 3:
@@ -76,5 +93,6 @@ if __name__ == '__main__':
                       "or as a command line argument")
                 sys.exit(1)
             workerNum = sys.argv[2]
-    workerNum = int(workerNum)
-    main(workerNum)
+    assert workerNum is not None
+    iWorkerNum = int(workerNum)
+    main(iWorkerNum)
