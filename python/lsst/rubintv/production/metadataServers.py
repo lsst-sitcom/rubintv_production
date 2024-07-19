@@ -87,6 +87,7 @@ class TimedMetadataServer:
         if not os.path.isdir(self.metadataDirectory):
             # created by the LocationConfig init so this should be impossible
             raise RuntimeError(f"Failed to find/create {self.metadataDirectory}")
+        self._out = False
 
     def mergeShardsAndUpload(self):
         """Merge all the shards in the shard directory into their respective
@@ -190,8 +191,13 @@ class TimedMetadataServer:
 
     def run(self):
         """Run continuously, looking for metadata and uploading."""
-        while True:
+        while not self._out:
             self.callback()
             if self.heartbeater is not None:
                 self.heartbeater.beat()
             sleep(self.cadence)
+
+    def stop(self):
+        """
+        """
+        self._out = True

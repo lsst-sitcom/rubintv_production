@@ -78,6 +78,11 @@ class BaseChannel(ABC):
         """
         self.watcher.run(self.callback)
 
+    def stop(self):
+        """
+        """
+        self.watcher.stop()
+
 
 class BaseButlerChannel(BaseChannel):
     """Base class for all channels that use a Butler.

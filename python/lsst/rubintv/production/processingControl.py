@@ -291,6 +291,7 @@ class HeadProcessController:
 
         self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)
         self.log.info(f"Head node ready. Data will be writen data to {self.outputRun}")
+        self._out = False
 
     def getLatestRunAndPrep(self, forceNewRun):
         packages = Packages.fromSystem()
@@ -606,7 +607,7 @@ class HeadProcessController:
     def run(self):
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
-        while True:
+        while not self._out:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.name, 5)
 
@@ -641,6 +642,11 @@ class HeadProcessController:
             self.repattern()
 
             self.regulateLoopSpeed()
+
+    def close(self):
+        """
+        """
+        self._out = True
 
 
 class RemoteController:

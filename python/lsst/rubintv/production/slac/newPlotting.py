@@ -183,7 +183,6 @@ class Plotter:
             How to wait for data products to land before giving up and plotting
             what we have.
         """
-        self.log.info("#############Inside Callback!")
         dataId = payload.dataId
         dataProduct = payload.run  # TODO: this really needs improving
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
@@ -214,3 +213,10 @@ class Plotter:
         expRecord.
         """
         self.watcher.run(self.callback)
+
+    def close(self):
+        try:
+            plt.close(self.fig)
+            self.watcher.close()
+        except Exception as e:
+            self.log.exception(f"Error ! {e}")

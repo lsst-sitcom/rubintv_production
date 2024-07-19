@@ -30,6 +30,7 @@ import tempfile
 import threading
 from time import sleep, time
 
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from lsst.daf.butler import DatasetNotFoundError
@@ -135,6 +136,7 @@ class DonutLauncher:
 
         self.runningProcesses = {}  # dict of running processes keyed by PID
         self.lock = threading.Lock()
+        self._out = False
 
     def checkSetup(self):
         try:
@@ -239,7 +241,7 @@ class DonutLauncher:
         lastLogTime = time()
         logInterval = 10
 
-        while True:
+        while not self._out:
             exposurePairBytes = self.redisHelper.redis.lpop(self.queueName)
             if exposurePairBytes is not None:
                 self.launchDonutProcessing(exposurePairBytes)
@@ -255,6 +257,9 @@ class DonutLauncher:
                 else:
                     self.log.info(f"Waiting for donut exposure arrival at {self.queueName}")
                 lastLogTime = currentTime
+
+    def stop(self):
+        self._out = True
 
 
 class PsfAzElPlotter:
@@ -287,6 +292,7 @@ class PsfAzElPlotter:
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.uploader = MultiUploader()
         self.fig, self.axes = makeFigureAndAxes()
+        self._out = False
 
     def makePlot(self, visitId):
         """Extract the exposure IDs from the byte string.
@@ -344,7 +350,7 @@ class PsfAzElPlotter:
 
     def run(self):
         """Start the event loop, listening for data and launching plotting."""
-        while True:
+        while not self._out:
             visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
@@ -352,6 +358,12 @@ class PsfAzElPlotter:
                 self.makePlot(visitId)
             else:
                 sleep(0.5)
+
+    def stop(self):
+        """
+        """
+        plt.close(self.fig)
+        self._out = True
 
 
 class FocusSweepAnalysis:
@@ -389,6 +401,7 @@ class FocusSweepAnalysis:
         self.efdClient = makeEfdClient()
         self.fig = Figure(figsize=(12, 9))
         self.fig, self.axes = makeFigureAndAxes()
+        self._out = False
 
     def makePlot(self, visitIds):
         """Extract the exposure IDs from the byte string.
@@ -444,7 +457,7 @@ class FocusSweepAnalysis:
 
     def run(self):
         """Start the event loop, listening for data and launching plotting."""
-        while True:
+        while not self._out:
             visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdsBytes is not None:
                 visitIds = _extractExposureIds(visitIdsBytes, self.instrument)
@@ -452,3 +465,6 @@ class FocusSweepAnalysis:
                 self.makePlot(visitIds)
             else:
                 sleep(0.5)
+    
+    def stop(self):
+        self._out = True

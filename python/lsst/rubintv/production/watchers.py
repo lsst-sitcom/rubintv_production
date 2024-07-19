@@ -86,6 +86,7 @@ class FileWatcher:
         self.doRaise = doRaise
         self.log = _LOG.getChild("fileWatcher")
         self.heartbeatChannelName = heartbeatChannelName
+        self._out = False
         if heartbeatChannelName:
             self.heartbeater = Heartbeater(
                 heartbeatChannelName,
@@ -145,7 +146,7 @@ class FileWatcher:
             argument.
         """
         lastFound = None
-        while True:
+        while not self._out:
             try:
                 expRecord = self.getMostRecentExpRecord(lastFound)
                 if expRecord is None:  # either there is nothing, or it is the same expId
@@ -161,6 +162,11 @@ class FileWatcher:
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
+
+    def stop(self):
+        """
+        """
+        self._out = True
 
 
 class RedisWatcher:
@@ -180,6 +186,7 @@ class RedisWatcher:
         self.cadence = 0.1  # seconds - this is fine, redis likes a beating
         self.log = _LOG.getChild("redisWatcher")
         self.payload = None
+        self._out = False
 
     def run(self, callback, **kwargs):
         """Run forever, calling ``callback`` on each most recent expRecord.
@@ -190,7 +197,7 @@ class RedisWatcher:
             The callback to run, with the most recent ``Payload`` as the
             argument.
         """
-        while True:
+        while not self._out:
             self.redisHelper.announceFree(self.queueName)
             self.redisHelper.butler.registry.refresh()  # make sure new calibs are picked up, takes 1.2ms
             payload = self.redisHelper.dequeuePayload(self.queueName)
@@ -206,6 +213,11 @@ class RedisWatcher:
                     self.redisHelper.announceFree(self.queueName)
             else:  # only sleep when no work is found
                 sleep(self.cadence)
+
+    def stop(self):
+        """
+        """
+        self._out = True
 
 
 class ButlerWatcher:
@@ -244,6 +256,7 @@ class ButlerWatcher:
         self.doRaise = doRaise
         self.log = _LOG.getChild("butlerWatcher")
         self.redisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
+        self._out = False
 
     def _getLatestExpRecords(self):
         """Get the most recent expRecords from the butler.
@@ -326,7 +339,7 @@ class ButlerWatcher:
             lastWrittenIds[product] = expRecord
             del fileWatcher
 
-        while True:
+        while not self._out:
             try:
                 # get the new records for all dataproducts
                 newRecords = self._getLatestExpRecords()
@@ -370,3 +383,8 @@ class ButlerWatcher:
             except Exception as e:
                 sleep(1)  # in case we are in a tight loop of raising, don't hammer the butler
                 raiseIf(self.doRaise, e, self.log)
+
+    def stop(self):
+        """
+        """
+        self._out = True

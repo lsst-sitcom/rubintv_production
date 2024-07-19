@@ -869,7 +869,7 @@ class Replotter(Plotter):
             name="noisePlot",
         )
 
-        while True:
+        while not self._out:
             for workload in [workload1, workload2]:
                 leftovers = workload.finderFunction()
                 if not leftovers:
@@ -906,6 +906,11 @@ class Replotter(Plotter):
                             os.remove(f)
 
             sleep(10)  # this need not be very aggressive
+
+    def stop(self):
+        """
+        """
+        self._out = True
 
     def getDayObsSeqNumTuplesFromFiles(self, files):
         """Get the unique dayObs and seqNum tuples from a list of files.
