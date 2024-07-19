@@ -1,6 +1,6 @@
 # import sys
 import time
-
+import sys
 t0 = time.time()
 
 import lsst.daf.butler as dafButler  # noqa: E402
@@ -38,6 +38,7 @@ def main():
     # this is what the butlerWatcher does for each new record
     redisHelper.pushNewExposureToHeadNode(record)
     redisHelper.pushToButlerWatcherList(instrument, record)
+    sys.exit(0)
 
 
 if __name__ == '__main__':
