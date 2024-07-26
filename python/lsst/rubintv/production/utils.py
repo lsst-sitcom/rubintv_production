@@ -478,7 +478,6 @@ class LocationConfig:
     @cached_property
     def comCamButlerPath(self):
         file = self._config["comCamButlerPath"]
-        # self._checkFile(file)
         return file
 
     @cached_property

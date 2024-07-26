@@ -8,5 +8,5 @@ class TestClass:
             "addr": "127.0.0.1",
         }
         if connection != remoteConnection:
-            raise RuntimeError("Failed to collect debug connectio in imported class")
+            raise RuntimeError("Failed to collect debug connection in imported class")
         return True

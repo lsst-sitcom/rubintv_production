@@ -347,7 +347,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.watcher.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
-        try:  # TODO: remove the try once this is known to work
+        try:
+            # TODO: DM-45438 either have NV write to a different table or have
+            # it know where this is running and stop attempting this write at
+            # USDF.
             summaryStats = exp.getInfo().getSummaryStats()
             (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
             detectorNum = exp.getDetector().getId()
@@ -392,7 +395,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)
-        try:  # TODO: remove the try once this is known to work
+        try:
+            # TODO: DM-45438 either have NV write to a different table or have
+            # it know where this is running and stop attempting this write at
+            # USDF.
             self.consDBPopulator.populateVisitRow(vs, self.instrument)
             self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:

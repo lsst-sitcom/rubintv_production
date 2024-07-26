@@ -210,6 +210,9 @@ class DonutLauncher:
         command = [
             # stop black messing this section up
             # fmt: off
+            # TODO: DM-45436 break this down into three commands to save
+            # hammering the butler. May well be moot though, as noted on the
+            # ticket.
             "pipetask", "run",
             "-j", str(self.numCoresToUse),
             "-b", self.repo,
@@ -255,7 +258,7 @@ class DonutLauncher:
 
 
 class PsfAzElPlotter:
-    """
+    """The PsfAzElPlotter, for automatically plotting PSF shape in Az/El.
 
     Parameters
     ----------
@@ -325,6 +328,7 @@ class PsfAzElPlotter:
 
         table = makeTableFromSourceCatalogs(icSrcDict, visitInfo)
 
+        # TODO: DM-45437 Use a context manager here and everywhere
         tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
         self.axes = self.fig.subplots(nrows=2, ncols=2)
@@ -351,7 +355,7 @@ class PsfAzElPlotter:
 
 
 class FocusSweepAnalysis:
-    """
+    """The FocusSweepAnalysis, for automatically plotting focus sweep data.
 
     Parameters
     ----------

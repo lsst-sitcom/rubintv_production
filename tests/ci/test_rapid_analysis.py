@@ -472,8 +472,8 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
             err_msg = f"You can only interactively debug one script at a time! Attempted:\n{script_string}"
             raise RuntimeError(err_msg)
         print("\n\n⚠️ ⚠️ INTERACTIVE SCRIPT DEBUG MODE ENABLED ⚠️ ⚠️")
-        print("     tests will continue until killed maually\n\n")
-        timeout = 9999999  # keeping thigns alive forever when debugging
+        print("     tests will continue until killed manually\n\n")
+        timeout = 9999999  # keeping things alive forever when debugging
 
     for script in scripts:
         p = multiprocessing.Process(target=exec_script, args=(script, output_queue))

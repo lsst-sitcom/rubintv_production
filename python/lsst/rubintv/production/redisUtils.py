@@ -527,9 +527,9 @@ class RedisHelper:
         obsId : `int`
             The obsId that was used in the consDbClient.insert() call.
         """
-        # The call to .lower() is because consDB if all lower case, and we
-        # don't want to be sensitive to table capitization or regular butler
-        # instrument name capitilisation.
+        # The call to .lower() is because consDB is all lower case, and we
+        # don't want to be sensitive to table capitalization or regular butler
+        # instrument name capitalization.
         key = f"consdb-{instrument}-{table}-{obsId}".lower()
         self.redis.lpush(key, 1)
         self.redis.expire(key, CONSDB_ANNOUNCE_EXPIRY_TIME)

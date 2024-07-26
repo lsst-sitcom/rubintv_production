@@ -42,6 +42,7 @@ from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
 from .redisUtils import RedisHelper
 
+# The mapping from ExposureSummaryStats columns to consDB columns
 CCD_VISIT_MAPPING = {
     "astromOffsetMean": "astrom_offset_mean",
     "astromOffsetStd": "astrom_offset_std",
@@ -63,7 +64,8 @@ CCD_VISIT_MAPPING = {
     "zeroPoint": "zero_point",
 }
 
-
+# The mapping from ExposureCatalog columns to consDB columns where
+# min/median/max are calculated
 VISIT_MIN_MED_MAX_MAPPING = {
     "effTime": "eff_time",
     "effTimePsfSigmaScale": "eff_time_psf_sigma_scale",
@@ -91,7 +93,8 @@ VISIT_MIN_MED_MAX_MAPPING = {
     "zeroPoint": "zero_point",
 }
 
-
+# The mapping from ExposureCatalog columns to consDB columns where
+# min/median/max are calculated as well as the total
 VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
     "nPsfStar": "n_psf_star",
 }
