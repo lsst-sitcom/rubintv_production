@@ -133,7 +133,7 @@ class DonutLauncher:
         self.checkSetup()
         self.numCoresToUse = 9
 
-        self.runningProcesses = []
+        self.runningProcesses = {}  # dict of running processes keyed by PID
         self.lock = threading.Lock()
 
     def checkSetup(self):
@@ -166,13 +166,13 @@ class DonutLauncher:
         start_time = time()
         process = subprocess.Popen(command, shell=False)
         with self.lock:
-            self.runningProcesses.append(process)
+            self.runningProcesses[process.pid] = process
         self.log.info(f"Process started with PID {process.pid}")
         retcode = process.wait()
         end_time = time()
         duration = end_time - start_time
         with self.lock:
-            self.runningProcesses.remove(process)
+            self.runningProcesses.pop(process.pid)
         if retcode != 0:
             self.log.error(f"Command failed with return code {retcode}")
         self.log.info(f"Command completed in {duration:.2f} seconds with return code {retcode}")
