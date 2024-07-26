@@ -68,12 +68,12 @@ class Plotter:
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
+        self.fig = None
         self.watcher = RedisWatcher(
             butler=butler,
             locationConfig=locationConfig,
             queueName=queueName,
         )
-        # self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
@@ -98,6 +98,8 @@ class Plotter:
         filename : `str`
             The filename the plot was saved to.
         """
+        if self.fig is None:
+            self.fig = plt.figure(figsize=(12, 12))
         expId = expRecord.id
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
@@ -214,9 +216,10 @@ class Plotter:
         """
         self.watcher.run(self.callback)
 
-    def close(self):
+    def stop(self):
         try:
-            plt.close(self.fig)
-            self.watcher.close()
+            self.watcher.stop()
+            if self.fig:
+                plt.close(self.fig)
         except Exception as e:
             self.log.exception(f"Error ! {e}")

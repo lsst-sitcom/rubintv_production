@@ -1,6 +1,7 @@
 import atexit
 import importlib
 import logging
+import matplotlib
 import multiprocessing
 import os
 import queue
@@ -56,7 +57,7 @@ REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 100  # How long to leave SFM to run for
+TEST_DURATION = 400  # How long to leave SFM to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -210,6 +211,7 @@ def exec_script(script_process_info: ScriptRunBaseInformation, out_queue, error_
         return_information = ScriptResultInformation(0, "timeout error", traceback.format_exc())
     except Exception as ex:
         print(f"Script {os.getpid()} exited with exception: {ex}")
+        logging.error(f"Script {os.getpid()} exited with exception: {ex}")
         return_information = ScriptResultInformation(exit_code=-1,
                                                      error_message=str(ex),
                                                      traceback=traceback.format_exc())
@@ -628,6 +630,7 @@ def check_meta_test_results(script_manager: ScriptManager):
 
 def main():
 
+    matplotlib.use('Agg')
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
     test_manager = TestManager()

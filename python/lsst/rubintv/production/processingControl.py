@@ -643,7 +643,7 @@ class HeadProcessController:
 
             self.regulateLoopSpeed()
 
-    def close(self):
+    def stop(self):
         """
         """
         self._out = True

@@ -61,6 +61,7 @@ def main(location: str = "summit"):
     handler_instance = SignalHandler(plotter)
     signal.signal(signal.SIGTERM, handler_instance.handler)
     plotter.run()
+    sys.exit(0)
 
 
 if __name__ == '__main__':

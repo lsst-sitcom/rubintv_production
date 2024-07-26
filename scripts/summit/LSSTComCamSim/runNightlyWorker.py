@@ -72,7 +72,7 @@ def main(workerNum: int):
     handler_instance = SignalHandler(rollupRunner)
     signal.signal(signal.SIGTERM, handler_instance.handler)
     rollupRunner.run()
-    sys.exit(1)  # run is an infinite loop, so we should never get here
+    sys.exit(0)
 
 
 if __name__ == '__main__':

@@ -76,6 +76,7 @@ def main(workerNum: int):
     handler_instance = SignalHandler(sfmRunner)
     signal.signal(signal.SIGTERM, handler_instance.handler)
     sfmRunner.run()
+    sys.exit(0)
 
 
 if __name__ == '__main__':
