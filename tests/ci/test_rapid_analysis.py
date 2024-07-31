@@ -58,35 +58,35 @@ DEBUG = False
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
-    TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["slac_testing"]),
+    TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["usdf_testing"]),
     TestScript(
         "scripts/summit/LSSTComCamSim/runStep2aWorker.py",
-        ["slac_testing", "0"],
+        ["usdf_testing", "0"],
         tee_output=True,
     ),
-    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["slac_testing", "0"], tee_output=True),
+    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
     TestScript(
         "scripts/summit/LSSTComCamSim/runSfmRunner.py",
-        ["slac_testing", "0"],
+        ["usdf_testing", "0"],
         display_on_pass=True,
         tee_output=True,
     ),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "1"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "2"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "3"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "4"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "5"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "6"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "7"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["slac_testing", "8"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "1"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "2"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "3"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "4"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "5"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "6"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "7"]),
+    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "8"]),
     TestScript(
         "scripts/summit/LSSTComCamSim/runHeadNode.py",
-        ["slac_testing"],
+        ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
         tee_output=True,
         display_on_pass=True,
     ),
-    TestScript("tests/ci/drip_feed_data.py", ["slac_testing"], delay=0, display_on_pass=True),
+    TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
 ]
 
 TEST_SCRIPTS_ROUND_2 = [
@@ -95,7 +95,7 @@ TEST_SCRIPTS_ROUND_2 = [
     # drops into redis
     # XXX need to get this to actually run
     # XXX need to add check that this actually output to redis
-    TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["slac_testing"]),
+    TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["usdf_testing"]),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -119,7 +119,7 @@ YAML_FILES_TO_CHECK = [
     # "config/config_tts.yaml",
     "config/config_summit.yaml",
     # "config/config_slac.yaml",
-    "config/config_slac_testing.yaml",
+    "config/config_usdf_testing.yaml",
 ]
 
 # --------------- code to make file paths full --------------- #
@@ -301,7 +301,7 @@ def run_setup():
     Sets env vars and starts redis, returning the process.
     """
     # set other env vars required for RA config
-    os.environ["RAPID_ANALYSIS_LOCATION"] = "slac_testing"
+    os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
 
     # Set environment variables for Redis
     os.environ["REDIS_HOST"] = REDIS_HOST
