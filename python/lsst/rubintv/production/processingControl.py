@@ -485,7 +485,7 @@ class HeadProcessController:
         for _id in allIds:
             isComplete = _id in completeIds
             dataCoord = DataCoordinate.standardize(
-                instrument=self.instrument, exposure=_id, universe=self.butler.dimensions
+                instrument=self.instrument, visit=_id, universe=self.butler.dimensions
             )
             if isComplete:
                 self.log.info(f"Dispatching {step} with complete inputs for {dataCoord}")

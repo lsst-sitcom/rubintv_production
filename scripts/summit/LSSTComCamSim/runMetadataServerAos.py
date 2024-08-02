@@ -21,32 +21,26 @@
 
 import sys
 
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.processingControl import HeadProcessController
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
-location = "slac" if len(sys.argv) < 2 else sys.argv[1]
+checkRubinTvExternalPackages()
+
+location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f"Running {instrument} head node at {location}...")
+print(f"Running ComCamSim AOS metadata server at {location}...")
 
+metadataDirectory = locationConfig.comCamSimAosMetadataPath
+shardsDirectory = locationConfig.comCamSimAosMetadataShardPath
+channelName = "comcam_sim_aos_metadata"
 
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    instrument=instrument,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,  # needed for defineVisits
-)
-
-controller = HeadProcessController(
-    butler=butler,
-    instrument=instrument,
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
-    pipelineFile=locationConfig.getSfmPipelineFile(instrument),
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+    doRaise=getDoRaise(),
 )
-controller.run()
+metadataServer.run()

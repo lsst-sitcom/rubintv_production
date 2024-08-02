@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = "RedisHelper"
+
+
 import json
 import logging
 import os
@@ -49,7 +52,7 @@ try:
 except (ImportError, NameError):
     pass
 
-__all__ = "RedisHelper"
+CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2
 
 
 def decode_string(value):
@@ -513,6 +516,71 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(queueName, expRecordJson)
 
+    def announceResultInConsDb(self, instrument, table, obsId):
+        """
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        table : `str`
+            The table name.
+        obsId : `int`
+            The obsId that was used in the consDbClient.insert() call.
+        """
+        # The call to .lower() is because consDB is all lower case, and we
+        # don't want to be sensitive to table capitalization or regular butler
+        # instrument name capitalization.
+        key = f"consdb-{instrument}-{table}-{obsId}".lower()
+        self.redis.lpush(key, 1)
+        self.redis.expire(key, CONSDB_ANNOUNCE_EXPIRY_TIME)
+
+    def waitForResultInConsdDb(self, instrument, table, obsId, timeout=None):
+        """Wait for an item to be available in consDB.
+
+        NB: this function is only appropriate for items less than 2 days old,
+        anything older than that should be assumed to be there, or not, but not
+        waited for.
+
+        This function blocks execution and waits for the data to land. It does
+        not retrieve the item, but simply provides the necessary wait for the
+        item to be available. The default timeout of ``None`` is an indefinite
+        wait.
+
+        If the result landed, ``True`` is returned, otherwise, if the timeout
+        elapsed, ``False`` is returned.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        table : `str`
+            The table name.
+        obsId : `int`
+            The obsId that was used in the consDbClient.insert() call.
+        timeout : `float`, optional
+            The maximum time to wait for the item to appear, in seconds. The
+            default of ``None`` is to wait indefinitely.
+
+        Return
+        ------
+        found : `bool`
+            Was the item found, or did we return because of a timeout?
+        """
+        # this key needs to match the key used in announceResultInConsDb -
+        # maybe add a private method for that (and all the other keys that are
+        # tied together)
+        key = f"consdb-{instrument}-{table}-{obsId}".lower()
+
+        if timeout is None:
+            timeout = 0
+
+        # Wait for an item to appear and put it straight back for others to use
+        item = self.redis.blmove(key, key, timeout, "LEFT", "RIGHT")
+        if item:
+            return True
+        else:
+            return False
+
     def getExposureForFanout(self, instrument):
         """Get the next exposure to process for the specified instrument.
 
@@ -587,7 +655,7 @@ class RedisHelper:
                 loaded = json.loads(jsonData)
                 _ = loaded["dataId"]
                 return True
-            except (KeyError, json.JSONDecodeError):
+            except (KeyError, json.JSONDecodeError, TypeError):
                 pass
             return False
 
@@ -596,7 +664,7 @@ class RedisHelper:
                 loaded = json.loads(jsonData)
                 _ = loaded["definition"]
                 return True
-            except (KeyError, json.JSONDecodeError):
+            except (KeyError, json.JSONDecodeError, TypeError):
                 pass
             return False
 
@@ -614,12 +682,20 @@ class RedisHelper:
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
         keys = sorted(r.keys("*"))
+
         if not keys:
             print("Nothing in the Redis database.")
             return
 
+        # Remove consDB announcements from the list
+        keys = [key for key in keys if "consdb" not in decode_string(key)]
+        if not keys:
+            print("Nothing but consDB announcements in the Redis database.")
+            return
+
         if instrument is not None:
-            keys = [key for key in keys if instrument in key]
+            # filter to only the instrument-relevant ones if specified
+            keys = [key for key in keys if instrument.lower() in decode_string(key).lower()]
 
         # TODO: DM-44102 Improve how all the redis monitoring stuff is done
 

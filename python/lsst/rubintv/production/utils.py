@@ -323,12 +323,6 @@ class LocationConfig:
         file = self._config["dimensionUniverseFile"]
         return file
 
-    @cached_property
-    def sfmPipelineFile(self):
-        file = self._config["sfmPipelineFile"]
-        self._checkFile(file)
-        return file
-
     def butlerPath(self):
         file = self._config["butlerPath"]
         self._checkFile(file)
@@ -478,7 +472,6 @@ class LocationConfig:
     @cached_property
     def comCamButlerPath(self):
         file = self._config["comCamButlerPath"]
-        self._checkFile(file)
         return file
 
     @cached_property
@@ -502,6 +495,18 @@ class LocationConfig:
     @cached_property
     def comCamSimMetadataShardPath(self):
         directory = self._config["comCamSimMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamSimAosMetadataPath(self):
+        directory = self._config["comCamSimAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamSimAosMetadataShardPath(self):
+        directory = self._config["comCamSimAosMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
@@ -533,6 +538,9 @@ class LocationConfig:
     def getOutputChain(self, instrument):
         return self._config["outputChains"][instrument]
 
+    def getSfmPipelineFile(self, instrument):
+        return self._config["sfmPipelineFile"][instrument]
+
 
 def getAutomaticLocationConfig():
     """Get a location config, based on RA location and command line args.
@@ -549,7 +557,7 @@ def getAutomaticLocationConfig():
     if len(sys.argv) >= 2:
         try:  # try using this, because anything could be in argv[1]
             location = sys.argv[1]
-            return LocationConfig(location)
+            return LocationConfig(location.lower())
         except FileNotFoundError:
             pass
 
@@ -801,8 +809,10 @@ def writeMetadataShard(path, dayObs, mdDict):
     with open(filename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
-        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-
+        try:
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        except FileNotFoundError:
+            pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 
@@ -884,8 +894,10 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
     with open(filename, "w") as f:
         json.dump(dataDict, f, cls=NumpyEncoder)
     if not isFileWorldWritable(filename):
-        os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-
+        try:
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        except FileNotFoundError:
+            pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 

@@ -29,8 +29,10 @@ from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from lsst.pipe.base import Pipeline, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
+from lsst.summit.utils import ConsDbClient
 
 from .baseChannels import BaseButlerChannel
+from .consdbUtils import ConsDBPopulator
 from .payloads import pipelineGraphFromBytes, pipelineGraphToBytes
 from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
@@ -124,6 +126,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.runCollection = None
         self.limitedButler = self.makeLimitedButler(butler)
         self.log.info(f"Pipeline running configured to consume from {queueName}")
+
+        self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.watcher.redisHelper)
 
     def makeLimitedButler(self, butler):
         cachedOnGet = set()
@@ -236,7 +241,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
                     taskName = node.taskDef.taskName
                     self.log.info(f"Starting to process {taskName}")
-                    quantum = executor.execute(node.taskDef, node.quantum)
+                    quantum, _ = executor.execute(node.taskDef, node.quantum)
                     self.postProcessQuantum(quantum, processingId)
                     self.watcher.redisHelper.reportFinished(self.instrument, taskName, processingId)
 
@@ -259,6 +264,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # finished looping over nodes
             if self.step == "step2a":
                 self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
+                # TODO: probably add a utility function on the helper for this
+                # and one for getting the most recent visit from the queue
+                # which does the decoding too to provide a unified interface.
+                if "visit" in payload.dataId:
+                    visit = f"{payload.dataId['visit']}"
+                else:
+                    visit = f"{payload.dataId['exposure']}"
+                self.watcher.redisHelper.redis.lpush("LSSTComCamSim-PSFPLOTTER", visit)
             if self.step == "nightlyRollup":
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
 
@@ -332,8 +345,22 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # mechanism too, and anything else which forks off the main processing
         # trunk.
         self.watcher.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
-
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
+
+        try:
+            # TODO: DM-45438 either have NV write to a different table or have
+            # it know where this is running and stop attempting this write at
+            # USDF.
+            summaryStats = exp.getInfo().getSummaryStats()
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+            detectorNum = exp.getDetector().getId()
+            self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
+            self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
+        except Exception:
+            if self.locationConfig.location == "summit":
+                self.log.exception("Failed to populate ccd-visit row in ConsDB")
+            else:
+                self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
     def postProcessVisitSummary(self, quantum):
         dRef = quantum.outputs["visitSummary"][0]
@@ -368,6 +395,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)
+        try:
+            # TODO: DM-45438 either have NV write to a different table or have
+            # it know where this is running and stop attempting this write at
+            # USDF.
+            self.consDBPopulator.populateVisitRow(vs, self.instrument)
+            self.log.info(f"Populated consDB visit row for {expRecord.id}")
+        except Exception:
+            self.log.exception("Failed to populate visit row in ConsDB")
 
     def clobber(self, object, datasetType, visitDataId):
         """Put object in the butler.

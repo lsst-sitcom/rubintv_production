@@ -41,6 +41,9 @@ comCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/s
 comCamSimMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata
 comCamSimMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata/shards
 
+comCamSimAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata
+comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata/shards
+
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /sdf/home/m/mfl/u/rubintv
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
@@ -52,7 +55,9 @@ binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 
-sfmPipelineFile: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
+sfmPipelineFile:
+  LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
+  LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
 
 outputChains:
   LSSTComCam: LSSTComCam/quickLookTesting

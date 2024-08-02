@@ -25,18 +25,19 @@ botMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadat
 binning: 8
 
 # ComCam configuration:
-comCamButlerPath: '/sdf/group/rubin/repo/embargo/butler+sasquatch_dev.yaml'
+comCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 # # paths for serving TS8 metadata at SLAC
 comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
-# Redis work distribution configs
-sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation-ops-rehearsal-3.yaml'
+sfmPipelineFile:
+  LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml
+  LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/nightly-validation.yaml
 
 outputChains:
-  LSSTComCam: LSSTComCam/quickLook
-  LSSTComCamSim: LSSTComCamSim/quickLook
-  LSSTCam: LSSTCam/quickLook
+  LSSTComCam: LSSTComCam/nightlyValidation
+  LSSTComCamSim: LSSTComCamSim/nightlyValidation
+  LSSTCam: LSSTCam/nightlyValidation
 
 comCamSimMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata'
 comCamSimMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata/shards'

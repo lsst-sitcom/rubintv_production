@@ -19,54 +19,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
-import sys
-
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
+from lsst.rubintv.production.aos import FocusSweepAnalysis
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
 
 setupLogging()
 
-workerName = os.getenv("WORKER_NAME")  # when using statefulSets
-if workerName:
-    workerNum = int(workerName.split("-")[-1])
-    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
-else:
-    workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f"Found WORKER_NUMBER={workerNum} in the env")
-    if not workerNum:
-        if len(sys.argv) < 2:
-            print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
-            sys.exit(1)
-        workerNum = int(sys.argv[2])
-
-workerNum = int(workerNum)
-
-queueName = f"STEP2A-WORKER-{workerNum:02}"
-print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
-
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
         "LSSTComCamSim/defaults",
+        "LSSTComCamSim/quickLook",
     ],
-    writeable=True,
 )
+print(f"Running focus sweep plotter at {locationConfig.location}")
 
-step2aRunner = SingleCorePipelineRunner(
+queueName = "LSSTComCamSim-FROM-OCS_FOCUSSWEEP"
+focusSweepAnalyzer = FocusSweepAnalysis(
     butler=butler,
     locationConfig=locationConfig,
-    instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step2a",
-    awaitsDataProduct=None,
-    doRaise=getDoRaise(),
     queueName=queueName,
+    metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
 )
-step2aRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+focusSweepAnalyzer.run()
