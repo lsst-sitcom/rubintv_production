@@ -323,12 +323,6 @@ class LocationConfig:
         file = self._config["dimensionUniverseFile"]
         return file
 
-    @cached_property
-    def sfmPipelineFile(self):
-        file = self._config["sfmPipelineFile"]
-        self._checkFile(file)
-        return file
-
     def butlerPath(self):
         file = self._config["butlerPath"]
         self._checkFile(file)
@@ -543,6 +537,9 @@ class LocationConfig:
 
     def getOutputChain(self, instrument):
         return self._config["outputChains"][instrument]
+
+    def getSfmPipelineFile(self, instrument):
+        return self._config["sfmPipelineFile"][instrument]
 
 
 def getAutomaticLocationConfig():

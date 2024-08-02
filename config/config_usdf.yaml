@@ -30,8 +30,9 @@ comCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
-# Redis work distribution configs
-sfmPipelineFile: '$DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml'
+sfmPipelineFile:
+  LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml
+  LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/nightly-validation.yaml
 
 outputChains:
   LSSTComCam: LSSTComCam/nightlyValidation

@@ -55,7 +55,9 @@ binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 
-sfmPipelineFile: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
+sfmPipelineFile:
+  LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
+  LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
 
 outputChains:
   LSSTComCam: LSSTComCam/quickLookTesting
