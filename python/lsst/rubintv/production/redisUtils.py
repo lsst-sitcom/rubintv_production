@@ -531,7 +531,9 @@ class RedisHelper:
         # don't want to be sensitive to table capitalization or regular butler
         # instrument name capitalization.
         key = f"consdb-{instrument}-{table}-{obsId}".lower()
-        self.redis.lpush(key, 1)
+
+        if not self.redis.exists(key):
+            self.redis.lpush(key, 1)
         self.redis.expire(key, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
     def waitForResultInConsdDb(self, instrument, table, obsId, timeout=None):
