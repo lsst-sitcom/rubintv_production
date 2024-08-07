@@ -26,7 +26,7 @@ from lsst.rubintv.production.processingControl import HeadProcessController
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCam"
+instrument = "LSSTCam"
 
 setupLogging()
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
@@ -35,10 +35,10 @@ print(f"Running {instrument} head node at {location}...")
 
 
 butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
+    locationConfig.lsstCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTComCam/defaults",
+        "LSSTCam/defaults",
     ],
     writeable=True,  # needed for defineVisits
 )

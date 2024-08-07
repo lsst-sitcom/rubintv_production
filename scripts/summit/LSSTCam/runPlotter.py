@@ -30,14 +30,14 @@ setupLogging()
 
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 queueName = "MOSAIC-WORKER-00"
-print(f"Running LSSTComCam plotter at {location}, consuming from {queueName}")
+print(f"Running LSSTCam plotter at {location}, consuming from {queueName}")
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCam/raw/all"])
+butler = dafButler.Butler(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
 plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,
-    instrument="LSSTComCam",
+    instrument="LSSTCam",
     queueName=queueName,
     doRaise=getDoRaise(),
 )

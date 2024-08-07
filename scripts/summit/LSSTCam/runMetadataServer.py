@@ -30,17 +30,17 @@ checkRubinTvExternalPackages()
 
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
-print(f"Running ComCam metadata server at {location}...")
+print(f"Running LSSTCam metadata server at {location}...")
 
-metadataDirectory = locationConfig.comCamMetadataPath
-shardsDirectory = locationConfig.comCamMetadataShardPath
-channelName = "comcam_metadata"
+metadataDirectory = locationConfig.lsstCamMetadataPath
+shardsDirectory = locationConfig.lsstCamMetadataShardPath
+channelName = "lsstcam_metadata"
 
-ts8MetadataServer = TimedMetadataServer(
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
     metadataDirectory=metadataDirectory,
     shardsDirectory=shardsDirectory,
     channelName=channelName,
     doRaise=getDoRaise(),
 )
-ts8MetadataServer.run()
+metadataServer.run()

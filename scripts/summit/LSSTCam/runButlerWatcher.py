@@ -28,15 +28,15 @@ from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-print(f"Running ComCam butler watcher at {location}...")
+print(f"Running LSSTCam butler watcher at {location}...")
 
 locationConfig = LocationConfig(location)
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCam/raw/all"])
+butler = dafButler.Butler(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
 writeDimensionUniverseFile(butler, locationConfig)
 butlerWatcher = ButlerWatcher(
     butler=butler,
     locationConfig=locationConfig,
-    instrument="LSSTComCam",
+    instrument="LSSTCam",
     dataProducts="raw",
     doRaise=getDoRaise(),
 )

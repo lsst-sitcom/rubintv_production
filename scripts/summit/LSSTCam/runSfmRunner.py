@@ -27,7 +27,7 @@ from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCam"
+instrument = "LSSTCam"
 
 setupLogging()
 
@@ -52,9 +52,9 @@ queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
 
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
+    locationConfig.lsstCamButlerPath,
     collections=[
-        "LSSTComCam/defaults",
+        "LSSTCam/defaults",
     ],
     writeable=True,
 )
