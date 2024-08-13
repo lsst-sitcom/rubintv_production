@@ -47,6 +47,6 @@ controller = HeadProcessController(
     butler=butler,
     instrument=instrument,
     locationConfig=locationConfig,
-    pipelineFile=locationConfig.sfmPipelineFile,
+    pipelineFile=locationConfig.getSfmPipelineFile(instrument),
 )
 controller.run()
