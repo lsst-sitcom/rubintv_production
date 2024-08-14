@@ -241,7 +241,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
                     taskName = node.taskDef.taskName
                     self.log.info(f"Starting to process {taskName}")
-                    quantum, _ = executor.execute(node.taskDef, node.quantum)
+                    quantum, _ = executor.execute(node.task_node, node.quantum)
                     self.postProcessQuantum(quantum, processingId)
                     self.watcher.redisHelper.reportFinished(self.instrument, taskName, processingId)
 
