@@ -289,22 +289,15 @@ class PsfAzElPlotter:
         self.fig, self.axes = makeFigureAndAxes()
 
     def makePlot(self, visitId):
-        """Extract the exposure IDs from the byte string.
+        """Make the PSF plot for the given visit ID.
+
+        Makes the plot by getting the available data from the butler, saves it
+        to a temporary file, and uploads it to RubinTV.
 
         Parameters
         ----------
         visitId : `int`
-            The byte string containing the exposure IDs.
-
-        Returns
-        -------
-        expIds : `list` of `int`
-            A list of two exposure IDs extracted from the byte string.
-
-        Raises
-        ------
-        ValueError
-            If the number of exposure IDs extracted is not equal to 2.
+            The visit ID for which to make the plot.
         """
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
         detectorIds = getDetectorIds(self.instrument)
