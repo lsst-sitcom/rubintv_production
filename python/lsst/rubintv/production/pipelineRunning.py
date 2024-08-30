@@ -195,7 +195,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 where=where,
                 bind=bind,
                 clobber=True,
-                input_collections=self.butler.collections + (self.runCollection,),
+                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
                 output_run=self.runCollection,
             )
 
@@ -208,7 +208,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             qg: QuantumGraph = builder.build(
                 metadata={
-                    "input": self.butler.collections + (self.runCollection,),
+                    "input": list(self.butler.collections.defaults) + [self.runCollection],
                     "output_run": self.runCollection,
                     "data_query": where,
                     "bind": bind,
