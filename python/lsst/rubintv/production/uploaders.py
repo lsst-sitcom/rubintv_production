@@ -109,9 +109,9 @@ def createRemoteS3UploaderForSite():
                 bucket=Bucket.BTS,
             )
         case "summit":
-            httpsProxy = "http://ocio-gpu03.slac.stanford.edu:3128"
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF, bucket=Bucket.SUMMIT, httpsProxy=httpsProxy
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.SUMMIT,
             )
         case "usdf":
             _LOG.info("No remote uploader is necessary for USDF")
