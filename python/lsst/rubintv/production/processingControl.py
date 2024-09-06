@@ -30,7 +30,7 @@ import numpy as np
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.ctrl.mpexec import TaskFactory
-from lsst.daf.butler import CollectionType, DataCoordinate, MissingCollectionError, DatasetNotFoundError
+from lsst.daf.butler import CollectionType, DataCoordinate, DatasetNotFoundError, MissingCollectionError
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph

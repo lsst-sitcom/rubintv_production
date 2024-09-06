@@ -58,7 +58,7 @@ from lsst.summit.utils.utils import (
 from .baseChannels import BaseChannel
 from .channels import PREFIXES
 from .plotting import starTrackerNightReportPlots
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import Heartbeater, MultiUploader
 from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = (
@@ -161,7 +161,6 @@ class StarTrackerWatcher:
     def __init__(self, *, rootDataPath, bucketName, camera):
         self.rootDataPath = rootDataPath
         self.camera = camera
-        self.uploader = Uploader(bucketName)
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("watcher")
         self.heartbeater = None
@@ -424,10 +423,6 @@ class StarTrackerChannel(BaseChannel):
             fig=self.fig,
         )
 
-        # TODO: remove in DM-43413
-        uploadAs = self._getGoogleUploadFilename(self.channelAnalysis, filename)
-        self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
-
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="startracker" + self.camera.suffix,
@@ -527,10 +522,6 @@ class StarTrackerChannel(BaseChannel):
         basename = os.path.basename(filename).removesuffix(".fits")
         rawPngFilename = os.path.join(self.outputRoot, basename + "_raw.png")  # for saving to disk
         plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
-
-        # TODO: remove in DM-43413
-        uploadFilename = self._getGoogleUploadFilename(self.channelRaw, filename)
-        self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)  # TODO: DM-43413
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
@@ -659,9 +650,6 @@ class StarTrackerNightReportChannel(BaseChannel):
                 plot = plotFactory(
                     dayObs=self.dayObs,
                     locationConfig=self.locationConfig,
-                    # TODO: DM-43413 switch to MultiUploader and
-                    # remove GCS
-                    uploader=self.uploader,
                     s3Uploader=self.s3Uploader,
                 )
                 plot.createAndUpload(md)

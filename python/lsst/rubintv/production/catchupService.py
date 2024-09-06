@@ -36,7 +36,7 @@ from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
 from .metadataServers import TimedMetadataServer
 from .rubinTv import MetadataCreator
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import Heartbeater, MultiUploader
 from .utils import hasDayRolledOver, raiseIf
 
 __all__ = ["RubinTvBackgroundService"]
@@ -84,7 +84,6 @@ class RubinTvBackgroundService:
     def __init__(self, locationConfig, instrument, *, doRaise=False):
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("backgroundService")
         self.allSkyPngRoot = self.locationConfig.allSkyOutputPath
@@ -330,9 +329,6 @@ class RubinTvBackgroundService:
             writtenMovie = animateDay(self.butler, self.dayObs, outputPath)
 
             if writtenMovie:
-                channel = "auxtel_movies"
-                uploadAs = f"dayObs_{self.dayObs}.mp4"
-                self.uploader.googleUpload(channel, writtenMovie, uploadAs, isLargeFile=True)
                 self.s3Uploader.uploadMovie("auxtel", self.dayObs, writtenMovie)
             else:
                 self.log.warning(f"Failed to find movie for {self.dayObs}")

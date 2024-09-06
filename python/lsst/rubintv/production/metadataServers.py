@@ -25,7 +25,7 @@ import os
 from glob import glob
 from time import sleep
 
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import Heartbeater, MultiUploader
 from .utils import isFileWorldWritable, raiseIf, sanitizeNans
 
 _LOG = logging.getLogger(__name__)
@@ -75,7 +75,6 @@ class TimedMetadataServer:
         self.channelName = channelName
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
         self.heartbeater = Heartbeater(
             self.channelName,
@@ -141,7 +140,6 @@ class TimedMetadataServer:
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
             for file in filesTouched:
-                self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
                 dayObs = self.dayObsFromFilename(file)
                 self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
         return

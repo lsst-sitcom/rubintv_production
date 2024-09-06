@@ -412,8 +412,6 @@ class DayAnimator:
     outputMovieDir : `str`
         The path to write the movies. Need not exist, but must be creatable
         with write privileges.
-    uploader : `lsst.rubintv.production.Uploader`
-        The uploader for sending images and movies to GCS.
     epoUploader : `lsst.rubintv.production.Uploader`
         The uploader for sending images and movies to the EPO bucket.
     s3Uploader : `lsst.rubintv.production.MultiUploader`
@@ -441,7 +439,6 @@ class DayAnimator:
         todaysDataDir,
         outputImageDir,
         outputMovieDir,
-        uploader,
         epoUploader,
         s3Uploader,
         channel,
@@ -452,7 +449,6 @@ class DayAnimator:
         self.todaysDataDir = todaysDataDir
         self.outputImageDir = outputImageDir
         self.outputMovieDir = outputMovieDir
-        self.uploader = uploader
         self.epoUploader = epoUploader
         self.s3Uploader = s3Uploader
         self.channel = channel
@@ -541,7 +537,6 @@ class DayAnimator:
                 raise RuntimeError(f"Failed to find movie {creationFilename}")
 
         if not self.DRY_RUN:
-            self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
             self.s3Uploader.uploadMovie(
                 instrument="allsky",
                 dayObs=self.dayObsInt,
@@ -574,9 +569,6 @@ class DayAnimator:
         uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension=".jpg", zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:
-            self.uploader.googleUpload(
-                channel=channel, sourceFilename=sourceFilename, uploadAsFilename=uploadAsFilename
-            )
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="allsky",
                 plotName="stills",
@@ -697,7 +689,6 @@ class AllSkyMovieChannel:
 
     def __init__(self, locationConfig, doRaise=False):
         self.locationConfig = locationConfig
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
         self.epoUploader = Uploader("epo_rubintv_data")
         self.log = _LOG.getChild("allSkyMovieMaker")
@@ -743,7 +734,6 @@ class AllSkyMovieChannel:
             todaysDataDir=todaysDataDir,
             outputImageDir=outputJpgDir,
             outputMovieDir=outputMovieDir,
-            uploader=self.uploader,
             epoUploader=self.epoUploader,
             s3Uploader=self.s3Uploader,
             channel=self.channel,

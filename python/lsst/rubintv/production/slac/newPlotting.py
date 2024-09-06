@@ -25,7 +25,7 @@ import os
 
 import matplotlib.pyplot as plt
 
-from ..uploaders import MultiUploader, Uploader
+from ..uploaders import MultiUploader
 from ..utils import getNumExpectedItems
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
@@ -64,7 +64,6 @@ class Plotter:
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
         self.instrument = instrument
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
