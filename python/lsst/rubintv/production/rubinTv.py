@@ -168,6 +168,7 @@ class IsrRunner(BaseButlerChannel):
             dataProduct="raw",
             channelName="auxtel_isr_runner",
             doRaise=doRaise,
+            addUploader=False,  # this pod doesn't upload directly
         )
 
     def callback(self, expRecord):
@@ -616,13 +617,9 @@ class MetadataCreator(BaseButlerChannel):
             dataProduct="raw",
             channelName="auxtel_metadata_creator",
             doRaise=doRaise,
+            addUploader=False,  # this pod doesn't upload anything directly
         )
         self.detector = 0  # can be removed once we have the requisite summit DBs
-
-        # We inherit the uploaders, so be explicit about the fact we don't use
-        # them.
-        self.uploader = None
-        self.s3Uploader = None
 
     def expRecordToMetadataDict(self, expRecord, keysToRemove):
         """Create a dictionary of metadata for an expRecord.

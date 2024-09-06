@@ -115,6 +115,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             channelName="",
             queueName=queueName,
             doRaise=doRaise,
+            addUploader=False,  # pipeline running pods don't upload directly
         )
         self.instrument = instrument
         self.butler = butler

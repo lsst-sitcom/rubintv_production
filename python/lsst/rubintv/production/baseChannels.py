@@ -26,7 +26,7 @@ from time import sleep
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 
-from .uploaders import MultiUploader, Uploader
+from .uploaders import MultiUploader
 from .watchers import FileWatcher, RedisWatcher
 
 __all__ = [
@@ -48,14 +48,17 @@ class BaseChannel(ABC):
         The file watcher to use.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
+    addUploader : `bool`, optional
+        If ``True``, add an S3 uploader to the channel.
     """
 
-    def __init__(self, *, locationConfig, log, watcher, doRaise):
+    def __init__(self, *, locationConfig, log, watcher, doRaise, addUploader=False):
         self.locationConfig = locationConfig
         self.log = log
         self.watcher = watcher
-        self.uploader = Uploader(self.locationConfig.bucketName)
-        self.s3Uploader = MultiUploader()
+        self.s3Uploader = None
+        if addUploader:
+            self.s3Uploader = MultiUploader()
         self.doRaise = doRaise
 
     @abstractmethod
@@ -104,6 +107,8 @@ class BaseButlerChannel(BaseChannel):
     queueName : `str`, optional
         If using a `"redis"` type watcher, which queue should this consume
         from.
+    addUploader : `bool`, optional
+        If ``True``, add an S3 uploader to the channel.
     """
 
     def __init__(
@@ -118,6 +123,7 @@ class BaseButlerChannel(BaseChannel):
         watcherType,
         doRaise,
         queueName=None,  # only needed for redis watcher. Not the neatest but will do for now
+        addUploader=True,
     ):
         if watcherType == "file":
             watcher = FileWatcher(
@@ -136,7 +142,9 @@ class BaseButlerChannel(BaseChannel):
         else:
             raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
         log = logging.getLogger(f"lsst.rubintv.production.{channelName}")
-        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise, addUploader=addUploader
+        )
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
