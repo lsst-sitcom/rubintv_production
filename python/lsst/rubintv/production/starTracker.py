@@ -56,7 +56,6 @@ from lsst.summit.utils.utils import (
 )
 
 from .baseChannels import BaseChannel
-from .channels import PREFIXES
 from .plotting import starTrackerNightReportPlots
 from .uploaders import Heartbeater, MultiUploader
 from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
@@ -358,29 +357,6 @@ class StarTrackerChannel(BaseChannel):
         }
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
-
-    def _getGoogleUploadFilename(self, channel, filename):
-        """Calculate the filename to use for uploading.
-
-        Parameters
-        ----------
-        channel : `str`
-            The channel name.
-        filename : `str`
-            The filename.
-        """
-        # TODO: remove in DM-43413
-        dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        dayObsStr = dayObsIntToString(dayObs)
-
-        # this is horrible but temporary and all goes away in DM-4341
-        if channel == "startracker_narrow_raw":  # this is horrible but temporary
-            channel = "startracker_raw"
-        if channel == "startracker_narrow_analysis":
-            channel = "startracker_analysis"
-
-        filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
-        return filename
 
     def runAnalysis(self, exp, filename):
         """Run the analysis and upload the results.
