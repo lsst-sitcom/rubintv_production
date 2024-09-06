@@ -285,7 +285,7 @@ class PsfAzElPlotter:
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.uploader = MultiUploader()
+        self.s3Uploader = MultiUploader()
         self.fig, self.axes = makeFigureAndAxes()
 
     def makePlot(self, visitId):
@@ -327,7 +327,7 @@ class PsfAzElPlotter:
         self.axes = self.fig.subplots(nrows=2, ncols=2)
         makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
 
-        self.uploader.uploadPerSeqNumPlot(
+        self.s3Uploader.uploadPerSeqNumPlot(
             instrument="comcam_sim",
             plotName="psf_shape_azel",
             dayObs=expRecord.day_obs,
@@ -377,7 +377,7 @@ class FocusSweepAnalysis:
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.uploader = MultiUploader()
+        self.s3Uploader = MultiUploader()
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.efdClient = makeEfdClient()
         self.fig = Figure(figsize=(12, 9))
@@ -427,7 +427,7 @@ class FocusSweepAnalysis:
         tempFilename = tempfile.mktemp(suffix=".png")
         plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
 
-        self.uploader.uploadPerSeqNumPlot(
+        self.s3Uploader.uploadPerSeqNumPlot(
             instrument="comcam_sim_aos",
             plotName="focus_sweep",
             dayObs=lastRecord.day_obs,
