@@ -104,6 +104,8 @@ def createRemoteS3UploaderForSite():
     site = getSite()
     match site:
         case "base":
+            return None
+            # XXX temporarily turn off remote upload on TTS while we sort creds
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
@@ -117,6 +119,8 @@ def createRemoteS3UploaderForSite():
             _LOG.info("No remote uploader is necessary for USDF")
             return None
         case "tucson":
+            return None
+            # XXX temporarily turn off remote upload on TTS while we sort creds
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.TTS,
@@ -248,7 +252,7 @@ class MultiUploader(IUploader):
         except Exception:
             self.remoteUploader = None
 
-        remoteRequired = getSite() in ["summit", "tucson", "base"]
+        remoteRequired = getSite() in ["summit"]
         if remoteRequired and not self.hasRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
         elif remoteRequired and self.hasRemote:
