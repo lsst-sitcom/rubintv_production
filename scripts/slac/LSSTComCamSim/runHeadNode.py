@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import setupLogging
 instrument = "LSSTComCamSim"
 
 setupLogging()
-location = "slac" if len(sys.argv) < 2 else sys.argv[1]
+location = "usdf" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 print(f"Running {instrument} head node at {location}...")
 

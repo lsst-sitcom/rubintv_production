@@ -49,7 +49,7 @@ workerNum = int(workerNum)
 queueName = f"NIGHTLYROLLUP-WORKER-{workerNum:02}"
 print(f"Running nightly rollup worker {workerNum}, queueName={queueName}")
 
-location = "slac"
+location = "usdf"
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,

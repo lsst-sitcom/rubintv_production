@@ -27,7 +27,7 @@ from lsst.rubintv.production.utils import LocationConfig, writeDimensionUniverse
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = "slac" if len(sys.argv) < 2 else sys.argv[1]
+location = "usdf" if len(sys.argv) < 2 else sys.argv[1]
 print(f"Running ComCam butler watcher at {location}...")
 
 locationConfig = LocationConfig(location)

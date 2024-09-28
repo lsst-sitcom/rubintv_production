@@ -49,7 +49,7 @@ workerNum = int(workerNum)
 queueName = f"STEP2A-WORKER-{workerNum:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-location = "slac"
+location = "usdf"
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,

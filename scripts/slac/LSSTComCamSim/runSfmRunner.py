@@ -51,7 +51,7 @@ detectorDepth = workerNum // 9
 queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
-location = "slac"
+location = "usdf"
 locationConfig = LocationConfig(location)
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
