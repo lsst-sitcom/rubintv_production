@@ -522,6 +522,24 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    @cached_property
+    def lsstCamMetadataPath(self):
+        directory = self._config["lsstCamMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamMetadataShardPath(self):
+        directory = self._config["lsstCamMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamButlerPath(self):
+        directory = self._config["lsstCamButlerPath"]
+        self._checkDir(directory)
+        return directory
+
     # TMA config:
     @cached_property
     def tmaMetadataPath(self):
