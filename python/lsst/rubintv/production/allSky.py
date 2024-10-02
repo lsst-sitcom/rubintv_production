@@ -32,7 +32,7 @@ from PIL.ExifTags import TAGS
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_datetime, getCurrentDayObs_int
 from lsst.utils.iteration import ensure_iterable
 
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import MultiUploader, Uploader
 from .utils import FakeExposureRecord, expRecordToUploadFilename, hasDayRolledOver, raiseIf
 
 try:
@@ -427,11 +427,6 @@ class DayAnimator:
     FPS = 10
     DRY_RUN = False
 
-    HEARTBEAT_HANDLE = "allsky"
-    HEARTBEAT_UPLOAD_PERIOD = 120
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 600
-
     def __init__(
         self,
         *,
@@ -454,9 +449,6 @@ class DayAnimator:
         self.channel = channel
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
-        self.heartbeater = Heartbeater(
-            self.HEARTBEAT_HANDLE, bucketName, self.HEARTBEAT_UPLOAD_PERIOD, self.HEARTBEAT_FLATLINE_PERIOD
-        )
 
     def _getConvertedFilename(self, filename):
         """Get the filename and path to write the converted images to.
@@ -620,7 +612,6 @@ class DayAnimator:
 
             # convert any new files
             newFiles = allFiles - convertedFiles
-            self.heartbeater.beat()
 
             if newFiles:
                 newFiles = sorted(newFiles)
@@ -634,7 +625,6 @@ class DayAnimator:
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug("Sleeping 20s waiting for new files")
-                self.heartbeater.beat()
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
@@ -744,15 +734,6 @@ class AllSkyMovieChannel:
     def run(self):
         """The main entry point - start running the all sky camera TV channel.
         See class init docs for details.
-
-        Notes
-        -----
-        This class does not generate heartbeats. The heartbeating is done by
-        the DayAnimator class, as this is the one that actually does the work,
-        including the uploading. Moreover, if we get into a situation where
-        this loop is being gone around without directories being created we
-        should not be emitting heartbeats - in such a situation the service
-        should be considered down.
         """
         while True:
             try:

@@ -57,7 +57,7 @@ from lsst.summit.utils.utils import (
 
 from .baseChannels import BaseChannel
 from .plotting import starTrackerNightReportPlots
-from .uploaders import Heartbeater, MultiUploader
+from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = (
@@ -136,7 +136,6 @@ def getFilename(rootPath, camera, dayObs, seqNum):
 
 class StarTrackerWatcher:
     """Class for continuously watching for new files landing in the directory.
-    Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds.
 
     Parameters
     ----------
@@ -144,25 +143,17 @@ class StarTrackerWatcher:
         The root directory to watch for files landing in. Should not include
         the GenericCamera/101/ or GenericCamera/102/ part, just the base
         directory that these are being written to, as visible from k8s.
-    bucketName : `str`
-        The bucket to upload the heartbeats to.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera to watch for raw data for.
     """
 
     cadence = 1  # in seconds
 
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 240
-
-    def __init__(self, *, rootDataPath, bucketName, camera):
+    def __init__(self, *, rootDataPath, camera):
         self.rootDataPath = rootDataPath
         self.camera = camera
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("watcher")
-        self.heartbeater = None
 
     def _getLatestImageDataIdAndExpId(self):
         """Get the dataId and expId for the most recent image in the repo.
@@ -211,8 +202,6 @@ class StarTrackerWatcher:
             try:
                 filename, _, _, expId = self._getLatestImageDataIdAndExpId()
                 self.log.debug(f"{filename}")
-                if self.heartbeater:  # gets set by the channel post-init
-                    self.heartbeater.beat()
 
                 if (filename is None) or (lastFound == expId):
                     self.log.debug("Found nothing, sleeping")
@@ -245,11 +234,6 @@ class StarTrackerChannel(BaseChannel):
     doRaise : `bool`, optional
         Raise on error? Default False, useful for debugging.
     """
-
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 240
 
     def __init__(self, locationConfig, *, cameraType, doRaise=False):
         if cameraType not in KNOWN_CAMERAS:
@@ -286,20 +270,6 @@ class StarTrackerChannel(BaseChannel):
                 os.makedirs(path, exist_ok=True)
             except Exception as e:
                 raise RuntimeError(f"Failed to find/create {path}") from e
-
-        self.heartbeaterAnalysis = Heartbeater(
-            self.channelAnalysis,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
-        self.heartbeaterRaw = Heartbeater(
-            self.channelRaw,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
-        self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
 
         self.solver = CommandLineSolver(
             indexFilePath=self.locationConfig.astrometryNetRefCatPath, checkInParallel=True, timeout=30
@@ -373,7 +343,6 @@ class StarTrackerChannel(BaseChannel):
         basename = os.path.basename(filename).removesuffix(".fits")
         fittedPngFilename = os.path.join(self.outputRoot, basename + "_fitted.png")
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        self.heartbeaterAnalysis.beat()  # we're alive and at least trying to solve
 
         snr = self.camera.snr
         minPix = self.camera.minPix
@@ -492,7 +461,6 @@ class StarTrackerChannel(BaseChannel):
             return
 
         exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
-        self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
 
         # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix(".fits")
@@ -695,25 +663,13 @@ class StarTrackerCatchup:
     loopSleep = 30
     catchupPeriod = 60
     endOfDayDelay = 200
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 240
-    HEARTBEAT_HANDLE = "starTrackerCatchup"
 
     def __init__(self, locationConfig, doRaise=False):
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
         self.cameras = [narrowCam, wideCam, fastCam]
-
-        self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
-        self.heartbeater = Heartbeater(
-            self.HEARTBEAT_HANDLE,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
+        self.log = _LOG.getChild("catchup")
 
     def getFullyProcessedSeqNums(self, camera, dayObs):
         """Get the seqNums for images which were fully processed.
@@ -784,11 +740,6 @@ class StarTrackerCatchup:
         filenames = [f for f in filenames if os.path.isfile(f)]
         self.log.info(f"of which {len(filenames)} had corresponding files")
 
-        # send a heartbeat saying we'll be back in a while
-        maxProcessingTimePerFile = 30  # a deliberate massive over-estimate, in seconds
-        forecast = maxProcessingTimePerFile * len(filenames)
-        self.heartbeater.beat(customFlatlinePeriod=forecast)
-
         starTrackerChannel = StarTrackerChannel(
             locationConfig=self.locationConfig, cameraType=camera.cameraType
         )
@@ -850,7 +801,6 @@ class StarTrackerCatchup:
                 timeSince = time.time() - lastRun
                 if timeSince >= self.catchupPeriod:
                     self.runCatchup()
-                    self.heartbeater.beat()
                     lastRun = time.time()
                     if hasDayRolledOver(self.dayObs):
                         sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
@@ -859,8 +809,6 @@ class StarTrackerCatchup:
                     remaining = self.catchupPeriod - timeSince
                     self.log.info(f"Waiting for catchup period to elapse, {remaining:.2f}s to go...")
                     sleep(self.loopSleep)
-
-                self.heartbeater.beat()
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)

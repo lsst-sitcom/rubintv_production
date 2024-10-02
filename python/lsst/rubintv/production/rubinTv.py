@@ -1337,10 +1337,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
     # The time between sweeps of the EFD for today's data.
     cadence = 10
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, doRaise=False):
 
@@ -1628,7 +1624,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 self.processDay(dayObs)
                 self.mergeShardsAndUpload()  # updates all shards everywhere
 
-                self.heartbeater.beat()
                 sleep(self.cadence)
 
             except Exception as e:

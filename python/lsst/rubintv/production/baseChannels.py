@@ -130,7 +130,6 @@ class BaseButlerChannel(BaseChannel):
                 locationConfig=locationConfig,
                 instrument=instrument,
                 dataProduct=dataProduct,
-                heartbeatChannelName=channelName,
                 doRaise=doRaise,
             )
         elif watcherType == "redis":

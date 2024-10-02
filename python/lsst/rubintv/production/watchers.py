@@ -29,7 +29,6 @@ from time import sleep
 from lsst.utils.iteration import ensure_iterable
 
 from .redisUtils import RedisHelper
-from .uploaders import Heartbeater
 from .utils import (
     ALLOWED_DATASET_TYPES,
     expRecordFromJson,
@@ -56,45 +55,24 @@ class FileWatcher:
     official dafButler dataset type. We can use FileWatchers to signal to any
     downstream processing that something is finished and ready for consumption.
 
-    Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds if
-    ``heartbeatChannelName`` is specified.
-
     Parameters
     ----------
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The location configuration to use.
     dataProduct : `str`
         The data product to watch for.
-    heartbeatChannelName : `str`, optional
-        The name of the channel to use when uploading heartbeats. If one is not
-        provided, no heartbeats are sent.
     doRaise : `bool`, optional
         If ``True``, raise exceptions. If ``False``, log them.
     """
 
     cadence = 1  # in seconds
 
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
-
-    def __init__(self, *, locationConfig, instrument, dataProduct, heartbeatChannelName="", doRaise=False):
+    def __init__(self, *, locationConfig, instrument, dataProduct, doRaise=False):
         self.locationConfig = locationConfig
         self.instrument = instrument
         self.dataProduct = dataProduct
         self.doRaise = doRaise
         self.log = _LOG.getChild("fileWatcher")
-        self.heartbeatChannelName = heartbeatChannelName
-        if heartbeatChannelName:
-            self.heartbeater = Heartbeater(
-                heartbeatChannelName,
-                self.locationConfig.bucketName,
-                self.HEARTBEAT_UPLOAD_PERIOD,
-                self.HEARTBEAT_FLATLINE_PERIOD,
-            )
-        else:
-            self.heartbeater = None
 
     def getMostRecentExpRecord(self, previousExpId=None):
         """Get the most recent exposure record from the file system.
@@ -149,15 +127,11 @@ class FileWatcher:
             try:
                 expRecord = self.getMostRecentExpRecord(lastFound)
                 if expRecord is None:  # either there is nothing, or it is the same expId
-                    if self.heartbeater is not None:
-                        self.heartbeater.beat()
                     sleep(self.cadence)
                     continue
                 else:
                     lastFound = expRecord.id
                     callback(expRecord, **kwargs)
-                    if self.heartbeater is not None:
-                        self.heartbeater.beat()  # call after the callback so as not to delay processing
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
@@ -176,7 +150,6 @@ class RedisWatcher:
     def __init__(self, butler, locationConfig, queueName):
         self.redisHelper = RedisHelper(butler, locationConfig)
         self.queueName = queueName
-        self.heartbeater = None  # TODO once we have websockets to the front end
         self.cadence = 0.1  # seconds - this is fine, redis likes a beating
         self.log = _LOG.getChild("redisWatcher")
         self.payload = None
@@ -231,10 +204,6 @@ class ButlerWatcher:
 
     # look for new images every ``cadence`` seconds
     cadence = 1
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, locationConfig, instrument, butler, dataProducts, doRaise=False):
         self.locationConfig = locationConfig
@@ -339,8 +308,6 @@ class ButlerWatcher:
 
                 if not found:  # only sleep when there's nothing new at all
                     sleep(self.cadence)
-                    # TODO: re-enable?
-                    # self.heartbeater.beat()
                     continue
                 else:
                     # all processing starts with triggering on a raw, so we
@@ -362,10 +329,6 @@ class ButlerWatcher:
                                 )
                         writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
-                    # beat after the callback so as not to delay processing
-                    # and also so it is only called if things are working
-                    # TODO: re-enable?
-                    # self.heartbeater.beat()
 
             except Exception as e:
                 sleep(1)  # in case we are in a tight loop of raising, don't hammer the butler

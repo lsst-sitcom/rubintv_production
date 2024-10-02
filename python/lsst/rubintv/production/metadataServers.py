@@ -25,7 +25,7 @@ import os
 from glob import glob
 from time import sleep
 
-from .uploaders import Heartbeater, MultiUploader
+from .uploaders import MultiUploader
 from .utils import isFileWorldWritable, raiseIf, sanitizeNans
 
 _LOG = logging.getLogger(__name__)
@@ -54,8 +54,7 @@ class TimedMetadataServer:
         The directory to find the shards in, usually of the form
         ``metadataDirectory`` + ``'/shards'``.
     channelName : `str`
-        The name of the channel to serve the metadata files to, also used for
-        heartbeats.
+        The name of the channel to serve the metadata files to.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
@@ -63,10 +62,6 @@ class TimedMetadataServer:
     # The time between searches of the metadata shard directory to merge the
     # shards and upload.
     cadence = 1.5
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, channelName, doRaise=False):
         self.locationConfig = locationConfig
@@ -76,12 +71,6 @@ class TimedMetadataServer:
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
         self.s3Uploader = MultiUploader()
-        self.heartbeater = Heartbeater(
-            self.channelName,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
 
         if not os.path.isdir(self.metadataDirectory):
             # created by the LocationConfig init so this should be impossible
@@ -190,6 +179,4 @@ class TimedMetadataServer:
         """Run continuously, looking for metadata and uploading."""
         while True:
             self.callback()
-            if self.heartbeater is not None:
-                self.heartbeater.beat()
             sleep(self.cadence)
