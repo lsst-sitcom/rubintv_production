@@ -251,9 +251,7 @@ class StarTrackerChannel(BaseChannel):
         name = "starTracker" + self.camera.suffix
         log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
-        watcher = StarTrackerWatcher(
-            rootDataPath=self.rootDataPath, bucketName=locationConfig.bucketName, camera=self.camera
-        )
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=self.camera)
 
         super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
 
@@ -531,9 +529,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         # is also a DIMM and so is more likely to be relocated). This won't be
         # a problem once we move to ingesting data and using the butler, so the
         # temp/hacky nature of this is fine for now.
-        watcher = StarTrackerWatcher(
-            rootDataPath=self.rootDataPath, bucketName=locationConfig.bucketName, camera=narrowCam
-        )  # tie the night report to the narrow cam for now
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=narrowCam)
 
         super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
 
