@@ -38,7 +38,7 @@ butler = dafButler.Butler(
 )
 print(f"Running psf plotter launcher at {locationConfig.location}")
 
-queueName = "LSSTComCamSim-PSFPLOTTER"
+queueName = f"{instrument}-PSFPLOTTER"
 psfPlotter = PsfAzElPlotter(
     butler=butler,
     locationConfig=locationConfig,

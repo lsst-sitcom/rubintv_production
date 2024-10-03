@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 
 location = "slac" if len(sys.argv) < 2 else sys.argv[1]
-queueName = "MOSAIC-WORKER-00"
+queueName = "LSSTComCamSim-MOSAIC-WORKER-00"
 print(f"Running LSSTComCamSim plotter at {location}, consuming from {queueName}")
 
 locationConfig = LocationConfig(location)

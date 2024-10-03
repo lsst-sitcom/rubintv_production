@@ -46,7 +46,7 @@ else:
 
 workerNum = int(workerNum)
 
-queueName = f"NIGHTLYROLLUP-WORKER-{workerNum:02}"
+queueName = f"{instrument}-NIGHTLYROLLUP-WORKER-{workerNum:02}"
 print(f"Running nightly rollup worker {workerNum}, queueName={queueName}")
 
 location = "slac"

@@ -48,7 +48,7 @@ workerNum = int(workerNum)
 
 detectorNum = workerNum % 9
 detectorDepth = workerNum // 9
-queueName = f"SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
+queueName = f"{instrument}-SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
 location = "slac"

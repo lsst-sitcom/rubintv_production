@@ -46,7 +46,7 @@ else:
 
 workerNum = int(workerNum)
 
-queueName = f"STEP2A-WORKER-{workerNum:02}"
+queueName = f"{instrument}-STEP2A-WORKER-{workerNum:02}"
 print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
 
 location = "slac"

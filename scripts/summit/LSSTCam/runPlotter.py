@@ -29,7 +29,7 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-queueName = "MOSAIC-WORKER-00"
+queueName = "LSSTCam-MOSAIC-WORKER-00"
 print(f"Running LSSTCam plotter at {location}, consuming from {queueName}")
 
 locationConfig = LocationConfig(location)
