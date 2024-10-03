@@ -391,8 +391,10 @@ class HeadProcessController:
             The expRecord to process.
         """
         detectorIds = []
+        nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
             detectorIds = self.focalPlaneControl.getEnabledDetIds()
+            nEnabled = len(detectorIds)
         else:
             results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
             detectorIds = [item["detector"] for item in results]
@@ -403,7 +405,7 @@ class HeadProcessController:
 
         self.log.info(
             f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
-            f" out to {len(detectorIds)} detectors."
+            f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'}."
         )
 
         for detectorId, dataId in dataIds.items():
