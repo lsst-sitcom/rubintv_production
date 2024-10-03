@@ -1193,5 +1193,7 @@ def getShardPath(locationConfig, expRecord):
             return locationConfig.comCamMetadataShardPath
         case "LSSTComCamSim":
             return locationConfig.comCamSimMetadataShardPath
+        case "LSSTCam":
+            return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")
