@@ -269,6 +269,9 @@ class HeadProcessController:
         self.nDispatched = 0
         self.nNightlyRollups = 0
 
+        if self.focalPlaneControl is not None:
+            self.focalPlaneControl.setAllImagingOn()
+
         steps = ("step1", "step2a", "nightlyRollup")  # NB: these need to be in order for prepRunCollection!
         self.pipelineGraphUris = {}
         self.pipelineGraphs = {}
