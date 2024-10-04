@@ -46,9 +46,9 @@ else:
 
 workerNum = int(workerNum)
 
-detectorNum = workerNum % 9
-detectorDepth = workerNum // 9
-queueName = f"{instrument}-SFM-WORKER-{detectorNum:02}-{detectorDepth:02}"
+detectorNum = workerNum % 189
+detectorDepth = workerNum // 189
+queueName = f"{instrument}-SFM-WORKER-{detectorNum:03}-{detectorDepth:03}"
 
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
