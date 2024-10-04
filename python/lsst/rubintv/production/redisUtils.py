@@ -254,7 +254,7 @@ class RedisHelper:
         else:
             self.redis.delete(f"{queueName}_EXISTS")
 
-    def getAllWorkers(self, workerType=None):
+    def getAllWorkers(self, instrument, workerType=None):
         """Get the list of workers that are currently active.
 
         Parameters
@@ -274,17 +274,17 @@ class RedisHelper:
         # need to get the set of things that exist, or are busy, because
         # things "cease to exist" during long processing runs, but they do
         # still show as busy
-        existing = self.redis.keys(f"{workerType}*WORKER*_EXISTS")
+        existing = self.redis.keys(f"{instrument}*{workerType}*WORKER*_EXISTS")
         existing = [key.decode("utf-8").replace("_EXISTS", "") for key in existing]
 
-        busy = self.redis.keys(f"{workerType}*WORKER*_IS-BUSY")
+        busy = self.redis.keys(f"{instrument}*{workerType}*WORKER*_IS-BUSY")
         busy = [key.decode("utf-8").replace("_IS-BUSY", "") for key in busy]
 
         allWorkers = sorted(set(existing + busy))
 
         return allWorkers
 
-    def getFreeWorkers(self, workerType=None):
+    def getFreeWorkers(self, instrument, workerType=None):
         """Get the list of workers that are currently free.
 
         Parameters
@@ -299,7 +299,7 @@ class RedisHelper:
             The list of workers that are currently free.
         """
         workers = []
-        allWorkers = self.getAllWorkers(workerType=workerType)
+        allWorkers = self.getAllWorkers(instrument=instrument, workerType=workerType)
         for worker in allWorkers:
             if not self.redis.get(f"{worker}_IS-BUSY"):
                 workers.append(worker)

@@ -351,28 +351,28 @@ class HeadProcessController:
             return True
         return False
 
-    def getFreeSFMWorkerQueue(self, detectorId):
+    def getFreeSFMWorkerQueue(self, instrument, detectorId):
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
 
-        sfmWorkers = self.redisHelper.getFreeWorkers(workerType="SFM")
+        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, workerType="SFM")
         sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
 
         # get ones which match the detectorId. We'll make this smarter later.
-        idMatchedWorkers = [queue for queue in sfmWorkers if f"-{detectorId:02}-" in queue]
+        idMatchedWorkers = [queue for queue in sfmWorkers if f"{instrument}-{detectorId:02}-" in queue]
         if idMatchedWorkers == []:
             # TODO: until we have a real backlog queue just put it on the last
             # worker in the stack.
-            busyWorkers = self.redisHelper.getAllWorkers(workerType="SFM")
+            busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, workerType="SFM")
             idMatchedWorkers = [queue for queue in busyWorkers if f"-{detectorId:02}-" in queue]
             busyWorker = idMatchedWorkers[-1]
             self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
             return busyWorker
         return idMatchedWorkers[0]
 
-    def getFreeGatherWorkerQueue(self, workerType):
-        freeWorkers = self.redisHelper.getFreeWorkers(workerType=workerType)
+    def getFreeGatherWorkerQueue(self, instrument, workerType):
+        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, workerType=workerType)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
             return freeWorkers[0]
@@ -380,7 +380,7 @@ class HeadProcessController:
         # We have no free workers of this type, so send to a busy work and warn
         # TODO: until we have a real backlog queue just put it on the last
         # worker in the stack.
-        busyWorkers = self.redisHelper.getAllWorkers(workerType=workerType)
+        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, workerType=workerType)
         busyWorker = busyWorkers[-1]
         self.log.warning(f"No free workers available for {workerType=}, sending work to {busyWorker=}")
         return busyWorker
@@ -412,7 +412,7 @@ class HeadProcessController:
         )
 
         for detectorId, dataId in dataIds.items():
-            queueName = self.getFreeSFMWorkerQueue(detectorId)
+            queueName = self.getFreeSFMWorkerQueue(expRecord.instrument, detectorId)
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
                 dataId=dataId, pipelineGraphBytes=self.pipelineGraphsBytes["step1"], run=self.outputRun
@@ -462,7 +462,7 @@ class HeadProcessController:
         )
         # caps for the queue name. Maybe should reconsider how that's dealt wit
         # post OR3
-        queueName = self.getFreeGatherWorkerQueue("STEP2A")
+        queueName = self.getFreeGatherWorkerQueue(self.instrument, "STEP2A")
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchGatherSteps(self, triggeringTask, step, dispatchIncomplete=False):
@@ -534,7 +534,7 @@ class HeadProcessController:
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
         payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
-        queueName = self.getFreeGatherWorkerQueue("NIGHTLYROLLUP")
+        queueName = self.getFreeGatherWorkerQueue(self.instrument, "NIGHTLYROLLUP")
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self):
@@ -564,7 +564,7 @@ class HeadProcessController:
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload(dataCoord, b"", dataProduct)
-                queueName = self.getFreeGatherWorkerQueue("MOSAIC")
+                queueName = self.getFreeGatherWorkerQueue(self.instrument, "MOSAIC")
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
