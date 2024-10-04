@@ -360,7 +360,9 @@ class HeadProcessController:
         sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
 
         # get ones which match the detectorId. We'll make this smarter later.
-        idMatchedWorkers = [queue for queue in sfmWorkers if f"{instrument}-{detectorId:03}-" in queue]
+        idMatchedWorkers = [
+            queue for queue in sfmWorkers if f"{instrument}-SFM-WORKER-{detectorId:03}-" in queue
+        ]
         if idMatchedWorkers == []:
             # TODO: until we have a real backlog queue just put it on the last
             # worker in the stack.
