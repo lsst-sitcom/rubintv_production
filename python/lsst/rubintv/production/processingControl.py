@@ -456,7 +456,14 @@ class HeadProcessController:
     def getNumExpected(self, instrument):
         if instrument in ("LSSTComCam", "LSSTComCamSim"):
             return 9
-        raise NotImplementedError(f"Need to extend dispatch for non-single-raft instruments {instrument=}")
+        elif instrument == "LSSTCam":
+            # TODO: probably should redirect this to utils.py
+            # getNumExpectedItems() soon, but that will need to be
+            # site-dependent to properly work, and we also need Tony to start
+            # writing out the expected sensors file too, before it's useful on
+            # the summit.
+            return 189
+        raise ValueError(f"Unknown instrument {instrument=}")
 
     def _dispatch2a(self, dataCoordinate):
         payload = Payload(
