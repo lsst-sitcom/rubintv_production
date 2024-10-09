@@ -184,7 +184,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         try:
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
                 self.log.warning("Pipeline graph has changed, updating")
-                self.pipelineGraphBytes = pipelineGraphFromBytes(pipelineGraphBytes)
+                self.pipelineGraphBytes = pipelineGraphBytes
+                self.pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
                 # need to remake the caching butler if the pipeline changes
                 self.limitedButler = self.makeLimitedButler(self.butler)
 
