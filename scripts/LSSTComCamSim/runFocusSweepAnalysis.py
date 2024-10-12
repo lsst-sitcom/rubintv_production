@@ -29,6 +29,14 @@ instrument = "LSSTComCamSim"
 setupLogging()
 
 locationConfig = getAutomaticLocationConfig()
+if locationConfig.location != "summit":
+    msg = (
+        "This script is only intended to be run on summit -"
+        " the signals from OCS for focus sweep triggering go straight to summit redis database and aren't"
+        " accessible at USDF or elsewhere"
+    )
+    raise RuntimeError(msg)
+
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[

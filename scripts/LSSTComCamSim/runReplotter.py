@@ -19,18 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.slac import Replotter
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 print("Running ComCamSim replotter...")
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
+locationConfig = getAutomaticLocationConfig()
+
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 plotter = Replotter(
     butler=butler,

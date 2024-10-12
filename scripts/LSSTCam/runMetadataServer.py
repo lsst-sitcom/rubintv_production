@@ -19,18 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running LSSTCam metadata server at {location}...")
+locationConfig = getAutomaticLocationConfig()
+print(f"Running LSSTCam metadata server at {locationConfig.location}...")
 
 metadataDirectory = locationConfig.lsstCamMetadataPath
 shardsDirectory = locationConfig.lsstCamMetadataShardPath

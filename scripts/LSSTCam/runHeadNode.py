@@ -19,20 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.processingControl import HeadProcessController
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTCam"
 
 setupLogging()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running {instrument} head node at {location}...")
-
+locationConfig = getAutomaticLocationConfig()
+print(f"Running {instrument} head node at {locationConfig.location}...")
 
 butler = dafButler.Butler(
     locationConfig.lsstCamButlerPath,

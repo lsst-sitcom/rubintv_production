@@ -19,20 +19,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.slac.newPlotting import Plotter
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 queueName = "LSSTComCam-MOSAIC-WORKER-00"
-print(f"Running LSSTComCam plotter at {location}, consuming from {queueName}")
 
-locationConfig = LocationConfig(location)
+locationConfig = getAutomaticLocationConfig()
+print(f"Running LSSTComCam plotter at {locationConfig.location}, consuming from {queueName}")
+
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCam/raw/all"])
 plotter = Plotter(
     butler=butler,

@@ -22,15 +22,15 @@
 import sys
 
 from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
 
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running ComCamSim AOS metadata server at {location}...")
+locationConfig = getAutomaticLocationConfig()
+print(f"Running ComCamSim AOS metadata server at {locationConfig.location}...")
 
 metadataDirectory = locationConfig.comCamSimAosMetadataPath
 shardsDirectory = locationConfig.comCamSimAosMetadataShardPath
