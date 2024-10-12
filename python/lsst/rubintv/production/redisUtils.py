@@ -31,7 +31,10 @@ from typing import Callable
 
 import redis
 
+from lsst.daf.butler import DimensionRecord
+
 from .payloads import Payload
+from .podDefinition import PodDetails
 from .utils import expRecordFromJson
 
 # Check if the environment is a notebook
@@ -155,7 +158,7 @@ class RedisHelper:
         self._testRedisConnection()
         self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
 
-    def _makeRedis(self):
+    def _makeRedis(self) -> redis.Redis:
         """Create a redis connection.
 
         Returns
@@ -163,9 +166,9 @@ class RedisHelper:
         redis.Redis
             The redis connection.
         """
-        host = os.getenv("REDIS_HOST")
+        host: str = os.getenv("REDIS_HOST", "")
         password = os.getenv("REDIS_PASSWORD")
-        port = os.getenv("REDIS_PORT", 6379)
+        port: int = int(os.getenv("REDIS_PORT", 6379))
         return redis.Redis(host=host, password=password, port=port)
 
     def _testRedisConnection(self):
@@ -184,7 +187,7 @@ class RedisHelper:
         except Exception as e:
             raise RuntimeError(f"Unexpected error connecting to redis: {e}") from e
 
-    def affirmRunning(self, podName, timePeriod):
+    def affirmRunning(self, pod: PodDetails, timePeriod: int | float) -> None:
         """Affirm that the named pod is running OK and should not be considered
         dead for `timePeriod` seconds.
 
@@ -196,9 +199,9 @@ class RedisHelper:
             The amount of time after which the pod would be considered dead if
             not reaffirmed by.
         """
-        self.redis.setex(f"{podName}_IS-RUNNING", timedelta(seconds=timePeriod), value=1)
+        self.redis.setex(f"{pod.queueName}_IS-RUNNING", timedelta(seconds=timePeriod), value=1)
 
-    def confirmRunning(self, podName):
+    def confirmRunning(self, pod: PodDetails) -> bool:
         """Check whether the named pod is running or should be considered dead.
 
         Parameters
@@ -206,10 +209,10 @@ class RedisHelper:
         podName : `str`
             The name of the pod.
         """
-        isRunning = self.redis.get(f"{podName}_IS-RUNNING")
+        isRunning = self.redis.get(f"{pod.queueName}_IS-RUNNING")
         return bool(isRunning)  # 0 and None both bool() to False
 
-    def announceBusy(self, queueName):
+    def announceBusy(self, pod: PodDetails) -> None:
         """Announce that a worker is busy processing a queue.
 
         Parameters
@@ -217,9 +220,9 @@ class RedisHelper:
         queueName : `str`
             The name of the queue the worker is processing.
         """
-        self.redis.set(f"{queueName}_IS-BUSY", value=1)
+        self.redis.set(f"{pod.queueName}_IS-BUSY", value=1)
 
-    def announceFree(self, queueName):
+    def announceFree(self, pod: PodDetails) -> None:
         """Announce that a worker is free to process a queue.
 
         Implies a call to `announceExistence` as you have to exist to be free.
@@ -229,10 +232,10 @@ class RedisHelper:
         queueName : `str`
             The name of the queue the worker is processing.
         """
-        self.announceExistence(queueName)
-        self.redis.delete(f"{queueName}_IS-BUSY")
+        self.announceExistence(pod)
+        self.redis.delete(f"{pod.queueName}_IS-BUSY")
 
-    def announceExistence(self, queueName, remove=False):
+    def announceExistence(self, pod: PodDetails, remove: bool = False) -> None:
         """Announce that a worker is present in the pool.
 
         Currently this is set to 30s expiry, and is reasserted with each call
@@ -251,11 +254,11 @@ class RedisHelper:
             Remove the worker from pool. Default is ``False``.
         """
         if not remove:
-            self.redis.setex(f"{queueName}_EXISTS", timedelta(seconds=30), value=1)
+            self.redis.setex(f"{pod.queueName}_EXISTS", timedelta(seconds=30), value=1)
         else:
-            self.redis.delete(f"{queueName}_EXISTS")
+            self.redis.delete(f"{pod.queueName}_EXISTS")
 
-    def getAllWorkers(self, instrument, workerType=None):
+    def getAllWorkers(self, instrument: str, workerType=None) -> list[str]:  # TODO return list[PodDetails]
         """Get the list of workers that are currently active.
 
         Parameters
@@ -285,7 +288,7 @@ class RedisHelper:
 
         return allWorkers
 
-    def getFreeWorkers(self, instrument, workerType=None):
+    def getFreeWorkers(self, instrument, workerType=None) -> list[str]:  # TODO return list[PodDetails]
         """Get the list of workers that are currently free.
 
         Parameters
@@ -306,7 +309,7 @@ class RedisHelper:
                 workers.append(worker)
         return sorted(workers)
 
-    def pushToButlerWatcherList(self, instrument, expRecord):
+    def pushToButlerWatcherList(self, instrument, expRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
         time.
 
@@ -318,7 +321,7 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(f"{instrument}-fromButlerWacher", expRecordJson)
 
-    def reportFinished(self, instrument, taskName, processingId, failed=False):
+    def reportFinished(self, instrument, taskName, processingId, failed=False) -> None:
         """Report that a task has finished.
 
         Parameters
@@ -338,7 +341,7 @@ class RedisHelper:
             key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
             self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
-    def getNumFinished(self, instrument, taskName, processingId):
+    def getNumFinished(self, instrument, taskName, processingId) -> int:
         """Get the number of items finished for a given task and id.
 
         Parameters
@@ -360,7 +363,7 @@ class RedisHelper:
         value = self.redis.hget(key, processingId)
         return int(value or 0)
 
-    def reportVisitLevelFinished(self, instrument, step, failed=False):
+    def reportVisitLevelFinished(self, instrument, step, failed=False) -> None:
         """Count the number of times a visit-level pipeline has finished.
 
         Parameters
@@ -379,7 +382,7 @@ class RedisHelper:
             key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
             self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
-    def getNumVisitLevelFinished(self, instrument, step):
+    def getNumVisitLevelFinished(self, instrument, step) -> int:
         """Get the number of times a visit-level pipeline has finished.
 
         Parameters
@@ -397,7 +400,7 @@ class RedisHelper:
         key = f"{instrument}-{step}-FINISHEDCOUNTER"
         return int(self.redis.get(key) or 0)
 
-    def reportNightLevelFinished(self, instrument, failed=False):
+    def reportNightLevelFinished(self, instrument, failed=False) -> None:
         """Count the number of times a night-level pipeline has finished.
 
         Parameters
@@ -410,12 +413,12 @@ class RedisHelper:
         key = f"{instrument}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
 
-    def getIdsForTask(self, instrument, taskName):
+    def getIdsForTask(self, instrument, taskName) -> list[int]:
         key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
         idList = self.redis.hgetall(key).keys()  # list of bytes
         return [int(procId) for procId in idList]
 
-    def removeTaskCounter(self, instrument, taskName, processId):
+    def removeTaskCounter(self, instrument, taskName, processId) -> None:
         """Once a gather step is finished with all the expected data present,
         remove the counter from the tracking dictionary to save reprocessing it
         each time.
@@ -433,7 +436,7 @@ class RedisHelper:
         key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
         self.redis.hdel(key, processId)
 
-    def checkButlerWatcherList(self, instrument, expRecord):
+    def checkButlerWatcherList(self, instrument, expRecord) -> bool:
         """Check if an exposure record has already been processed because it
         was seen by the ButlerWatcher.
 
@@ -462,7 +465,7 @@ class RedisHelper:
         recordStrings = [item.decode("utf-8") for item in data]
         return expRecordJson in recordStrings
 
-    def _checkIsHeadNode(self):
+    def _checkIsHeadNode(self) -> None:
         """Note: this isn't how atomicity of transactions is ensured, this is
         just to make sure workers don't accidentally try to pop straight from
         the main queue.
@@ -470,7 +473,7 @@ class RedisHelper:
         if not self.isHeadNode:
             raise RuntimeError("This function is only for the head node - consume your queue, worker!")
 
-    def getRemoteCommands(self):
+    def getRemoteCommands(self) -> list[dict]:
         """Get any remote commands that have been sent to the head node.
 
         Returns
@@ -497,7 +500,7 @@ class RedisHelper:
 
         return commands
 
-    def pushNewExposureToHeadNode(self, expRecord):
+    def pushNewExposureToHeadNode(self, expRecord) -> None:
         """Send an exposure record for processing.
 
         This queue is consumed by the head node, which fans it out for
@@ -517,7 +520,7 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(queueName, expRecordJson)
 
-    def announceResultInConsDb(self, instrument, table, obsId):
+    def announceResultInConsDb(self, instrument, table, obsId) -> None:
         """
         Parameters
         ----------
@@ -537,7 +540,7 @@ class RedisHelper:
             self.redis.lpush(key, 1)
         self.redis.expire(key, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
-    def waitForResultInConsdDb(self, instrument, table, obsId, timeout=None):
+    def waitForResultInConsdDb(self, instrument, table, obsId, timeout=None) -> bool:
         """Wait for an item to be available in consDB.
 
         NB: this function is only appropriate for items less than 2 days old,
@@ -584,7 +587,7 @@ class RedisHelper:
         else:
             return False
 
-    def getExposureForFanout(self, instrument):
+    def getExposureForFanout(self, instrument) -> DimensionRecord | None:
         """Get the next exposure to process for the specified instrument.
 
         Parameters
@@ -605,7 +608,7 @@ class RedisHelper:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
 
-    def enqueuePayload(self, payload, queueName, top=True):
+    def enqueuePayload(self, payload, pod: PodDetails, top=True) -> None:
         """Send a unit of work to a specific worker-queue.
 
         Parameters
@@ -619,11 +622,11 @@ class RedisHelper:
             ``True``.
         """
         if top:
-            self.redis.lpush(queueName, payload.to_json())
+            self.redis.lpush(pod.queueName, payload.to_json())
         else:
-            self.redis.rpush(queueName, payload.to_json())
+            self.redis.rpush(pod.queueName, payload.to_json())
 
-    def dequeuePayload(self, queueName):
+    def dequeuePayload(self, pod: PodDetails) -> Payload | None:
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -632,18 +635,18 @@ class RedisHelper:
             The next exposure to process for the specified detector, or
             ``None`` if the queue is empty.
         """
-        payLoadJson = self.redis.lpop(queueName)
+        payLoadJson = self.redis.lpop(pod.queueName)
         if payLoadJson is None:
             return None
         return Payload.from_json(payLoadJson, self.butler)
 
-    def clearTaskCounters(self):
+    def clearTaskCounters(self) -> None:
         # TODO: DM-44102 check if .keys() is OK here
         keys = self.redis.keys("*EDCOUNTER*")  # FINISHEDCOUNTER and FAILEDCOUNTER
         for key in keys:
             self.redis.delete(key)
 
-    def displayRedisContents(self, instrument=None):
+    def displayRedisContents(self, instrument=None) -> None:
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -747,7 +750,7 @@ class RedisHelper:
             else:
                 print(f"Unsupported type for key: {key}")
 
-    def clearRedis(self, force=False):
+    def clearRedis(self, force=False) -> None:
         """Clear all keys in the Redis database.
 
         Parameters
@@ -765,7 +768,7 @@ class RedisHelper:
                 return
         self.redis.flushdb()
 
-    def clearWorkerQueues(self, force=False):
+    def clearWorkerQueues(self, force=False) -> None:
         """Clear all keys in the Redis database.
 
         Parameters
@@ -787,7 +790,7 @@ class RedisHelper:
         for key in keys:
             self.redis.delete(key)
 
-    def monitorRedis(self, interval=1):
+    def monitorRedis(self, interval=1) -> None:
         """Continuously display the contents of Redis database in the console.
 
         This function prints the entire contents of the redis database to
@@ -806,6 +809,7 @@ class RedisHelper:
 
             # Clear the screen according to the environment
             if IN_NOTEBOOK:
+                assert clear_output is not None
                 clear_output(wait=True)
             else:
                 print("\033c", end="")  # clear the terminal
