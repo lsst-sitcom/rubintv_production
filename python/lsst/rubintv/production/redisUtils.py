@@ -27,6 +27,7 @@ import logging
 import os
 import time
 from datetime import timedelta
+from typing import Callable
 
 import redis
 
@@ -34,7 +35,7 @@ from .payloads import Payload
 from .utils import expRecordFromJson
 
 # Check if the environment is a notebook
-clear_output = None
+clear_output: Callable | None = None
 IN_NOTEBOOK = False
 try:
     from IPython import get_ipython

@@ -16,7 +16,7 @@ class PodDetails:
     podType: PodType
     detectorNumber: int
     depth: int
-    queueName: str = None
+    queueName: str
 
     def __init__(self, instrument: str, podType: PodType, detectorNumber: int, depth: int):
         self.instrument = instrument

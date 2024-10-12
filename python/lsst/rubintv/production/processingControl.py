@@ -24,7 +24,7 @@ import json
 import logging
 from ast import literal_eval
 from time import sleep
-from typing import Iterable
+from typing import Any
 
 import numpy as np
 
@@ -74,7 +74,7 @@ class VisitProcessingMode(enum.IntEnum):
 
 def prepRunCollection(
     butler,
-    pipelineGraphs: Iterable[PipelineGraph],
+    pipelineGraphs: list[PipelineGraph],
     run,
     packages: Packages,
 ):
@@ -106,7 +106,7 @@ def prepRunCollection(
             if pipelineGraph.producer_of(datasetTypeNode.name) is not None:
                 butler.registry.registerDatasetType(datasetTypeNode.dataset_type)
 
-        initRefs = {}
+        initRefs: dict[str, Any] = {}
         taskFactory = TaskFactory()
         for taskNode in pipelineGraph.tasks.values():
             inputRefs = [
