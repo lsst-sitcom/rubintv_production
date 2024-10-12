@@ -6,8 +6,19 @@ class PodType(Enum):
     SFM_WORKER = "SFM_WORKER"
     PSF_PLOTTER = "PSF_PLOTTER"
     NIGHTLYROLLUP_WORKER = "NIGHTLYROLLUP_WORKER"
-    STEP2A_WORKER = "STEP2A-WORKER"
-    MOSAIC_WORKER = "MOSAIC-WORKER"
+    STEP2A_WORKER = "STEP2A_WORKER"
+    MOSAIC_WORKER = "MOSAIC_WORKER"
+
+    @classmethod
+    def validate_values(cls):
+        for item in cls:
+            if "-" in item.value:
+                raise ValueError(f"Invalid PodType: value with dash: {item.value}")
+
+
+# trigger this check import, as this is covered by tests: ensures that nobody
+# ever adds a type with a dash in it
+PodType.validate_values()
 
 
 @dataclass(kw_only=True)
