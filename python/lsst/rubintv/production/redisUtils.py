@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 __all__ = "RedisHelper"
 
 
@@ -27,7 +29,7 @@ import logging
 import os
 import time
 from datetime import timedelta
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import redis
 
@@ -55,6 +57,14 @@ try:
         IN_NOTEBOOK = True
 except (ImportError, NameError):
     pass
+
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.daf.butler import Butler
+    from lsst.rubintv.production.utils import LocationConfig
+
 
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2
 
@@ -150,13 +160,13 @@ def getNewDataQueueName(instrument):
 
 
 class RedisHelper:
-    def __init__(self, butler, locationConfig, isHeadNode=False):
-        self.butler = butler  # needed to expand dataIds when dequeuing payloads
-        self.locationConfig = locationConfig
-        self.isHeadNode = isHeadNode
-        self.redis = self._makeRedis()
+    def __init__(self, butler: Butler, locationConfig: LocationConfig, isHeadNode: bool = False) -> None:
+        self.butler: Butler = butler  # needed to expand dataIds when dequeuing payloads
+        self.locationConfig: LocationConfig = locationConfig
+        self.isHeadNode: bool = isHeadNode
+        self.redis: redis.Redis = self._makeRedis()
         self._testRedisConnection()
-        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
+        self.log: Logger = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
 
     def _makeRedis(self) -> redis.Redis:
         """Create a redis connection.

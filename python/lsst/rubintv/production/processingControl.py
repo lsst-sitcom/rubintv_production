@@ -24,7 +24,7 @@ import json
 import logging
 from ast import literal_eval
 from time import sleep
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 import numpy as np
 
@@ -81,7 +81,7 @@ class VisitProcessingMode(enum.IntEnum):
 
 def prepRunCollection(
     butler,
-    pipelineGraphs: list[PipelineGraph],
+    pipelineGraphs: Iterable[PipelineGraph],
     run,
     packages: Packages,
 ):
@@ -105,7 +105,7 @@ def prepRunCollection(
             " prefix and didn't chain it to the output collection."
         )
 
-    log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
+    log.info(f"Prepping new run {run} with {len(list(pipelineGraphs))} pipelineGraphs")
     butler.put(packages, "packages", run=run)
 
     for pipelineGraph in pipelineGraphs:
@@ -299,10 +299,11 @@ class HeadProcessController:
         if self.focalPlaneControl is not None:
             self.focalPlaneControl.setAllImagingOn()
 
-        steps = ("step1", "step2a", "nightlyRollup")  # NB: these need to be in order for prepRunCollection!
+        # NB: steps need to be in order for prepRunCollection!
+        steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
         self.pipelineGraphUris = {}
-        self.pipelineGraphs = {}
-        self.pipelineGraphsBytes = {}
+        self.pipelineGraphs: dict[str, PipelineGraph] = {}
+        self.pipelineGraphsBytes: dict[str, bytes] = {}
 
         for step in steps:
             stepStr = "#" + step
@@ -325,7 +326,7 @@ class HeadProcessController:
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
 
-        allRuns = []
+        allRuns: Sequence[str] = []
         needNewChain = False
         try:
             allRuns = self.butler.registry.getCollectionChain(self.outputChain)
@@ -453,7 +454,7 @@ class HeadProcessController:
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
         expRecord = self.redisHelper.getExposureForFanout(self.instrument)
         if expRecord is None:
-            return
+            return expRecord
 
         # first time touching the new expRecord so run define visits
 
@@ -469,6 +470,7 @@ class HeadProcessController:
         """Apply the VisitProcessingMode to the focal plane sensor
         selection.
         """
+        assert self.focalPlaneControl is not None, "Only LSSTCam has a focalPlaneControl"
         match self.visitMode:
             case VisitProcessingMode.CONSTANT:
                 return
@@ -596,7 +598,7 @@ class HeadProcessController:
 
             self.log.info(f"Dispatching {len(completeIds)} complete focal {dataProduct} mosaics for creation")
             for expId in completeIds:
-                dataId = {"exposure": expId, "instrument": self.instrument}
+                dataId: dict[str, int | str] = {"exposure": expId, "instrument": self.instrument}
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload(dataCoord, b"", dataProduct)

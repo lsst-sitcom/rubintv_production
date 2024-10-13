@@ -27,10 +27,10 @@ from typing import TYPE_CHECKING, Any
 import matplotlib.pyplot as plt
 
 from ..uploaders import MultiUploader
-from ..utils import getNumExpectedItems
+from ..utils import LocationConfig, getNumExpectedItems
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
-from .utils import LocationConfig, getCamera
+from .utils import getCamera
 
 if TYPE_CHECKING:
     from logging import Logger

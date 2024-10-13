@@ -137,7 +137,7 @@ class BaseButlerChannel(BaseChannel):
         instrument: str,
         butler: Butler,
         dataProduct: str,
-        detectors: int | list[int],
+        detectors: int | list[int] | None,
         channelName: str,
         watcherType: str,
         doRaise: bool,
@@ -170,7 +170,7 @@ class BaseButlerChannel(BaseChannel):
         self.butler: Butler = butler
         self.dataProduct: str = dataProduct
         self.channelName: str = channelName
-        self.detectors: int | list[int] = detectors
+        self.detectors: int | list[int] | None = detectors
         self.podDetails: PodDetails | None = podDetails
 
     @abstractmethod

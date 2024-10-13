@@ -26,9 +26,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
-from lsst.pipe.base import Pipeline, QuantumGraph
+from lsst.pipe.base import Pipeline, PipelineGraph, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.summit.utils import ConsDbClient
@@ -36,6 +35,7 @@ from lsst.summit.utils import ConsDbClient
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .payloads import pipelineGraphFromBytes, pipelineGraphToBytes
+from .redisUtils import RedisHelper
 from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
 
@@ -65,7 +65,7 @@ TASK_ENDPOINTS_TO_TRACK = (
     "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step2a for nightly
 )
 
-NO_COPY_ON_CACHE = ("bias", "dark", "flat", "defects", "camera")
+NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera"}
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):
@@ -130,7 +130,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.butler: Butler = butler
         self.step: str = step
         self.pipeline: str = pipeline + f"#{step}"
-        self.pipelineGraph: Pipeline = Pipeline.fromFile(self.pipeline).to_graph(
+        self.pipelineGraph: PipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(
             registry=self.butler.registry
         )
         self.pipelineGraphBytes: bytes = pipelineGraphToBytes(self.pipelineGraph)
@@ -141,7 +141,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.consdbClient: ConsDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
-        self.consDBPopulator: ConsDBPopulator = ConsDBPopulator(self.consdbClient, self.watcher.redisHelper)
+        self.redisHelper: RedisHelper = RedisHelper(butler, self.locationConfig)
+
+        self.consDBPopulator: ConsDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
     def makeLimitedButler(self, butler) -> CachingLimitedButler:
         cachedOnGet = set()
@@ -257,7 +259,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.log.info(f"Starting to process {taskName}")
                     quantum, _ = executor.execute(node.task_node, node.quantum)
                     self.postProcessQuantum(quantum, processingId)
-                    self.watcher.redisHelper.reportFinished(self.instrument, taskName, processingId)
+                    self.redisHelper.reportFinished(self.instrument, taskName, processingId)
 
                 except Exception as e:
                     # don't use quantum directly in this block in case it is
@@ -270,14 +272,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # tasks, or only the points used for triggering other
                     # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
-                    self.watcher.redisHelper.reportFinished(
-                        self.instrument, taskName, processingId, failed=True
-                    )
+                    self.redisHelper.reportFinished(self.instrument, taskName, processingId, failed=True)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
             # finished looping over nodes
             if self.step == "step2a":
-                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
@@ -285,15 +285,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     visit = f"{payload.dataId['visit']}"
                 else:
                     visit = f"{payload.dataId['exposure']}"
-                self.watcher.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", visit)
+                self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", visit)
             if self.step == "nightlyRollup":
-                self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
+                self.redisHelper.reportNightLevelFinished(self.instrument)
 
         except Exception as e:
             if self.step == "step2a":
-                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", failed=True)
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", failed=True)
             if self.step == "nightlyRollup":
-                self.watcher.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
+                self.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
     def postProcessQuantum(self, quantum, processingId) -> None:
@@ -358,7 +358,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.watcher.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
+        self.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
         try:
@@ -417,26 +417,3 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
-
-    def clobber(self, object, datasetType, visitDataId) -> None:
-        """Put object in the butler.
-
-        If there is one already there, remove it beforehand.
-
-        Parameters
-        ----------
-        object : `object`
-            Any object to put in the butler.
-        datasetType : `str`
-            Dataset type name to put it as.
-        visitDataId : `lsst.daf.butler.DataCoordinate`
-            The data coordinate record of the exposure to put. Must contain the
-            visit id.
-        """
-        self.butler.registry.registerRun(self.outputRunName)
-        if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f"Overwriting existing {datasetType} for {visitDataId}")
-            dRef = self.butler.registry.findDataset(datasetType, visitDataId)
-            self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
-        self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f"Put {datasetType} for {visitDataId}")
