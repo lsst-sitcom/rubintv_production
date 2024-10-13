@@ -39,7 +39,7 @@ butler = dafButler.Butler(
 print(f"Running psf plotter launcher at {locationConfig.location}")
 
 queueName = "LSSTComCamSim-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(
+psfPlotter = PsfAzElPlotter(  # XXX needs type annotations adding and moving to podDetails
     butler=butler,
     locationConfig=locationConfig,
     queueName=queueName,

@@ -25,17 +25,17 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-
-
+instrument = "LSSTComCamSim"
 locationConfig = getAutomaticLocationConfig()
-print(f"Running ComCam butler watcher at {locationConfig.location}...")
+print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
+# XXX change to LSSTComCamSim/defaults?
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 writeDimensionUniverseFile(butler, locationConfig)
 butlerWatcher = ButlerWatcher(
     butler=butler,
     locationConfig=locationConfig,
-    instrument="LSSTComCamSim",
+    instrument=instrument,
     dataProducts="raw",
     doRaise=getDoRaise(),
 )

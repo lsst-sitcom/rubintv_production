@@ -18,10 +18,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
+from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
@@ -29,7 +30,15 @@ from ..uploaders import MultiUploader
 from ..utils import getNumExpectedItems
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
-from .utils import getCamera
+from .utils import LocationConfig, getCamera
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.afw.cameraGeom import Camera
+    from lsst.daf.butler import Butler
+    from lsst.rubintv.production.podDefinition import PodDetails
+
 
 _LOG = logging.getLogger(__name__)
 
@@ -59,24 +68,31 @@ class Plotter:
         If True, raise exceptions instead of logging them.
     """
 
-    def __init__(self, butler, locationConfig, instrument, queueName, doRaise=False):
-        self.locationConfig = locationConfig
-        self.butler = butler
-        self.camera = getCamera(self.butler, instrument)
-        self.instrument = instrument
-        self.s3Uploader = MultiUploader()
-        self.log = _LOG.getChild(f"plotter_{self.instrument}")
+    def __init__(
+        self,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        podDetails: PodDetails,
+        doRaise=False,
+    ) -> None:
+        self.locationConfig: LocationConfig = locationConfig
+        self.butler: Butler = butler
+        self.camera: Camera = getCamera(self.butler, instrument)
+        self.instrument: str = instrument
+        self.s3Uploader: MultiUploader = MultiUploader()
+        self.log: Logger = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
-        self.watcher = RedisWatcher(
+        self.watcher: RedisWatcher = RedisWatcher(
             butler=butler,
             locationConfig=locationConfig,
-            queueName=queueName,
+            podDetails=podDetails,
         )
-        self.fig = plt.figure(figsize=(12, 12))
+        self.fig: Any = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotFocalPlane(self, expRecord, dataProduct, timeout):
+    def plotFocalPlane(self, expRecord, dataProduct, timeout) -> str:
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -131,7 +147,7 @@ class Plotter:
         return saveFile
 
     @staticmethod
-    def getInstrumentChannelName(instrument):
+    def getInstrumentChannelName(instrument) -> str:
         """Get the instrument channel name for the current instrument.
 
         This is the plot prefix to use for upload.
@@ -160,7 +176,7 @@ class Plotter:
             case _:
                 raise ValueError(f"Unknown instrument {instrument}")
 
-    def callback(self, payload):
+    def callback(self, payload) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Note: the callback is used elsewhere to reprocess old data, so the
@@ -207,7 +223,7 @@ class Plotter:
                 filename=focalPlaneFile,
             )
 
-    def run(self):
+    def run(self) -> None:
         """Run continuously, calling the callback method with the latest
         expRecord.
         """

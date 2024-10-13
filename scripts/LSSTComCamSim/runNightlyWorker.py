@@ -24,12 +24,13 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodType
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+instrument = "LSSTComCamSim"
+locationConfig = getAutomaticLocationConfig()
 
 workerName = os.getenv("WORKER_NAME")  # when using statefulSets
 if workerName:
@@ -46,10 +47,14 @@ else:
 
 workerNum = int(workerNum)
 
-queueName = f"{instrument}-NIGHTLYROLLUP-WORKER-{workerNum:03}"
-print(f"Running nightly rollup worker {workerNum}, queueName={queueName}")
+podDetails = PodDetails(
+    instrument=instrument, podType=PodType.NIGHTLYROLLUP_WORKER, detectorNumber=None, depth=workerNum
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podType.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
-locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
@@ -65,8 +70,8 @@ rollupRunner = SingleCorePipelineRunner(
     pipeline=locationConfig.getSfmPipelineFile(instrument),
     step="nightlyRollup",
     awaitsDataProduct=None,
+    podDetails=podDetails,
     doRaise=getDoRaise(),
-    queueName=queueName,
 )
 rollupRunner.run()
 sys.exit(1)  # run is an infinite loop, so we should never get here

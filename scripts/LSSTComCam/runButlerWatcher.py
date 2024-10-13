@@ -25,15 +25,17 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
+instrument = "LSSTComCam"
 locationConfig = getAutomaticLocationConfig()
-print(f"Running ComCam butler watcher at {locationConfig.location}...")
+print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
+# XXX change to LSSTComCam/defaults?
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCam/raw/all"])
-writeDimensionUniverseFile(butler, locationConfig)
+writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
 butlerWatcher = ButlerWatcher(
     butler=butler,
     locationConfig=locationConfig,
-    instrument="LSSTComCam",
+    instrument=instrument,
     dataProducts="raw",
     doRaise=getDoRaise(),
 )

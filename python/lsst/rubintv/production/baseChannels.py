@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.daf.butler import Butler
+    from lsst.rubintv.production.podDefinition import PodDetails
     from lsst.rubintv.production.utils import LocationConfig
 
 
@@ -140,7 +141,9 @@ class BaseButlerChannel(BaseChannel):
         channelName: str,
         watcherType: str,
         doRaise: bool,
-        queueName: str | None = None,  # only needed for redis watcher. Not the neatest but will do for now
+        podDetails: (
+            PodDetails | None
+        ) = None,  # only needed for redis watcher. Not the neatest but will do for now
         addUploader: bool = True,
     ) -> None:
         watcher: FileWatcher | RedisWatcher
@@ -152,11 +155,11 @@ class BaseButlerChannel(BaseChannel):
                 doRaise=doRaise,
             )
         elif watcherType == "redis":
-            assert queueName is not None, "queueName must be provided for redis watcher"
+            assert podDetails is not None, "podDetails must be provided for redis watcher"
             watcher = RedisWatcher(
                 butler=butler,
                 locationConfig=locationConfig,
-                queueName=queueName,
+                podDetails=podDetails,
             )
         else:
             raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
@@ -168,6 +171,7 @@ class BaseButlerChannel(BaseChannel):
         self.dataProduct: str = dataProduct
         self.channelName: str = channelName
         self.detectors: int | list[int] = detectors
+        self.podDetails: PodDetails | None = podDetails
 
     @abstractmethod
     def callback(self, expRecord):

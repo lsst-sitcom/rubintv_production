@@ -20,23 +20,26 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.podDefinition import PodDetails, PodType
 from lsst.rubintv.production.slac.newPlotting import Plotter
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-
-queueName = "LSSTComCam-MOSAIC-WORKER-00"
-
+instrument = "LSSTComCam"
 locationConfig = getAutomaticLocationConfig()
-print(f"Running LSSTComCam plotter at {locationConfig.location}, consuming from {queueName}")
+podDetails = PodDetails(instrument=instrument, podType=PodType.MOSAIC_WORKER, detectorNumber=None, depth=0)
+print(
+    f"Running {podDetails.instrument} {podDetails.podType.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCam/raw/all"])
 plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,
-    instrument="LSSTComCam",
-    queueName=queueName,
+    instrument=instrument,
+    podDetails=podDetails,
     doRaise=getDoRaise(),
 )
 

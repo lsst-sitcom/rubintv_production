@@ -24,9 +24,8 @@ from lsst.rubintv.production.aos import DonutLauncher
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+instrument = "LSSTComCamSim"
 
 locationConfig = getAutomaticLocationConfig()
 if locationConfig.location != "summit":
@@ -51,7 +50,7 @@ inputCollection = "LSSTComCamSim/defaults"
 outputCollection = "u/saluser/ra_wep_testing3"
 pipelineFile = "/project/rubintv/temp/donut_pipeline.yaml"
 queueName = "LSSTComCamSim-FROM-OCS_DONUTPAIR"
-donutLauncher = DonutLauncher(
+donutLauncher = DonutLauncher(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
     inputCollection=inputCollection,

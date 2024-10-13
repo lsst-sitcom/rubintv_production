@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# XXX I don't think this has been used for a while. Ressurect ASAP or delete?
+
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.slac import Replotter
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
@@ -30,7 +32,7 @@ print("Running ComCamSim replotter...")
 locationConfig = getAutomaticLocationConfig()
 
 butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
-plotter = Replotter(
+plotter = Replotter(  # XXX needs type annotating and moving to podDetails
     butler=butler,
     locationConfig=locationConfig,
     instrument="LSSTComCamSim",

@@ -24,12 +24,13 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodType
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+instrument = "LSSTComCamSim"
+locationConfig = getAutomaticLocationConfig()
 
 workerName = os.getenv("WORKER_NAME")  # when using statefulSets
 if workerName:
@@ -45,13 +46,17 @@ else:
         workerNum = int(sys.argv[2])
 
 workerNum = int(workerNum)
+podDetails = PodDetails(
+    instrument=instrument, podType=PodType.STEP2A_WORKER, detectorNumber=None, depth=workerNum
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podType.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
-queueName = f"{instrument}-STEP2A-WORKER-{workerNum:03}"
-print(f"Running raw processor for worker {workerNum}, queueName={queueName}")
-
-locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
+    instrument=instrument,
     collections=[
         "LSSTComCamSim/defaults",
     ],
@@ -65,8 +70,8 @@ step2aRunner = SingleCorePipelineRunner(
     pipeline=locationConfig.getSfmPipelineFile(instrument),
     step="step2a",
     awaitsDataProduct=None,
+    podDetails=podDetails,
     doRaise=getDoRaise(),
-    queueName=queueName,
 )
 step2aRunner.run()
 sys.exit(1)  # run is an infinite loop, so we should never get here

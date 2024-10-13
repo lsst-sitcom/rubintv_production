@@ -199,7 +199,7 @@ class RedisHelper:
             The amount of time after which the pod would be considered dead if
             not reaffirmed by.
         """
-        self.redis.setex(f"{pod.queueName}_IS-RUNNING", timedelta(seconds=timePeriod), value=1)
+        self.redis.setex(f"{pod.queueName}+IS_RUNNING", timedelta(seconds=timePeriod), value=1)
 
     def confirmRunning(self, pod: PodDetails) -> bool:
         """Check whether the named pod is running or should be considered dead.
@@ -209,7 +209,7 @@ class RedisHelper:
         podName : `str`
             The name of the pod.
         """
-        isRunning = self.redis.get(f"{pod.queueName}_IS-RUNNING")
+        isRunning = self.redis.get(f"{pod.queueName}+IS_RUNNING")
         return bool(isRunning)  # 0 and None both bool() to False
 
     def announceBusy(self, pod: PodDetails) -> None:
@@ -220,7 +220,7 @@ class RedisHelper:
         queueName : `str`
             The name of the queue the worker is processing.
         """
-        self.redis.set(f"{pod.queueName}_IS-BUSY", value=1)
+        self.redis.set(f"{pod.queueName}+IS_BUSY", value=1)
 
     def announceFree(self, pod: PodDetails) -> None:
         """Announce that a worker is free to process a queue.
@@ -233,7 +233,7 @@ class RedisHelper:
             The name of the queue the worker is processing.
         """
         self.announceExistence(pod)
-        self.redis.delete(f"{pod.queueName}_IS-BUSY")
+        self.redis.delete(f"{pod.queueName}+IS_BUSY")
 
     def announceExistence(self, pod: PodDetails, remove: bool = False) -> None:
         """Announce that a worker is present in the pool.
@@ -254,9 +254,9 @@ class RedisHelper:
             Remove the worker from pool. Default is ``False``.
         """
         if not remove:
-            self.redis.setex(f"{pod.queueName}_EXISTS", timedelta(seconds=30), value=1)
+            self.redis.setex(f"{pod.queueName}+EXISTS", timedelta(seconds=30), value=1)
         else:
-            self.redis.delete(f"{pod.queueName}_EXISTS")
+            self.redis.delete(f"{pod.queueName}+EXISTS")
 
     def getAllWorkers(self, instrument: str, workerType=None) -> list[str]:  # TODO return list[PodDetails]
         """Get the list of workers that are currently active.
@@ -278,11 +278,11 @@ class RedisHelper:
         # need to get the set of things that exist, or are busy, because
         # things "cease to exist" during long processing runs, but they do
         # still show as busy
-        existing = self.redis.keys(f"{instrument}*{workerType}*WORKER*_EXISTS")
-        existing = [key.decode("utf-8").replace("_EXISTS", "") for key in existing]
+        existing = self.redis.keys(f"{instrument}*{workerType}*WORKER*+EXISTS")
+        existing = [key.decode("utf-8").replace("+EXISTS", "") for key in existing]
 
-        busy = self.redis.keys(f"{instrument}*{workerType}*WORKER*_IS-BUSY")
-        busy = [key.decode("utf-8").replace("_IS-BUSY", "") for key in busy]
+        busy = self.redis.keys(f"{instrument}*{workerType}*WORKER*+IS_BUSY")
+        busy = [key.decode("utf-8").replace("+IS_BUSY", "") for key in busy]
 
         allWorkers = sorted(set(existing + busy))
 
@@ -305,7 +305,7 @@ class RedisHelper:
         workers = []
         allWorkers = self.getAllWorkers(instrument=instrument, workerType=workerType)
         for worker in allWorkers:
-            if not self.redis.get(f"{worker}_IS-BUSY"):
+            if not self.redis.get(f"{worker}+IS_BUSY"):
                 workers.append(worker)
         return sorted(workers)
 

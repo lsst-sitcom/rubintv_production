@@ -33,11 +33,11 @@ metadataDirectory = locationConfig.comCamSimMetadataPath
 shardsDirectory = locationConfig.comCamSimMetadataShardPath
 channelName = "comcam_sim_metadata"
 
-ts8MetadataServer = TimedMetadataServer(
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
     metadataDirectory=metadataDirectory,
     shardsDirectory=shardsDirectory,
     channelName=channelName,
     doRaise=getDoRaise(),
 )
-ts8MetadataServer.run()
+metadataServer.run()

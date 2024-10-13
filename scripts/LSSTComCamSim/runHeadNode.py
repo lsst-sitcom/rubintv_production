@@ -24,13 +24,10 @@ from lsst.rubintv.production.processingControl import HeadProcessController
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
-
+instrument = "LSSTComCamSim"
 locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} head node at {locationConfig.location}...")
-
 
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,

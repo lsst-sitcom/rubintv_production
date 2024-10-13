@@ -19,8 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 
 import datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -36,6 +38,13 @@ from .consdbUtils import ConsDBPopulator
 from .payloads import pipelineGraphFromBytes, pipelineGraphToBytes
 from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
+
+if TYPE_CHECKING:
+    from lsst.daf.butler import Butler, DataCoordinate
+    from lsst.rubintv.production.payloads import Payload
+    from lsst.rubintv.production.podDefinition import PodDetails
+    from lsst.rubintv.production.utils import LocationConfig
+
 
 __all__ = [
     "SingleCorePipelineRunner",
@@ -89,13 +98,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def __init__(
         self,
-        locationConfig,
-        butler,
-        instrument,
-        pipeline,  # not pulled from the locationConfig to allow notebook/debug usage
-        step,
-        awaitsDataProduct,
-        queueName,
+        locationConfig: LocationConfig,
+        butler: Butler,
+        instrument: str,
+        pipeline: str,  # not pulled from the locationConfig to allow notebook/debug usage
+        step: str,
+        awaitsDataProduct: str,
+        podDetails: PodDetails,
         *,
         doRaise=False,
     ):
@@ -113,25 +122,28 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # in some contexts but not all. Maybe default it to
             # ''?
             channelName="",
-            queueName=queueName,
+            podDetails=podDetails,
             doRaise=doRaise,
             addUploader=False,  # pipeline running pods don't upload directly
         )
-        self.instrument = instrument
-        self.butler = butler
-        self.step = step
-        self.pipeline = pipeline + f"#{step}"
-        self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
-        self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
+        self.instrument: str = instrument
+        self.butler: Butler = butler
+        self.step: str = step
+        self.pipeline: str = pipeline + f"#{step}"
+        self.pipelineGraph: Pipeline = Pipeline.fromFile(self.pipeline).to_graph(
+            registry=self.butler.registry
+        )
+        self.pipelineGraphBytes: bytes = pipelineGraphToBytes(self.pipelineGraph)
+        self.podDetails: PodDetails = podDetails
 
-        self.runCollection = None
-        self.limitedButler = self.makeLimitedButler(butler)
-        self.log.info(f"Pipeline running configured to consume from {queueName}")
+        self.runCollection: str | None = None
+        self.limitedButler: CachingLimitedButler = self.makeLimitedButler(butler)
+        self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
-        self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.watcher.redisHelper)
+        self.consdbClient: ConsDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.consDBPopulator: ConsDBPopulator = ConsDBPopulator(self.consdbClient, self.watcher.redisHelper)
 
-    def makeLimitedButler(self, butler):
+    def makeLimitedButler(self, butler) -> CachingLimitedButler:
         cachedOnGet = set()
         cachedOnPut = set()
         for name in self.pipelineGraph.dataset_types.keys():
@@ -145,7 +157,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
-    def doProcessImage(self, dataId):
+    def doProcessImage(self, dataId) -> bool:
         """Determine if we should skip this image.
 
         Should take responsibility for logging the reason for skipping.
@@ -163,7 +175,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # add any necessary data-driven logic here to choose if we process
         return True
 
-    def callback(self, payload):
+    def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
         Executes the pipeline on the payload's dataId, outputting to the run
@@ -174,8 +186,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        dataId = payload.dataId
-        pipelineGraphBytes = payload.pipelineGraphBytes
+        dataId: DataCoordinate = payload.dataId
+        pipelineGraphBytes: bytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
 
         if not self.doProcessImage(dataId):
@@ -284,7 +296,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.watcher.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum, processingId):
+    def postProcessQuantum(self, quantum, processingId) -> None:
         """Write shards here, make sure to keep these bits quick!
 
         Also, anything you self.limitedButler.get() make sure to add to
@@ -313,7 +325,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             case _:
                 return
 
-    def postProcessIsr(self, quantum):
+    def postProcessIsr(self, quantum) -> None:
         dRef = quantum.outputs["postISRCCD"][0]
         exp = self.limitedButler.get(dRef)
 
@@ -326,7 +338,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
 
-    def postProcessCalibrate(self, quantum, processingId):
+    def postProcessCalibrate(self, quantum, processingId) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
         # refactoring yet, especially as they will probably diverge in the
         # future.
@@ -364,7 +376,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             else:
                 self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
-    def postProcessVisitSummary(self, quantum):
+    def postProcessVisitSummary(self, quantum) -> None:
         dRef = quantum.outputs["visitSummary"][0]
         vs = self.limitedButler.get(dRef)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
@@ -406,7 +418,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
 
-    def clobber(self, object, datasetType, visitDataId):
+    def clobber(self, object, datasetType, visitDataId) -> None:
         """Put object in the butler.
 
         If there is one already there, remove it beforehand.

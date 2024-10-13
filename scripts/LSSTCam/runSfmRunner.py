@@ -24,12 +24,12 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodType
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTCam"
-
 setupLogging()
+instrument = "LSSTCam"
 
 workerName = os.getenv("WORKER_NAME")  # when using statefulSets
 if workerName:
@@ -48,7 +48,15 @@ workerNum = int(workerNum)
 
 detectorNum = workerNum % 189
 detectorDepth = workerNum // 189
-queueName = f"{instrument}-SFM-WORKER-{detectorNum:03}-{detectorDepth:03}"
+
+locationConfig = getAutomaticLocationConfig()
+podDetails = PodDetails(
+    instrument=instrument, podType=PodType.MOSAIC_WORKER, detectorNumber=detectorNum, detectorDepth=0
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podType.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
@@ -59,8 +67,6 @@ butler = dafButler.Butler(
     writeable=True,
 )
 
-print(f"Running sfmRunner for worker {workerNum}, queueName={queueName} at {locationConfig.location}")
-
 sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
@@ -68,7 +74,7 @@ sfmRunner = SingleCorePipelineRunner(
     pipeline=locationConfig.getSfmPipelineFile(instrument),
     step="step1",
     awaitsDataProduct="raw",
+    podDetails=podDetails,
     doRaise=getDoRaise(),
-    queueName=queueName,
 )
 sfmRunner.run()

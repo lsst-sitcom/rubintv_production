@@ -24,9 +24,8 @@ from lsst.rubintv.production.aos import FocusSweepAnalysis
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+instrument = "LSSTComCamSim"
 
 locationConfig = getAutomaticLocationConfig()
 if locationConfig.location != "summit":
@@ -39,6 +38,7 @@ if locationConfig.location != "summit":
 
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
+    instrument=instrument,
     collections=[
         "LSSTComCamSim/defaults",
         "LSSTComCamSim/quickLook",
@@ -47,7 +47,7 @@ butler = dafButler.Butler(
 print(f"Running focus sweep plotter at {locationConfig.location}")
 
 queueName = "LSSTComCamSim-FROM-OCS_FOCUSSWEEP"
-focusSweepAnalyzer = FocusSweepAnalysis(
+focusSweepAnalyzer = FocusSweepAnalysis(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
     queueName=queueName,

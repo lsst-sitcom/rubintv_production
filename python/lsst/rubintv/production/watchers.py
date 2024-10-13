@@ -48,6 +48,8 @@ if TYPE_CHECKING:
 
     from lsst.daf.butler import DimensionRecord
     from lsst.rubintv.production.payloads import Payload
+    from lsst.rubintv.production.podDefinition import PodDetails
+
 
 _LOG = logging.getLogger(__name__)
 
@@ -159,9 +161,9 @@ class RedisWatcher:
         The detector, or detectors, to process data for.
     """
 
-    def __init__(self, butler: Butler, locationConfig: LocationConfig, queueName: str) -> None:
+    def __init__(self, butler: Butler, locationConfig: LocationConfig, podDetails: PodDetails) -> None:
         self.redisHelper: RedisHelper = RedisHelper(butler, locationConfig)
-        self.queueName: str = queueName
+        self.podDetails: PodDetails = podDetails
         self.cadence: float = 0.1  # seconds - this is fine, redis likes a beating
         self.log: Logger = _LOG.getChild("redisWatcher")
         self.payload: Payload = None
@@ -176,19 +178,19 @@ class RedisWatcher:
             argument.
         """
         while True:
-            self.redisHelper.announceFree(self.queueName)
+            self.redisHelper.announceFree(self.podDetails.queueName)
             self.redisHelper.butler.registry.refresh()  # make sure new calibs are picked up, takes 1.2ms
-            payload = self.redisHelper.dequeuePayload(self.queueName)
+            payload = self.redisHelper.dequeuePayload(self.podDetails.queueName)
             if payload is not None:
                 try:
                     self.payload = payload
-                    self.redisHelper.announceBusy(self.queueName)
+                    self.redisHelper.announceBusy(self.podDetails.queueName)
                     callback(payload)
                     self.payload = None
                 except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
                     self.log.error(f"Error processing payload {payload}: {e}")
                 finally:
-                    self.redisHelper.announceFree(self.queueName)
+                    self.redisHelper.announceFree(self.podDetails.queueName)
             else:  # only sleep when no work is found
                 sleep(self.cadence)
 
@@ -301,7 +303,7 @@ class ButlerWatcher:
                     os.remove(filename)
 
     def run(self) -> None:
-        lastWrittenIds = {product: None for product in self.dataProducts}
+        lastWrittenIds: dict[str, None | DimensionRecord] = {product: None for product in self.dataProducts}
 
         # check for what we actually already have on disk, given that the
         # service will rarely be starting from literally scratch
