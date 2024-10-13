@@ -18,6 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
 
 __all__ = ("FileWatcher", "RedisWatcher", "ButlerWatcher")
 
@@ -25,12 +26,15 @@ import logging
 import os
 from glob import glob
 from time import sleep
+from typing import TYPE_CHECKING, Any
 
+from lsst.daf.butler import Butler
 from lsst.utils.iteration import ensure_iterable
 
 from .redisUtils import RedisHelper
 from .utils import (
     ALLOWED_DATASET_TYPES,
+    LocationConfig,
     expRecordFromJson,
     getGlobPatternForDataProduct,
     getGlobPatternForShardedData,
@@ -38,6 +42,12 @@ from .utils import (
     safeJsonOpen,
     writeDataIdFile,
 )
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.daf.butler import DimensionRecord
+    from lsst.rubintv.production.payloads import Payload
 
 _LOG = logging.getLogger(__name__)
 
@@ -67,14 +77,16 @@ class FileWatcher:
 
     cadence = 1  # in seconds
 
-    def __init__(self, *, locationConfig, instrument, dataProduct, doRaise=False):
-        self.locationConfig = locationConfig
-        self.instrument = instrument
-        self.dataProduct = dataProduct
-        self.doRaise = doRaise
-        self.log = _LOG.getChild("fileWatcher")
+    def __init__(
+        self, *, locationConfig: LocationConfig, instrument: str, dataProduct: str, doRaise=False
+    ) -> None:
+        self.locationConfig: LocationConfig = locationConfig
+        self.instrument: str = instrument
+        self.dataProduct: str = dataProduct
+        self.doRaise: bool = doRaise
+        self.log: Logger = _LOG.getChild("fileWatcher")
 
-    def getMostRecentExpRecord(self, previousExpId=None):
+    def getMostRecentExpRecord(self, previousExpId: int | None = None) -> DimensionRecord | None:
         """Get the most recent exposure record from the file system.
 
         If the most recent exposure is the same as the previous one, ``None``
@@ -113,7 +125,7 @@ class FileWatcher:
         expRecord = expRecordFromJson(expRecordJson, self.locationConfig)
         return expRecord
 
-    def run(self, callback, **kwargs):
+    def run(self, callback, **kwargs) -> None:
         """Run forever, calling ``callback`` on each most recent expRecord.
 
         Parameters
@@ -147,14 +159,14 @@ class RedisWatcher:
         The detector, or detectors, to process data for.
     """
 
-    def __init__(self, butler, locationConfig, queueName):
-        self.redisHelper = RedisHelper(butler, locationConfig)
-        self.queueName = queueName
-        self.cadence = 0.1  # seconds - this is fine, redis likes a beating
-        self.log = _LOG.getChild("redisWatcher")
-        self.payload = None
+    def __init__(self, butler: Butler, locationConfig: LocationConfig, queueName: str) -> None:
+        self.redisHelper: RedisHelper = RedisHelper(butler, locationConfig)
+        self.queueName: str = queueName
+        self.cadence: float = 0.1  # seconds - this is fine, redis likes a beating
+        self.log: Logger = _LOG.getChild("redisWatcher")
+        self.payload: Payload = None
 
-    def run(self, callback, **kwargs):
+    def run(self, callback, **kwargs) -> None:
         """Run forever, calling ``callback`` on each most recent expRecord.
 
         Parameters
@@ -205,16 +217,25 @@ class ButlerWatcher:
     # look for new images every ``cadence`` seconds
     cadence = 1
 
-    def __init__(self, locationConfig, instrument, butler, dataProducts, doRaise=False):
-        self.locationConfig = locationConfig
-        self.instrument = instrument
-        self.butler = butler
-        self.dataProducts = list(ensure_iterable(dataProducts))  # must call list or we get a generator back
-        self.doRaise = doRaise
-        self.log = _LOG.getChild("butlerWatcher")
-        self.redisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
+    def __init__(
+        self,
+        locationConfig: LocationConfig,
+        instrument: str,
+        butler: Butler,
+        dataProducts: str | list[str],
+        doRaise=False,
+    ) -> None:
+        self.locationConfig: LocationConfig = locationConfig
+        self.instrument: str = instrument
+        self.butler: Butler = butler
+        self.dataProducts: list[str] = list(
+            ensure_iterable(dataProducts)
+        )  # must call list or we get a generator back
+        self.doRaise: bool = doRaise
+        self.log: Logger = _LOG.getChild("butlerWatcher")
+        self.redisHelper: RedisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
 
-    def _getLatestExpRecords(self):
+    def _getLatestExpRecords(self) -> dict[str, DimensionRecord | None]:
         """Get the most recent expRecords from the butler.
 
         Get the most recent expRecord for all the dataset types. These are
@@ -225,13 +246,13 @@ class ButlerWatcher:
         expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]  # noqa: W505
             A dict of the most recent exposure records, keyed by dataProduct.
         """
-        expRecordDict = {}
+        expRecordDict: dict[str, DimensionRecord | None] = {}
 
         for product in self.dataProducts:
             # NB if you list multiple products for datasets= then it will only
             # give expRecords for which all those products exist, so these must
             # be done as separate queries
-            records = self.butler.registry.queryDimensionRecords("exposure", datasets=product)
+            records: Any = self.butler.registry.queryDimensionRecords("exposure", datasets=product)
 
             # we must sort using the timespan because:
             # we can't use exposure.id because it is calculated differently
@@ -248,7 +269,7 @@ class ButlerWatcher:
                 expRecordDict[product] = list(records)[0]
         return expRecordDict
 
-    def _deleteExistingData(self, expRecord):
+    def _deleteExistingData(self, expRecord) -> None:
         """Delete existing data for this exposure.
 
         Given an exposure record, delete all sharded/binned data for this
@@ -279,7 +300,7 @@ class ButlerWatcher:
                     # if they're raised we want to fail at this point.
                     os.remove(filename)
 
-    def run(self):
+    def run(self) -> None:
         lastWrittenIds = {product: None for product in self.dataProducts}
 
         # check for what we actually already have on disk, given that the
