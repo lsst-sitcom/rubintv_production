@@ -24,7 +24,7 @@ import json
 import logging
 from ast import literal_eval
 from time import sleep
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -40,6 +40,13 @@ from .payloads import Payload, pipelineGraphToBytes
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
 from .utils import getShardPath, writeExpRecordMetadataShard
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.daf.butler import Butler, DimensionRecord
+    from lsst.rubintv.production.podDefinition import PodDetails, PodType
+    from lsst.rubintv.production.utils import LocationConfig
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -252,22 +259,42 @@ class HeadProcessController:
 
     targetLoopDuration = 0.2  # in seconds, so 5Hz
 
-    def __init__(self, butler, instrument, locationConfig, pipelineFile, outputChain=None, forceNewRun=False):
-        self.butler = butler
-        self.instrument = instrument
-        self.locationConfig = locationConfig
-        self._basePipeline = pipelineFile
-        self.name = getHeadNodeName(instrument)
-        self.log = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
-        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
-        self.focalPlaneControl = CameraControlConfig() if instrument == "LSSTCam" else None
+    def __init__(
+        self,
+        butler: Butler,
+        instrument: str,
+        locationConfig: LocationConfig,
+        pipelineFile: str,
+        outputChain: str | None = None,
+        forceNewRun: bool = False,
+    ) -> None:
+        self.butler: Butler = butler
+        self.instrument: str = instrument
+        self.locationConfig: LocationConfig = locationConfig
+        self._basePipeline: str = pipelineFile
+        self.log: Logger = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
+        self.redisHelper: RedisHelper = RedisHelper(
+            butler=butler, locationConfig=locationConfig, isHeadNode=True
+        )
+        self.focalPlaneControl: CameraControlConfig | None = (
+            CameraControlConfig() if instrument == "LSSTCam" else None
+        )
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
-        self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
-        self.workTimer = BoxCarTimer(length=100)  # don't start here, the event loop starts the lap timer
-        self.loopTimer = BoxCarTimer(length=100)  # don't start here, the event loop starts the lap timer
-        self.nDispatched = 0
-        self.nNightlyRollups = 0
+        self.remoteController: RemoteController = RemoteController(
+            butler=butler, locationConfig=locationConfig
+        )
+        self.workTimer: BoxCarTimer = BoxCarTimer(
+            length=100
+        )  # don't start here, the event loop starts the lap timer
+        self.loopTimer: BoxCarTimer = BoxCarTimer(
+            length=100
+        )  # don't start here, the event loop starts the lap timer
+        self.podDetails: PodDetails = PodDetails(
+            instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=None, depth=None
+        )
+        self.nDispatched: int = 0
+        self.nNightlyRollups: int = 0
 
         if self.focalPlaneControl is not None:
             self.focalPlaneControl.setAllImagingOn()
@@ -295,7 +322,7 @@ class HeadProcessController:
         self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)
         self.log.info(f"Head node ready. Data will be writen data to {self.outputRun}")
 
-    def getLatestRunAndPrep(self, forceNewRun):
+    def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
 
         allRuns = []
@@ -328,7 +355,7 @@ class HeadProcessController:
 
         return lastRun
 
-    def checkIfNewRunNeeded(self, lastRun, packages):
+    def checkIfNewRunNeeded(self, lastRun: str, packages: Packages) -> bool:
         """Check if a new run is needed, and if so, create it and prep it.
 
         Needed if the configs change, or if the software versions change, or if
@@ -351,7 +378,7 @@ class HeadProcessController:
             return True
         return False
 
-    def getFreeSFMWorkerQueue(self, instrument, detectorId):
+    def getFreeSFMWorkerQueue(self, instrument: str, detectorId: int) -> str:
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
@@ -373,7 +400,7 @@ class HeadProcessController:
             return busyWorker
         return idMatchedWorkers[0]
 
-    def getFreeGatherWorkerQueue(self, instrument, workerType):
+    def getFreeGatherWorkerQueue(self, instrument: str, workerType: str) -> str:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, workerType=workerType)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
@@ -387,7 +414,7 @@ class HeadProcessController:
         self.log.warning(f"No free workers available for {workerType=}, sending work to {busyWorker=}")
         return busyWorker
 
-    def doStep1Fanout(self, expRecord):
+    def doStep1Fanout(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
 
         Parameters
@@ -423,7 +450,7 @@ class HeadProcessController:
 
         self.nDispatched += 1  # required for the alternating by twos mode
 
-    def getNewExposureAndDefineVisit(self):
+    def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
         expRecord = self.redisHelper.getExposureForFanout(self.instrument)
         if expRecord is None:
             return
@@ -438,7 +465,7 @@ class HeadProcessController:
         defineVisit(self.butler, expRecord)
         return expRecord
 
-    def repattern(self):
+    def repattern(self) -> None:
         """Apply the VisitProcessingMode to the focal plane sensor
         selection.
         """
@@ -453,7 +480,7 @@ class HeadProcessController:
             case _:
                 raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
-    def getNumExpected(self, instrument):
+    def getNumExpected(self, instrument: str) -> int:
         if instrument in ("LSSTComCam", "LSSTComCamSim"):
             return 9
         elif instrument == "LSSTCam":
@@ -465,7 +492,7 @@ class HeadProcessController:
             return 189
         raise ValueError(f"Unknown instrument {instrument=}")
 
-    def _dispatch2a(self, dataCoordinate):
+    def _dispatch2a(self, dataCoordinate: DataCoordinate) -> None:
         payload = Payload(
             dataId=dataCoordinate, pipelineGraphBytes=self.pipelineGraphsBytes["step2a"], run=self.outputRun
         )
@@ -474,7 +501,7 @@ class HeadProcessController:
         queueName = self.getFreeGatherWorkerQueue(self.instrument, "STEP2A")
         self.redisHelper.enqueuePayload(payload, queueName)
 
-    def dispatchGatherSteps(self, triggeringTask, step, dispatchIncomplete=False):
+    def dispatchGatherSteps(self, triggeringTask: str, step: str, dispatchIncomplete: bool = False) -> bool:
         """Dispatch any gather steps as needed.
 
         Note that the return value is currently unused, but is planned to be
@@ -520,7 +547,7 @@ class HeadProcessController:
             return True  # we sent something out
         return False  # nothing was sent
 
-    def dispatchRollupIfNecessary(self):
+    def dispatchRollupIfNecessary(self) -> bool:
         """Check if we should do another rollup, and if so, dispatch it.
 
         Returns
@@ -539,14 +566,14 @@ class HeadProcessController:
             return True
         return False
 
-    def _dispatchNightlyRollup(self):
+    def _dispatchNightlyRollup(self) -> None:
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
         payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
         queueName = self.getFreeGatherWorkerQueue(self.instrument, "NIGHTLYROLLUP")
         self.redisHelper.enqueuePayload(payload, queueName)
 
-    def dispatchFocalPlaneMosaics(self):
+    def dispatchFocalPlaneMosaics(self) -> None:
         """Dispatch the focal plane mosaic task.
 
         This will be dispatched to a worker which will then gather the
@@ -577,7 +604,7 @@ class HeadProcessController:
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
-    def regulateLoopSpeed(self):
+    def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
 
         This will sleep for the appropriate amount of time if the loop is
@@ -620,12 +647,12 @@ class HeadProcessController:
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
 
-    def run(self):
+    def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
         while True:
             # affirmRunning should be longer than longest loop but no longer
-            self.redisHelper.affirmRunning(self.name, 5)
+            self.redisHelper.affirmRunning(self.podDetails, 5)
 
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
             expRecord = self.getNewExposureAndDefineVisit()

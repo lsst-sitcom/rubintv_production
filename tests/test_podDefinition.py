@@ -39,6 +39,21 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(pod.queueName, expectedQueueName)
         self.assertEqual(pod, newPod)
 
+    def test_headNodeInit(self):
+        pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=None, depth=None)
+        self.assertIsInstance(pod, PodDetails)
+
+        # do we actually want to check this in the tests?
+        expectedQueueName = "headNode-LSSTCam"
+        self.assertEqual(pod.queueName, expectedQueueName)
+
+        with self.assertRaises(ValueError):
+            pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=1, depth=None)
+        with self.assertRaises(ValueError):
+            pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=None, depth=2)
+        with self.assertRaises(ValueError):
+            pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=3, depth=4)
+
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass

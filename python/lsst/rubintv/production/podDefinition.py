@@ -9,6 +9,8 @@ class PodType(Enum):
     STEP2A_WORKER = "STEP2A_WORKER"
     MOSAIC_WORKER = "MOSAIC_WORKER"
 
+    HEAD_NODE = "HEAD_NODE"
+
     @classmethod
     def validate_values(cls):
         for item in cls:
@@ -25,16 +27,30 @@ PodType.validate_values()
 class PodDetails:
     instrument: str
     podType: PodType
-    detectorNumber: int
-    depth: int
+    detectorNumber: int | None
+    depth: int | None
     queueName: str
 
-    def __init__(self, instrument: str, podType: PodType, detectorNumber: int, depth: int):
+    def _getHeadNodeName(self, instrument):
+        return f"headNode-{instrument}"
+
+    def __init__(self, instrument: str, podType: PodType, detectorNumber: int | None, depth: int | None):
         self.instrument = instrument
         self.podType = podType
         self.detectorNumber = detectorNumber
         self.depth = depth
-        self.queueName = f"{self.instrument}-{self.podType.value}-{self.detectorNumber:03d}-{self.depth:03d}"
+        self.queueName = self._getQueueName()
+        self.validate()
+
+    def _getQueueName(self):
+        if self.podType == PodType.HEAD_NODE:
+            return self._getHeadNodeName(self.instrument)
+        return f"{self.instrument}-{self.podType.value}-{self.detectorNumber:03d}-{self.depth:03d}"
+
+    def validate(self):
+        if self.podType == PodType.HEAD_NODE:
+            if self.detectorNumber is not None or self.depth is not None:
+                raise ValueError(f"Expected None for both detectorNumber and depth for {self.podType}")
 
     @classmethod
     def fromQueueName(cls, queueName: str):
