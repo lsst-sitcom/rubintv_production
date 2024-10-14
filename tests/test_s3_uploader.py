@@ -24,7 +24,7 @@ import tempfile
 import unittest
 
 import boto3
-from moto import mock_s3
+from moto import mock_aws
 
 from lsst.rubintv.production import S3Uploader
 
@@ -32,9 +32,9 @@ from lsst.rubintv.production import S3Uploader
 class TestS3Uploader(unittest.TestCase):
 
     def setUp(self):
-        # Create an S3 bucket using moto's mock_s3
-        self._mock_s3 = mock_s3()
-        self._mock_s3.start()
+        # Create an S3 bucket using moto's mock_aws
+        self._mock_aws = mock_aws()
+        self._mock_aws.start()
         self._mocked_s3_bucket_name = "mocked_s3_bucket"
         self._s3_resource = boto3.resource("s3", region_name="us-east-1")
         self._mock_bucket = self._s3_resource.create_bucket(Bucket=self._mocked_s3_bucket_name)
@@ -44,7 +44,7 @@ class TestS3Uploader(unittest.TestCase):
 
     def tearDown(self):
         # Stop the mock S3 service
-        self._mock_s3.stop()
+        self._mock_aws.stop()
 
     @staticmethod
     def get_file_content(filePath):
