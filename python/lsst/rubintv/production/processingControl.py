@@ -23,30 +23,33 @@ import enum
 import json
 import logging
 from ast import literal_eval
+from logging import Logger
 from time import sleep
-from typing import TYPE_CHECKING, Any, Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 import numpy as np
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
 from lsst.ctrl.mpexec import TaskFactory
-from lsst.daf.butler import CollectionType, DataCoordinate, DatasetNotFoundError, MissingCollectionError
+from lsst.daf.butler import (
+    Butler,
+    CollectionType,
+    DataCoordinate,
+    DatasetNotFoundError,
+    DimensionRecord,
+    MissingCollectionError,
+)
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.utils import LocationConfig
 from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
 from .utils import getShardPath, writeExpRecordMetadataShard
-
-if TYPE_CHECKING:
-    from logging import Logger
-
-    from lsst.daf.butler import Butler, DimensionRecord
-    from lsst.rubintv.production.podDefinition import PodDetails, PodType
-    from lsst.rubintv.production.utils import LocationConfig
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -291,7 +294,7 @@ class HeadProcessController:
             length=100
         )  # don't start here, the event loop starts the lap timer
         self.podDetails: PodDetails = PodDetails(
-            instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=None, depth=None
+            instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None
         )
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0

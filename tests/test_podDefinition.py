@@ -23,15 +23,15 @@
 import unittest
 
 import lsst.utils.tests
-from lsst.rubintv.production.podDefinition import PodDetails, PodType
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor, PodType
 
 
 class PodDefinitionTestCase(lsst.utils.tests.TestCase):
 
     def test_podDefinition(self):
-        pod = PodDetails(instrument="LSSTCam", podType=PodType.SFM_WORKER, detectorNumber=94, depth=0)
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=94, depth=0)
         self.assertIsInstance(pod, PodDetails)
-        expectedQueueName = "LSSTCam-SFM_WORKER-094-000"
+        expectedQueueName = "SFM_WORKER-LSSTCam-000-094"
         self.assertEqual(pod.queueName, expectedQueueName)
 
         newPod = PodDetails.fromQueueName(expectedQueueName)
@@ -40,19 +40,73 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(pod, newPod)
 
     def test_headNodeInit(self):
-        pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=None, depth=None)
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None)
         self.assertIsInstance(pod, PodDetails)
 
         # do we actually want to check this in the tests?
-        expectedQueueName = "headNode-LSSTCam"
+        expectedQueueName = "HEAD_NODE-LSSTCam"
         self.assertEqual(pod.queueName, expectedQueueName)
 
         with self.assertRaises(ValueError):
-            pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=1, depth=None)
+            pod = PodDetails(
+                instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=1, depth=None
+            )
         with self.assertRaises(ValueError):
-            pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=None, depth=2)
+            pod = PodDetails(
+                instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=2
+            )
         with self.assertRaises(ValueError):
-            pod = PodDetails(instrument="LSSTCam", podType=PodType.HEAD_NODE, detectorNumber=3, depth=4)
+            pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=3, depth=4)
+
+    def test_perFocalPlaneType(self):
+        for podFlavor in [
+            PodFlavor.PSF_PLOTTER,
+            PodFlavor.NIGHTLYROLLUP_WORKER,
+            PodFlavor.STEP2A_WORKER,
+            PodFlavor.MOSAIC_WORKER,
+        ]:
+            pod = PodDetails(instrument="LSSTCam", podFlavor=podFlavor, detectorNumber=None, depth=0)
+            self.assertIsInstance(pod, PodDetails)
+
+            with self.assertRaises(ValueError):
+                pod = PodDetails(instrument="LSSTCam", podFlavor=podFlavor, detectorNumber=1, depth=None)
+            with self.assertRaises(ValueError):
+                pod = PodDetails(instrument="LSSTCam", podFlavor=podFlavor, detectorNumber=3, depth=4)
+
+    def test_valid_init_per_detector(self):
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=94, depth=2)
+        self.assertIsInstance(pod, PodDetails)
+        self.assertEqual(pod.podType, PodType.PER_DETECTOR)
+
+    def test_invalid_init_per_detector(self):
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=None, depth=0)
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=94, depth=None)
+
+    def test_valid_init_per_instrument_singleton(self):
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None)
+        self.assertEqual(pod.podType, PodType.PER_INSTRUMENT_SINGLETON)
+
+    def test_invalid_init_per_instrument_singleton(self):
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=1, depth=None)
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=2)
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=3, depth=4)
+
+    def test_valid_init_per_instrument(self):
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=12)
+        self.assertEqual(pod.podType, PodType.PER_INSTRUMENT)
+
+    def test_invalid_init_per_instrument(self):
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=1, depth=None)
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=None)
+        with self.assertRaises(ValueError):
+            PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=3, depth=4)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -24,7 +24,7 @@ import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.podDefinition import PodDetails, PodType
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
@@ -51,10 +51,10 @@ detectorDepth = workerNum // 189
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podType=PodType.MOSAIC_WORKER, detectorNumber=detectorNum, detectorDepth=0
+    instrument=instrument, podFlavor=PodFlavor.MOSAIC_WORKER, detectorNumber=detectorNum, detectorDepth=0
 )
 print(
-    f"Running {podDetails.instrument} {podDetails.podType.name} at {locationConfig.location},"
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
 

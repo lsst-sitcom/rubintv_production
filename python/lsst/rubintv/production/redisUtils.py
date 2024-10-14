@@ -618,7 +618,7 @@ class RedisHelper:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
 
-    def enqueuePayload(self, payload, pod: PodDetails, top=True) -> None:
+    def enqueuePayload(self, payload, destinationPod: PodDetails, top=True) -> None:
         """Send a unit of work to a specific worker-queue.
 
         Parameters
@@ -632,9 +632,9 @@ class RedisHelper:
             ``True``.
         """
         if top:
-            self.redis.lpush(pod.queueName, payload.to_json())
+            self.redis.lpush(destinationPod.queueName, payload.to_json())
         else:
-            self.redis.rpush(pod.queueName, payload.to_json())
+            self.redis.rpush(destinationPod.queueName, payload.to_json())
 
     def dequeuePayload(self, pod: PodDetails) -> Payload | None:
         """Get the next unit of work from a specific worker queue.
