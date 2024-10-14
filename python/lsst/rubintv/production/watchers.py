@@ -167,7 +167,7 @@ class RedisWatcher:
         self.podDetails: PodDetails = podDetails
         self.cadence: float = 0.1  # seconds - this is fine, redis likes a beating
         self.log: Logger = _LOG.getChild("redisWatcher")
-        self.payload: Payload = None
+        self.payload: Payload | None = None
 
     def run(self, callback, **kwargs) -> None:
         """Run forever, calling ``callback`` on each most recent expRecord.
