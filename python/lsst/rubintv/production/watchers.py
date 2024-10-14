@@ -178,19 +178,19 @@ class RedisWatcher:
             argument.
         """
         while True:
-            self.redisHelper.announceFree(self.podDetails.queueName)
+            self.redisHelper.announceFree(self.podDetails)
             self.redisHelper.butler.registry.refresh()  # make sure new calibs are picked up, takes 1.2ms
-            payload = self.redisHelper.dequeuePayload(self.podDetails.queueName)
+            payload = self.redisHelper.dequeuePayload(self.podDetails)
             if payload is not None:
                 try:
                     self.payload = payload
-                    self.redisHelper.announceBusy(self.podDetails.queueName)
+                    self.redisHelper.announceBusy(self.podDetails)
                     callback(payload)
                     self.payload = None
                 except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
                     self.log.error(f"Error processing payload {payload}: {e}")
                 finally:
-                    self.redisHelper.announceFree(self.podDetails.queueName)
+                    self.redisHelper.announceFree(self.podDetails)
             else:  # only sleep when no work is found
                 sleep(self.cadence)
 
