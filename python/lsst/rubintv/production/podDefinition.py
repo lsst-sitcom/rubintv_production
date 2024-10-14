@@ -1,3 +1,25 @@
+# This file is part of rubintv_production.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 
@@ -77,7 +99,9 @@ class PodDetails:
     depth: int | None
     queueName: str
 
-    def __init__(self, instrument: str, podFlavor: PodFlavor, detectorNumber: int | None, depth: int | None):
+    def __init__(
+        self, instrument: str, podFlavor: PodFlavor, detectorNumber: int | None, depth: int | None
+    ) -> None:
         # set attributes first so they don't have to passed around
         self.instrument: str = instrument
         self.podFlavor: PodFlavor = podFlavor
@@ -96,12 +120,12 @@ class PodDetails:
             depth=self.depth,
         )
 
-    def __lt__(self, other):
+    def __lt__(self, other) -> bool:
         if not isinstance(other, PodDetails):
-            return NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
+            raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
         return self.queueName < other.queueName
 
-    def validate(self):
+    def validate(self) -> None:
         if self.podType == PodType.PER_INSTRUMENT_SINGLETON:
             if self.detectorNumber is not None or self.depth is not None:
                 raise ValueError(f"Expected None for both detectorNumber and depth for {self.podFlavor}")
@@ -117,7 +141,7 @@ class PodDetails:
                 raise ValueError(f"Both detectorNumber and depth required for per-detector {self.podFlavor}")
 
     @classmethod
-    def fromQueueName(cls, queueName: str):
+    def fromQueueName(cls, queueName: str) -> PodDetails:
         parts = queueName.split(DELIMITER)
 
         if len(parts) < 2 or len(parts) > 4:
