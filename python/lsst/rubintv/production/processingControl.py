@@ -503,7 +503,7 @@ class HeadProcessController:
         )
         # caps for the queue name. Maybe should reconsider how that's dealt wit
         # post OR3
-        queueName = self.getFreeGatherWorkerQueue(self.instrument, "STEP2A")
+        queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.STEP2A_WORKER)
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchGatherSteps(self, triggeringTask: str, step: str, dispatchIncomplete: bool = False) -> bool:
@@ -575,7 +575,7 @@ class HeadProcessController:
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
         payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
-        queueName = self.getFreeGatherWorkerQueue(self.instrument, "NIGHTLYROLLUP")
+        queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self) -> None:
@@ -605,7 +605,7 @@ class HeadProcessController:
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload(dataCoord, b"", dataProduct)
-                queueName = self.getFreeGatherWorkerQueue(self.instrument, "MOSAIC")
+                queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
@@ -687,7 +687,8 @@ class HeadProcessController:
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
             # do we toggle
-            self.repattern()
+            if self.instrument == "LSSTCam":
+                self.repattern()
 
             self.regulateLoopSpeed()
 
