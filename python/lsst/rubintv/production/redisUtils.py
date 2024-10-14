@@ -36,7 +36,7 @@ import redis
 from lsst.daf.butler import DimensionRecord
 
 from .payloads import Payload
-from .podDefinition import PodDetails
+from .podDefinition import PodDetails, PodFlavor, getQueueName
 from .utils import expRecordFromJson
 
 # Check if the environment is a notebook
@@ -268,37 +268,41 @@ class RedisHelper:
         else:
             self.redis.delete(f"{pod.queueName}+EXISTS")
 
-    def getAllWorkers(self, instrument: str, workerType=None) -> list[str]:  # TODO return list[PodDetails]
+    def getAllWorkers(self, instrument: str, podFlavor: PodFlavor) -> list[PodDetails]:
         """Get the list of workers that are currently active.
 
         Parameters
         ----------
-        workerType : `str`, optional
+        instrument : `str`
+            The name of the instrument.
+        podFlavor : `PodFlavor`
             The type of worker to get, e.g. "SFM". The default of ``None``
             will return all worker types.
 
         Returns
         -------
-        workers : `list` of `str`
+        workers : `list` of `PodDetails`
             The list of workers that are currently active.
         """
-        if workerType is None:
-            workerType = "*"
-
         # need to get the set of things that exist, or are busy, because
         # things "cease to exist" during long processing runs, but they do
         # still show as busy
-        existing = self.redis.keys(f"{instrument}*{workerType}*WORKER*+EXISTS")
+
+        queueName = getQueueName(podFlavor, instrument, "*", "*")
+
+        existing = self.redis.keys(f"{queueName}+EXISTS")
         existing = [key.decode("utf-8").replace("+EXISTS", "") for key in existing]
 
-        busy = self.redis.keys(f"{instrument}*{workerType}*WORKER*+IS_BUSY")
+        busy = self.redis.keys(f"{queueName}+IS_BUSY")
         busy = [key.decode("utf-8").replace("+IS_BUSY", "") for key in busy]
 
-        allWorkers = sorted(set(existing + busy))
+        allWorkerQueues = sorted(set(existing + busy))
+
+        allWorkers = [PodDetails.fromQueueName(queueName) for queueName in allWorkerQueues]
 
         return allWorkers
 
-    def getFreeWorkers(self, instrument, workerType=None) -> list[str]:  # TODO return list[PodDetails]
+    def getFreeWorkers(self, instrument, podFlavor: PodFlavor) -> list[PodDetails]:
         """Get the list of workers that are currently free.
 
         Parameters
@@ -309,11 +313,11 @@ class RedisHelper:
 
         Returns
         -------
-        workers : `list` of `str`
+        workers : `list` of `PodDetails`
             The list of workers that are currently free.
         """
         workers = []
-        allWorkers = self.getAllWorkers(instrument=instrument, workerType=workerType)
+        allWorkers = self.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         for worker in allWorkers:
             if not self.redis.get(f"{worker}+IS_BUSY"):
                 workers.append(worker)

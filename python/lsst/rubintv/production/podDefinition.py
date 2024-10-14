@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
+__all__ = ["PodType", "PodFlavor", "PodDetails", "getQueueName"]
+
 DELIMITER = "-"
 
 
@@ -11,6 +13,8 @@ class PodType(Enum):
 
 
 class PodFlavor(Enum):
+    # all items much contain WORKER if they're not the head node
+    # all items must also provide their type via an entry in podFlavorToPodType
     SFM_WORKER = "SFM_WORKER"
     PSF_PLOTTER = "PSF_PLOTTER"
     NIGHTLYROLLUP_WORKER = "NIGHTLYROLLUP_WORKER"
@@ -43,18 +47,24 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
     return mapping[podFlavor]
 
 
-def _getQueueName(podFlavor, instrument, detectorNumber, depth):
+def getQueueName(
+    podFlavor: PodFlavor, instrument: str, detectorNumber: int | str | None, depth: int | str | None
+) -> str:
     podType = podFlavorToPodType(podFlavor)
     queueName = f"{podFlavor.value}{DELIMITER}{instrument}"
 
     if podType == PodType.PER_INSTRUMENT_SINGLETON:
         return queueName
 
-    queueName += f"{DELIMITER}{depth:03d}"
+    queueName += f"{DELIMITER}{depth:03d}" if isinstance(depth, int) else f"{DELIMITER}{detectorNumber}"
     if podType == PodType.PER_INSTRUMENT:
         return queueName
 
-    queueName += f"{DELIMITER}{detectorNumber:03d}"
+    queueName += (
+        f"{DELIMITER}{detectorNumber:03d}"
+        if isinstance(detectorNumber, int)
+        else f"{DELIMITER}{detectorNumber}"
+    )
     return queueName
 
 
@@ -69,22 +79,27 @@ class PodDetails:
 
     def __init__(self, instrument: str, podFlavor: PodFlavor, detectorNumber: int | None, depth: int | None):
         # set attributes first so they don't have to passed around
-        self.instrument = instrument
-        self.podFlavor = podFlavor
-        self.detectorNumber = detectorNumber
-        self.depth = depth
-        self.podType = podFlavorToPodType(podFlavor)
+        self.instrument: str = instrument
+        self.podFlavor: PodFlavor = podFlavor
+        self.detectorNumber: int | None = detectorNumber
+        self.depth: int | None = depth
+        self.podType: PodType = podFlavorToPodType(podFlavor)
 
         # then call validate to check this is legal
         self.validate()
 
         # then set the queueName from the properties, now that they are legal
-        self.queueName = _getQueueName(
+        self.queueName = getQueueName(
             podFlavor=self.podFlavor,
             instrument=self.instrument,
             detectorNumber=self.detectorNumber,
             depth=self.depth,
         )
+
+    def __lt__(self, other):
+        if not isinstance(other, PodDetails):
+            return NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
+        return self.queueName < other.queueName
 
     def validate(self):
         if self.podType == PodType.PER_INSTRUMENT_SINGLETON:
@@ -105,12 +120,12 @@ class PodDetails:
     def fromQueueName(cls, queueName: str):
         parts = queueName.split(DELIMITER)
 
-        if len(parts) != 4:
-            raise ValueError(f"Expected 4 parts in the input string, but got {len(parts)}: {queueName}")
+        if len(parts) < 2 or len(parts) > 4:
+            raise ValueError(f"Expected 2 to 4 parts in the input string, but got {len(parts)}: {queueName}")
 
         podFlavor = PodFlavor(parts[0])
         instrument = parts[1]
-        depth = int(parts[2])
-        detectorNumber = int(parts[3])
+        depth = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+        detectorNumber = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
 
         return cls(instrument=instrument, podFlavor=podFlavor, detectorNumber=detectorNumber, depth=depth)

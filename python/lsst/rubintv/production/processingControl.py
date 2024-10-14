@@ -382,30 +382,30 @@ class HeadProcessController:
             return True
         return False
 
-    def getFreeSFMWorkerQueue(self, instrument: str, detectorId: int) -> str:
+    def getFreeSFMWorkerQueue(self, instrument: str, detectorId: int) -> PodDetails:
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
 
-        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, workerType="SFM")
+        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=PodFlavor.SFM_WORKER)
         sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
 
-        # get ones which match the detectorId. We'll make this smarter later.
-        idMatchedWorkers = [
-            queue for queue in sfmWorkers if f"{instrument}-SFM-WORKER-{detectorId:03}-" in queue
-        ]
+        idMatchedWorkers = [pod for pod in sfmWorkers if pod.detectorNumber == detectorId]
+
         if idMatchedWorkers == []:
             # TODO: until we have a real backlog queue just put it on the last
             # worker in the stack.
-            busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, workerType="SFM")
-            idMatchedWorkers = [queue for queue in busyWorkers if f"-{detectorId:03}-" in queue]
+            busyWorkers = self.redisHelper.getAllWorkers(
+                instrument=instrument, podFlavor=PodFlavor.SFM_WORKER
+            )
+            idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
             busyWorker = idMatchedWorkers[-1]
             self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
             return busyWorker
         return idMatchedWorkers[0]
 
-    def getFreeGatherWorkerQueue(self, instrument: str, workerType: str) -> str:
-        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, workerType=workerType)
+    def getFreeGatherWorkerQueue(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
+        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
             return freeWorkers[0]
@@ -413,9 +413,9 @@ class HeadProcessController:
         # We have no free workers of this type, so send to a busy work and warn
         # TODO: until we have a real backlog queue just put it on the last
         # worker in the stack.
-        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, workerType=workerType)
+        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         busyWorker = busyWorkers[-1]
-        self.log.warning(f"No free workers available for {workerType=}, sending work to {busyWorker=}")
+        self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
         return busyWorker
 
     def doStep1Fanout(self, expRecord: DimensionRecord) -> None:

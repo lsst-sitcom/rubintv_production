@@ -108,6 +108,58 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
         with self.assertRaises(ValueError):
             PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=3, depth=4)
 
+    def test_fromQueueName(self):
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=94, depth=0)
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None)
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=12)
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=94, depth=2)
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None)
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=12)
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
+    def test_fromQueueName_failing(self):
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None)
+        queueName = pod.queueName
+        queueName += "-010"
+        with self.assertRaises(ValueError):
+            PodDetails.fromQueueName(queueName)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=0)
+        queueName = pod.queueName
+        queueName += "-010"
+        with self.assertRaises(ValueError):
+            PodDetails.fromQueueName(queueName)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=0)
+        queueName = pod.queueName
+        newName = queueName.replace("-000", "")
+        self.assertLess(len(newName), len(queueName))  # just check we actually removed something
+        with self.assertRaises(ValueError):
+            PodDetails.fromQueueName(newName)
+
+        pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=12, depth=34)
+        queueName = pod.queueName
+        newName = queueName.replace("-012", "")
+        self.assertLess(len(newName), len(queueName))  # just check we actually removed something
+        with self.assertRaises(ValueError):
+            PodDetails.fromQueueName(newName)
+
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
