@@ -51,12 +51,6 @@ except ImportError:
     HAS_EFD_CLIENT = False
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
-from lsst.rubintv.production.monitorPlotting import plotExp
-from lsst.rubintv.production.mountTorques import (
-    MOUNT_IMAGE_BAD_LEVEL,
-    MOUNT_IMAGE_WARNING_LEVEL,
-    calculateMountErrors,
-)
 from lsst.summit.utils import NightReport
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.bestEffort import BestEffortIsr
@@ -76,6 +70,8 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .metadataServers import TimedMetadataServer
+from .monitorPlotting import plotExp
+from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .plotting import latissNightReportPlots
 from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, writeMetadataShard
 

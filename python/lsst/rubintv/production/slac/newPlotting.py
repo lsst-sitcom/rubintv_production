@@ -37,7 +37,8 @@ if TYPE_CHECKING:
 
     from lsst.afw.cameraGeom import Camera
     from lsst.daf.butler import Butler
-    from lsst.rubintv.production.podDefinition import PodDetails
+
+    from .podDefinition import PodDetails
 
 
 _LOG = logging.getLogger(__name__)

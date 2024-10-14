@@ -41,9 +41,10 @@ from .utils import getShardPath, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DataCoordinate
-    from lsst.rubintv.production.payloads import Payload
-    from lsst.rubintv.production.podDefinition import PodDetails
-    from lsst.rubintv.production.utils import LocationConfig
+
+    from .payloads import Payload
+    from .podDefinition import PodDetails
+    from .utils import LocationConfig
 
 
 __all__ = [

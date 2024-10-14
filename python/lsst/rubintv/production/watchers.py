@@ -47,8 +47,9 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.daf.butler import DimensionRecord
-    from lsst.rubintv.production.payloads import Payload
-    from lsst.rubintv.production.podDefinition import PodDetails
+
+    from .payloads import Payload
+    from .podDefinition import PodDetails
 
 
 _LOG = logging.getLogger(__name__)

@@ -63,7 +63,8 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.daf.butler import Butler
-    from lsst.rubintv.production.utils import LocationConfig
+
+    from .utils import LocationConfig
 
 
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2

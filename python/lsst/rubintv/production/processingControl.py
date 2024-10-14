@@ -42,14 +42,13 @@ from lsst.daf.butler import (
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import LocationConfig
 from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
+from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
-from .utils import getShardPath, writeExpRecordMetadataShard
+from .utils import LocationConfig, getShardPath, writeExpRecordMetadataShard
 
 
 class WorkerProcessingMode(enum.IntEnum):

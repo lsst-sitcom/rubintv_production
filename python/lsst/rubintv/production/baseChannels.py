@@ -36,8 +36,9 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.daf.butler import Butler
-    from lsst.rubintv.production.podDefinition import PodDetails
-    from lsst.rubintv.production.utils import LocationConfig
+
+    from .podDefinition import PodDetails
+    from .utils import LocationConfig
 
 
 __all__ = [
