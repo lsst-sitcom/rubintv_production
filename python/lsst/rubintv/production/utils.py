@@ -522,6 +522,24 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    @cached_property
+    def lsstCamMetadataPath(self):
+        directory = self._config["lsstCamMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamMetadataShardPath(self):
+        directory = self._config["lsstCamMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamButlerPath(self):
+        directory = self._config["lsstCamButlerPath"]
+        self._checkFile(directory)
+        return directory
+
     # TMA config:
     @cached_property
     def tmaMetadataPath(self):
@@ -540,6 +558,9 @@ class LocationConfig:
 
     def getSfmPipelineFile(self, instrument):
         return self._config["sfmPipelineFile"][instrument]
+
+    def getAosPipelineFile(self, instrument):
+        return self._config["aosPipelineFile"][instrument]
 
 
 def getAutomaticLocationConfig():
@@ -1175,5 +1196,7 @@ def getShardPath(locationConfig, expRecord):
             return locationConfig.comCamMetadataShardPath
         case "LSSTComCamSim":
             return locationConfig.comCamSimMetadataShardPath
+        case "LSSTCam":
+            return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")

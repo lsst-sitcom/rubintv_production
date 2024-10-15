@@ -48,40 +48,9 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 
-from .redisUtils import RedisHelper
+from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
 from .utils import writeExpRecordMetadataShard
-
-
-def _extractExposureIds(exposureBytes, instrument):
-    """Extract the exposure IDs from the byte string.
-
-    Parameters
-    ----------
-    exposureBytes : `bytes`
-        The byte string containing the exposure IDs.
-
-    Returns
-    -------
-    expIds : `list` of `int`
-        A list of two exposure IDs extracted from the byte string.
-
-    Raises
-    ------
-    ValueError
-        If the number of exposure IDs extracted is not equal to 2.
-    """
-    exposureIds = exposureBytes.decode("utf-8").split(",")
-    exposureIds = [int(v) for v in exposureIds]
-
-    if instrument == "LSSTComCamSim":
-        # simulated exp ids are in the year 702X so add this manually, as
-        # OCS doesn't know about the fact the butler will add this on. This
-        # is only true for LSSTComCamSim though.
-        log = logging.getLogger("lsst.rubintv.production.aos._extractExposureIds")
-        log.info(f"Adding 5000000000000 to {exposureIds=} to adjust for simulated LSSTComCamSim data")
-        exposureIds = [expId + 5000000000000 for expId in exposureIds]
-    return exposureIds
 
 
 class DonutLauncher:
@@ -285,26 +254,19 @@ class PsfAzElPlotter:
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.uploader = MultiUploader()
+        self.s3Uploader = MultiUploader()
         self.fig, self.axes = makeFigureAndAxes()
 
     def makePlot(self, visitId):
-        """Extract the exposure IDs from the byte string.
+        """Make the PSF plot for the given visit ID.
+
+        Makes the plot by getting the available data from the butler, saves it
+        to a temporary file, and uploads it to RubinTV.
 
         Parameters
         ----------
         visitId : `int`
-            The byte string containing the exposure IDs.
-
-        Returns
-        -------
-        expIds : `list` of `int`
-            A list of two exposure IDs extracted from the byte string.
-
-        Raises
-        ------
-        ValueError
-            If the number of exposure IDs extracted is not equal to 2.
+            The visit ID for which to make the plot.
         """
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
         detectorIds = getDetectorIds(self.instrument)
@@ -334,7 +296,7 @@ class PsfAzElPlotter:
         self.axes = self.fig.subplots(nrows=2, ncols=2)
         makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
 
-        self.uploader.uploadPerSeqNumPlot(
+        self.s3Uploader.uploadPerSeqNumPlot(
             instrument="comcam_sim",
             plotName="psf_shape_azel",
             dayObs=expRecord.day_obs,
@@ -384,7 +346,7 @@ class FocusSweepAnalysis:
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.uploader = MultiUploader()
+        self.s3Uploader = MultiUploader()
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.efdClient = makeEfdClient()
         self.fig = Figure(figsize=(12, 9))
@@ -434,7 +396,7 @@ class FocusSweepAnalysis:
         tempFilename = tempfile.mktemp(suffix=".png")
         plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
 
-        self.uploader.uploadPerSeqNumPlot(
+        self.s3Uploader.uploadPerSeqNumPlot(
             instrument="comcam_sim_aos",
             plotName="focus_sweep",
             dayObs=lastRecord.day_obs,

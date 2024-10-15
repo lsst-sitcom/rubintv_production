@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 
-def pipelineGraphToBytes(pipelineGraph):
+def pipelineGraphToBytes(pipelineGraph) -> bytes:
     """
     Convert a pipelineGraph to bytes.
 

@@ -37,6 +37,9 @@ CHANNELS = [
     "tma_mount_motion_profile",
     "tma_m1m3_hardpoint_profile",
     "tma_metadata",
+    "lsstcam_focal_plane_mosaic",
+    "lsstcam_calexp_mosaic",
+    "lsstcam_metadata",
 ]
 
 PREFIXES = {chan: chan.replace("_", "-") for chan in CHANNELS}
@@ -55,6 +58,7 @@ KNOWN_INSTRUMENTS = (
     "slac_ts8",
     "fake_auxtel",
     "tma",
+    "lsstcam",
 )
 
 
@@ -104,5 +108,6 @@ def getCameraAndPlotName(channel):
         # raise
         "auxtel_metadata_creator": None,
         "auxtel_isr_runner": ("auxtel", "isr_runner"),
+        "lsstcam_metadata": ("lsstcam", "metadata"),
     }
     return channelLookup[channel]

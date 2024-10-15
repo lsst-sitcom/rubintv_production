@@ -32,7 +32,7 @@ from PIL.ExifTags import TAGS
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_datetime, getCurrentDayObs_int
 from lsst.utils.iteration import ensure_iterable
 
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import MultiUploader, Uploader
 from .utils import FakeExposureRecord, expRecordToUploadFilename, hasDayRolledOver, raiseIf
 
 try:
@@ -412,8 +412,6 @@ class DayAnimator:
     outputMovieDir : `str`
         The path to write the movies. Need not exist, but must be creatable
         with write privileges.
-    uploader : `lsst.rubintv.production.Uploader`
-        The uploader for sending images and movies to GCS.
     epoUploader : `lsst.rubintv.production.Uploader`
         The uploader for sending images and movies to the EPO bucket.
     s3Uploader : `lsst.rubintv.production.MultiUploader`
@@ -429,11 +427,6 @@ class DayAnimator:
     FPS = 10
     DRY_RUN = False
 
-    HEARTBEAT_HANDLE = "allsky"
-    HEARTBEAT_UPLOAD_PERIOD = 120
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 600
-
     def __init__(
         self,
         *,
@@ -441,7 +434,6 @@ class DayAnimator:
         todaysDataDir,
         outputImageDir,
         outputMovieDir,
-        uploader,
         epoUploader,
         s3Uploader,
         channel,
@@ -452,15 +444,11 @@ class DayAnimator:
         self.todaysDataDir = todaysDataDir
         self.outputImageDir = outputImageDir
         self.outputMovieDir = outputMovieDir
-        self.uploader = uploader
         self.epoUploader = epoUploader
         self.s3Uploader = s3Uploader
         self.channel = channel
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
-        self.heartbeater = Heartbeater(
-            self.HEARTBEAT_HANDLE, bucketName, self.HEARTBEAT_UPLOAD_PERIOD, self.HEARTBEAT_FLATLINE_PERIOD
-        )
 
     def _getConvertedFilename(self, filename):
         """Get the filename and path to write the converted images to.
@@ -541,7 +529,6 @@ class DayAnimator:
                 raise RuntimeError(f"Failed to find movie {creationFilename}")
 
         if not self.DRY_RUN:
-            self.uploader.googleUpload(self.channel, creationFilename, uploadAsFilename, isLargeFile=True)
             self.s3Uploader.uploadMovie(
                 instrument="allsky",
                 dayObs=self.dayObsInt,
@@ -574,9 +561,6 @@ class DayAnimator:
         uploadAsFilename = expRecordToUploadFilename(channel, fakeDataCoord, extension=".jpg", zeroPad=True)
         self.log.debug(f"Uploading {sourceFilename} as {uploadAsFilename}")
         if not self.DRY_RUN:
-            self.uploader.googleUpload(
-                channel=channel, sourceFilename=sourceFilename, uploadAsFilename=uploadAsFilename
-            )
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="allsky",
                 plotName="stills",
@@ -628,7 +612,6 @@ class DayAnimator:
 
             # convert any new files
             newFiles = allFiles - convertedFiles
-            self.heartbeater.beat()
 
             if newFiles:
                 newFiles = sorted(newFiles)
@@ -642,7 +625,6 @@ class DayAnimator:
             else:
                 # we're up to speed, files are ~1/min so sleep for a bit
                 self.log.debug("Sleeping 20s waiting for new files")
-                self.heartbeater.beat()
                 sleep(20)
 
             # TODO: Add wait time message here for how long till next movie
@@ -697,7 +679,6 @@ class AllSkyMovieChannel:
 
     def __init__(self, locationConfig, doRaise=False):
         self.locationConfig = locationConfig
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
         self.epoUploader = Uploader("epo_rubintv_data")
         self.log = _LOG.getChild("allSkyMovieMaker")
@@ -743,7 +724,6 @@ class AllSkyMovieChannel:
             todaysDataDir=todaysDataDir,
             outputImageDir=outputJpgDir,
             outputMovieDir=outputMovieDir,
-            uploader=self.uploader,
             epoUploader=self.epoUploader,
             s3Uploader=self.s3Uploader,
             channel=self.channel,
@@ -754,15 +734,6 @@ class AllSkyMovieChannel:
     def run(self):
         """The main entry point - start running the all sky camera TV channel.
         See class init docs for details.
-
-        Notes
-        -----
-        This class does not generate heartbeats. The heartbeating is done by
-        the DayAnimator class, as this is the one that actually does the work,
-        including the uploading. Moreover, if we get into a situation where
-        this loop is being gone around without directories being created we
-        should not be emitting heartbeats - in such a situation the service
-        should be considered down.
         """
         while True:
             try:

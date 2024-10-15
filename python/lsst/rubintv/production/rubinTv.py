@@ -51,12 +51,6 @@ except ImportError:
     HAS_EFD_CLIENT = False
 
 from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
-from lsst.rubintv.production.monitorPlotting import plotExp
-from lsst.rubintv.production.mountTorques import (
-    MOUNT_IMAGE_BAD_LEVEL,
-    MOUNT_IMAGE_WARNING_LEVEL,
-    calculateMountErrors,
-)
 from lsst.summit.utils import NightReport
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.bestEffort import BestEffortIsr
@@ -76,15 +70,10 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .metadataServers import TimedMetadataServer
+from .monitorPlotting import plotExp
+from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .plotting import latissNightReportPlots
-from .utils import (
-    NumpyEncoder,
-    catchPrintOutput,
-    expRecordToUploadFilename,
-    hasDayRolledOver,
-    raiseIf,
-    writeMetadataShard,
-)
+from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = [
     "IsrRunner",
@@ -168,6 +157,7 @@ class IsrRunner(BaseButlerChannel):
             dataProduct="raw",
             channelName="auxtel_isr_runner",
             doRaise=doRaise,
+            addUploader=False,  # this pod doesn't upload directly
         )
 
     def callback(self, expRecord):
@@ -268,7 +258,6 @@ class ImExaminerChannel(BaseButlerChannel):
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f"Running imexam on {dataId}")
             tempFilename = tempfile.mktemp(suffix=".png")
-            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
 
             if not exp:
@@ -276,7 +265,6 @@ class ImExaminerChannel(BaseButlerChannel):
             self._imExamine(exp, tempFilename)
 
             self.log.info("Uploading imExam to storage bucket")
-            self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName="imexam",
@@ -352,14 +340,12 @@ class SpecExaminerChannel(BaseButlerChannel):
 
             self.log.info(f"Running specExam on {dataId}")
             tempFilename = tempfile.mktemp(suffix=".png")
-            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
             self._specExamine(exp, tempFilename)
 
             self.log.info("Uploading specExam to storage bucket")
-            self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName="specexam",
@@ -430,14 +416,12 @@ class MonitorChannel(BaseButlerChannel):
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             self.log.info(f"Generating monitor image for {dataId}")
             tempFilename = tempfile.mktemp(suffix=".png")
-            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
             exp = self._waitForDataProduct(dataId)
             if not exp:
                 raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
             self._plotImage(exp, tempFilename)
 
             self.log.info("Uploading monitor image to storage bucket")
-            self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName="monitor",
@@ -563,7 +547,6 @@ class MountTorqueChannel(BaseButlerChannel):
         try:
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
             tempFilename = tempfile.mktemp(suffix=".png")
-            uploadFilename = expRecordToUploadFilename(self.channelName, expRecord)
 
             # calculateMountErrors() calculates the errors, but also performs
             # the plotting.
@@ -571,7 +554,6 @@ class MountTorqueChannel(BaseButlerChannel):
 
             if os.path.exists(tempFilename):  # skips many image types and short exps
                 self.log.info("Uploading mount torque plot to storage bucket")
-                self.uploader.googleUpload(self.channelName, tempFilename, uploadFilename)
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument="auxtel",
                     plotName="mount",
@@ -616,13 +598,9 @@ class MetadataCreator(BaseButlerChannel):
             dataProduct="raw",
             channelName="auxtel_metadata_creator",
             doRaise=doRaise,
+            addUploader=False,  # this pod doesn't upload anything directly
         )
         self.detector = 0  # can be removed once we have the requisite summit DBs
-
-        # We inherit the uploaders, so be explicit about the fact we don't use
-        # them.
-        self.uploader = None
-        self.s3Uploader = None
 
     def expRecordToMetadataDict(self, expRecord, keysToRemove):
         """Create a dictionary of metadata for an expRecord.
@@ -1252,9 +1230,6 @@ class NightReportChannel(BaseButlerChannel):
                 plot = plotFactory(
                     dayObs=self.dayObs,
                     locationConfig=self.locationConfig,
-                    # TODO: DM-43413 switch this to be the
-                    # s3Uploader
-                    uploader=self.uploader,
                     s3Uploader=self.s3Uploader,
                 )
                 plot.createAndUpload(report, md, ccdVisitTable)
@@ -1294,12 +1269,6 @@ class NightReportChannel(BaseButlerChannel):
                 # the per-object airmass plot
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, "airmass.png")
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
-                self.uploader.uploadNightReportData(
-                    channel=self.channelName,
-                    dayObs=self.dayObs,
-                    filename=airMassPlotFile,
-                    plotGroup="Coverage",
-                )
                 self.s3Uploader.uploadNightReportData(
                     instrument="auxtel", dayObs=self.dayObs, filename=airMassPlotFile, plotGroup="Coverage"
                 )
@@ -1307,12 +1276,6 @@ class NightReportChannel(BaseButlerChannel):
                 # the alt/az coverage polar plot
                 altAzCoveragePlotFile = os.path.join(self.locationConfig.nightReportPath, "alt-az.png")
                 self.report.makeAltAzCoveragePlot(saveFig=altAzCoveragePlotFile)
-                self.uploader.uploadNightReportData(
-                    channel=self.channelName,
-                    dayObs=self.dayObs,
-                    filename=altAzCoveragePlotFile,
-                    plotGroup="Coverage",
-                )
                 self.s3Uploader.uploadNightReportData(
                     instrument="auxtel",
                     dayObs=self.dayObs,
@@ -1333,9 +1296,6 @@ class NightReportChannel(BaseButlerChannel):
                 jsonFilename = os.path.join(self.locationConfig.nightReportPath, "md.json")
                 with open(jsonFilename, "w") as f:
                     json.dump(md, f, cls=NumpyEncoder)
-                self.uploader.uploadNightReportData(
-                    channel=self.channelName, dayObs=self.dayObs, filename=jsonFilename
-                )
                 self.s3Uploader.uploadNightReportData(
                     instrument="auxtel",
                     dayObs=self.dayObs,
@@ -1373,10 +1333,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
     # The time between sweeps of the EFD for today's data.
     cadence = 10
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
 
     def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, doRaise=False):
 
@@ -1495,9 +1451,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
         plotName = "tma_mount_motion_profile"
         filename = self._getSaveFilename(plotName, dayObs, event)
         self.figure.savefig(filename)
-        self.uploader.uploadPerSeqNumPlot(
-            plotName, dayObs=dayObs, seqNum=event.seqNum, filename=filename, isLiveFile=False
-        )
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="tma", plotName="mount", dayObs=event.dayObs, seqNum=event.seqNum, filename=filename
         )
@@ -1559,9 +1512,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)
         self.figure.savefig(filename)
-        self.uploader.uploadPerSeqNumPlot(
-            plotName, dayObs=event.dayObs, seqNum=event.seqNum, filename=filename, isLiveFile=False
-        )
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="tma",
             plotName="m1m3_hardpoint",
@@ -1670,7 +1620,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 self.processDay(dayObs)
                 self.mergeShardsAndUpload()  # updates all shards everywhere
 
-                self.heartbeater.beat()
                 sleep(self.cadence)
 
             except Exception as e:
