@@ -129,6 +129,12 @@ class PodDetails:
             raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
         return self.queueName < other.queueName
 
+    def __repr__(self):
+        return (
+            f"PodDetails({self.instrument}-{self.podFlavor}, depth={self.depth},"
+            f" detNum={self.detectorNumber})"
+        )
+
     def validate(self) -> None:
         if self.podType == PodType.PER_INSTRUMENT_SINGLETON:
             if self.detectorNumber is not None or self.depth is not None:
