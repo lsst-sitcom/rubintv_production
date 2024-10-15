@@ -29,7 +29,7 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTComCam"
+instrument = "LSSTComCamSim"
 locationConfig = getAutomaticLocationConfig()
 
 workerName = os.getenv("WORKER_NAME")  # when using statefulSets

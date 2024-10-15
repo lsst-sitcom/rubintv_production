@@ -48,40 +48,9 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 
-from .redisUtils import RedisHelper
+from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
 from .utils import writeExpRecordMetadataShard
-
-
-def _extractExposureIds(exposureBytes, instrument):
-    """Extract the exposure IDs from the byte string.
-
-    Parameters
-    ----------
-    exposureBytes : `bytes`
-        The byte string containing the exposure IDs.
-
-    Returns
-    -------
-    expIds : `list` of `int`
-        A list of two exposure IDs extracted from the byte string.
-
-    Raises
-    ------
-    ValueError
-        If the number of exposure IDs extracted is not equal to 2.
-    """
-    exposureIds = exposureBytes.decode("utf-8").split(",")
-    exposureIds = [int(v) for v in exposureIds]
-
-    if instrument == "LSSTComCamSim":
-        # simulated exp ids are in the year 702X so add this manually, as
-        # OCS doesn't know about the fact the butler will add this on. This
-        # is only true for LSSTComCamSim though.
-        log = logging.getLogger("lsst.rubintv.production.aos._extractExposureIds")
-        log.info(f"Adding 5000000000000 to {exposureIds=} to adjust for simulated LSSTComCamSim data")
-        exposureIds = [expId + 5000000000000 for expId in exposureIds]
-    return exposureIds
 
 
 class DonutLauncher:

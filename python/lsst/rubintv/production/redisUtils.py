@@ -160,6 +160,37 @@ def getNewDataQueueName(instrument):
     return f"INCOMING-{instrument}-raw"
 
 
+def _extractExposureIds(exposureBytes, instrument):
+    """Extract the exposure IDs from the byte string.
+
+    Parameters
+    ----------
+    exposureBytes : `bytes`
+        The byte string containing the exposure IDs.
+
+    Returns
+    -------
+    expIds : `list` of `int`
+        A list of two exposure IDs extracted from the byte string.
+
+    Raises
+    ------
+    ValueError
+        If the number of exposure IDs extracted is not equal to 2.
+    """
+    exposureIds = exposureBytes.decode("utf-8").split(",")
+    exposureIds = [int(v) for v in exposureIds]
+
+    if instrument == "LSSTComCamSim":
+        # simulated exp ids are in the year 702X so add this manually, as
+        # OCS doesn't know about the fact the butler will add this on. This
+        # is only true for LSSTComCamSim though.
+        log = logging.getLogger("lsst.rubintv.production.redisUtils._extractExposureIds")
+        log.info(f"Adding 5000000000000 to {exposureIds=} to adjust for simulated LSSTComCamSim data")
+        exposureIds = [expId + 5000000000000 for expId in exposureIds]
+    return exposureIds
+
+
 class RedisHelper:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, isHeadNode: bool = False) -> None:
         self.butler: Butler = butler  # needed to expand dataIds when dequeuing payloads
@@ -622,6 +653,32 @@ class RedisHelper:
         if expRecordJson is None:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
+
+    def checkForOcsDonutPair(self, instrument) -> tuple[int, int] | None:
+        """Get the next exposure to process for the specified instrument.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument to get the next exposure for.
+
+        Returns
+        -------
+        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure to process for the specified detector, or
+            ``None`` if the queue is empty.
+        """
+        self._checkIsHeadNode()
+        queueName = f"{instrument}-FROM-OCS_DONUTPAIR"  # defined by Tiago, so just hard-coded here
+        exposurePairBytes = self.redis.lpop(queueName)
+        if exposurePairBytes is not None:
+            exposureIds = _extractExposureIds(exposurePairBytes, instrument)
+            if len(exposureIds) != 2:
+                raise ValueError(f"Expected two exposureIds, got {exposureIds}")
+            expId1, expId2 = exposureIds
+            return expId1, expId2
+        else:
+            return None
 
     def enqueuePayload(self, payload, destinationPod: PodDetails, top=True) -> None:
         """Send a unit of work to a specific worker-queue.

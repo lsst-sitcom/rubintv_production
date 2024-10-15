@@ -165,7 +165,7 @@ class RedisWatcher:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, podDetails: PodDetails) -> None:
         self.redisHelper: RedisHelper = RedisHelper(butler, locationConfig)
         self.podDetails: PodDetails = podDetails
-        self.cadence: float = 0.1  # seconds - this is fine, redis likes a beating
+        self.cadence: float = 0.01  # seconds - this is fine, redis likes a beating
         self.log: Logger = _LOG.getChild("redisWatcher")
         self.payload: Payload | None = None
 

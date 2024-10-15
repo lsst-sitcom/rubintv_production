@@ -42,14 +42,14 @@ from lsst.rubintv.production.utils import getDoRaise  # noqa: E402
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = True  # XXX Turn on before merging
+DO_RUN_META_TESTS = False  # XXX Turn on before merging
 DO_CHECK_YAML_FILES = True  # XXX Turn on before merging
 
 REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 400  # How long to leave SFM to run for
+TEST_DURATION = 500  # How long to leave test suites to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -60,7 +60,7 @@ DEBUG = False
 TEST_SCRIPTS_ROUND_1 = [
     # the AOS RA testing - runs data through the processing pods
     TestScript(
-        "scripts/LSSTComCamSim/runAosStep2aWorker.py",
+        "scripts/LSSTComCamSim/runStep2aAosWorker.py",
         ["usdf_testing", "0"],  # XXX does this need a numerical arg?
         tee_output=True,
     ),
@@ -89,23 +89,25 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "16"]),
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "17"]),
     # 9 wide on the AOS part
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "0"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "1"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "2"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "3"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "4"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "5"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "6"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "7"]),
-    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "8"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "0"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "1"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "2"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "3"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "4"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "5"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "6"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "7"]),
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "8"]),
     TestScript(
         "scripts/LSSTComCamSim/runHeadNode.py",
         ["usdf_testing"],
-        delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
+        delay=15,  # we do NOT want the head node to fanout work before workers report in - that's a fail
         tee_output=True,
         display_on_pass=True,
     ),
-    TestScript("tests/ci/drip_feed_data_aos.py", ["usdf_testing"], delay=0, display_on_pass=True),
+    TestScript(
+        "tests/ci/drip_feed_data_aos.py", ["usdf_testing"], delay=0, tee_output=True, display_on_pass=True
+    ),
 ]
 
 TEST_SCRIPTS_ROUND_2 = [

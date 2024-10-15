@@ -191,10 +191,6 @@ def getVisitId(butler, expRecord):
         return None
 
 
-def getHeadNodeName(instrument):
-    return f"headNode-{instrument}"
-
-
 def getStep2aTriggerTask(pipelineFile):
     """Get the last task that runs step1, to know when to trigger step2a.
 
@@ -218,6 +214,8 @@ def getStep2aTriggerTask(pipelineFile):
         return "lsst.pipe.tasks.postprocess.TransformSourceTableTask"
     elif "quickLook" in pipelineFile:
         return "lsst.pipe.tasks.calibrate.CalibrateTask"
+    elif "RapidAnalysisPipeline.yaml":  # this is the AOS pipeline - this is a pretty gross way to detect it
+        return "lsst.ts.wep.task.calcZernikesTask.CalcZernikesTask"
     else:
         raise ValueError(f"Unsure how to trigger step2a when {pipelineFile=}")
 
@@ -293,7 +291,7 @@ class HeadProcessController:
             length=100
         )  # don't start here, the event loop starts the lap timer
         self.podDetails: PodDetails = PodDetails(
-            instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None
+            instrument=instrument, podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None
         )
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
@@ -302,7 +300,9 @@ class HeadProcessController:
             self.focalPlaneControl.setAllImagingOn()
 
         # NB: steps need to be in order for prepRunCollection!
-        steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
+        # steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
+        # XXX THIS ALSO MUST SUPORT BOTH OR YOU MAKE A NEW HEAD NODE FOR AOS
+        steps: tuple[str, str, str] = ("step1", "step2a")
         self.pipelineGraphUris = {}
         self.pipelineGraphs: dict[str, PipelineGraph] = {}
         self.pipelineGraphsBytes: dict[str, bytes] = {}
@@ -651,6 +651,22 @@ class HeadProcessController:
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
 
+    def dispatchAosStep2a(self, donutPair: tuple[int, int]) -> None:
+        """Dispatch the AOS step2a processing for a donut pair.
+
+        Parameters
+        ----------
+        donutPair : `tuple` of `int`
+            The pair of donut numbers to process.
+        """
+        dataId1 = {"visit": donutPair[0], "instrument": self.instrument}
+        dataId2 = {"visit": donutPair[1], "instrument": self.instrument}
+        dataCoord1 = DataCoordinate.standardize(dataId1)
+        dataCoord2 = DataCoordinate.standardize(dataId2)
+        payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
+        queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.STEP2A_AOS_WORKER)
+        self.redisHelper.enqueuePayload(payload, queueName)
+
     def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
@@ -664,6 +680,11 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 self.doStep1Fanout(expRecord)
+
+            donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
+            if donutPair is not None:
+                self.log.info(f"Found a donut pair for {donutPair}")
+                self.dispatchAosStep2a(donutPair)
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things
