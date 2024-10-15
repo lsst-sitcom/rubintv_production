@@ -38,9 +38,11 @@ class PodFlavor(Enum):
     # all items much contain WORKER if they're not the head node
     # all items must also provide their type via an entry in podFlavorToPodType
     SFM_WORKER = "SFM_WORKER"
+    AOS_WORKER = "AOS_WORKER"
     PSF_PLOTTER = "PSF_PLOTTER"
     NIGHTLYROLLUP_WORKER = "NIGHTLYROLLUP_WORKER"
     STEP2A_WORKER = "STEP2A_WORKER"
+    STEP2A_AOS_WORKER = "STEP2A_AOS_WORKER"
     MOSAIC_WORKER = "MOSAIC_WORKER"
 
     HEAD_NODE = "HEAD_NODE"
@@ -61,9 +63,11 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
     mapping = {
         PodFlavor.HEAD_NODE: PodType.PER_INSTRUMENT_SINGLETON,
         PodFlavor.SFM_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.STEP2A_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP2A_AOS_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
     }
     return mapping[podFlavor]

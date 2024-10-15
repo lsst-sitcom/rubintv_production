@@ -559,6 +559,9 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument):
         return self._config["sfmPipelineFile"][instrument]
 
+    def getAosPipelineFile(self, instrument):
+        return self._config["aosPipelineFile"][instrument]
+
 
 def getAutomaticLocationConfig():
     """Get a location config, based on RA location and command line args.

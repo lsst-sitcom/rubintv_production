@@ -56,7 +56,59 @@ TODAY = 20240101
 DEBUG = False
 
 # List of test scripts to run, defined relative to package root
+
 TEST_SCRIPTS_ROUND_1 = [
+    # the AOS RA testing - runs data through the processing pods
+    TestScript(
+        "scripts/LSSTComCamSim/runAosStep2aWorker.py",
+        ["usdf_testing", "0"],  # XXX does this need a numerical arg?
+        tee_output=True,
+    ),
+    TestScript(
+        "scripts/LSSTComCamSim/runSfmRunner.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+        tee_output=True,
+    ),
+    # 18 wide on the isr
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "1"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "2"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "3"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "4"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "5"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "6"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "7"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "8"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "9"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "10"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "11"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "12"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "13"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "14"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "15"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "16"]),
+    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "17"]),
+    # 9 wide on the AOS part
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "0"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "1"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "2"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "3"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "4"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "5"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "6"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "7"]),
+    TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "8"]),
+    TestScript(
+        "scripts/LSSTComCamSim/runHeadNode.py",
+        ["usdf_testing"],
+        delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
+        tee_output=True,
+        display_on_pass=True,
+    ),
+    TestScript("tests/ci/drip_feed_data_aos.py", ["usdf_testing"], delay=0, display_on_pass=True),
+]
+
+TEST_SCRIPTS_ROUND_2 = [
     # the main RA testing - runs data through the processing pods
     TestScript("scripts/LSSTComCamSim/runPlotter.py", ["usdf_testing"]),
     TestScript(
@@ -89,7 +141,7 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
 ]
 
-TEST_SCRIPTS_ROUND_2 = [
+TEST_SCRIPTS_ROUND_3 = [
     # run after the processing pods are torn down, so that, for example, the
     # butler watcher can be checked without attempting to process the image it
     # drops into redis
