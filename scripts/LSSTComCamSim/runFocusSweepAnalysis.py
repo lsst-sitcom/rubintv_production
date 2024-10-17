@@ -28,10 +28,10 @@ setupLogging()
 instrument = "LSSTComCamSim"
 
 locationConfig = getAutomaticLocationConfig()
-if locationConfig.location != "summit":
+if locationConfig.location not in ["summit", 'tts', 'bts']:
     msg = (
-        "This script is only intended to be run on summit -"
-        " the signals from OCS for focus sweep triggering go straight to summit redis database and aren't"
+        "This script is only intended to be run on summit-like locations -"
+        " the signals from OCS for focus sweep triggering go straight to the redis database and aren't"
         " accessible at USDF or elsewhere"
     )
     raise RuntimeError(msg)
@@ -40,17 +40,18 @@ butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTComCamSim/defaults",
-        "LSSTComCamSim/quickLook",
+        f"{instrument}/defaults",
+        f"{instrument}/quickLook",
     ],
 )
 print(f"Running focus sweep plotter at {locationConfig.location}")
 
-queueName = "LSSTComCamSim-FROM-OCS_FOCUSSWEEP"
+queueName = f"{instrument}-FROM-OCS_FOCUSSWEEP"
 focusSweepAnalyzer = FocusSweepAnalysis(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
     queueName=queueName,
+    instrument=instrument,
     metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
 )
 focusSweepAnalyzer.run()

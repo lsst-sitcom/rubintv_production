@@ -20,30 +20,42 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.aos import PsfAzElPlotter
+from lsst.rubintv.production.aos import DonutLauncher
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+instrument = "LSSTComCam"
 
 locationConfig = getAutomaticLocationConfig()
+if locationConfig.location not in ["summit", 'tts', 'bts']:
+    msg = (
+        "This script is only intended to be run on summit-like locations -"
+        " the signals from OCS for visit pairs go straight to the redis database and aren't"
+        " accessible at USDF or elsewhere"
+    )
+    raise RuntimeError(msg)
+
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
-    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
-        f"{instrument}/quickLook",
     ],
+    instrument=instrument,
+    writeable=True,
 )
-print(f"Running psf plotter launcher at {locationConfig.location}")
+print(f"Running donut launcher at {locationConfig.location}")
 
-queueName = f"{instrument}-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(  # XXX needs type annotations adding and moving to podDetails
+inputCollection = f"{instrument}/defaults"
+outputCollection = "u/saluser/ra_wep_testing3"
+queueName = f"{instrument}-FROM-OCS_DONUTPAIR"
+donutLauncher = DonutLauncher(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
+    inputCollection=inputCollection,
+    outputCollection=outputCollection,
     instrument=instrument,
     queueName=queueName,
+    metadataShardPath=locationConfig.comCamAosMetadataShardPath,
 )
-psfPlotter.run()
+donutLauncher.run()

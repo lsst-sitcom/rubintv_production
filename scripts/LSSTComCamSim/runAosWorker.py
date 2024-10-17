@@ -62,7 +62,7 @@ butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTComCam/defaults",
+        "LSSTComCamSim/defaults",
     ],
     writeable=True,
 )

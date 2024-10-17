@@ -34,6 +34,9 @@ comCamSimMetadataShardPath: /project/rubintv/LSSTComCamSim/sidecar_metadata/shar
 comCamSimAosMetadataPath: /project/rubintv/LSSTComCamSimAos/sidecar_metadata
 comCamSimAosMetadataShardPath: /project/rubintv/LSSTComCamSimAos/sidecar_metadata/shards
 
+comCamAosMetadataPath: /project/rubintv/LSSTComCamAos/sidecar_metadata
+comCamAosMetadataShardPath: /project/rubintv/LSSTComCamAos/sidecar_metadata/shards
+
 lsstCamMetadataPath: /project/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /project/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamButlerPath: /repo/LSSTCam/butler.yaml

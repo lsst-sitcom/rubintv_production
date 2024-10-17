@@ -511,6 +511,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def comCamAosMetadataPath(self):
+        directory = self._config["comCamAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamAosMetadataShardPath(self):
+        directory = self._config["comCamAosMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self):
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
@@ -1200,3 +1212,28 @@ def getShardPath(locationConfig, expRecord):
             return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")
+
+
+def getRubinTvInstrumentName(instrument: str) -> str:
+    """Get the RubinTV instrument name for a given instrument.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    rubinTvInstrument : `str`
+        The RubinTV instrument name.
+    """
+    instrument_map = {
+        "LATISS": "auxtel",
+        "LSSTCam": "lsstcam",
+        "LSSTComCam": "comcam",
+        "LSSTComCamSim": "comcam_sim",
+    }
+    rubinTvInstrument = instrument_map.get(instrument)
+    if rubinTvInstrument is None:
+        raise ValueError(f"Unknown instrument {instrument=}")
+    return rubinTvInstrument

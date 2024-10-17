@@ -28,34 +28,33 @@ setupLogging()
 instrument = "LSSTComCamSim"
 
 locationConfig = getAutomaticLocationConfig()
-if locationConfig.location != "summit":
+if locationConfig.location not in ["summit", 'tts', 'bts']:
     msg = (
-        "This script is only intended to be run on summit -"
-        " the signals from OCS for visit pairs go straight to summit redis database and aren't accessible"
-        " at USDF or elsewhere"
+        "This script is only intended to be run on summit-like locations -"
+        " the signals from OCS for visit pairs go straight to the redis database and aren't"
+        " accessible at USDF or elsewhere"
     )
     raise RuntimeError(msg)
 
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     collections=[
-        "LSSTComCamSim/defaults",
+        f"{instrument}/defaults",
     ],
     instrument=instrument,
     writeable=True,
 )
 print(f"Running donut launcher at {locationConfig.location}")
 
-inputCollection = "LSSTComCamSim/defaults"
+inputCollection = f"{instrument}/defaults"
 outputCollection = "u/saluser/ra_wep_testing3"
-pipelineFile = "/project/rubintv/temp/donut_pipeline.yaml"
-queueName = "LSSTComCamSim-FROM-OCS_DONUTPAIR"
+queueName = f"{instrument}-FROM-OCS_DONUTPAIR"
 donutLauncher = DonutLauncher(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
     inputCollection=inputCollection,
     outputCollection=outputCollection,
-    pipelineFile=pipelineFile,
+    instrument=instrument,
     queueName=queueName,
     metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
 )

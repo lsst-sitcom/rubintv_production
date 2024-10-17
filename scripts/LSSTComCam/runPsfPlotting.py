@@ -24,7 +24,7 @@ from lsst.rubintv.production.aos import PsfAzElPlotter
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
+instrument = "LSSTComCam"
 
 setupLogging()
 

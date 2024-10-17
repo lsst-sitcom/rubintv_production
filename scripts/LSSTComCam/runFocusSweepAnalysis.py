@@ -20,15 +20,22 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.aos import PsfAzElPlotter
+from lsst.rubintv.production.aos import FocusSweepAnalysis
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+instrument = "LSSTComCam"
 
 locationConfig = getAutomaticLocationConfig()
+if locationConfig.location not in ["summit", 'tts', 'bts']:
+    msg = (
+        "This script is only intended to be run on summit-like locations -"
+        " the signals from OCS for focus sweep triggering go straight to the redis database and aren't"
+        " accessible at USDF or elsewhere"
+    )
+    raise RuntimeError(msg)
+
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     instrument=instrument,
@@ -37,13 +44,14 @@ butler = dafButler.Butler(
         f"{instrument}/quickLook",
     ],
 )
-print(f"Running psf plotter launcher at {locationConfig.location}")
+print(f"Running focus sweep plotter at {locationConfig.location}")
 
-queueName = f"{instrument}-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(  # XXX needs type annotations adding and moving to podDetails
+queueName = f"{instrument}-FROM-OCS_FOCUSSWEEP"
+focusSweepAnalyzer = FocusSweepAnalysis(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
-    instrument=instrument,
     queueName=queueName,
+    instrument=instrument,
+    metadataShardPath=locationConfig.comCamAosMetadataShardPath,
 )
-psfPlotter.run()
+focusSweepAnalyzer.run()

@@ -18,10 +18,12 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
 
 __all__ = [
     "DonutLauncher",
     "PsfAzElPlotter",
+    "FocusSweepAnalysis",
 ]
 
 import logging
@@ -29,6 +31,7 @@ import subprocess
 import tempfile
 import threading
 from time import sleep, time
+from typing import TYPE_CHECKING
 
 from matplotlib.figure import Figure
 
@@ -50,7 +53,12 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
-from .utils import writeExpRecordMetadataShard
+from .utils import getRubinTvInstrumentName, writeExpRecordMetadataShard
+
+if TYPE_CHECKING:
+    from lsst.daf.butler import Butler
+
+    from .utils import LocationConfig
 
 
 class DonutLauncher:
@@ -66,8 +74,8 @@ class DonutLauncher:
         The name of the input collection.
     outputCollection : `str`
         The name of the output collection.
-    pipelineFile : `str`
-        The path to the pipeline file to run.
+    instrument : `str`
+        The instrument.
     queueName : `str`
         The name of the redis queue to consume from.
     allowMissingDependencies : `bool`, optional
@@ -81,7 +89,7 @@ class DonutLauncher:
         locationConfig,
         inputCollection,
         outputCollection,
-        pipelineFile,
+        instrument,
         queueName,
         metadataShardPath,
         allowMissingDependencies=False,
@@ -90,12 +98,12 @@ class DonutLauncher:
         self.locationConfig = locationConfig
         self.inputCollection = inputCollection
         self.outputCollection = outputCollection
-        self.pipelineFile = pipelineFile
         self.queueName = queueName
         self.metadataShardPath = metadataShardPath
         self.allowMissingDependencies = allowMissingDependencies
 
-        self.instrument = "LSSTComCamSim"
+        self.instrument = instrument
+        self.pipelineFile = locationConfig.getSfmPipelineFile(instrument)
         self.repo = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
         self.log = logging.getLogger("lsst.rubintv.production.DonutLauncher")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
@@ -170,6 +178,10 @@ class DonutLauncher:
             raise ValueError(f"Expected two exposureIds, got {exposureIds}")
         expId1, expId2 = exposureIds
 
+        # TODO: reduce this sleep a bit once you know how long this needs, or
+        # write a function to poll. Better would be to write a blocking
+        # WaitForExpRecord function in redisHelper, and then flag that as
+        # existing in the same place as their picked up and fanned out
         sleep(5)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId2})
         writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
@@ -235,6 +247,8 @@ class PsfAzElPlotter:
         The Butler object used for data access.
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The locationConfig containing the path configs.
+    instrument : `str`
+        The instrument.
     queueName : `str`
         The name of the redis queue to consume from.
     """
@@ -242,22 +256,24 @@ class PsfAzElPlotter:
     def __init__(
         self,
         *,
-        butler,
-        locationConfig,
-        queueName,
-    ):
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        queueName: str,
+    ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
+        self.instrument = instrument
         self.queueName = queueName
 
-        self.instrument = "LSSTComCamSim"
+        self.instrument = instrument
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
         self.fig, self.axes = makeFigureAndAxes()
 
-    def makePlot(self, visitId):
+    def makePlot(self, visitId: int) -> None:
         """Make the PSF plot for the given visit ID.
 
         Makes the plot by getting the available data from the butler, saves it
@@ -297,14 +313,14 @@ class PsfAzElPlotter:
         makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
 
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument="comcam_sim",
+            instrument=getRubinTvInstrumentName(self.instrument),
             plotName="psf_shape_azel",
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
             filename=tempFilename,
         )
 
-    def run(self):
+    def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
         while True:
             visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
@@ -327,22 +343,27 @@ class FocusSweepAnalysis:
         The locationConfig containing the path configs.
     queueName : `str`
         The name of the redis queue to consume from.
+    instrument : `str`
+        The instrument.
+    metadataShardPath : `str`
+        The path to write metadata shards to.
     """
 
     def __init__(
         self,
         *,
-        butler,
-        locationConfig,
-        queueName,
-        metadataShardPath,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        queueName: str,
+        instrument: str,
+        metadataShardPath: str,
     ):
         self.butler = butler
         self.locationConfig = locationConfig
         self.queueName = queueName
         self.metadataShardPath = metadataShardPath
 
-        self.instrument = "LSSTComCamSim"
+        self.instrument = instrument
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
@@ -352,7 +373,7 @@ class FocusSweepAnalysis:
         self.fig = Figure(figsize=(12, 9))
         self.fig, self.axes = makeFigureAndAxes()
 
-    def makePlot(self, visitIds):
+    def makePlot(self, visitIds) -> None:
         """Extract the exposure IDs from the byte string.
 
         Parameters
@@ -376,7 +397,7 @@ class FocusSweepAnalysis:
         # blocking call which waits for RA to announce that visit level info
         # is in consDB.
         self.redisHelper.waitForResultInConsdDb(
-            self.instrument, "cdb_lsstcomcamsim.visit1_quicklook", lastVisit, timeout=600
+            self.instrument, f"cdb_{self.instrument.lower()}.visit1_quicklook", lastVisit, timeout=600
         )
 
         records = []
@@ -397,14 +418,14 @@ class FocusSweepAnalysis:
         plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
 
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument="comcam_sim_aos",
+            instrument=getRubinTvInstrumentName(self.instrument),
             plotName="focus_sweep",
             dayObs=lastRecord.day_obs,
             seqNum=lastRecord.seq_num,
             filename=tempFilename,
         )
 
-    def run(self):
+    def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
         while True:
             visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)

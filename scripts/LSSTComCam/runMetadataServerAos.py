@@ -19,31 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.daf.butler as dafButler
-from lsst.rubintv.production.aos import PsfAzElPlotter
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
-instrument = "LSSTComCamSim"
-
 setupLogging()
+checkRubinTvExternalPackages()
 
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
-    locationConfig.comCamButlerPath,
-    instrument=instrument,
-    collections=[
-        f"{instrument}/defaults",
-        f"{instrument}/quickLook",
-    ],
-)
-print(f"Running psf plotter launcher at {locationConfig.location}")
+print(f"Running ComCam AOS metadata server at {locationConfig.location}...")
 
-queueName = f"{instrument}-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(  # XXX needs type annotations adding and moving to podDetails
-    butler=butler,
+metadataDirectory = locationConfig.comCamAosMetadataPath
+shardsDirectory = locationConfig.comCamAosMetadataShardPath
+channelName = "comcam_aos_metadata"
+
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
-    instrument=instrument,
-    queueName=queueName,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+    doRaise=getDoRaise(),
 )
-psfPlotter.run()
+metadataServer.run()
