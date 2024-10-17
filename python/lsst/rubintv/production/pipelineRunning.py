@@ -307,24 +307,25 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         the dispatch and function definitions in there to keep the runner
         clean.
         """
-        match quantum.taskName:
-            case "lsst.ip.isr.isrTask.IsrTask":
-                self.postProcessIsr(quantum)
-            case "lsst.pipe.tasks.calibrate.CalibrateTask":
-                # TODO: think about if we could make dicts of some of the
-                # per-CCD quantities like PSF size and 50 sigma source counts
-                # etc. Would probably mean changes to mergeShardsAndUpload in
-                # order to merge dict-like items into their corresponding
-                # dicts.
-
-                self.postProcessCalibrate(quantum, processingId)
-            case "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask":
-                # ConsolidateVisitSummaryTask regardless of quickLook or NV
-                # pipeline, because this is the quantum that holds the
-                # visitSummary
-                self.postProcessVisitSummary(quantum)
-            case _:
-                return
+        taskName = quantum.taskName
+        # ned to catch the old and new isr tasks alike, and also not worry
+        # about intermittent namespace stuttering
+        if "isr" in taskName.lower():
+            self.postProcessIsr(quantum)
+        elif "calibratetask" in taskName.lower():
+            # TODO: think about if we could make dicts of some of the
+            # per-CCD quantities like PSF size and 50 sigma source counts
+            # etc. Would probably mean changes to mergeShardsAndUpload in
+            # order to merge dict-like items into their corresponding
+            # dicts.
+            self.postProcessCalibrate(quantum, processingId)
+        elif "postprocess.ConsolidateVisitSummaryTask".lower() in taskName.lower():
+            # ConsolidateVisitSummaryTask regardless of quickLook or NV
+            # pipeline, because this is the quantum that holds the
+            # visitSummary
+            self.postProcessVisitSummary(quantum)
+        else:
+            return
 
     def postProcessIsr(self, quantum) -> None:
         dRef = quantum.outputs["postISRCCD"][0]
