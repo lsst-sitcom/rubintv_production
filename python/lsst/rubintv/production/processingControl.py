@@ -584,7 +584,7 @@ class HeadProcessController:
         individual CCD mosaics and make the full focal plane mosaic and upload
         to S3. At the moment, it will only work when everything is completed.
         """
-        triggeringTasks = ("lsst.ip.isr.isrTask.IsrTask", "binnedCalexpCreation")
+        triggeringTasks = ("lsst.ip.isr.isrTaskLSST.IsrTaskLSST", "binnedCalexpCreation")
         dataProducts = ("postISRCCD", "calexp")
 
         for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
