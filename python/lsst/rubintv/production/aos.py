@@ -103,7 +103,7 @@ class DonutLauncher:
         self.allowMissingDependencies = allowMissingDependencies
 
         self.instrument = instrument
-        self.pipelineFile = locationConfig.getSfmPipelineFile(instrument)
+        self.pipelineFile = locationConfig.getAosPipelineFile(instrument)
         self.repo = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
         self.log = logging.getLogger("lsst.rubintv.production.DonutLauncher")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
