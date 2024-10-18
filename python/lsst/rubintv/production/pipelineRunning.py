@@ -104,7 +104,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         instrument: str,
         pipeline: str,  # not pulled from the locationConfig to allow notebook/debug usage
         step: str,
-        awaitsDataProduct: str,
+        awaitsDataProduct: str | None,
         podDetails: PodDetails,
         *,
         doRaise=False,

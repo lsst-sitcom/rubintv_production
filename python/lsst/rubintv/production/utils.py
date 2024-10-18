@@ -1237,3 +1237,32 @@ def getRubinTvInstrumentName(instrument: str) -> str:
     if rubinTvInstrument is None:
         raise ValueError(f"Unknown instrument {instrument=}")
     return rubinTvInstrument
+
+
+def getPodWorkerNumber() -> int:
+    """Get the pod number from the environment or sys.argv.
+
+    Returns
+    -------
+    workerNum : `int`
+        The worker number.
+    """
+    workerName = os.getenv("WORKER_NAME")  # when using statefulSets
+    if workerName:
+        workerNum = int(workerName.split("-")[-1])
+        print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
+        return workerNum
+    else:
+        # here for *forward* compatibility for next Kubernetes release
+        workerNumFromEnv = os.getenv("WORKER_NUMBER")
+        print(f"Found WORKER_NUMBER={workerNumFromEnv} in the env")
+        if workerNumFromEnv is not None:
+            workerNum = int(workerNumFromEnv)
+        else:
+            if len(sys.argv) < 2:
+                raise RuntimeError(
+                    "Must supply worker number either as WORKER_NUMBER env var or as a command line argument"
+                )
+            workerNum = int(sys.argv[2])
+
+    return workerNum

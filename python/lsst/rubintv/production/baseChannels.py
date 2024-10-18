@@ -137,7 +137,7 @@ class BaseButlerChannel(BaseChannel):
         locationConfig: LocationConfig,
         instrument: str,
         butler: Butler,
-        dataProduct: str,
+        dataProduct: str | None,
         detectors: int | list[int] | None,
         channelName: str,
         watcherType: str,
@@ -149,6 +149,7 @@ class BaseButlerChannel(BaseChannel):
     ) -> None:
         watcher: FileWatcher | RedisWatcher
         if watcherType == "file":
+            assert dataProduct is not None, "dataProduct must be provided for file watcher"
             watcher = FileWatcher(
                 locationConfig=locationConfig,
                 instrument=instrument,
@@ -169,7 +170,7 @@ class BaseButlerChannel(BaseChannel):
             locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise, addUploader=addUploader
         )
         self.butler: Butler = butler
-        self.dataProduct: str = dataProduct
+        self.dataProduct = dataProduct
         self.channelName: str = channelName
         self.detectors: int | list[int] | None = detectors
         self.podDetails: PodDetails | None = podDetails

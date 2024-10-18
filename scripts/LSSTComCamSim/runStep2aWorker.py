@@ -19,33 +19,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import sys
 
 import lsst.daf.butler as dafButler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 instrument = "LSSTComCamSim"
 locationConfig = getAutomaticLocationConfig()
 
-workerName = os.getenv("WORKER_NAME")  # when using statefulSets
-if workerName:
-    workerNum = int(workerName.split("-")[-1])
-    print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
-else:
-    workerNum = os.getenv("WORKER_NUMBER")  # here for *forward* compatibility for next Kubernetes release
-    print(f"Found WORKER_NUMBER={workerNum} in the env")
-    if not workerNum:
-        if len(sys.argv) < 2:
-            print("Must supply worker number either as WORKER_NUMBER env var or as a command line argument")
-            sys.exit(1)
-        workerNum = int(sys.argv[2])
-
-workerNum = int(workerNum)
+workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
     instrument=instrument, podFlavor=PodFlavor.STEP2A_WORKER, detectorNumber=None, depth=workerNum
 )
