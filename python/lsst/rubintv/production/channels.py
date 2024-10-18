@@ -31,6 +31,7 @@ CHANNELS = [
     "comcam_sim_calexp_mosaic",
     "comcam_sim_metadata",
     "comcam_sim_aos_metadata",
+    "comcam_sim_metadata",
     "slac_lsstcam_noise_map",
     "slac_lsstcam_focal_plane_mosaic",
     "slac_lsstcam_metadata",
@@ -105,6 +106,7 @@ def getCameraAndPlotName(channel):
         "comcam_sim_prep_metadata": ("comcam_sim_prep", "metadata"),
         "slac_lsstcam_metadata": ("slac_lsstcam", "metadata"),
         "tma_metadata": ("tma", "metadata"),
+        "comcam_aos_metadata": ("comcam_aos", "metadata"),
         # channels which should never upload, so return None to make things
         # raise
         "auxtel_metadata_creator": None,
