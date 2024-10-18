@@ -183,8 +183,9 @@ class DonutLauncher:
         # WaitForExpRecord function in redisHelper, and then flag that as
         # existing in the same place as their picked up and fanned out
         sleep(5)
-        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId2})
-        writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
+        for expId in exposureIds:
+            (expRecord) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
+            writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
 
         self.log.info(f"Launching donut processing for donut pair: {expId1, expId2}")
         query = f"exposure in ({expId1},{expId2}) and instrument='{self.instrument}'"
