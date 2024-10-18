@@ -565,13 +565,13 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
-    def getOutputChain(self, instrument):
+    def getOutputChain(self, instrument: str) -> str:
         return self._config["outputChains"][instrument]
 
-    def getSfmPipelineFile(self, instrument):
+    def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument):
+    def getAosPipelineFile(self, instrument: str) -> str:
         return self._config["aosPipelineFile"][instrument]
 
 

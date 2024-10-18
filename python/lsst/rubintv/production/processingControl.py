@@ -264,6 +264,8 @@ class HeadProcessController:
         butler: Butler,
         instrument: str,
         locationConfig: LocationConfig,
+        # TODO: remove pipelineFile arg add all graphs on init once we move
+        # from DonutLauncher?
         pipelineFile: str,
         outputChain: str | None = None,
         forceNewRun: bool = False,
@@ -302,7 +304,7 @@ class HeadProcessController:
         # NB: steps need to be in order for prepRunCollection!
         # steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
         # XXX THIS ALSO MUST SUPORT BOTH OR YOU MAKE A NEW HEAD NODE FOR AOS
-        steps: tuple[str, str, str] = ("step1", "step2a")
+        steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
         self.pipelineGraphUris = {}
         self.pipelineGraphs: dict[str, PipelineGraph] = {}
         self.pipelineGraphsBytes: dict[str, bytes] = {}
@@ -323,7 +325,11 @@ class HeadProcessController:
         self.outputChain = outputChain
 
         self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)
-        self.log.info(f"Head node ready. Data will be writen data to {self.outputRun}")
+        self.runningAos = False
+        self.log.info(
+            f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
+            f"Data will be writen data to {self.outputRun}"
+        )
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
@@ -659,13 +665,18 @@ class HeadProcessController:
         donutPair : `tuple` of `int`
             The pair of donut numbers to process.
         """
-        dataId1 = {"visit": donutPair[0], "instrument": self.instrument}
-        dataId2 = {"visit": donutPair[1], "instrument": self.instrument}
-        dataCoord1 = DataCoordinate.standardize(dataId1)
-        dataCoord2 = DataCoordinate.standardize(dataId2)
-        payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
-        queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.STEP2A_AOS_WORKER)
-        self.redisHelper.enqueuePayload(payload, queueName)
+        return None
+        # TODO: work out how to push the ids through a Payload and how the
+        # pipeline runner will use them in a query
+        # dataId1 = {"visit": donutPair[0], "instrument": self.instrument}
+        # dataId2 = {"visit": donutPair[1], "instrument": self.instrument}
+        # dataCoord1 = DataCoordinate.standardize(dataId1)
+        # dataCoord2 = DataCoordinate.standardize(dataId2)
+        # payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"],
+        #                   run=self.outputRun)
+        # queueName = self.getFreeGatherWorkerQueue(self.instrument,
+        #                                          PodFlavor.STEP2A_AOS_WORKER)
+        # self.redisHelper.enqueuePayload(payload, queueName)
 
     def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
@@ -681,10 +692,11 @@ class HeadProcessController:
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 self.doStep1Fanout(expRecord)
 
-            donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
-            if donutPair is not None:
-                self.log.info(f"Found a donut pair for {donutPair}")
-                self.dispatchAosStep2a(donutPair)
+            if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
+                donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
+                if donutPair is not None:
+                    self.log.info(f"Found a donut pair for {donutPair}")
+                    self.dispatchAosStep2a(donutPair)
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things

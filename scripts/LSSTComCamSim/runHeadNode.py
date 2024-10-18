@@ -42,8 +42,6 @@ controller = HeadProcessController(
     butler=butler,
     instrument=instrument,
     locationConfig=locationConfig,
-    # pipelineFile=locationConfig.getSfmPipelineFile(instrument),  # XXX This NEEDS to support both for on-sky
-    # XXX DO NOT MERGE IT LIKE THIS - THIS MUST BE FIXED BEFORE ON SKY
-    pipelineFile=locationConfig.getAosPipelineFile(instrument),
+    pipelineFile=locationConfig.getSfmPipelineFile(instrument),
 )
 controller.run()

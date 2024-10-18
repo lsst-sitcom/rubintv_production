@@ -28,7 +28,7 @@ setupLogging()
 instrument = "LSSTComCamSim"
 
 locationConfig = getAutomaticLocationConfig()
-if locationConfig.location not in ["summit", 'tts', 'bts']:
+if locationConfig.location not in ["summit", "tts", "bts"]:
     msg = (
         "This script is only intended to be run on summit-like locations -"
         " the signals from OCS for focus sweep triggering go straight to the redis database and aren't"
