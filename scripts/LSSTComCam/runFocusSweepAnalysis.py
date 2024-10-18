@@ -36,7 +36,7 @@ if locationConfig.location not in ["summit", "tts", "bts"]:
     )
     raise RuntimeError(msg)
 
-butler = dafButler.Butler(
+butler = dafButler.Butler(  # type: ignore
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[

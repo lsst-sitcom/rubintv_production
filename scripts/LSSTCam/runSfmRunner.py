@@ -59,7 +59,7 @@ print(
 )
 
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
+butler = dafButler.Butler(  # type: ignore
     locationConfig.lsstCamButlerPath,
     collections=[
         "LSSTCam/defaults",

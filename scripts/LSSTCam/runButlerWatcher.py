@@ -30,7 +30,7 @@ locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
 # XXX change to LSSTCam/defaults?
-butler = dafButler.Butler(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
+butler = dafButler.Butler(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])  # type: ignore
 writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
 butlerWatcher = ButlerWatcher(
     butler=butler,

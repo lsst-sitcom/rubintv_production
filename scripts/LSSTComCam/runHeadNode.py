@@ -29,7 +29,7 @@ instrument = "LSSTComCam"
 locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} head node at {locationConfig.location}...")
 
-butler = dafButler.Butler(
+butler = dafButler.Butler(  # type: ignore
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[

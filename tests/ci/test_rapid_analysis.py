@@ -89,15 +89,17 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "16"]),
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "17"]),
     # 9 wide on the AOS part
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "0"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "1"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "2"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "3"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "4"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "5"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "6"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "7"]),
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "8"]),
+    # XXX re-enable these if we start using them, or remove this code
+    # remove the noqa statements too
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "0"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "1"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "2"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "3"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "4"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "5"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "6"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "7"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "8"]),  # noqa: W505
     TestScript(
         "scripts/LSSTComCamSim/runHeadNode.py",
         ["usdf_testing"],

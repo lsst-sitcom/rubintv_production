@@ -57,7 +57,7 @@ print(
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = dafButler.Butler(
+butler = dafButler.Butler(  # type: ignore
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[

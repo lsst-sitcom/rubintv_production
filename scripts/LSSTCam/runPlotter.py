@@ -36,7 +36,7 @@ print(
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = dafButler.Butler(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
+butler = dafButler.Butler(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])  # type: ignore
 plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,

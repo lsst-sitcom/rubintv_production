@@ -31,7 +31,10 @@ print("Running ComCamSim replotter...")
 
 locationConfig = getAutomaticLocationConfig()
 
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+butler = dafButler.Butler(  # type: ignore
+    locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"]
+)
+
 plotter = Replotter(  # XXX needs type annotating and moving to podDetails
     butler=butler,
     locationConfig=locationConfig,

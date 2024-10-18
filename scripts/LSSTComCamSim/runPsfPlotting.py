@@ -29,7 +29,7 @@ instrument = "LSSTComCamSim"
 setupLogging()
 
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
+butler = dafButler.Butler(  # type: ignore
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[

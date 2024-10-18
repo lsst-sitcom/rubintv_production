@@ -30,7 +30,10 @@ locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
 # XXX change to LSSTComCamSim/defaults?
-butler = dafButler.Butler(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+butler = dafButler.Butler(  # type: ignore
+    locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"]
+)
+
 writeDimensionUniverseFile(butler, locationConfig)
 butlerWatcher = ButlerWatcher(
     butler=butler,
