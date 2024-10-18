@@ -54,6 +54,7 @@ KNOWN_INSTRUMENTS = (
     "comcam_sim",
     "comcam_sim_prep",
     "comcam_sim_aos",
+    "comcam_aos",
     "slac_lsstcam",
     "slac_ts8",
     "fake_auxtel",
