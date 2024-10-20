@@ -21,7 +21,9 @@
 
 import os
 
-from lsst.rubintv.production.utils import expRecordFromJson, safeJsonOpen
+from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
+
+from ..python.lsst.rubintv.production.utils import safeJsonOpen
 
 __all__ = ("getSampleExpRecord",)
 
@@ -30,6 +32,9 @@ def getSampleExpRecord():
     """Get a sample exposure record for testing purposes."""
     dirname = os.path.dirname(__file__)
     expRecordFilename = os.path.join(dirname, "data", "sampleExpRecord.json")
+    dimensionUniverseFile = os.path.join(dirname, "data", "butlerDimensionUniverse.json")
     expRecordJson = safeJsonOpen(expRecordFilename)
-    expRecord = expRecordFromJson(expRecordJson)
+    duJson = safeJsonOpen(dimensionUniverseFile)
+    universe = DimensionUniverse(DimensionConfig(duJson))
+    expRecord = DimensionRecord.from_json(expRecordJson, universe=universe)
     return expRecord

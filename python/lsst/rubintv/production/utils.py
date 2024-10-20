@@ -413,133 +413,166 @@ class LocationConfig:
     # start of the summit migration stuff:
     # star tracker paths
     @cached_property
-    def starTrackerDataPath(self):
+    def starTrackerDataPath(self) -> str:
         directory = self._config["starTrackerDataPath"]
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     @cached_property
-    def starTrackerMetadataPath(self):
+    def starTrackerMetadataPath(self) -> str:
         directory = self._config["starTrackerMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def starTrackerMetadataShardPath(self):
+    def starTrackerMetadataShardPath(self) -> str:
         directory = self._config["starTrackerMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def starTrackerOutputPath(self):
+    def starTrackerOutputPath(self) -> str:
         directory = self._config["starTrackerOutputPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def astrometryNetRefCatPath(self):
+    def astrometryNetRefCatPath(self) -> str:
         directory = self._config["astrometryNetRefCatPath"]
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     # animation paths
     @cached_property
-    def moviePngPath(self):
+    def moviePngPath(self) -> str:
         directory = self._config["moviePngPath"]
         self._checkDir(directory)
         return directory
 
     # all sky cam paths
     @cached_property
-    def allSkyRootDataPath(self):
+    def allSkyRootDataPath(self) -> str:
         directory = self._config["allSkyRootDataPath"]
         self._checkDir(directory, createIfMissing=False)
         return directory
 
     @cached_property
-    def allSkyOutputPath(self):
+    def allSkyOutputPath(self) -> str:
         directory = self._config["allSkyOutputPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def nightReportPath(self):
+    def nightReportPath(self) -> str:
         directory = self._config["nightReportPath"]
         self._checkDir(directory)
         return directory
 
     # ComCam stuff:
     @cached_property
-    def comCamButlerPath(self):
+    def comCamButlerPath(self) -> str:
         file = self._config["comCamButlerPath"]
         return file
 
     @cached_property
-    def comCamMetadataPath(self):
+    def comCamMetadataPath(self) -> str:
         directory = self._config["comCamMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def comCamMetadataShardPath(self):
+    def comCamMetadataShardPath(self) -> str:
         directory = self._config["comCamMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def comCamSimMetadataPath(self):
+    def comCamSimMetadataPath(self) -> str:
         directory = self._config["comCamSimMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def comCamSimMetadataShardPath(self):
+    def comCamSimMetadataShardPath(self) -> str:
         directory = self._config["comCamSimMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def comCamSimAosMetadataPath(self):
+    def comCamSimAosMetadataPath(self) -> str:
         directory = self._config["comCamSimAosMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def comCamSimAosMetadataShardPath(self):
+    def comCamSimAosMetadataShardPath(self) -> str:
         directory = self._config["comCamSimAosMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def botMetadataPath(self):
+    def comCamAosMetadataPath(self) -> str:
+        directory = self._config["comCamAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def comCamAosMetadataShardPath(self) -> str:
+        directory = self._config["comCamAosMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def botMetadataShardPath(self):
+    def botMetadataShardPath(self) -> str:
         directory = self._config["botMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
+    @cached_property
+    def lsstCamMetadataPath(self) -> str:
+        directory = self._config["lsstCamMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamMetadataShardPath(self) -> str:
+        directory = self._config["lsstCamMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamButlerPath(self) -> str:
+        directory = self._config["lsstCamButlerPath"]
+        self._checkFile(directory)
+        return directory
+
     # TMA config:
     @cached_property
-    def tmaMetadataPath(self):
+    def tmaMetadataPath(self) -> str:
         directory = self._config["tmaMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def tmaMetadataShardPath(self):
+    def tmaMetadataShardPath(self) -> str:
         directory = self._config["tmaMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
-    def getOutputChain(self, instrument):
+    def getOutputChain(self, instrument: str) -> str:
         return self._config["outputChains"][instrument]
 
-    def getSfmPipelineFile(self, instrument):
+    def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
+
+    def getAosPipelineFile(self, instrument: str) -> str:
+        return self._config["aosPipelineFile"][instrument]
 
 
 def getAutomaticLocationConfig():
@@ -1175,5 +1208,61 @@ def getShardPath(locationConfig, expRecord):
             return locationConfig.comCamMetadataShardPath
         case "LSSTComCamSim":
             return locationConfig.comCamSimMetadataShardPath
+        case "LSSTCam":
+            return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")
+
+
+def getRubinTvInstrumentName(instrument: str) -> str:
+    """Get the RubinTV instrument name for a given instrument.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    rubinTvInstrument : `str`
+        The RubinTV instrument name.
+    """
+    instrument_map = {
+        "LATISS": "auxtel",
+        "LSSTCam": "lsstcam",
+        "LSSTComCam": "comcam",
+        "LSSTComCamSim": "comcam_sim",
+    }
+    rubinTvInstrument = instrument_map.get(instrument)
+    if rubinTvInstrument is None:
+        raise ValueError(f"Unknown instrument {instrument=}")
+    return rubinTvInstrument
+
+
+def getPodWorkerNumber() -> int:
+    """Get the pod number from the environment or sys.argv.
+
+    Returns
+    -------
+    workerNum : `int`
+        The worker number.
+    """
+    workerName = os.getenv("WORKER_NAME")  # when using statefulSets
+    if workerName:
+        workerNum = int(workerName.split("-")[-1])
+        print(f"Found WORKER_NAME={workerName} in the env, derived {workerNum=} from that")
+        return workerNum
+    else:
+        # here for *forward* compatibility for next Kubernetes release
+        workerNumFromEnv = os.getenv("WORKER_NUMBER")
+        print(f"Found WORKER_NUMBER={workerNumFromEnv} in the env")
+        if workerNumFromEnv is not None:
+            workerNum = int(workerNumFromEnv)
+        else:
+            if len(sys.argv) < 2:
+                raise RuntimeError(
+                    "Must supply worker number either as WORKER_NUMBER env var or as a command line argument"
+                )
+            workerNum = int(sys.argv[2])
+
+    return workerNum

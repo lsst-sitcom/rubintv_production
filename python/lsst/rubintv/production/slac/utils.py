@@ -64,7 +64,7 @@ def getCamera(butler, instrument):
         case "LSST-TS8":
             return butler.get("camera", collections=["LSST-TS8/calib/unbounded"], instrument="LSST-TS8")
         case "LSSTComCam":
-            return butler.get("camera", collections=["LSSTComCam/calib/unbounded"], instrument="LSSTComCam")
+            return butler.get("camera", collections=["LSSTComCam/calib"], instrument="LSSTComCam")
         case "LSSTComCamSim":
             return butler.get(
                 "camera", collections=["LSSTComCamSim/calib/unbounded"], instrument="LSSTComCamSim"

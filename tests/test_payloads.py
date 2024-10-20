@@ -19,63 +19,68 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import copy
 import json
 import unittest
 
-from utils import getSampleExpRecord
+from pydantic import ValidationError
 
 import lsst.utils.tests
-from lsst.rubintv.production.payloads import Payload, PayloadResult
+
+from ..python.lsst.rubintv.production.payloads import Payload, PayloadResult
+from .utils import getSampleExpRecord
 
 
-@unittest.skip("Turn these back on sometime after OR3")
 class TestPayload(unittest.TestCase):
     def setUp(self):
         # this got harder because we now need a butler as well
         self.expRecord = getSampleExpRecord()
-        self.payload = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
+        self.pipelineBytes = "test".encode("utf-8")
+        self.differentPipelineBytes = "different test".encode("utf-8")
+        self.payload = Payload(
+            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
+        )
         self.validJson = self.payload.to_json()
-        test = Payload.from_json(self.validJson)  # check the validJson is actually valid
-        self.assertIsInstance(test, Payload)
 
     def test_constructor(self):
-        payload = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
-        self.assertEqual(payload.expRecord, self.expRecord)
-        self.assertEqual(payload.detector, 3)
-        self.assertEqual(payload.pipeline, "test")
+        payload = Payload(dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes)
+        self.assertEqual(payload.dataId, self.expRecord.dataId)
+        self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
         with self.assertRaises(TypeError):
             payload = Payload(
-                expRecord=self.expRecord,
-                detector=3,
-                pipeline="test",
+                dataId=self.expRecord.dataId,
+                run="test run",
+                pipelineGraphBytes=self.pipelineBytes,
                 illegalKwarg="test",
             )
 
     def test_equality(self):
-        payload1 = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
-        payload2 = Payload(expRecord=self.expRecord, detector=3, pipeline="test")
-        payloadDiffPipeline = Payload(expRecord=self.expRecord, detector=3, pipeline="diff_pipeline")
-        payloadDiffDetector = Payload(expRecord=self.expRecord, detector=123, pipeline="test")
-
-        diffExpRecord = copy.deepcopy(self.expRecord)
-        object.__setattr__(
-            diffExpRecord, "dataId", {"instrument": ""}
-        )  # mutate expRecord to make it different
-        payloadDiffExpRecord = Payload(expRecord=diffExpRecord, detector=3, pipeline="test")
+        payload1 = Payload(
+            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
+        )
+        payload2 = Payload(
+            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
+        )
+        payloadDiffRun = Payload(
+            dataId=self.expRecord.dataId, run="other run", pipelineGraphBytes=self.pipelineBytes
+        )
+        payloadDiffPipeline = Payload(
+            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.differentPipelineBytes
+        )
 
         self.assertEqual(payload1, payload2)
         self.assertNotEqual(payload1, payloadDiffPipeline)
-        self.assertNotEqual(payload1, payloadDiffDetector)
-        self.assertNotEqual(payload1, payloadDiffExpRecord)
+        self.assertNotEqual(payload1, payloadDiffRun)
+        self.assertNotEqual(payload1, payloadDiffPipeline)
 
+    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_roundtrip(self):
         payload = Payload.from_json(self.validJson)
         payloadJson = payload.to_json()
         reconstructedPayload = Payload.from_json(payloadJson)
         self.assertEqual(payload, reconstructedPayload)
 
+    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_from_json(self):
         payload = Payload.from_json(self.validJson)
         self.assertEqual(payload.expRecord, self.expRecord)
@@ -95,18 +100,20 @@ class TestPayload(unittest.TestCase):
             + json.dumps(self.expRecord.to_simple().json())
             + ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
         )
-        with self.assertRaises(TypeError):
+        with self.assertRaises(ValidationError):
             payload = Payload.from_json(json_str)
 
 
-@unittest.skip("Turn these back on sometime after OR3")
+# @unittest.skip("Turn these back on sometime after OR3")
 class TestPayloadResult(unittest.TestCase):
     def setUp(self):
         self.expRecord = getSampleExpRecord()
+        self.pipelineBytes = "test".encode("utf-8")
+
         self.payload_result = PayloadResult(
-            expRecord=self.expRecord,
-            detector=3,
-            pipeline="test",
+            dataId=self.expRecord.dataId,
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
             startTime=0.0,
             endTime=1.0,
             splitTimings={"step1": 0.5, "step2": 0.3},
@@ -114,22 +121,19 @@ class TestPayloadResult(unittest.TestCase):
             message="Test message",
         )
         self.validJson = self.payload_result.to_json()
-        test = PayloadResult.from_json(self.validJson)  # check the validJson is actually valid
-        self.assertIsInstance(test, PayloadResult)
 
     def test_constructor(self):
         payload_result = PayloadResult(
-            expRecord=self.expRecord,
-            detector=3,
-            pipeline="test",
+            dataId=self.expRecord.dataId,
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
             startTime=0.0,
             endTime=1.0,
             splitTimings={"step1": 0.5, "step2": 0.3},
             success=True,
             message="Test message",
         )
-        self.assertEqual(payload_result.detector, 3)
-        self.assertEqual(payload_result.pipeline, "test")
+        self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
         self.assertEqual(payload_result.startTime, 0.0)
         self.assertEqual(payload_result.endTime, 1.0)
         self.assertEqual(payload_result.splitTimings, {"step1": 0.5, "step2": 0.3})
@@ -138,9 +142,9 @@ class TestPayloadResult(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             payload_result = PayloadResult(
-                expRecord=self.expRecord,
-                detector=3,
-                pipeline="test",
+                dataId=self.expRecord.dataId,
+                run="test run",
+                pipelineGraphBytes=self.pipelineBytes,
                 startTime=0.0,
                 endTime=1.0,
                 splitTimings={"step1": 0.5, "step2": 0.3},
@@ -149,16 +153,17 @@ class TestPayloadResult(unittest.TestCase):
                 illegalKwarg="test",
             )
 
+    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_roundtrip(self):
         payload_result = PayloadResult.from_json(self.validJson)
         payload_result_json = payload_result.to_json()
         reconstructed_payload_result = PayloadResult.from_json(payload_result_json)
         self.assertEqual(payload_result, reconstructed_payload_result)
 
+    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_from_json(self):
         payload_result = PayloadResult.from_json(self.validJson)
-        self.assertEqual(payload_result.detector, 3)
-        self.assertEqual(payload_result.pipeline, "test")
+        self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
         self.assertEqual(payload_result.startTime, 0.0)
         self.assertEqual(payload_result.endTime, 1.0)
         self.assertEqual(payload_result.splitTimings, {"step1": 0.5, "step2": 0.3})

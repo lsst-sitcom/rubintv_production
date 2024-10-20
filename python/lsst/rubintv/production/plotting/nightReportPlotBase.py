@@ -44,8 +44,8 @@ class BasePlot(ABC):
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`, optional
         The locationConfig containing the paths, or ``None`` if being used for
         development
-    uploader : `lsst.rubintv.production.Uploader`, optional
-        The uploader, or ``None``, if being used for development.
+    s3Uploader : `lsst.rubintv.production.MultiUploader`, optional
+        The s3uploader, or ``None``, if being used for development.
     """
 
     def __init__(
@@ -56,7 +56,6 @@ class BasePlot(ABC):
         plotGroup,
         channelName=None,
         locationConfig=None,
-        uploader=None,
         s3Uploader=None,
     ):
         self.dayObs = dayObs
@@ -64,7 +63,6 @@ class BasePlot(ABC):
         self.plotGroup = plotGroup
         self.channelName = channelName
         self.locationConfig = locationConfig
-        self.uploader = uploader
         self.s3Uploader = s3Uploader
         self.log = logging.getLogger(f"lsst.rubintv.production.nightReportPlots.{plotName}")
 
@@ -130,8 +128,8 @@ class LatissPlot(BasePlot):
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`, optional
         The locationConfig containing the paths, or ``None`` if being used for
         development
-    uploader : `lsst.rubintv.production.Uploader`, optional
-        The uploader, or ``None``, if being used for development.
+    s3Uploader : `lsst.rubintv.production.MultiUploader`, optional
+        The s3uploader, or ``None``, if being used for development.
     """
 
     def __init__(
@@ -141,7 +139,6 @@ class LatissPlot(BasePlot):
         plotName,
         plotGroup,
         locationConfig,
-        uploader,
         s3Uploader,
     ):
 
@@ -151,7 +148,6 @@ class LatissPlot(BasePlot):
             plotGroup=plotGroup,
             channelName="auxtel_night_reports",
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
@@ -170,7 +166,7 @@ class LatissPlot(BasePlot):
         ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
         """
-        if self.locationConfig is None or self.uploader is None:
+        if self.locationConfig is None or self.s3Uploader is None:
             raise RuntimeError("locationConfig and uploader can only be None for development work.")
 
         success = self.plot(nightReport, metadata, ccdVisitTable)
@@ -182,9 +178,6 @@ class LatissPlot(BasePlot):
         plt.savefig(saveFile)
         plt.close()
 
-        self.uploader.uploadNightReportData(
-            channel=self.channelName, dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
-        )
         self.s3Uploader.uploadNightReportData(
             instrument="auxtel", dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
         )
@@ -207,7 +200,7 @@ class StarTrackerPlot(BasePlot):
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`, optional
         The locationConfig containing the paths, or ``None`` if being used for
         development
-    uploader : `lsst.rubintv.production.Uploader`, optional
+    s3Uploader : `lsst.rubintv.production.MultiUploader`, optional
         The uploader, or ``None``, if being used for development.
     """
 
@@ -218,7 +211,6 @@ class StarTrackerPlot(BasePlot):
         plotName,
         plotGroup,
         locationConfig,
-        uploader,
         s3Uploader,
     ):
 
@@ -228,7 +220,6 @@ class StarTrackerPlot(BasePlot):
             plotGroup=plotGroup,
             channelName="startracker_night_reports",
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
@@ -243,7 +234,7 @@ class StarTrackerPlot(BasePlot):
         tableData : `pandas.DataFrame`
             The data from all three StarTracker page tables, as a dataframe.
         """
-        if self.locationConfig is None or self.uploader is None:
+        if self.locationConfig is None or self.s3Uploader is None:
             raise RuntimeError("locationConfig and uploader can only be None for development work.")
 
         success = self.plot(tableData)
@@ -255,9 +246,6 @@ class StarTrackerPlot(BasePlot):
         plt.savefig(saveFile)
         plt.close()
 
-        self.uploader.uploadNightReportData(
-            channel=self.channelName, dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
-        )
         self.s3Uploader.uploadNightReportData(
             instrument="startracker", dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
         )
