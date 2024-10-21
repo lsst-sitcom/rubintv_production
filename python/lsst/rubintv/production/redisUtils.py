@@ -351,7 +351,7 @@ class RedisHelper:
         workers = []
         allWorkers = self.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         for worker in allWorkers:
-            if not self.redis.get(f"{worker}+IS_BUSY"):
+            if not self.redis.get(f"{worker.queueName}+IS_BUSY"):
                 workers.append(worker)
         return sorted(workers)
 
