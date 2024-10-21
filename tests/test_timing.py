@@ -28,7 +28,7 @@ from lsst.rubintv.production.timing import BoxCarTimer
 
 
 class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
-    def test_lap(self):
+    def test_lap(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         time.sleep(0.1)
@@ -36,7 +36,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(len(timer._buffer), 1)
         self.assertAlmostEqual(timer._buffer[0], 0.1, places=1)
 
-    def test_buffer_length(self):
+    def test_buffer_length(self) -> None:
         timer = BoxCarTimer(length=3)
         timer.start()
         time.sleep(0.1)
@@ -47,7 +47,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         self.assertEqual(len(timer._buffer), 3)
 
-    def test_min(self):
+    def test_min(self) -> None:
         timer = BoxCarTimer(length=3)
         timer.start()
         time.sleep(0.1)
@@ -57,7 +57,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(timer.min(), 0.1, places=1)
         self.assertAlmostEqual(timer.min(frequency=True), 10, places=1)
 
-    def test_max(self):
+    def test_max(self) -> None:
         timer = BoxCarTimer(length=3)
         timer.start()
         time.sleep(0.1)
@@ -67,7 +67,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(timer.max(), 0.2, places=1)
         self.assertAlmostEqual(timer.max(frequency=True), 5, places=1)
 
-    def test_mean(self):
+    def test_mean(self) -> None:
         timer = BoxCarTimer(length=3)
         timer.start()
         time.sleep(0.1)
@@ -79,7 +79,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(timer.mean(), 0.15, places=1)
         self.assertAlmostEqual(timer.mean(frequency=True), 6.67, places=1)
 
-    def test_median(self):
+    def test_median(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         time.sleep(0.1)
@@ -93,7 +93,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(timer.median(), 0.175, places=1)
         self.assertAlmostEqual(timer.median(frequency=True), 5.714, places=1)
 
-    def test_extreme_outliers(self):
+    def test_extreme_outliers(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         time.sleep(0.1)
@@ -107,7 +107,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(timer.mean(), 1.325, places=1)
         self.assertAlmostEqual(timer.median(), 0.1, places=1)
 
-    def test_overflow(self):
+    def test_overflow(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         time.sleep(1)
@@ -118,7 +118,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
 
         self.assertAlmostEqual(timer.mean(), 0.1, places=1)
 
-    def test_empty_buffer(self):
+    def test_empty_buffer(self) -> None:
         timer = BoxCarTimer(length=3)
         timer.start()  # need to start for min/max etc to work at all
         self.assertIsNone(timer.min())
@@ -126,7 +126,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         self.assertIsNone(timer.mean())
         self.assertIsNone(timer.median())
 
-    def test_last_lap_time(self):
+    def test_last_lap_time(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         time.sleep(0.1)
@@ -135,7 +135,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         self.assertAlmostEqual(timer.lastLapTime(), 0.2, places=1)
 
-    def test_pause_resume(self):
+    def test_pause_resume(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         time.sleep(0.1)
@@ -151,7 +151,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
             timer.pause()
             timer.lap()
 
-    def test_lap_counting(self):
+    def test_lap_counting(self) -> None:
         timer = BoxCarTimer(length=5)
         timer.start()
         for i in range(3):  # check the basics
@@ -164,7 +164,7 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.resume()
         self.assertEqual(timer.totalLaps, 13)  # check pause/resume doesn't add a lap
 
-    def test_not_started(self):
+    def test_not_started(self) -> None:
         timer = BoxCarTimer(length=5)
         with self.assertRaises(RuntimeError):
             timer.lap()

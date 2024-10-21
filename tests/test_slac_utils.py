@@ -29,7 +29,7 @@ from lsst.rubintv.production.slac.utils import getGains
 class RubinTVSlacUtilsTestCase(lsst.utils.tests.TestCase):
     """A test case RubinTV SLAC utility functions."""
 
-    def test_getGains(self):
+    def test_getGains(self) -> None:
         # check we have all the gains for TS8
         ts8Gains = getGains("LSST-TS8")
         self.assertEqual(len(ts8Gains), 9)

@@ -29,7 +29,7 @@ from lsst.rubintv.production.utils import isDayObsContiguous, sanitizeNans
 class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
     """A test case RubinTV utility functions."""
 
-    def test_isDayObsContiguous(self):
+    def test_isDayObsContiguous(self) -> None:
         dayObs = 20220930
         nextDay = 20221001  # next day in a different month
         differentDay = 20221005
@@ -37,7 +37,7 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
         self.assertTrue(isDayObsContiguous(nextDay, dayObs))
         self.assertFalse(isDayObsContiguous(nextDay, differentDay))
 
-    def test_sanitizeNans(self):
+    def test_sanitizeNans(self) -> None:
         self.assertEqual(sanitizeNans({"a": 1.0, "b": float("nan")}), {"a": 1.0, "b": None})
         self.assertEqual(sanitizeNans([1.0, float("nan")]), [1.0, None])
         self.assertIsNone(sanitizeNans(float("nan")))

@@ -31,7 +31,7 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
     """A test case for exposure log utilities"""
 
     @responses.activate
-    def test_getLogsForDayObs(self):
+    def test_getLogsForDayObs(self) -> None:
         mock_logs = [
             {
                 "id": "0123",

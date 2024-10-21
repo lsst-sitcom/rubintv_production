@@ -51,7 +51,7 @@ class TestPayload(unittest.TestCase):
                 dataId=self.expRecord.dataId,
                 run="test run",
                 pipelineGraphBytes=self.pipelineBytes,
-                illegalKwarg="test",
+                illegalKwarg="test",  # type: ignore[call-arg]  # that's the whole point here
             )
 
     def test_equality(self) -> None:
@@ -75,24 +75,25 @@ class TestPayload(unittest.TestCase):
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_roundtrip(self) -> None:
-        payload = Payload.from_json(self.validJson)
+        # remove the ignore[arg-type] everywhere once there is a butler
+        payload = Payload.from_json(None, self.validJson)  # type: ignore[arg-type]
         payloadJson = payload.to_json()
-        reconstructedPayload = Payload.from_json(payloadJson)
+        reconstructedPayload = Payload.from_json(None, payloadJson)  # type: ignore[arg-type]
         self.assertEqual(payload, reconstructedPayload)
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_from_json(self) -> None:
-        payload = Payload.from_json(self.validJson)
-        self.assertEqual(payload.expRecord, self.expRecord)
-        self.assertEqual(payload.detector, 3)
-        self.assertEqual(payload.pipeline, "test")
+        # remove the ignore[arg-type] everywhere once there is a butler
+        payload = Payload.from_json(None, self.validJson)  # type: ignore[arg-type]
+        self.assertEqual(payload.dataId, self.expRecord.dataId)
+        self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
         json_str = (
             '{"expRecord": '
             + json.dumps(self.expRecord.to_simple().json())
             + ', "detector": 3, "pipeline": "test"}'
         )
-        payload = Payload.from_json(json_str)
+        payload = Payload.from_json(None, json_str)  # type: ignore[arg-type]
         self.assertEqual(payload, self.payload)
 
         json_str = (
@@ -101,7 +102,7 @@ class TestPayload(unittest.TestCase):
             + ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
         )
         with self.assertRaises(ValidationError):
-            payload = Payload.from_json(json_str)
+            payload = Payload.from_json(None, json_str)  # type: ignore[arg-type]
 
 
 # @unittest.skip("Turn these back on sometime after OR3")
@@ -150,19 +151,23 @@ class TestPayloadResult(unittest.TestCase):
                 splitTimings={"step1": 0.5, "step2": 0.3},
                 success=True,
                 message="Test message",
-                illegalKwarg="test",
+                illegalKwarg="test",  # type: ignore[call-arg]  # that's the whole point here
             )
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_roundtrip(self) -> None:
-        payload_result = PayloadResult.from_json(self.validJson)
+        # remove the ignore[arg-type] everywhere once there is a butler
+        payload_result = PayloadResult.from_json(self.validJson, None)  # type: ignore[arg-type]
         payload_result_json = payload_result.to_json()
-        reconstructed_payload_result = PayloadResult.from_json(payload_result_json)
+        reconstructed_payload_result = PayloadResult.from_json(
+            payload_result_json, None  # type: ignore[arg-type]
+        )
         self.assertEqual(payload_result, reconstructed_payload_result)
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
     def test_from_json(self) -> None:
-        payload_result = PayloadResult.from_json(self.validJson)
+        # remove the ignore[arg-type] everywhere once there is a butler
+        payload_result = PayloadResult.from_json(self.validJson, None)  # type: ignore[arg-type]
         self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
         self.assertEqual(payload_result.startTime, 0.0)
         self.assertEqual(payload_result.endTime, 1.0)
@@ -176,7 +181,7 @@ class TestPayloadResult(unittest.TestCase):
             + ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": '
             + '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message"}'
         )
-        payload_result = PayloadResult.from_json(json_str)
+        payload_result = PayloadResult.from_json(json_str, None)  # type: ignore[arg-type]
         self.assertEqual(payload_result, self.payload_result)
 
         json_str = (
@@ -187,7 +192,7 @@ class TestPayloadResult(unittest.TestCase):
             + '"test"}'
         )
         with self.assertRaises(TypeError):
-            payload_result = PayloadResult.from_json(json_str)
+            payload_result = PayloadResult.from_json(json_str, None)  # type: ignore[arg-type]
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

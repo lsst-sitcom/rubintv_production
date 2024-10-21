@@ -24,7 +24,8 @@ from __future__ import annotations
 import base64
 import io
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Self
 
 from lsst.daf.butler import Butler, DataCoordinate
 from lsst.pipe.base import PipelineGraph
@@ -75,7 +76,7 @@ class Payload:
         cls,
         json_str: str,
         butler: Butler,
-    ) -> Payload:
+    ) -> Self:
         json_dict = json.loads(json_str)
         dataId = butler.registry.expandDataId(json_dict["dataId"])
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
@@ -104,3 +105,28 @@ class PayloadResult(Payload):
     splitTimings: dict
     success: bool
     message: str
+
+    @classmethod
+    def from_json(
+        cls,
+        json_str: str,
+        butler: Butler,
+    ) -> Self:
+        instance = super().from_json(json_str, butler)
+        json_dict = json.loads(json_str)
+        return cls(
+            dataId=instance.dataId,
+            pipelineGraphBytes=instance.pipelineGraphBytes,
+            run=instance.run,
+            startTime=json_dict["startTime"],
+            endTime=json_dict["endTime"],
+            splitTimings=json_dict["splitTimings"],
+            success=json_dict["success"],
+            message=json_dict["message"],
+        )
+
+    def to_json(self) -> str:
+        json_dict = asdict(self)
+        json_dict["dataId"] = dict(self.dataId.mapping)
+        json_dict["pipelineGraphBytes"] = base64.b64encode(self.pipelineGraphBytes).decode()
+        return json.dumps(json_dict)

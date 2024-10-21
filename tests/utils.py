@@ -27,7 +27,7 @@ from lsst.rubintv.production.utils import safeJsonOpen
 __all__ = ("getSampleExpRecord",)
 
 
-def getSampleExpRecord():
+def getSampleExpRecord() -> DimensionRecord:
     """Get a sample exposure record for testing purposes."""
     dirname = os.path.dirname(__file__)
     expRecordFilename = os.path.join(dirname, "data", "sampleExpRecord.json")
