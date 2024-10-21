@@ -34,7 +34,7 @@ detectorDepth = workerNum // 189
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.MOSAIC_WORKER, detectorNumber=detectorNum, depth=0
+    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
