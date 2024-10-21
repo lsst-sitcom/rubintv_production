@@ -22,8 +22,7 @@
 import os
 
 from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
-
-from ..python.lsst.rubintv.production.utils import safeJsonOpen
+from lsst.rubintv.production.utils import safeJsonOpen
 
 __all__ = ("getSampleExpRecord",)
 

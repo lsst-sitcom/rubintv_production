@@ -25,13 +25,13 @@ import unittest
 from pydantic import ValidationError
 
 import lsst.utils.tests
+from lsst.rubintv.production.payloads import Payload, PayloadResult
 
-from ..python.lsst.rubintv.production.payloads import Payload, PayloadResult
 from .utils import getSampleExpRecord
 
 
 class TestPayload(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         # this got harder because we now need a butler as well
         self.expRecord = getSampleExpRecord()
         self.pipelineBytes = "test".encode("utf-8")
@@ -41,7 +41,7 @@ class TestPayload(unittest.TestCase):
         )
         self.validJson = self.payload.to_json()
 
-    def test_constructor(self):
+    def test_constructor(self) -> None:
         payload = Payload(dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes)
         self.assertEqual(payload.dataId, self.expRecord.dataId)
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
@@ -54,7 +54,7 @@ class TestPayload(unittest.TestCase):
                 illegalKwarg="test",
             )
 
-    def test_equality(self):
+    def test_equality(self) -> None:
         payload1 = Payload(
             dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
         )
@@ -74,14 +74,14 @@ class TestPayload(unittest.TestCase):
         self.assertNotEqual(payload1, payloadDiffPipeline)
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         payload = Payload.from_json(self.validJson)
         payloadJson = payload.to_json()
         reconstructedPayload = Payload.from_json(payloadJson)
         self.assertEqual(payload, reconstructedPayload)
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
-    def test_from_json(self):
+    def test_from_json(self) -> None:
         payload = Payload.from_json(self.validJson)
         self.assertEqual(payload.expRecord, self.expRecord)
         self.assertEqual(payload.detector, 3)
@@ -106,7 +106,7 @@ class TestPayload(unittest.TestCase):
 
 # @unittest.skip("Turn these back on sometime after OR3")
 class TestPayloadResult(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.expRecord = getSampleExpRecord()
         self.pipelineBytes = "test".encode("utf-8")
 
@@ -122,7 +122,7 @@ class TestPayloadResult(unittest.TestCase):
         )
         self.validJson = self.payload_result.to_json()
 
-    def test_constructor(self):
+    def test_constructor(self) -> None:
         payload_result = PayloadResult(
             dataId=self.expRecord.dataId,
             run="test run",
@@ -154,14 +154,14 @@ class TestPayloadResult(unittest.TestCase):
             )
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         payload_result = PayloadResult.from_json(self.validJson)
         payload_result_json = payload_result.to_json()
         reconstructed_payload_result = PayloadResult.from_json(payload_result_json)
         self.assertEqual(payload_result, reconstructed_payload_result)
 
     @unittest.skip("Turn these back on if you can work out how to do it without a butler")
-    def test_from_json(self):
+    def test_from_json(self) -> None:
         payload_result = PayloadResult.from_json(self.validJson)
         self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
         self.assertEqual(payload_result.startTime, 0.0)

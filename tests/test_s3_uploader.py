@@ -26,7 +26,7 @@ import unittest
 import boto3
 from moto import mock_aws
 
-from lsst.rubintv.production import S3Uploader
+from lsst.rubintv.production.uploaders import S3Uploader
 
 
 class TestS3Uploader(unittest.TestCase):
