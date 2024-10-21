@@ -604,7 +604,12 @@ class HeadProcessController:
             if not completeIds:
                 continue
 
-            self.log.info(f"Dispatching {len(completeIds)} complete focal {dataProduct} mosaics for creation")
+            idString = (
+                f"{len(completeIds)} images: {completeIds}"
+                if len(completeIds) > 1
+                else f"expId={completeIds[0]}"
+            )
+            self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
             for expId in completeIds:
                 dataId: dict[str, int | str] = {"exposure": expId, "instrument": self.instrument}
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
