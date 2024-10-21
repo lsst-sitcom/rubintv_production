@@ -184,7 +184,7 @@ class DonutLauncher:
         # existing in the same place as their picked up and fanned out
         sleep(5)
         for expId in exposureIds:
-            (expRecord) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
             writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
 
         self.log.info(f"Launching donut processing for donut pair: {expId1, expId2}")
