@@ -253,7 +253,9 @@ class StarTrackerChannel(BaseChannel):
         self.rootDataPath = locationConfig.starTrackerDataPath
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=self.camera)
 
-        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig, log=log, watcher=watcher, addUploader=True, doRaise=doRaise
+        )
 
         self.channelRaw = f"startracker{self.camera.suffix}_raw"  # TODO: DM-43413 remove?
         self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"  # TODO: DM-43413 remove?
