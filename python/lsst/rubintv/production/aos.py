@@ -203,6 +203,8 @@ class DonutLauncher:
             "-p", self.pipelineFile,
             "-d", query,
             "--rebase",
+            # remove the --register addition eventually
+            "--register-dataset-types",
             # fmt: on
         ]
         if doRegister:
