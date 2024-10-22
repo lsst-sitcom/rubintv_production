@@ -30,7 +30,7 @@ from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from lsst.pipe.base import Pipeline, PipelineGraph, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
-from lsst.summit.utils import ConsDbClient
+from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
@@ -337,8 +337,20 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             outputPath=self.locationConfig.calculatedDataPath,
             binSize=self.locationConfig.binning,
         )
-
         self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
+
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+        detectorNum = exp.getDetector().getId()
+        postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
+        ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
+        self.consdbClient.insert(
+            instrument=self.instrument,
+            table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
+            obs_id=ccdvisitId,
+            values={"postisr_pixel_median": postIsrMedian},
+            allow_update=False,
+        )
+        self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
 
     def postProcessCalibrate(self, quantum, processingId) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
