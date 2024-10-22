@@ -62,6 +62,7 @@ CCD_VISIT_MAPPING = {
     "skyNoise": "sky_noise",
     "zenithDistance": "zenith_distance",
     "zeroPoint": "zero_point",
+    "postisr_pixel_median": "postisr_pixel_median",
 }
 
 # The mapping from ExposureCatalog columns to consDB columns where
