@@ -49,7 +49,7 @@ REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 500  # How long to leave test suites to run for
+TEST_DURATION = 300  # How long to leave test suites to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -57,13 +57,13 @@ DEBUG = False
 
 # List of test scripts to run, defined relative to package root
 
-TEST_SCRIPTS_ROUND_1 = [
+TEST_SCRIPTS_ROUND_2 = [
     # the AOS RA testing - runs data through the processing pods
-    TestScript(
-        "scripts/LSSTComCamSim/runStep2aAosWorker.py",
-        ["usdf_testing", "0"],  # XXX does this need a numerical arg?
-        tee_output=True,
-    ),
+    # TestScript(
+    #     "scripts/LSSTComCamSim/runStep2aAosWorker.py",
+    #     ["usdf_testing", "0"],  # XXX does this need a numerical arg?
+    #     tee_output=True,
+    # ),
     TestScript(
         "scripts/LSSTComCamSim/runSfmRunner.py",
         ["usdf_testing", "0"],
@@ -79,15 +79,15 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "6"]),
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "7"]),
     TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "8"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "9"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "10"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "11"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "12"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "13"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "14"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "15"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "16"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "17"]),
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "9"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "10"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "11"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "12"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "13"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "14"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "15"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "16"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "17"]),  # noqa: W505
     # 9 wide on the AOS part
     # XXX re-enable these if we start using them, or remove this code
     # remove the noqa statements too
@@ -108,11 +108,11 @@ TEST_SCRIPTS_ROUND_1 = [
         display_on_pass=True,
     ),
     TestScript(
-        "tests/ci/drip_feed_data_aos.py", ["usdf_testing"], delay=0, tee_output=True, display_on_pass=True
+        "tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, tee_output=True, display_on_pass=True
     ),
 ]
 
-TEST_SCRIPTS_ROUND_2 = [
+TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
     TestScript("scripts/LSSTComCamSim/runPlotter.py", ["usdf_testing"]),
     TestScript(
@@ -413,6 +413,8 @@ def check_redis_final_contents():
     ]  # for expansion
     n_visits = len(visits)
 
+    # XXX add something for the task counters too, not just step2a entry etc
+
     n_step2a = redisHelper.getNumVisitLevelFinished(inst, "step2a")
     if n_step2a != n_visits:
         print(f"❌ Expected {n_visits} step2a to have finished, got {n_step2a}")
@@ -675,6 +677,12 @@ def main():
     atexit.register(terminate_redis)
     start_redis(REDIS_INIT_WAIT_TIME)
     check_redis_startup()  # Wait for the setup timeout and then check Redis
+
+    # XXX really should do an rm -rf here, of the places where things will be
+    # written to, otherwise it could potentially succeed by using previous
+    # outputs for some things, like focal plane plotting. But that needs to be
+    # somewhat safe. Just doing the output data path and plot path for now
+    # should be OK.
 
     # Run each real test script
     run_test_scripts(TEST_SCRIPTS_ROUND_1, TEST_DURATION)
