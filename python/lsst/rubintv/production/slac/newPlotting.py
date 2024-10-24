@@ -129,7 +129,7 @@ class Plotter:
             case "calexp":
                 datapath = self.locationConfig.binnedCalexpPath
 
-        plotName = f"{dataProduct}Mosaic_dayObs_{dayObs}_seqNum_{seqNum}.png"
+        plotName = f"{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         plotFocalPlaneMosaic(
