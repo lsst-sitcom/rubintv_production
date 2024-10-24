@@ -339,18 +339,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         )
         self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
 
-        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
-        detectorNum = exp.getDetector().getId()
-        postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
-        ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
-        self.consdbClient.insert(
-            instrument=self.instrument,
-            table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
-            obs_id=ccdvisitId,
-            values={"postisr_pixel_median": postIsrMedian},
-            allow_update=False,
-        )
-        self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
+        if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+            detectorNum = exp.getDetector().getId()
+            postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
+            ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
+            self.consdbClient.insert(
+                instrument=self.instrument,
+                table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
+                obs_id=ccdvisitId,
+                values={"postisr_pixel_median": postIsrMedian},
+                allow_update=False,
+            )
+            self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
 
     def postProcessCalibrate(self, quantum, processingId) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
@@ -379,11 +380,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            summaryStats = exp.getInfo().getSummaryStats()
-            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
-            detectorNum = exp.getDetector().getId()
-            self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
-            self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
+            if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
+                summaryStats = exp.getInfo().getSummaryStats()
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+                detectorNum = exp.getDetector().getId()
+                self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
+                self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
         except Exception:
             if self.locationConfig.location == "summit":
                 self.log.exception("Failed to populate ccd-visit row in ConsDB")
@@ -427,7 +429,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            self.consDBPopulator.populateVisitRow(vs, self.instrument)
-            self.log.info(f"Populated consDB visit row for {expRecord.id}")
+            if self.locationConfig.location in ["summit", "bts", "tts"]:
+                self.consDBPopulator.populateVisitRow(vs, self.instrument)
+                self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
