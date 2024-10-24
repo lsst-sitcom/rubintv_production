@@ -65,3 +65,12 @@ outputChains:
   LSSTComCam: LSSTComCam/quickLook
   LSSTComCamSim: LSSTComCamSim/quickLook
   LSSTCam: LSSTCam/quickLook
+
+
+### not applicable on the TTS but here explicitly to keep keys the same:
+# they also need to exist for the LocationConfig to init correctly as it checks
+starTrackerDataPath: '/project'
+starTrackerOutputPath: '/project'
+starTrackerMetadataShardPath: '/project'
+starTrackerMetadataPath: '/project'
+astrometryNetRefCatPath: '/project'

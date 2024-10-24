@@ -39,6 +39,15 @@ class TestScript:
         )
 
 
+@dataclass
+class Check:
+    passed: bool
+    message: str
+
+    def __str__(self):
+        return f"{'✅' if self.passed else '❌'} {self.message}"
+
+
 class Tee:
     def __init__(self, *files):
         self.files = files
