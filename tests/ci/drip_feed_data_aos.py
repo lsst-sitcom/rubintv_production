@@ -16,33 +16,35 @@ instrument = "LSSTComCamSim"
 WORKER_ONLINE_TIMEOUT = 60
 HEAD_NODE_ONLINE_TIMEOUT = 60
 HEAD_NODE_POST_INIT_DELAY = 30
+N_WORKERS_EXPECTED = 9
 
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTComCamSim/raw/all",
+        f"{instrument}/defaults",
     ],
 )
 
 redisHelper = RedisHelper(butler, locationConfig)
 
-where = f"exposure.day_obs=20240724 AND exposure.seq_num IN (2..3) AND instrument='{instrument}'"  # OR4
+# 200 = intra, 201 = extra, 202 = in-focus
+where = f"exposure.day_obs=20240627 AND exposure.seq_num IN (200..202) AND instrument='{instrument}'"  # OR4
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))
-assert len(records) == 2, f"Expected 2 record, got {len(records)}"
+assert len(records) == 3, f"Expected 3 record, got {len(records)}"
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time()-t0):.2f} seconds")
 
 t0 = time.time()
 nWorkersOnline = 0
-while nWorkersOnline < 18 and time.time() - t0 < WORKER_ONLINE_TIMEOUT:
+while nWorkersOnline < N_WORKERS_EXPECTED and time.time() - t0 < WORKER_ONLINE_TIMEOUT:
     nWorkersOnline = len(redisHelper.getAllWorkers(instrument, podFlavor=PodFlavor.SFM_WORKER))
     time.sleep(1)
 
-if nWorkersOnline < 18:
+if nWorkersOnline < N_WORKERS_EXPECTED:
     print(f"Workers never came online within timeout of {WORKER_ONLINE_TIMEOUT}")
     raise RuntimeError("Workers never came online within timeout")
 
@@ -60,7 +62,7 @@ print(f"Head node is online, sleeping for {HEAD_NODE_POST_INIT_DELAY}")
 time.sleep(HEAD_NODE_POST_INIT_DELAY)
 
 assert isinstance(records[0], dafButler.DimensionRecord)
-for record in records:
+for record in records[-1:]:  # XXX remove this slice!
     print(f"Pushing expId={record.id} for {record.instrument} for processing")
     # this is what the butlerWatcher does for each new record
     redisHelper.pushNewExposureToHeadNode(record)
@@ -69,4 +71,4 @@ for record in records:
 
 time.sleep(30)
 print("Pushing pair announcement signal to redis (simulating OCS signal)")
-redisHelper.redis.rpush("LSSTComCamSim-FROM-OCS_DONUTPAIR", "7024072400001,7024072400003")
+redisHelper.redis.rpush("LSSTComCamSim-FROM-OCS_DONUTPAIR", "2024062700200,2024062700201")

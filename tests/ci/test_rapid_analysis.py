@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import redis
 import yaml
-from ciutils import TestScript, conditional_redirect
+from ciutils import Check, TestScript, conditional_redirect
 
 
 def do_nothing(*args, **kwargs):
@@ -56,60 +56,59 @@ TODAY = 20240101
 DEBUG = False
 
 # List of test scripts to run, defined relative to package root
-
 TEST_SCRIPTS_ROUND_2 = [
     # the AOS RA testing - runs data through the processing pods
     # TestScript(
-    #     "scripts/LSSTComCamSim/runStep2aAosWorker.py",
+    #     "scripts/LSSTComCam/runStep2aAosWorker.py",
     #     ["usdf_testing", "0"],  # XXX does this need a numerical arg?
     #     tee_output=True,
     # ),
     TestScript(
-        "scripts/LSSTComCamSim/runSfmRunner.py",
+        "scripts/LSSTComCam/runSfmRunner.py",
         ["usdf_testing", "0"],
         display_on_pass=True,
         tee_output=True,
     ),
     # 18 wide on the isr
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "1"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "2"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "3"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "4"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "5"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "6"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "7"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "8"]),
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "9"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "10"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "11"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "12"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "13"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "14"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "15"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "16"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "17"]),  # noqa: W505
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "2"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "3"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "4"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "5"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "6"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "7"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "8"]),
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "9"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "10"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "11"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "12"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "13"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "14"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "15"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "16"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "17"]),  # noqa: W505
     # 9 wide on the AOS part
     # XXX re-enable these if we start using them, or remove this code
     # remove the noqa statements too
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "0"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "1"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "2"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "3"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "4"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "5"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "6"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "7"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCamSim/runAosWorker.py", ["usdf_testing", "8"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "0"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "2"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "3"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "4"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "5"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "6"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "7"]),  # noqa: W505
+    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "8"]),  # noqa: W505
     TestScript(
-        "scripts/LSSTComCamSim/runHeadNode.py",
+        "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=15,  # we do NOT want the head node to fanout work before workers report in - that's a fail
         tee_output=True,
         display_on_pass=True,
     ),
-    TestScript(
-        "tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, tee_output=True, display_on_pass=True
-    ),
+    # TestScript(
+    #     "tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, tee_output=True, display_on_pass=True  # noqa: E501 W505
+    # ),
 ]
 
 TEST_SCRIPTS_ROUND_1 = [
@@ -142,7 +141,7 @@ TEST_SCRIPTS_ROUND_1 = [
         tee_output=True,
         display_on_pass=True,
     ),
-    TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
+    TestScript("tests/ci/drip_feed_data_aos.py", ["usdf_testing"], delay=0, display_on_pass=True),
 ]
 
 TEST_SCRIPTS_ROUND_3 = [
@@ -151,7 +150,7 @@ TEST_SCRIPTS_ROUND_3 = [
     # drops into redis
     # XXX need to get this to actually run
     # XXX need to add check that this actually output to redis
-    TestScript("scripts/LSSTComCamSim/runButlerWatcher.py", ["usdf_testing"]),
+    TestScript("scripts/LSSTComCam/runButlerWatcher.py", ["usdf_testing"]),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -172,9 +171,8 @@ META_TESTS_PASS_EXPECTED = [
 YAML_FILES_TO_CHECK = [
     # TODO Add the commented out files back in when you're ready
     # "config/config_bts.yaml",
-    # "config/config_tts.yaml",
+    "config/config_tts.yaml",
     "config/config_summit.yaml",
-    # "config/config_slac.yaml",
     "config/config_usdf_testing.yaml",
 ]
 
@@ -209,6 +207,8 @@ manager = Manager()
 exit_codes = manager.dict()
 outputs = manager.dict()
 REDIS_PROCESS = None
+
+CHECKS = []  # holds the results
 
 
 def exec_script(test_script: TestScript, output_queue):
@@ -406,7 +406,6 @@ def check_redis_final_contents():
     redisHelper.displayRedisContents()
 
     inst = "LSSTComCamSim"
-    passed = True
 
     visits = [
         7024061300017,
@@ -417,29 +416,30 @@ def check_redis_final_contents():
 
     n_step2a = redisHelper.getNumVisitLevelFinished(inst, "step2a")
     if n_step2a != n_visits:
-        print(f"❌ Expected {n_visits} step2a to have finished, got {n_step2a}")
-        passed = False
+        CHECKS.append(Check(False, f"Expected {n_visits} step2a to have finished, got {n_step2a}"))
     else:
-        print(f"✅ {n_step2a}x step2a finished")
+        CHECKS.append(Check(True, f"{n_step2a}x step2a finished"))
 
     key = f"{inst}-NIGHTLYROLLUP-FINISHEDCOUNTER"
     n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
     if n_nightly_rollups != n_visits:
-        print(f"❌ Expected {n_visits} nightly rollup finished, got {n_nightly_rollups}")
-        passed = False
+        CHECKS.append(Check(False, f"Expected {n_visits} nightly rollup finished, got {n_nightly_rollups}"))
     else:
-        print(f"✅ {n_visits} nightly rollup finished")
+        CHECKS.append(Check(True, f"{n_nightly_rollups} nightly rollup finished"))
 
     allKeys = redisHelper.redis.keys()
     failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
     if failed_keys:
-        print(f"❌ Found failed keys: {failed_keys}")
-        passed = False
+        CHECKS.append(Check(False, f"Found failed keys: {failed_keys}"))
+    else:
+        CHECKS.append(Check(True, "No failed keys found in redis"))
 
-    return passed
+    return
 
 
-def print_final_result(fails, passes):
+def print_final_result(checks):
+    fails = [check for check in checks if not check.passed]
+    passes = [check for check in checks if check.passed]
     n_fails = len(fails)
     n_passes = len(passes)
     terminal_width = os.get_terminal_size().columns
@@ -461,9 +461,9 @@ def print_final_result(fails, passes):
 
     # Print the centered text with colored padding
     for fail in fails:
-        print(f"❌ {fail} failed")
+        print(fail)
     for testPass in passes:
-        print(f"✅ {testPass} passed")
+        print(testPass)
     print(f"{padding}{text}{padding}")
 
 
@@ -646,9 +646,6 @@ def check_meta_test_results():
 
 
 def main():
-    FAILS = []
-    PASSES = []
-
     check_system_size_and_load()
 
     # setup env vars for all processes
@@ -657,7 +654,7 @@ def main():
     if DO_CHECK_YAML_FILES:
         yaml_files_ok = check_yaml_keys()
         if not yaml_files_ok:  # not an instant fail
-            FAILS.append("YAML check")
+            CHECKS.append(Check(False, "YAML check"))
 
     # these exit if any fail because that means everything is broken so there's
     # no point in continuing
@@ -703,7 +700,7 @@ def main():
 
         stdout, stderr, log_output = outputs[script]
         if result in ["timeout", 0]:
-            PASSES.append(script)
+            CHECKS.append(Check(True, f"{script} passed"))
             if script.display_on_pass:
                 print(f"\n🙂 *Passing* logs from {script}:")
                 print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
@@ -716,15 +713,13 @@ def main():
             print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
             print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
             print("\n")  # put a nice gap between each failing scripts's output
-            FAILS.append(script)
+            CHECKS.append(Check(False, f"{script} failed"))
 
-    if check_redis_final_contents():
-        PASSES.append("Redis content check")
-    else:
-        FAILS.append("Redis content check")
+    check_redis_final_contents()
 
-    print_final_result(FAILS, PASSES)
-    if len(FAILS) > 0:
+    print_final_result(CHECKS)
+    overallPass = all(check.passed for check in CHECKS)
+    if not overallPass:
         sys.exit(1)
 
 
