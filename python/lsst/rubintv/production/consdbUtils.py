@@ -100,6 +100,10 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
+def _removeNans(d: dict[str, float | int]) -> dict[str, float | int]:
+    return {k: v for k, v in d.items() if not np.isnan(v)}
+
+
 class ConsDBPopulator:
     def __init__(self, client: ConsDbClient, redisHelper: RedisHelper) -> None:
         self.client = client
@@ -194,7 +198,7 @@ class ConsDBPopulator:
                 instrument=expRecord.instrument,
                 table=table,
                 obs_id=obsId,
-                values=values,
+                values=_removeNans(values),
                 allow_update=allowUpdate,
             )
             self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
@@ -270,7 +274,7 @@ class ConsDBPopulator:
             instrument=instrument,
             table=table,
             obs_id=visit,
-            values=values,
+            values=_removeNans(values),
             allow_update=allowUpdate,
         )
         self.redisHelper.announceResultInConsDb(instrument, table, visit)
