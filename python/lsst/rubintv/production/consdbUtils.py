@@ -199,7 +199,7 @@ class ConsDBPopulator:
                 table=table,
                 obs_id=obsId,
                 values=_removeNans(values),
-                allow_update=allowUpdate,
+                allow_update=True,
             )
             self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
         except HTTPError as e:
@@ -275,6 +275,6 @@ class ConsDBPopulator:
             table=table,
             obs_id=visit,
             values=_removeNans(values),
-            allow_update=allowUpdate,
+            allow_update=True,
         )
         self.redisHelper.announceResultInConsDb(instrument, table, visit)
