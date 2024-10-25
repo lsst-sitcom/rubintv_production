@@ -123,11 +123,14 @@ class Plotter:
         self.fig.clear()
 
         datapath = None
+        stretch = "CCS"
         match dataProduct:
             case "postISRCCD":
                 datapath = self.locationConfig.calculatedDataPath
+                stretch = "CCS"
             case "calexp":
                 datapath = self.locationConfig.binnedCalexpPath
+                stretch = "asinh"
 
         plotName = f"{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
@@ -143,6 +146,7 @@ class Plotter:
             nExpected=nExpected,
             timeout=timeout,
             logger=self.log,
+            stretch=stretch,
         )
         self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
         return saveFile

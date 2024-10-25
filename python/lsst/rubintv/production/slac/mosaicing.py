@@ -416,6 +416,7 @@ def plotFocalPlaneMosaic(
     dataPath,
     savePlotAs,
     nExpected,
+    stretch,
     timeout,
     deleteIfComplete=True,
     deleteRegardless=False,
@@ -444,6 +445,8 @@ def plotFocalPlaneMosaic(
         The filename to save the plot as.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
+    stretch : `str`
+        The scaling option for the plot.
     timeout : `float`
         The maximum time to wait for the images to land.
     deleteIfComplete : `bool`, optional
@@ -488,7 +491,7 @@ def plotFocalPlaneMosaic(
         logger.warning(f"Failed to make mosaic for {expId}")
         return
     logger.info(f"Made mosaic image for {expId}")
-    _plotFpMosaic(mosaic, fig=figure, saveAs=savePlotAs)
+    _plotFpMosaic(mosaic, scalingOption=stretch, fig=figure, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
 
 
@@ -501,6 +504,8 @@ def _plotFpMosaic(im, fig, scalingOption="CCS", saveAs=""):
         The focal plane mosaiced image to render.
     fig : `matplotlib.figure.Figure`
         The figure to plot on.
+    scalingOption : `str`, optional
+        The scaling option for the plot.
     saveAs : `str`, optional
         The filename to save the plot as.
     """
@@ -510,7 +515,7 @@ def _plotFpMosaic(im, fig, scalingOption="CCS", saveAs=""):
 
     cmap = cm.gray
     match scalingOption:
-        case "default":
+        case "asinh":
 
             def _forward(x):
                 return np.arcsinh(x)
