@@ -400,7 +400,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         vs = self.limitedButler.get(dRef)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
-        pixToArcseconds = np.nanmean([row.wcs.getPixelScale().asArcseconds() for row in vs])
+        nominalPlateScale = 0.199225  # XXX remove the hard-coding for ComCam
+        pixToArcseconds = np.nanmean(
+            [
+                row.wcs.getPixelScale().asArcseconds() if row.wcs is not None else nominalPlateScale
+                for row in vs
+            ]
+        )
         SIGMA2FWHM = np.sqrt(8 * np.log(2))
 
         e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
