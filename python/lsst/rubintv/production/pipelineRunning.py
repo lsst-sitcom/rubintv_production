@@ -340,18 +340,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
 
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
-            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
-            detectorNum = exp.getDetector().getId()
-            postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
-            ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
-            self.consdbClient.insert(
-                instrument=self.instrument,
-                table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
-                obs_id=ccdvisitId,
-                values={"postisr_pixel_median": postIsrMedian},
-                allow_update=False,
-            )
-            self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
+            try:
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+                detectorNum = exp.getDetector().getId()
+                postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
+                ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
+                self.consdbClient.insert(
+                    instrument=self.instrument,
+                    table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
+                    obs_id=ccdvisitId,
+                    values={"postisr_pixel_median": postIsrMedian},
+                    allow_update=False,
+                )
+                self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
+            except Exception:
+                self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
     def postProcessCalibrate(self, quantum, processingId) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
