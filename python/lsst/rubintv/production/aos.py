@@ -408,9 +408,11 @@ class FocusSweepAnalysis:
 
         # blocking call which waits for RA to announce that visit level info
         # is in consDB.
+        self.log.info(f"Waiting for PSF measurements for last image {lastVisit}")
         self.redisHelper.waitForResultInConsdDb(
             self.instrument, f"cdb_{self.instrument.lower()}.visit1_quicklook", lastVisit, timeout=90
         )
+        self.log.info(f"Finished waiting for PSF measurements for last image {lastVisit}")
 
         records = []
         for visitId in visitIds:
