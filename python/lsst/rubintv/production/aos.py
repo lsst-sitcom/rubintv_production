@@ -53,7 +53,7 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
-from .utils import getRubinTvInstrumentName, writeExpRecordMetadataShard
+from .utils import getRubinTvInstrumentName, writeExpRecordMetadataShard, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler
@@ -212,6 +212,15 @@ class DonutLauncher:
 
         self.log.info(f"Launching with command line: {' '.join(command)}")
         threading.Thread(target=self._run_command, args=(command,)).start()
+
+        # now that we've launched, add the FOCUSZ value to the table on RubinTV
+        for expId in exposureIds:
+            md = self.butler.get("raw.metadata", exposure=expId, detector=0)
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
+
+            focus = md.get("FOCUSZ", "MISSING VALUE")
+            mdDict = {expRecord.seq_num: {"Focus Z": focus}}
+            writeMetadataShard(self.metadataShardPath, expRecord.day_obs, mdDict)
 
     def run(self):
         """Start the event loop, listening for data and launching processing.
