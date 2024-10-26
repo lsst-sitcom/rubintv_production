@@ -409,7 +409,7 @@ class FocusSweepAnalysis:
         # blocking call which waits for RA to announce that visit level info
         # is in consDB.
         self.redisHelper.waitForResultInConsdDb(
-            self.instrument, f"cdb_{self.instrument.lower()}.visit1_quicklook", lastVisit, timeout=600
+            self.instrument, f"cdb_{self.instrument.lower()}.visit1_quicklook", lastVisit, timeout=90
         )
 
         records = []
@@ -430,7 +430,7 @@ class FocusSweepAnalysis:
         plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
 
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(self.instrument),
+            instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
             plotName="focus_sweep",
             dayObs=lastRecord.day_obs,
             seqNum=lastRecord.seq_num,
