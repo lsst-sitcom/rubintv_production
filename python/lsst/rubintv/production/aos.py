@@ -178,6 +178,11 @@ class DonutLauncher:
             raise ValueError(f"Expected two exposureIds, got {exposureIds}")
         expId1, expId2 = exposureIds
 
+        # TODO: reduce this sleep a bit once you know how long this needs, or
+        # write a function to poll. Better would be to write a blocking
+        # WaitForExpRecord function in redisHelper, and then flag that as
+        # existing in the same place as their picked up and fanned out
+        sleep(10)
         for expId in exposureIds:
             (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
             writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
