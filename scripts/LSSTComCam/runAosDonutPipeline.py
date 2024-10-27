@@ -47,7 +47,7 @@ butler = dafButler.Butler(  # type: ignore
 print(f"Running donut launcher at {locationConfig.location}")
 
 inputCollection = f"{instrument}/defaults"
-outputCollection = "u/saluser/ra_wep_testing3"
+outputCollection = "u/saluser/ra_wep_testing4"
 queueName = f"{instrument}-FROM-OCS_DONUTPAIR"
 donutLauncher = DonutLauncher(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
