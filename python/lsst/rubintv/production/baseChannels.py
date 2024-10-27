@@ -27,8 +27,6 @@ from abc import ABC, abstractmethod
 from time import sleep
 from typing import TYPE_CHECKING, Any
 
-import lsst.summit.utils.butlerUtils as butlerUtils
-
 from .uploaders import MultiUploader
 from .watchers import FileWatcher, RedisWatcher
 
@@ -208,7 +206,8 @@ class BaseButlerChannel(BaseChannel):
         cadence = 0.25
         start = time.time()
         while time.time() - start < timeout:
-            if butlerUtils.datasetExists(self.butler, self.dataProduct, dataId):
+            self.butler.registry.refresh()
+            if self.butler.exists(self.dataProduct, dataId):
                 if gettingButler is None:
                     return self.butler.get(self.dataProduct, dataId)
                 else:
