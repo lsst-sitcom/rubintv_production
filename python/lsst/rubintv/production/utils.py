@@ -359,12 +359,6 @@ class LocationConfig:
         return directory
 
     @cached_property
-    def metadataShardPath(self):
-        directory = self._config["metadataShardPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
     def auxTelMetadataShardPath(self):
         directory = self._config["auxTelMetadataShardPath"]
         self._checkDir(directory)
