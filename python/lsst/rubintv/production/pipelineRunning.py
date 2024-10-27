@@ -252,6 +252,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 processingId = 1
 
             for node in qg:
+                # just to make sure taskName is defined, so if this shows
+                # up anywhere something is very wrong
+                taskName = "something is deeply wrong"
                 try:
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult

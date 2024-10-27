@@ -128,13 +128,15 @@ class OneOffProcessor(BaseButlerChannel):
             result = self.peekTask.run(exp)
 
             shape = result.psfEquatorialShape
+            fwhm = np.nan
             if shape is not None:
                 SIGMA2FWHM = np.sqrt(8 * np.log(2))
                 ellipse = ellipses.SeparableDistortionDeterminantRadius(shape)
                 fwhm = SIGMA2FWHM * ellipse.getDeterminantRadius()
 
-            md = {seqNum: {"PSF FWHM (PeekTask)": fwhm}}
+            md = {seqNum: {"PSF FWHM (central CCD, robust measure)": f"{fwhm:.3f}"}}
             writeMetadataShard(self.shardsDirectory, dayObs, md)
+            self.log.info(f"Wrote measured PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {fwhm:.3f}")
         except Exception as e:
             self.log.error(f"Failed to calculate PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {e}")
             if self.doRaise:
