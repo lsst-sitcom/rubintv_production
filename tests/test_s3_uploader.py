@@ -40,7 +40,7 @@ class TestS3Uploader(unittest.TestCase):
         self._mock_bucket = self._s3_resource.create_bucket(Bucket=self._mocked_s3_bucket_name)
 
         # Create an instance of S3Uploader
-        self._s3_uploader = S3Uploader.from_bucket(self._mock_bucket)
+        self._s3_uploader = S3Uploader.fromBucket(self._mock_bucket)
 
     def tearDown(self):
         # Stop the mock S3 service
