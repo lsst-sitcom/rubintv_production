@@ -388,6 +388,8 @@ class HeadProcessController:
         return False
 
     def getFreeSFMWorkerQueue(self, instrument: str, detectorId: int) -> PodDetails:
+        # XXX Rename this function - it returns PodDetails not the queue
+
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
@@ -458,6 +460,34 @@ class HeadProcessController:
             self.redisHelper.enqueuePayload(payload, queueName)
 
         self.nDispatched += 1  # required for the alternating by twos mode
+
+    def dispatchOneOffProcessing(self, expRecord: DimensionRecord) -> None:
+        """Send the expRecord out for processing based on current selection.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The expRecord to process.
+        """
+        instrument = expRecord.instrument
+        idStr = f"{instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
+
+        self.log.info(f"Sending signal to one-off processor for {idStr}")
+
+        workers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=PodFlavor.ONE_OFF_WORKER)
+        workers = sorted(workers)
+        if not workers:
+            self.log.warning(f"No free workers available for {idStr} for one-off processing")
+
+            workers = self.redisHelper.getAllWorkers(
+                instrument=instrument, podFlavor=PodFlavor.ONE_OFF_WORKER
+            )
+            if not workers:
+                self.log.error(f"No workers available for one-off processing for {idStr}. This is a problem.")
+                return
+
+        payload = Payload(dataId=expRecord.dataId, pipelineGraphBytes=b"", run="")
+        self.redisHelper.enqueuePayload(payload, workers[0])
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
         expRecord = self.redisHelper.getExposureForFanout(self.instrument)
@@ -696,6 +726,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 self.doStep1Fanout(expRecord)
+                self.dispatchOneOffProcessing(expRecord)
 
             if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
                 donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)

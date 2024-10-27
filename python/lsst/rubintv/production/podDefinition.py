@@ -44,6 +44,7 @@ class PodFlavor(Enum):
     STEP2A_WORKER = "STEP2A_WORKER"
     STEP2A_AOS_WORKER = "STEP2A_AOS_WORKER"
     MOSAIC_WORKER = "MOSAIC_WORKER"
+    ONE_OFF_WORKER = "ONE_OFF_WORKER"
 
     HEAD_NODE = "HEAD_NODE"
 
@@ -69,6 +70,7 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.STEP2A_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.STEP2A_AOS_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
     }
     return mapping[podFlavor]
 
