@@ -114,9 +114,9 @@ class OneOffProcessor(BaseButlerChannel):
         self.redisHelper: RedisHelper = RedisHelper(butler, self.locationConfig)
 
     def writeFocusZ(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
-        expMetadata = exp.getMetadata().toDict()
-        focus = expMetadata.get("FOCUSZ", None)
-        if focus is not None:
+        vi = exp.info.getVisitInfo()
+        focus = vi.focusZ
+        if focus is not None and not np.isnan(focus):
             focus = float(focus)
             md = {seqNum: {"Focus Z": f"{focus:.3f}"}}
         else:
