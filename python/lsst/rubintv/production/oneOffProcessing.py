@@ -115,21 +115,31 @@ class OneOffProcessor(BaseButlerChannel):
 
     def writeFocusZ(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         expMetadata = exp.getMetadata().toDict()
-        focus = expMetadata.get("FOCUSZ", "MISSING VALUE!")
-        md = {seqNum: {"Focus Z": f"{focus:.3f}"}}
+        focus = expMetadata.get("FOCUSZ", None)
+        if focus is not None:
+            focus = float(focus)
+            md = {seqNum: {"Focus Z": f"{focus:.3f}"}}
+        else:
+            md = {seqNum: {"Focus Z": "MISSING VALUE!"}}
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
     def calcPsfAndWrite(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
-        result = self.peekTask.run(exp)
+        try:
+            result = self.peekTask.run(exp)
 
-        shape = result.psfEquatorialShape
-        if shape is not None:
-            SIGMA2FWHM = np.sqrt(8 * np.log(2))
-            ellipse = ellipses.SeparableDistortionDeterminantRadius(shape)
-            fwhm = SIGMA2FWHM * ellipse.getDeterminantRadius()
+            shape = result.psfEquatorialShape
+            if shape is not None:
+                SIGMA2FWHM = np.sqrt(8 * np.log(2))
+                ellipse = ellipses.SeparableDistortionDeterminantRadius(shape)
+                fwhm = SIGMA2FWHM * ellipse.getDeterminantRadius()
 
-        md = {seqNum: {"PSF FWHM (PeekTask)": fwhm}}
-        writeMetadataShard(self.shardsDirectory, dayObs, md)
+            md = {seqNum: {"PSF FWHM (PeekTask)": fwhm}}
+            writeMetadataShard(self.shardsDirectory, dayObs, md)
+        except Exception as e:
+            self.log.error(f"Failed to calculate PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {e}")
+            if self.doRaise:
+                raise
+            return
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataId
@@ -147,11 +157,4 @@ class OneOffProcessor(BaseButlerChannel):
         self.writeFocusZ(postISR, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Calculating PSF for {dataId}")
-        try:
-            self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
-        except Exception as e:
-            # TODO Remove this except one we have the new pipe_tasks
-            self.log.error(f"Failed to calculate PSF for {dataId}: {e}")
-            if self.doRaise:
-                raise
-            return
+        self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
