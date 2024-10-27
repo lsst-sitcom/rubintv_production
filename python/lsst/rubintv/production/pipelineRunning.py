@@ -354,7 +354,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 )
                 self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
                 md = {expRecord.seq_num: {"PostISR pixel median": postIsrMedian}}
-                writeMetadataShard(self.locationConfig.metadataShardPath, expRecord.day_obs, md)
+                shardPath = getShardPath(self.locationConfig, expRecord)
+                writeMetadataShard(shardPath, expRecord.day_obs, md)
             except Exception:
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
