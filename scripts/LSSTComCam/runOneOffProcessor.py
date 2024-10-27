@@ -46,6 +46,7 @@ butler = dafButler.Butler(  # type: ignore
     locationConfig.comCamButlerPath,
     collections=[
         f"{instrument}/defaults",
+        f"{instrument}/quickLook",  # accesses the outputs
     ],
     writeable=True,
 )

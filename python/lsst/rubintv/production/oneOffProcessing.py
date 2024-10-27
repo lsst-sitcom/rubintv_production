@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 
@@ -132,6 +133,8 @@ class OneOffProcessor(BaseButlerChannel):
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataId
+
+        dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
 
         self.log.info(f"Waiting for postISRCCD for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
