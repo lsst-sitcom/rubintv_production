@@ -177,6 +177,7 @@ class DonutLauncher:
         if len(exposureIds) != 2:
             raise ValueError(f"Expected two exposureIds, got {exposureIds}")
         expId1, expId2 = exposureIds
+        self.log.info(f"Received donut pair: {expId1, expId2}")
 
         # TODO: reduce this sleep a bit once you know how long this needs, or
         # write a function to poll. Better would be to write a blocking
