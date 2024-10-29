@@ -35,7 +35,7 @@ locationConfig = getAutomaticLocationConfig()
 # detector number below is the actual CCD which will be processed, which
 # should not be controlled by k8s or the head node, and therefore goes there
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -61,6 +61,7 @@ oneOffProcessor = OneOffProcessor(
     podDetails=podDetails,
     detectorNumber=4,  # central CCD for ComCam
     shardsDirectory=shardsDirectory,
+    processingStage="postISRCCD",
     doRaise=getDoRaise(),
 )
 oneOffProcessor.run()

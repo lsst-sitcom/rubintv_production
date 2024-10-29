@@ -461,7 +461,7 @@ class HeadProcessController:
 
         self.nDispatched += 1  # required for the alternating by twos mode
 
-    def dispatchOneOffProcessing(self, expRecord: DimensionRecord) -> None:
+    def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
 
         Parameters
@@ -470,18 +470,16 @@ class HeadProcessController:
             The expRecord to process.
         """
         instrument = expRecord.instrument
-        idStr = f"{instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
+        idStr = f"{instrument}-{expRecord.day_obs}-{expRecord.seq_num}+{podFlavor}"
 
         self.log.info(f"Sending signal to one-off processor for {idStr}")
 
-        workers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=PodFlavor.ONE_OFF_WORKER)
+        workers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         workers = sorted(workers)
         if not workers:
             self.log.warning(f"No free workers available for {idStr} for one-off processing")
 
-            workers = self.redisHelper.getAllWorkers(
-                instrument=instrument, podFlavor=PodFlavor.ONE_OFF_WORKER
-            )
+            workers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
             if not workers:
                 self.log.error(f"No workers available for one-off processing for {idStr}. This is a problem.")
                 return
@@ -575,6 +573,12 @@ class HeadProcessController:
                 self.log.info(f"Dispatching {step} with complete inputs for {dataCoord}")
                 self._dispatch2a(dataCoord)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, _id)
+
+                # never dispatch this incomplete because it relies on a
+                # specific detector having finished
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
+                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+
             else:
                 if dispatchIncomplete:
                     self.log.info(f"Dispatching incomplete {step} for {dataCoord}")
@@ -726,7 +730,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 self.doStep1Fanout(expRecord)
-                self.dispatchOneOffProcessing(expRecord)
+                self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
             if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
                 donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)

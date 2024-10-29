@@ -34,7 +34,7 @@ from .utils import writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
-    from lsst.daf.butler import Butler, DataCoordinate
+    from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -60,11 +60,11 @@ class OneOffProcessor(BaseButlerChannel):
         The path to the pipeline yaml file.
     step : `str`
         The step of the pipeline to run with this worker.
-    awaitsDataProduct : `str`
-        The data product that this runner needs in order to run. Should be set
-        to `"raw"` for step1 runners and `None` for all other ones, as their
-        triggering is dealt with by the head node. TODO: See if this can be
-        removed entirely, because this inconsistency is a bit weird.
+    processingStage : `str`
+        The data product that this runner needs in order to run, e.g. if it
+        should run once ISR has completed for the specified detector, use
+        "postISRCCD", and if it should run after step1 is complete use "calexp"
+        (or "pvi" once we switch).
     queueName : `str`
         The queue that the worker should consume from.
     doRaise : `bool`, optional
@@ -79,6 +79,7 @@ class OneOffProcessor(BaseButlerChannel):
         podDetails: PodDetails,
         detectorNumber: int,
         shardsDirectory: str,
+        processingStage: str,
         *,
         doRaise=False,
     ):
@@ -90,7 +91,7 @@ class OneOffProcessor(BaseButlerChannel):
             # TODO: DM-43764 this shouldn't be necessary on the
             # base class after this ticket, I think.
             detectors=None,
-            dataProduct="postISRCCD",
+            dataProduct=processingStage,
             # TODO: DM-43764 should also be able to fix needing
             # channelName when tidying up the base class. Needed
             # in some contexts but not all. Maybe default it to
@@ -105,6 +106,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.podDetails: PodDetails = podDetails
         self.detector = detectorNumber
         self.shardsDirectory = shardsDirectory
+        self.processingStage = processingStage
 
         peekConfig = PeekExposureTaskConfig()
         self.peekTask = PeekExposureTask(config=peekConfig)
@@ -143,14 +145,13 @@ class OneOffProcessor(BaseButlerChannel):
                 raise
             return
 
-    def callback(self, payload: Payload) -> None:
-        dataId: DataCoordinate = payload.dataId
-
-        dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
-
+    def runPostISRCCD(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for postISRCCD for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
-        postISR = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=60)
+
+        # redis signal is sent on the dispatch of the raw, so 40s is plenty but
+        # not too much
+        postISR = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=40)
         if postISR is None:
             self.log.warning(f"Failed to get postISRCCD for {dataId}")
             return
@@ -160,3 +161,75 @@ class OneOffProcessor(BaseButlerChannel):
 
         self.log.info(f"Calculating PSF for {dataId}")
         self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
+
+    def calcPointingOffsets(
+        self,
+        calexp: Exposure,
+        dataId: DataCoordinate,
+        expRecord: DimensionRecord,
+    ) -> None:
+        raw = self.butler.get("raw", dataId)
+
+        offsets = {
+            "delta Ra (arcsec)": "nan",
+            "delta Dec (arcsec)": "nan",
+            "delta Rot (arcsec)": "nan",
+        }
+
+        calexpWcs = calexp.wcs
+        if calexpWcs is None:
+            self.log.warning(f"Astrometic failed for {dataId} - no pointing offsets calculated")
+            md = {expRecord.seq_num: offsets}
+            writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+            return
+
+        rawWcs = raw.wcs
+        rawSkyCenter = raw.wcs.getSkyOrigin()
+        calExpSkyCenter = calexpWcs.pixelToSky(rawWcs.getPixelOrigin())
+        deltaRa = rawSkyCenter.getRa().asArcseconds() - calExpSkyCenter.getRa().asArcseconds()
+        deltaDec = rawSkyCenter.getDec().asArcseconds() - calExpSkyCenter.getDec().asArcseconds()
+
+        deltaRot = rawWcs.getRelativeRotationToWcs(calexpWcs)
+        deltaRotDeg = deltaRot.asDegrees() % 360
+        offset = min(deltaRotDeg, 360 - deltaRotDeg)
+        deltaRotArcSec = offset * 3600
+
+        offsets = {
+            "delta Ra (arcsec)": f"{deltaRa:.1f}",
+            "delta Dec (arcsec)": f"{deltaDec:.1f}",
+            "delta Rot (arcsec)": f"{deltaRotArcSec:.1f}",
+        }
+
+        md = {expRecord.seq_num: offsets}
+        writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+
+    def runCalexp(self, dataId: DataCoordinate) -> None:
+        self.log.info(f"Waiting for calexp for {dataId}")
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+        (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataId)
+
+        visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=self.detector)
+
+        # is triggered once all CCDs have finished step1 so should be instant
+        calexp = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
+        if calexp is None:
+            self.log.warning(f"Failed to get postISRCCD for {dataId}")
+            return
+        self.log.info("Calculating pointing offsets...")
+        self.calcPointingOffsets(calexp, dataId, expRecord)
+        self.log.info("Finished calculating pointing offsets")
+
+        return
+
+    def callback(self, payload: Payload) -> None:
+        dataId: DataCoordinate = payload.dataId
+
+        dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
+
+        match self.processingStage:
+            case "postISRCCD":
+                self.runPostISRCCD(dataId)
+            case "calexp":
+                self.runCalexp(dataId)
+            case _:
+                raise ValueError(f"Unknown processing stage {self.processingStage}")
