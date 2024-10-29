@@ -23,6 +23,7 @@ import enum
 import json
 import logging
 from ast import literal_eval
+from dataclasses import dataclass
 from logging import Logger
 from time import sleep
 from typing import Any, Iterable, Sequence
@@ -38,6 +39,7 @@ from lsst.daf.butler import (
     DatasetNotFoundError,
     DimensionRecord,
     MissingCollectionError,
+    Registry,
 )
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
@@ -247,6 +249,40 @@ def getNightlyRollupTriggerTask(pipelineFile):
         raise ValueError(f"Unsure how to trigger nightly rollup when {pipelineFile=}")
 
 
+@dataclass
+class PipelineComponents:
+    """Details about a pipeline graph.
+
+    Parameters
+    ----------
+    pipelineGraph : `lsst.pipe.base.PipelineGraph`
+        The pipeline graph.
+    pipelineGraphBytes : `bytes`
+        The pipeline graph as bytes.
+    pipelineGraphUri : `str`
+        The URI of the pipeline graph, i.e. the filename#step.
+    steps : `str`
+        The steps of the pipeline without the file prepended.
+    """
+
+    graphs: dict[str, PipelineGraph]
+    graphBytes: dict[str, bytes]
+    uris: dict[str, str]
+    steps: Iterable[str]
+
+    def __init__(self, registry: Registry, pipelineFile: str, steps: Iterable[str]) -> None:
+        self.uris: dict[str, str] = {}
+        self.graphs: dict[str, PipelineGraph] = {}
+        self.graphBytes: dict[str, bytes] = {}
+
+        for step in steps:
+            self.uris[step] = pipelineFile + f"#{step}"
+            self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
+            self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+
+        self.steps = steps
+
+
 class HeadProcessController:
     """The head node, which controls which pods process which images.
 
@@ -301,21 +337,7 @@ class HeadProcessController:
         if self.focalPlaneControl is not None:
             self.focalPlaneControl.setAllImagingOn()
 
-        # NB: steps need to be in order for prepRunCollection!
-        # steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
-        # XXX THIS ALSO MUST SUPORT BOTH OR YOU MAKE A NEW HEAD NODE FOR AOS
-        steps: tuple[str, str, str] = ("step1", "step2a", "nightlyRollup")
-        self.pipelineGraphUris = {}
-        self.pipelineGraphs: dict[str, PipelineGraph] = {}
-        self.pipelineGraphsBytes: dict[str, bytes] = {}
-
-        for step in steps:
-            stepStr = "#" + step
-            self.pipelineGraphUris[step] = self._basePipeline + stepStr
-            self.pipelineGraphs[step] = Pipeline.fromFile(self.pipelineGraphUris[step]).to_graph(
-                registry=self.butler.registry
-            )
-            self.pipelineGraphsBytes[step] = pipelineGraphToBytes(self.pipelineGraphs[step])
+        self.buildPipelines()
 
         if outputChain is None:
             # allows it to be user specified, or use the default from the site
@@ -331,6 +353,25 @@ class HeadProcessController:
             f"Data will be writen data to {self.outputRun}"
         )
 
+    def buildPipelines(self) -> None:
+        """Build the pipeline graphs from the pipeline file.
+
+        This is a separate method so that it can be called after the
+        RemoteController has been set up, which is needed for the AOS pipeline.
+        """
+        sfmPipelineFile = self.locationConfig.getSfmPipelineFile(self.instrument)
+        aosPipelineFile = self.locationConfig.getAosPipelineFile(self.instrument)
+
+        self.pipelines = {}
+        self.pipelines["SFM"] = PipelineComponents(
+            self.butler.registry, sfmPipelineFile, ("isr", "step1", "step2a", "nightlyRollup")
+        )
+        self.pipelines["AOS"] = PipelineComponents(self.butler.registry, aosPipelineFile, ("step1", "step2a"))
+
+        self.allGraphs: list[PipelineGraph] = []
+        for pipeline in self.pipelines.values():
+            self.allGraphs.extend(pipeline.graphs.values())
+
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
 
@@ -344,7 +385,7 @@ class HeadProcessController:
         if needNewChain:
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
             lastRun = f"{self.outputChain}/0"
-            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
+            prepRunCollection(self.butler, self.allGraphs, lastRun, packages)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
@@ -358,7 +399,7 @@ class HeadProcessController:
             lastRun = f"{self.outputChain}/{lastRunNum}"
 
             # prepRunCollection is called instead of registerCollection
-            prepRunCollection(self.butler, self.pipelineGraphs.values(), lastRun, packages)
+            prepRunCollection(self.butler, self.allGraphs, lastRun, packages)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
             self.log.info(f"Started new run collection at {lastRun}")
 
@@ -455,7 +496,9 @@ class HeadProcessController:
             queueName = self.getFreeSFMWorkerQueue(expRecord.instrument, detectorId)
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
-                dataId=dataId, pipelineGraphBytes=self.pipelineGraphsBytes["step1"], run=self.outputRun
+                dataId=dataId,
+                pipelineGraphBytes=self.pipelines["SFM"].graphBytes["step1"],
+                run=self.outputRun,
             )
             self.redisHelper.enqueuePayload(payload, queueName)
 
@@ -532,7 +575,9 @@ class HeadProcessController:
 
     def _dispatch2a(self, dataCoordinate: DataCoordinate) -> None:
         payload = Payload(
-            dataId=dataCoordinate, pipelineGraphBytes=self.pipelineGraphsBytes["step2a"], run=self.outputRun
+            dataId=dataCoordinate,
+            pipelineGraphBytes=self.pipelines["SFM"].graphBytes["step2a"],
+            run=self.outputRun,
         )
         # caps for the queue name. Maybe should reconsider how that's dealt wit
         # post OR3
@@ -613,7 +658,7 @@ class HeadProcessController:
     def _dispatchNightlyRollup(self) -> None:
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-        payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"], run=self.outputRun)
+        payload = Payload(dataCoord, self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun)
         queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
         self.redisHelper.enqueuePayload(payload, queueName)
 
