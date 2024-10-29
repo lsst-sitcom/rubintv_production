@@ -11,7 +11,7 @@ print(f"Imports took {(time.time()-t0):.2f} seconds")
 t0 = time.time()
 
 
-instrument = "LSSTComCamSim"
+instrument = "LSSTComCam"
 
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
@@ -23,7 +23,7 @@ butler = dafButler.Butler(
 
 redisHelper = RedisHelper(butler, locationConfig)
 
-where = f"exposure.day_obs=20240613 AND exposure.seq_num=17 AND instrument='{instrument}'"  # OR4
+where = f"exposure.day_obs=20241028 AND exposure.seq_num=45 AND instrument='{instrument}'"  # on sky!
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 1, f"Expected 1 record, got {len(records)}"
 record = records[0]

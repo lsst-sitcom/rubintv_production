@@ -42,14 +42,14 @@ from lsst.rubintv.production.utils import getDoRaise  # noqa: E402
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = False  # XXX Turn on before merging
+DO_RUN_META_TESTS = True  # XXX Turn on before merging
 DO_CHECK_YAML_FILES = True  # XXX Turn on before merging
 
 REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 300  # How long to leave test suites to run for
+TEST_DURATION = 360  # How long to leave test suites to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -113,35 +113,35 @@ TEST_SCRIPTS_ROUND_2 = [
 
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
-    TestScript("scripts/LSSTComCamSim/runPlotter.py", ["usdf_testing"]),
+    TestScript("scripts/LSSTComCam/runPlotter.py", ["usdf_testing"]),
     TestScript(
-        "scripts/LSSTComCamSim/runStep2aWorker.py",
+        "scripts/LSSTComCam/runStep2aWorker.py",
         ["usdf_testing", "0"],
         tee_output=True,
     ),
-    TestScript("scripts/LSSTComCamSim/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
+    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
     TestScript(
-        "scripts/LSSTComCamSim/runSfmRunner.py",
+        "scripts/LSSTComCam/runSfmRunner.py",
         ["usdf_testing", "0"],
         display_on_pass=True,
         tee_output=True,
     ),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "1"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "2"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "3"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "4"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "5"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "6"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "7"]),
-    TestScript("scripts/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "8"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "2"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "3"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "4"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "5"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "6"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "7"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "8"]),
     TestScript(
-        "scripts/LSSTComCamSim/runHeadNode.py",
+        "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
         tee_output=True,
         display_on_pass=True,
     ),
-    TestScript("tests/ci/drip_feed_data_aos.py", ["usdf_testing"], delay=0, display_on_pass=True),
+    TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
 ]
 
 TEST_SCRIPTS_ROUND_3 = [
@@ -405,10 +405,10 @@ def check_redis_final_contents():
     redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
     redisHelper.displayRedisContents()
 
-    inst = "LSSTComCamSim"
+    inst = "LSSTComCam"
 
     visits = [
-        7024061300017,
+        2024102800045,
     ]  # for expansion
     n_visits = len(visits)
 
