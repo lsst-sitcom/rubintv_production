@@ -466,6 +466,23 @@ class HeadProcessController:
         self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
         return busyWorker
 
+    def isCalibration(self, expRecord: DimensionRecord) -> bool:
+        """Check if the exposure is a calibration exposure.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to check.
+
+        Returns
+        -------
+        isCalibration : `bool`
+            ``True`` if the exposure is a calibration exposure, else ``False``.
+        """
+        if expRecord.observation_type in ["bias", "dark", "flat"]:
+            return True
+        return False
+
     def doStep1Fanout(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
 
@@ -474,6 +491,11 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
+        isCalib = self.isCalibration(expRecord)
+        targetPipelineBytes = (
+            self.pipelines["SFM"].graphBytes["isr"] if isCalib else self.pipelines["SFM"].graphBytes["step1"]
+        )
+
         detectorIds = []
         nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
@@ -497,7 +519,7 @@ class HeadProcessController:
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
                 dataId=dataId,
-                pipelineGraphBytes=self.pipelines["SFM"].graphBytes["step1"],
+                pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
             )
             self.redisHelper.enqueuePayload(payload, queueName)
