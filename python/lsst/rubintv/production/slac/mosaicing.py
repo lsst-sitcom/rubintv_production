@@ -409,7 +409,7 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
 
 def plotFocalPlaneMosaic(
     butler,
-    figure,
+    figureOrDisplay,
     expId,
     camera,
     binSize,
@@ -431,8 +431,8 @@ def plotFocalPlaneMosaic(
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
-    figure : `matplotlib.figure.Figure`
-        The figure to plot on.
+    figureOrDisplay : `matplotlib.figure.Figure` of `afwDisplay.Display`
+        The figure to plot on, or the display to use.
     expId : `int`
         The exposure id.
     camera : `lsst.afw.cameraGeom.Camera`
@@ -491,53 +491,65 @@ def plotFocalPlaneMosaic(
         logger.warning(f"Failed to make mosaic for {expId}")
         return
     logger.info(f"Made mosaic image for {expId}")
-    _plotFpMosaic(mosaic, scalingOption=stretch, fig=figure, saveAs=savePlotAs)
+    _plotFpMosaic(mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
+    return mosaic
 
 
-def _plotFpMosaic(im, fig, scalingOption="CCS", saveAs=""):
+def _plotFpMosaic(im, figureOrDisplay, scalingOption="CCS", saveAs=""):
     """Plot the focal plane mosaic, optionally saving as a png.
 
     Parameters
     ----------
     im : `lsst.afw.image.Image`
         The focal plane mosaiced image to render.
-    fig : `matplotlib.figure.Figure`
+    figureOrDisplay : `matplotlib.figure.Figure` or `afwDisplay.Display`
         The figure to plot on.
     scalingOption : `str`, optional
         The scaling option for the plot.
     saveAs : `str`, optional
         The filename to save the plot as.
     """
-    data = im.array
-    ax = fig.gca()
-    ax.clear()
+    useAfwDisplay = scalingOption == "zscale"
 
-    cmap = cm.gray
-    match scalingOption:
-        case "asinh":
+    if not useAfwDisplay:  # figureOrDisplay is a matplotlib figure
+        data = im.array
+        ax = figureOrDisplay.gca()
+        ax.clear()
+        cmap = cm.gray
+        match scalingOption:
+            case "asinh":
 
-            def _forward(x):
-                return np.arcsinh(x)
+                def _forward(x):
+                    return np.arcsinh(x)
 
-            def _inverse(x):
-                return np.sinh(x)
+                def _inverse(x):
+                    return np.sinh(x)
 
-            norm = colors.FuncNorm((_forward, _inverse))
+                norm = colors.FuncNorm((_forward, _inverse))
 
-        case "CCS":  # The CCS-style scaling
-            quantiles = getQuantiles(im.array, cmap.N)
-            norm = colors.BoundaryNorm(quantiles, cmap.N)
+            case "CCS":  # The CCS-style scaling
+                quantiles = getQuantiles(im.array, cmap.N)
+                norm = colors.BoundaryNorm(quantiles, cmap.N)
 
-        case _:
-            raise ValueError(f"Unknown plot scaling option {scalingOption}")
+            case _:
+                raise ValueError(f"Unknown plot scaling option {scalingOption}")
+        im = ax.imshow(data, norm=norm, interpolation="None", cmap=cmap, origin="lower")
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        figureOrDisplay.colorbar(im, cax=cax)
 
-    im = ax.imshow(data, norm=norm, interpolation="None", cmap=cmap, origin="lower")
+        figureOrDisplay.tight_layout()
+        if saveAs:
+            figureOrDisplay.savefig(saveAs)
+    else:  # figureOrDisplay is an afwDisplay
+        figureOrDisplay.scale("asinh", "zscale")
+        figureOrDisplay.image(im)
+        figureOrDisplay._impl._figure.tight_layout()
+        # see if there is something better than this for titles
+        # display._impl._figure.axes[0].set_title('title')
 
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax)
+        if saveAs:
+            figureOrDisplay._impl.savefig(saveAs, dpi=300)
 
-    fig.tight_layout()
-    if saveAs:
-        fig.savefig(saveAs)
+    return figureOrDisplay

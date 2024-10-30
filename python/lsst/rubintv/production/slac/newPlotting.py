@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
+import lsst.afw.display as afwDisplay
+
 from ..uploaders import MultiUploader
 from ..utils import LocationConfig, getNumExpectedItems
 from ..watchers import RedisWatcher
@@ -90,6 +92,7 @@ class Plotter:
             podDetails=podDetails,
         )
         self.fig: Any = plt.figure(figsize=(12, 12))
+        self.afwDisplay = afwDisplay.getDisplay(backend="matplotlib", figsize=(20, 20))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
@@ -124,20 +127,23 @@ class Plotter:
 
         datapath = None
         stretch = "CCS"
+        displayToUse = None
         match dataProduct:
             case "postISRCCD":
                 datapath = self.locationConfig.calculatedDataPath
                 stretch = "CCS"
+                displayToUse = self.fig
             case "calexp":
                 datapath = self.locationConfig.binnedCalexpPath
-                stretch = "asinh"
+                stretch = "zscale"
+                displayToUse = self.afwDisplay
 
-        plotName = f"{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+        plotName = f"{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
         saveFile = os.path.join(self.locationConfig.plotPath, plotName)
 
         plotFocalPlaneMosaic(
             butler=self.butler,
-            figure=self.fig,
+            figureOrDisplay=displayToUse,
             expId=expId,
             camera=self.camera,
             binSize=self.locationConfig.binning,
