@@ -261,6 +261,9 @@ class LocationConfig:
         # exist in all the different locations, otherwise it will fail in some
         # locations and not others, so add things with caution.
         self._config
+        self.binnedCalexpPath
+        self.calculatedDataPath
+        self.plotPath
 
     def _checkDir(self, dirName: str, createIfMissing=True) -> None:
         """Check that a directory exists, optionally creating if it does not.

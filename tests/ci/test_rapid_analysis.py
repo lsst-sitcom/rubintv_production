@@ -37,8 +37,7 @@ CliLog.initLog = do_nothing
 
 # only import from lsst.anything once the logging configs have been frozen
 # noqa: E402
-# from lsst.rubintv.production.utils import getAutomaticLocationConfig
-from lsst.rubintv.production.utils import getDoRaise  # noqa: E402
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise  # noqa: E402
 
 # --------------- Configuration --------------- #
 
@@ -425,7 +424,17 @@ def check_redis_final_contents():
     if n_nightly_rollups != n_visits:
         CHECKS.append(Check(False, f"Expected {n_visits} nightly rollup finished, got {n_nightly_rollups}"))
     else:
-        CHECKS.append(Check(True, f"{n_nightly_rollups} nightly rollup finished"))
+        CHECKS.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
+
+    # TODO spin up the PSF plotter and check for an output. For now just check
+    # the signal made it to redis
+    # LSSTComCam-PSFPLOTTER
+    key = f"{inst}-PSFPLOTTER"
+    expected = int(redisHelper.redis.lpop(key))
+    if expected == 2024102800045:
+        CHECKS.append(Check(True, "PSF plotter received the expected visit"))
+    else:
+        CHECKS.append(Check(False, f"PSF plotter did not receive the expected visit, got {expected}"))
 
     allKeys = redisHelper.redis.keys()
     failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
@@ -645,6 +654,47 @@ def check_meta_test_results():
         raise RuntimeError("Meta-tests did not pass as expected - fix the test suite and try again.")
 
 
+def delete_output_files():
+    locationConfig = LocationConfig("usdf_testing")
+    deletionLocations = [
+        locationConfig.binnedCalexpPath,
+        locationConfig.calculatedDataPath,
+        locationConfig.plotPath,
+    ]
+    import shutil
+
+    for location in deletionLocations:
+        if os.path.exists(location):
+            shutil.rmtree(location)
+            print(f"✅ Deleted output directory: {location}")
+
+    # reinit a config as that creates the dirs again as needed
+    locationConfig = LocationConfig("usdf_testing")
+    # check that all those paths are now empty. Don't check os.listdir()
+    # naively as that will find directories in directories, and some paths are
+    # within others.
+    for location in deletionLocations:
+        if any(os.path.isfile(os.path.join(location, f)) for f in os.listdir(location)):
+            raise RuntimeError(f"Failed to delete files in {location}")
+
+
+def check_plots():
+    locationConfig = LocationConfig("usdf_testing")
+
+    files = os.listdir(locationConfig.plotPath)
+    # TODO make this more data-driven
+    expected = [
+        "calexp_mosaic_dayObs_20241028_seqNum_000045.jpg",
+        "postISRCCD_mosaic_dayObs_20241028_seqNum_000045.jpg",
+    ]
+
+    for file in expected:
+        if file in files:
+            CHECKS.append(Check(True, f"Found expected plot {file}"))
+        else:
+            CHECKS.append(Check(False, f"Did not find expected plot {file}"))
+
+
 def main():
     check_system_size_and_load()
 
@@ -674,6 +724,8 @@ def main():
     atexit.register(terminate_redis)
     start_redis(REDIS_INIT_WAIT_TIME)
     check_redis_startup()  # Wait for the setup timeout and then check Redis
+
+    delete_output_files()
 
     # XXX really should do an rm -rf here, of the places where things will be
     # written to, otherwise it could potentially succeed by using previous
@@ -715,6 +767,7 @@ def main():
             print("\n")  # put a nice gap between each failing scripts's output
             CHECKS.append(Check(False, f"{script} failed"))
 
+    check_plots()
     check_redis_final_contents()
 
     print_final_result(CHECKS)
