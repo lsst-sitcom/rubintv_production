@@ -30,7 +30,7 @@ from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfi
 
 from .baseChannels import BaseButlerChannel
 from .redisUtils import RedisHelper
-from .utils import writeMetadataShard
+from .utils import isCalibration, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
@@ -159,8 +159,9 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Writing focus Z for {dataId}")
         self.writeFocusZ(postISR, expRecord.day_obs, expRecord.seq_num)
 
-        self.log.info(f"Calculating PSF for {dataId}")
-        self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
+        if not isCalibration(expRecord):
+            self.log.info(f"Calculating PSF for {dataId}")
+            self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
     def calcPointingOffsets(
         self,

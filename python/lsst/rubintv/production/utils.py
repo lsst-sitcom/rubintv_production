@@ -1260,3 +1260,21 @@ def getPodWorkerNumber() -> int:
             workerNum = int(sys.argv[2])
 
     return workerNum
+
+
+def isCalibration(expRecord: DimensionRecord) -> bool:
+    """Check if the exposure is a calibration exposure.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to check.
+
+    Returns
+    -------
+    isCalibration : `bool`
+        ``True`` if the exposure is a calibration exposure, else ``False``.
+    """
+    if expRecord.observation_type in ["bias", "dark", "flat"]:
+        return True
+    return False

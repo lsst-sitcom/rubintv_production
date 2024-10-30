@@ -50,7 +50,7 @@ from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
-from .utils import LocationConfig, getShardPath, writeExpRecordMetadataShard
+from .utils import LocationConfig, getShardPath, isCalibration, writeExpRecordMetadataShard
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -466,23 +466,6 @@ class HeadProcessController:
         self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
         return busyWorker
 
-    def isCalibration(self, expRecord: DimensionRecord) -> bool:
-        """Check if the exposure is a calibration exposure.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record to check.
-
-        Returns
-        -------
-        isCalibration : `bool`
-            ``True`` if the exposure is a calibration exposure, else ``False``.
-        """
-        if expRecord.observation_type in ["bias", "dark", "flat"]:
-            return True
-        return False
-
     def doStep1Fanout(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
 
@@ -491,7 +474,7 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        isCalib = self.isCalibration(expRecord)
+        isCalib = isCalibration(expRecord)
         targetPipelineBytes = (
             self.pipelines["SFM"].graphBytes["isr"] if isCalib else self.pipelines["SFM"].graphBytes["step1"]
         )
