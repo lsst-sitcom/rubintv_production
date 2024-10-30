@@ -55,7 +55,6 @@ lsstCamButlerPath: /repo/embargo/butler.yaml
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /sdf/home/m/mfl/u/rubintv
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
-binnedImagePath: /sdf/home/m/mfl/u/rubintv/binnedImages
 calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
 binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
 

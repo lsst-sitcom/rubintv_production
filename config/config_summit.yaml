@@ -54,7 +54,6 @@ lsstCamButlerPath: /repo/LSSTCam/butler.yaml
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /project/rubintv/
 plotPath: /project/rubintv/plots
-binnedImagePath: /project/rubintv/binnedImages
 calculatedDataPath: /project/rubintv/calculatedData
 binnedCalexpPath: /project/rubintv/calculatedData/calexps
 
