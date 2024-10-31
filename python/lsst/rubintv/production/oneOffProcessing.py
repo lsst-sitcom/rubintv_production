@@ -262,7 +262,9 @@ class OneOffProcessor(BaseButlerChannel):
         return
 
     def callback(self, payload: Payload) -> None:
-        dataId: DataCoordinate = payload.dataId
+        dataId: DataCoordinate = payload.dataIds[0]
+        if len(payload.dataIds) > 1:
+            raise ValueError(f"Expected only one dataId, got {len(payload.dataIds)}")
 
         dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
 

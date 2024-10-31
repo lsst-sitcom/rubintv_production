@@ -1281,3 +1281,25 @@ def isCalibration(expRecord: DimensionRecord) -> bool:
     if expRecord.observation_type in ["bias", "dark", "flat"]:
         return True
     return False
+
+
+def isWepImage(expRecord: DimensionRecord) -> bool:
+    """Check if the exposure is one of a donut-pair.
+
+    All images with a cwfs observation_type are one of a donut-pair, or
+    otherwise destined for the WEP pipeline, and conversely, all images
+    destined for the WEP pipeline have a cwfs observation_type. Other images
+    can contain donuts, e.g. in focus sweeps, but these are not designed to
+    have WEP run on them.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to check.
+
+    Returns
+    -------
+    isCalibration : `bool`
+        ``True`` if the exposure is a calibration exposure, else ``False``.
+    """
+    return expRecord.observation_type.lower() == "cwfs"

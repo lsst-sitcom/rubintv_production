@@ -25,7 +25,7 @@ import base64
 import io
 import json
 from dataclasses import asdict, dataclass
-from typing import Self
+from typing import Any, Self
 
 from lsst.daf.butler import Butler, DataCoordinate
 from lsst.pipe.base import PipelineGraph
@@ -67,7 +67,7 @@ class Payload:
     These go in minimal, but come out full, by using the butler.
     """
 
-    dataId: DataCoordinate
+    dataIds: list[DataCoordinate]
     pipelineGraphBytes: bytes
     run: str
 
@@ -78,20 +78,25 @@ class Payload:
         butler: Butler,
     ) -> Self:
         json_dict = json.loads(json_str)
-        dataId = butler.registry.expandDataId(json_dict["dataId"])
+        dataIds = []
+        for dataId in json_dict["dataIds"]:
+            dataIds.append(butler.registry.expandDataId(dataId))
+
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
-        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"])
+        return cls(dataIds=dataIds, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"])
 
     def to_json(self) -> str:
-        json_dict = {
-            "dataId": dict(self.dataId.mapping),
+        json_dict: dict[str, Any] = {
             "pipelineGraphBytes": base64.b64encode(self.pipelineGraphBytes).decode(),
             "run": self.run,
         }
+        json_dict["dataIds"] = []
+        for dataId in self.dataIds:
+            json_dict["dataIds"].append(dict(dataId.mapping))
         return json.dumps(json_dict)
 
     def __repr__(self):
-        return f"Payload(dataId={self.dataId}, run={self.run}, pipelineGraphBytes=<the bytes>)"
+        return f"Payload(dataIds={[d for d in self.dataIds]}, run={self.run}, pipelineGraphBytes=<the bytes>)"
 
 
 @dataclass(frozen=True)
@@ -115,7 +120,7 @@ class PayloadResult(Payload):
         instance = super().from_json(json_str, butler)
         json_dict = json.loads(json_str)
         return cls(
-            dataId=instance.dataId,
+            dataIds=instance.dataIds,
             pipelineGraphBytes=instance.pipelineGraphBytes,
             run=instance.run,
             startTime=json_dict["startTime"],
@@ -127,6 +132,8 @@ class PayloadResult(Payload):
 
     def to_json(self) -> str:
         json_dict = asdict(self)
-        json_dict["dataId"] = dict(self.dataId.mapping)
         json_dict["pipelineGraphBytes"] = base64.b64encode(self.pipelineGraphBytes).decode()
+        json_dict["dataIds"] = []
+        for dataId in self.dataIds:
+            json_dict["dataIds"].append(dict(dataId.mapping))
         return json.dumps(json_dict)

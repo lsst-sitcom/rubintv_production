@@ -26,7 +26,7 @@ from ast import literal_eval
 from dataclasses import dataclass
 from logging import Logger
 from time import sleep
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Sequence, cast
 
 import numpy as np
 
@@ -50,7 +50,7 @@ from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
-from .utils import LocationConfig, getShardPath, isCalibration, writeExpRecordMetadataShard
+from .utils import LocationConfig, getShardPath, isCalibration, isWepImage, writeExpRecordMetadataShard
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -428,14 +428,12 @@ class HeadProcessController:
             return True
         return False
 
-    def getFreeSFMWorkerQueue(self, instrument: str, detectorId: int) -> PodDetails:
-        # XXX Rename this function - it returns PodDetails not the queue
-
+    def getFreePerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
 
-        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=PodFlavor.SFM_WORKER)
+        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
 
         idMatchedWorkers = [pod for pod in sfmWorkers if pod.detectorNumber == detectorId]
@@ -443,9 +441,7 @@ class HeadProcessController:
         if idMatchedWorkers == []:
             # TODO: until we have a real backlog queue just put it on the last
             # worker in the stack.
-            busyWorkers = self.redisHelper.getAllWorkers(
-                instrument=instrument, podFlavor=PodFlavor.SFM_WORKER
-            )
+            busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
             idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
             busyWorker = idMatchedWorkers[-1]
             self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
@@ -474,10 +470,13 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
+        # run isr only for calibs, otherwise run the appropriate step1
         isCalib = isCalibration(expRecord)
-        targetPipelineBytes = (
-            self.pipelines["SFM"].graphBytes["isr"] if isCalib else self.pipelines["SFM"].graphBytes["step1"]
-        )
+        if isCalib:
+            self.log.info(f"Sending {expRecord.id} to for calibration processing")
+            targetPipelineBytes = self.pipelines["SFM"].graphBytes["isr"]
+        else:
+            targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
 
         detectorIds = []
         nEnabled = None
@@ -498,16 +497,66 @@ class HeadProcessController:
         )
 
         for detectorId, dataId in dataIds.items():
-            queueName = self.getFreeSFMWorkerQueue(expRecord.instrument, detectorId)
+            queueName = self.getFreePerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
-                dataId=dataId,
+                dataIds=[dataId],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
             )
             self.redisHelper.enqueuePayload(payload, queueName)
 
         self.nDispatched += 1  # required for the alternating by twos mode
+
+    def doStep1FanoutAos(self, expRecords: list[DimensionRecord]) -> None:
+        """Send the expRecord out for processing based on current selection.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The expRecord to process.
+        """
+        # just some basic sanity checking
+        instruments = list(set([expRecord.instrument for expRecord in expRecords]))
+        assert len(instruments) == 1, f"Expected all expRecords to have same instrument, got {instruments=}"
+        instrument = instruments[0]
+        assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
+
+        self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
+        targetPipelineBytes = self.pipelines["AOS"].graphBytes["step1"]
+
+        # this block will be different when we're observing with LSSTCam the
+        # triggering will be too, because it'll be for every image so at that
+        # point consider making this part of the normal step1 fanout
+        detectorIds = []
+        results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
+        detectorIds = cast(list[int], [item["detector"] for item in results])
+
+        dataIds: dict[int, list[DataCoordinate]] = {}
+        for detectorId in detectorIds:
+            dataIds[detectorId] = []
+            for expRecord in expRecords:
+                dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+                dataIds[detectorId].append(dataId)
+
+        payloads: dict[int, Payload] = {}
+        for detectorId in detectorIds:
+            payloads[detectorId] = Payload(
+                dataIds=dataIds[detectorId],
+                pipelineGraphBytes=targetPipelineBytes,
+                run=self.outputRun,
+            )
+
+        dayObs = expRecords[0].day_obs
+        self.log.info(
+            f"Fanning out {instrument}-{dayObs}-{','.join([r.seq_num for r in expRecords])} for"
+            f" {len(detectorIds)} detectors"
+        )
+
+        for detectorId, payload in payloads.items():
+            worker = self.getFreePerDetectorWorker(self.instrument, detectorId, PodFlavor.AOS_WORKER)
+            self.log.info(f"Sending {detectorId=} to {worker} for {dataIds[detectorId]}")
+            self.redisHelper.enqueuePayload(payload, worker)
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -532,7 +581,7 @@ class HeadProcessController:
                 self.log.error(f"No workers available for one-off processing for {idStr}. This is a problem.")
                 return
 
-        payload = Payload(dataId=expRecord.dataId, pipelineGraphBytes=b"", run="")
+        payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="")
         self.redisHelper.enqueuePayload(payload, workers[0])
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
@@ -580,7 +629,7 @@ class HeadProcessController:
 
     def _dispatch2a(self, dataCoordinate: DataCoordinate) -> None:
         payload = Payload(
-            dataId=dataCoordinate,
+            dataIds=[dataCoordinate],
             pipelineGraphBytes=self.pipelines["SFM"].graphBytes["step2a"],
             run=self.outputRun,
         )
@@ -661,9 +710,10 @@ class HeadProcessController:
         return False
 
     def _dispatchNightlyRollup(self) -> None:
+        # TODO: try adding the current day_obs to this dataId
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-        payload = Payload(dataCoord, self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun)
+        payload = Payload([dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun)
         queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
         self.redisHelper.enqueuePayload(payload, queueName)
 
@@ -698,7 +748,7 @@ class HeadProcessController:
                 dataId: dict[str, int | str] = {"exposure": expId, "instrument": self.instrument}
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
-                payload = Payload(dataCoord, b"", dataProduct)
+                payload = Payload([dataCoord], b"", dataProduct)
                 queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
@@ -773,20 +823,23 @@ class HeadProcessController:
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
-
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
+
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
                 assert self.instrument == expRecord.instrument
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
-                self.doStep1Fanout(expRecord)
-                self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
+                if not isWepImage(expRecord):
+                    self.doStep1Fanout(expRecord)
+                    self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
             if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
                 donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
                 if donutPair is not None:
-                    self.log.info(f"Found a donut pair for {donutPair}")
-                    self.dispatchAosStep2a(donutPair)
+                    self.log.info(f"Found a donut pair trigger for {donutPair}")
+                    (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
+                    (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
+                    self.doStep1FanoutAos([record1, record2])
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things

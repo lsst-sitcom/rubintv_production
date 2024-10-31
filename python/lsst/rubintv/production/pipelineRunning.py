@@ -189,12 +189,24 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        dataId: DataCoordinate = payload.dataId
+        dataIds: list[DataCoordinate] = payload.dataIds
         pipelineGraphBytes: bytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
 
-        if not self.doProcessImage(dataId):
-            return
+        compoundId = ""
+        for i, dataId in enumerate(dataIds):
+            if "exposure" in dataId:
+                compoundId += f"{dataId['exposure']}"
+            elif "visit" in dataId:
+                compoundId += f"{dataId['visit']}"
+            else:  # for day_obs or instrument level dataIds.
+                compoundId += f"{dataId}"
+            if i >= 1:
+                compoundId += "+"
+
+        # XXX reinstate or remove? we deal with isr differently now...
+        # if not self.doProcessImage(dataId):
+        #     return
 
         try:
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
@@ -204,8 +216,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # need to remake the caching butler if the pipeline changes
                 self.limitedButler = self.makeLimitedButler(self.butler)
 
-            where = " AND ".join(f"{k}=_{k}" for k in dataId.mapping)
-            bind = {f"_{k}": v for k, v in dataId.mapping.items()}
+            # chain all the dataId components together with AND, and an OR
+            # between each dataId. Make sure to bind the dataId components
+            # correctly by using a unique string for each dataId.
+            where = ""
+            bind = {}
+            for i, dataId in enumerate(dataIds):
+                idString = f"_dataId_{i}"
+                where += " AND ".join(f"{k}=_{idString}{k}" for k in dataId.mapping)
+                bind.update({f"_{idString}{k}": v for k, v in dataId.mapping.items()})
+                if i >= 1:
+                    where += " OR "
+
             builder = AllDimensionsQuantumGraphBuilder(
                 self.pipelineGraph,
                 self.butler,
@@ -243,14 +265,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
             )
 
-            if "exposure" in payload.dataId:
-                processingId = payload.dataId["exposure"]  # this works for step1 and step2a
-            else:
-                # TODO need to work out what to do for non-exposure-containing
-                # dataIds. Do we even need this anymore though, now we have a
-                # step2a finished counter?
-                processingId = 1
-
             for node in qg:
                 # just to make sure taskName is defined, so if this shows
                 # up anywhere something is very wrong
@@ -262,8 +276,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     taskName = node.taskDef.taskName
                     self.log.info(f"Starting to process {taskName}")
                     quantum, _ = executor.execute(node.task_node, node.quantum)
-                    self.postProcessQuantum(quantum, processingId)
-                    self.redisHelper.reportFinished(self.instrument, taskName, processingId)
+                    self.postProcessQuantum(quantum, compoundId)
+                    self.redisHelper.reportFinished(self.instrument, taskName, compoundId)
 
                 except Exception as e:
                     # don't use quantum directly in this block in case it is
@@ -276,7 +290,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # tasks, or only the points used for triggering other
                     # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
-                    self.redisHelper.reportFinished(self.instrument, taskName, processingId, failed=True)
+                    self.redisHelper.reportFinished(self.instrument, taskName, compoundId, failed=True)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
             # finished looping over nodes
@@ -285,11 +299,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
-                if "visit" in payload.dataId:
-                    visit = f"{payload.dataId['visit']}"
-                else:
-                    visit = f"{payload.dataId['exposure']}"
-                self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", visit)
+                self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", compoundId)
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument)
 

@@ -24,31 +24,48 @@ import unittest
 
 from pydantic import ValidationError
 
+import lsst.daf.butler as dafButler
 import lsst.utils.tests
 from lsst.rubintv.production.payloads import Payload, PayloadResult
+from lsst.summit.utils.utils import getSite
 
 from .utils import getSampleExpRecord
+
+NO_BUTLER = True
+if getSite() in ["staff-rsp", "rubin-devl"]:
+    NO_BUTLER = False
 
 
 class TestPayload(unittest.TestCase):
     def setUp(self) -> None:
+        self.butler = None
+        if getSite() in ["staff-rsp", "rubin-devl"]:
+            self.butler = dafButler.Butler("embargo_old", instrument="LATISS")  # type: ignore
+
         # this got harder because we now need a butler as well
         self.expRecord = getSampleExpRecord()
+        self.expRecord2 = getSampleExpRecord()  # TODO get a different expRecord
         self.pipelineBytes = "test".encode("utf-8")
         self.differentPipelineBytes = "different test".encode("utf-8")
         self.payload = Payload(
-            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
         )
         self.validJson = self.payload.to_json()
 
     def test_constructor(self) -> None:
-        payload = Payload(dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes)
-        self.assertEqual(payload.dataId, self.expRecord.dataId)
+        payload = Payload(
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
+        )
+        self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
         with self.assertRaises(TypeError):
             payload = Payload(
-                dataId=self.expRecord.dataId,
+                dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
                 run="test run",
                 pipelineGraphBytes=self.pipelineBytes,
                 illegalKwarg="test",  # type: ignore[call-arg]  # that's the whole point here
@@ -56,16 +73,24 @@ class TestPayload(unittest.TestCase):
 
     def test_equality(self) -> None:
         payload1 = Payload(
-            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
         )
         payload2 = Payload(
-            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.pipelineBytes
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
         )
         payloadDiffRun = Payload(
-            dataId=self.expRecord.dataId, run="other run", pipelineGraphBytes=self.pipelineBytes
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            run="other run",
+            pipelineGraphBytes=self.pipelineBytes,
         )
         payloadDiffPipeline = Payload(
-            dataId=self.expRecord.dataId, run="test run", pipelineGraphBytes=self.differentPipelineBytes
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            run="test run",
+            pipelineGraphBytes=self.differentPipelineBytes,
         )
 
         self.assertEqual(payload1, payload2)
@@ -73,19 +98,19 @@ class TestPayload(unittest.TestCase):
         self.assertNotEqual(payload1, payloadDiffRun)
         self.assertNotEqual(payload1, payloadDiffPipeline)
 
-    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
+    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def test_roundtrip(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
-        payload = Payload.from_json(None, self.validJson)  # type: ignore[arg-type]
+        payload = Payload.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
         payloadJson = payload.to_json()
-        reconstructedPayload = Payload.from_json(None, payloadJson)  # type: ignore[arg-type]
+        reconstructedPayload = Payload.from_json(payloadJson, self.butler)  # type: ignore[arg-type]
         self.assertEqual(payload, reconstructedPayload)
 
-    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
+    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def test_from_json(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
-        payload = Payload.from_json(None, self.validJson)  # type: ignore[arg-type]
-        self.assertEqual(payload.dataId, self.expRecord.dataId)
+        payload = Payload.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
+        self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
         json_str = (
@@ -93,7 +118,7 @@ class TestPayload(unittest.TestCase):
             + json.dumps(self.expRecord.to_simple().json())
             + ', "detector": 3, "pipeline": "test"}'
         )
-        payload = Payload.from_json(None, json_str)  # type: ignore[arg-type]
+        payload = Payload.from_json(json_str, self.butler)  # type: ignore[arg-type]
         self.assertEqual(payload, self.payload)
 
         json_str = (
@@ -102,17 +127,21 @@ class TestPayload(unittest.TestCase):
             + ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
         )
         with self.assertRaises(ValidationError):
-            payload = Payload.from_json(None, json_str)  # type: ignore[arg-type]
+            payload = Payload.from_json(json_str, self.butler)  # type: ignore[arg-type]
 
 
-# @unittest.skip("Turn these back on sometime after OR3")
 class TestPayloadResult(unittest.TestCase):
     def setUp(self) -> None:
+        self.butler = None
+        if getSite() in ["staff-rsp", "rubin-devl"]:
+            self.butler = dafButler.Butler("embargo_old", instrument="LATISS")  # type: ignore
+
         self.expRecord = getSampleExpRecord()
+        self.expRecord2 = getSampleExpRecord()  # TODO get a different expRecord
         self.pipelineBytes = "test".encode("utf-8")
 
         self.payload_result = PayloadResult(
-            dataId=self.expRecord.dataId,
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
             startTime=0.0,
@@ -125,7 +154,7 @@ class TestPayloadResult(unittest.TestCase):
 
     def test_constructor(self) -> None:
         payload_result = PayloadResult(
-            dataId=self.expRecord.dataId,
+            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
             startTime=0.0,
@@ -143,7 +172,7 @@ class TestPayloadResult(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             payload_result = PayloadResult(
-                dataId=self.expRecord.dataId,
+                dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
                 run="test run",
                 pipelineGraphBytes=self.pipelineBytes,
                 startTime=0.0,
@@ -154,20 +183,20 @@ class TestPayloadResult(unittest.TestCase):
                 illegalKwarg="test",  # type: ignore[call-arg]  # that's the whole point here
             )
 
-    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
+    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def test_roundtrip(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
-        payload_result = PayloadResult.from_json(self.validJson, None)  # type: ignore[arg-type]
+        payload_result = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
         payload_result_json = payload_result.to_json()
         reconstructed_payload_result = PayloadResult.from_json(
-            payload_result_json, None  # type: ignore[arg-type]
+            payload_result_json, self.butler  # type: ignore[arg-type]
         )
         self.assertEqual(payload_result, reconstructed_payload_result)
 
-    @unittest.skip("Turn these back on if you can work out how to do it without a butler")
+    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def test_from_json(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
-        payload_result = PayloadResult.from_json(self.validJson, None)  # type: ignore[arg-type]
+        payload_result = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
         self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
         self.assertEqual(payload_result.startTime, 0.0)
         self.assertEqual(payload_result.endTime, 1.0)
@@ -181,7 +210,7 @@ class TestPayloadResult(unittest.TestCase):
             + ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": '
             + '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message"}'
         )
-        payload_result = PayloadResult.from_json(json_str, None)  # type: ignore[arg-type]
+        payload_result = PayloadResult.from_json(json_str, self.butler)  # type: ignore[arg-type]
         self.assertEqual(payload_result, self.payload_result)
 
         json_str = (
@@ -192,7 +221,7 @@ class TestPayloadResult(unittest.TestCase):
             + '"test"}'
         )
         with self.assertRaises(TypeError):
-            payload_result = PayloadResult.from_json(json_str, None)  # type: ignore[arg-type]
+            payload_result = PayloadResult.from_json(json_str, self.butler)  # type: ignore[arg-type]
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

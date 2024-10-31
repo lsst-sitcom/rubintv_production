@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from lsst.afw.cameraGeom import Camera
     from lsst.daf.butler import Butler
 
+    from ..payloads import Payload
     from ..podDefinition import PodDetails
 
 
@@ -187,7 +188,7 @@ class Plotter:
             case _:
                 raise ValueError(f"Unknown instrument {instrument}")
 
-    def callback(self, payload) -> None:
+    def callback(self, payload: Payload) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Note: the callback is used elsewhere to reprocess old data, so the
@@ -209,7 +210,8 @@ class Plotter:
             How to wait for data products to land before giving up and plotting
             what we have.
         """
-        dataId = payload.dataId
+        dataId = payload.dataIds[0]
+        assert len(payload.dataIds) == 1, "Expected only one dataId - plotting doesn't support multiple"
         dataProduct = payload.run  # TODO: this really needs improving
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         self.log.info(f"Making plots for {expRecord.dataId}")

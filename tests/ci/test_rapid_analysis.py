@@ -48,7 +48,7 @@ REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 360  # How long to leave test suites to run for
+TEST_DURATION = 400  # How long to leave test suites to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -112,11 +112,16 @@ TEST_SCRIPTS_ROUND_2 = [
 
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
-    TestScript("scripts/LSSTComCam/runPlotter.py", ["usdf_testing"]),
+    TestScript(
+        "scripts/LSSTComCam/runPlotter.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+        tee_output=True,
+    ),
     TestScript(
         "scripts/LSSTComCam/runStep2aWorker.py",
         ["usdf_testing", "0"],
-        tee_output=True,
+        tee_output=False,
     ),
     TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
     TestScript(
@@ -430,7 +435,9 @@ def check_redis_final_contents():
     # the signal made it to redis
     # LSSTComCam-PSFPLOTTER
     key = f"{inst}-PSFPLOTTER"
-    expected = int(redisHelper.redis.lpop(key))
+    expected = redisHelper.redis.lpop(key)
+    if expected is not None:
+        expected = int(expected.decode("utf-8"))
     if expected == 2024102800045:
         CHECKS.append(Check(True, "PSF plotter received the expected visit"))
     else:
