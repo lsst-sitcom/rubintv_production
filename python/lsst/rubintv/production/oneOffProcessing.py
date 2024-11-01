@@ -27,6 +27,7 @@ import numpy as np
 import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
+from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
 from .redisUtils import RedisHelper
@@ -163,7 +164,7 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
-    def calcPointingOffsets(
+    def publishPointingOffsets(
         self,
         calexp: Exposure,
         dataId: DataCoordinate,
@@ -204,6 +205,30 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: offsets}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
+    def publishEclipticCoords(
+        self,
+        calexp: Exposure,
+        expRecord: DimensionRecord,
+    ) -> None:
+
+        calexpWcs = calexp.wcs
+        if calexpWcs is None:
+            self.log.warning(f"Failed to calculate ecliptic coords from calexp for {expRecord.id}")
+            return
+
+        raAngle, decAngle = calexpWcs.getSkyOrigin()
+        raDeg = raAngle.asDegrees()
+        decDeg = decAngle.asDegrees()
+        lambda_, beta = calcEclipticCoords(raDeg, decDeg)
+
+        eclipticData = {
+            "lambda (deg)": f"{lambda_:.2f}",
+            "beta (deg)": f"{beta:.2f}",
+        }
+
+        md = {expRecord.seq_num: eclipticData}
+        writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+
     def runCalexp(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for calexp for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
@@ -217,8 +242,12 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.warning(f"Failed to get postISRCCD for {dataId}")
             return
         self.log.info("Calculating pointing offsets...")
-        self.calcPointingOffsets(calexp, dataId, expRecord)
+        self.publishPointingOffsets(calexp, dataId, expRecord)
         self.log.info("Finished calculating pointing offsets")
+
+        self.log.info("Calculating ecliptic coords...")
+        self.publishEclipticCoords(calexp, expRecord)
+        self.log.info("Finished publishing ecliptic coords")
 
         return
 
