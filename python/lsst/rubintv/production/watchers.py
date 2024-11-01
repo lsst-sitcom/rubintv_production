@@ -189,7 +189,7 @@ class RedisWatcher:
                     callback(payload)
                     self.payload = None
                 except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
-                    self.log.error(f"Error processing payload {payload}: {e}")
+                    self.log.exception(f"Error processing payload {payload}: {e}")
                 finally:
                     self.redisHelper.announceFree(self.podDetails)
             else:  # only sleep when no work is found

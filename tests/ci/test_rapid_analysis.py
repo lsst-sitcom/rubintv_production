@@ -55,61 +55,6 @@ TODAY = 20240101
 DEBUG = False
 
 # List of test scripts to run, defined relative to package root
-TEST_SCRIPTS_ROUND_2 = [
-    # the AOS RA testing - runs data through the processing pods
-    # TestScript(
-    #     "scripts/LSSTComCam/runStep2aAosWorker.py",
-    #     ["usdf_testing", "0"],  # XXX does this need a numerical arg?
-    #     tee_output=True,
-    # ),
-    TestScript(
-        "scripts/LSSTComCam/runSfmRunner.py",
-        ["usdf_testing", "0"],
-        display_on_pass=True,
-        tee_output=True,
-    ),
-    # 18 wide on the isr
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "2"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "3"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "4"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "5"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "6"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "7"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "8"]),
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "9"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "10"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "11"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "12"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "13"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "14"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "15"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "16"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "17"]),  # noqa: W505
-    # 9 wide on the AOS part
-    # XXX re-enable these if we start using them, or remove this code
-    # remove the noqa statements too
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "0"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "2"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "3"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "4"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "5"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "6"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "7"]),  # noqa: W505
-    # TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "8"]),  # noqa: W505
-    TestScript(
-        "scripts/LSSTComCam/runHeadNode.py",
-        ["usdf_testing"],
-        delay=15,  # we do NOT want the head node to fanout work before workers report in - that's a fail
-        tee_output=True,
-        display_on_pass=True,
-    ),
-    # TestScript(
-    #     "tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, tee_output=True, display_on_pass=True  # noqa: E501 W505
-    # ),
-]
-
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
     TestScript(
@@ -153,16 +98,11 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "6"]),
     TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "7"]),
     TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "8"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "9"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "10"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "11"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "12"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "13"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "14"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "15"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "16"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "17"]),
-    TestScript("scripts/LSSTComCam/runStep2aAosWorker.py", ["usdf_testing", "0"]),
+    TestScript(
+        "scripts/LSSTComCam/runStep2aAosWorker.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+    ),
     TestScript(
         "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
@@ -215,9 +155,9 @@ TEST_SCRIPTS_ROUND_1 = [
     for test_script in TEST_SCRIPTS_ROUND_1
 ]
 
-TEST_SCRIPTS_ROUND_2 = [
+TEST_SCRIPTS_ROUND_1 = [
     TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
-    for test_script in TEST_SCRIPTS_ROUND_2
+    for test_script in TEST_SCRIPTS_ROUND_1
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -437,29 +377,47 @@ def check_redis_final_contents():
 
     inst = "LSSTComCam"
 
-    visits = [
+    visits_sfm = [
         2024102800045,
-    ]  # for expansion
-    n_visits = len(visits)
+    ]
+
+    visits_aos = [
+        "2024102800043+2024102800044",
+    ]
+
+    # n_visits = len(visits)
+    n_visits_sfm = len(visits_sfm)
+    n_visits_aos = len(visits_aos)
 
     # XXX add something for the task counters too, not just step2a entry etc
 
-    n_step2a = redisHelper.getNumVisitLevelFinished(inst, "step2a")
-    if n_step2a != n_visits:
-        CHECKS.append(Check(False, f"Expected {n_visits} step2a to have finished, got {n_step2a}"))
+    n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
+    if n_step2a_sfm != n_visits_sfm:
+        CHECKS.append(
+            Check(False, f"Expected {n_visits_sfm} SFM step2a to have finished, got {n_step2a_sfm}")
+        )
     else:
-        CHECKS.append(Check(True, f"{n_step2a}x step2a finished"))
+        CHECKS.append(Check(True, f"{n_step2a_sfm}x SFM step2a finished"))
+    del n_visits_sfm
 
-    key = f"{inst}-NIGHTLYROLLUP-FINISHEDCOUNTER"
+    n_visits_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
+    if n_visits_aos != n_visits_aos:
+        CHECKS.append(
+            Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_visits_aos}")
+        )
+    else:
+        CHECKS.append(Check(True, f"{n_visits_aos}x AOS step2a finished"))
+    del n_visits_aos
+
+    key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
     n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
-    if n_nightly_rollups != n_visits:
-        CHECKS.append(Check(False, f"Expected {n_visits} nightly rollup finished, got {n_nightly_rollups}"))
+    if n_nightly_rollups != 1:
+        CHECKS.append(Check(False, f"Expected {1} nightly rollup finished, got {n_nightly_rollups}"))
     else:
         CHECKS.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
 
     # TODO spin up the PSF plotter and check for an output. For now just check
     # the signal made it to redis
-    # LSSTComCam-PSFPLOTTER
     key = f"{inst}-PSFPLOTTER"
     expected = redisHelper.redis.lpop(key)
     if expected is not None:
@@ -718,6 +676,8 @@ def check_plots():
     # TODO make this more data-driven
     expected = [
         "calexp_mosaic_dayObs_20241028_seqNum_000045.jpg",
+        "postISRCCD_mosaic_dayObs_20241028_seqNum_000043.jpg",
+        "postISRCCD_mosaic_dayObs_20241028_seqNum_000044.jpg",
         "postISRCCD_mosaic_dayObs_20241028_seqNum_000045.jpg",
         "20241028_43-fp_donut_gallery.png",
         "20241028_44-fp_donut_gallery.png",

@@ -51,6 +51,7 @@ class TestPayload(unittest.TestCase):
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
+            who="SFM",
         )
         self.validJson = self.payload.to_json()
 
@@ -59,6 +60,7 @@ class TestPayload(unittest.TestCase):
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
+            who="SFM",
         )
         self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
@@ -68,6 +70,7 @@ class TestPayload(unittest.TestCase):
                 dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
                 run="test run",
                 pipelineGraphBytes=self.pipelineBytes,
+                who="SFM",
                 illegalKwarg="test",  # type: ignore[call-arg]  # that's the whole point here
             )
 
@@ -75,21 +78,25 @@ class TestPayload(unittest.TestCase):
         payload1 = Payload(
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
+            who="SFM",
             pipelineGraphBytes=self.pipelineBytes,
         )
         payload2 = Payload(
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
+            who="SFM",
             pipelineGraphBytes=self.pipelineBytes,
         )
         payloadDiffRun = Payload(
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="other run",
+            who="SFM",
             pipelineGraphBytes=self.pipelineBytes,
         )
         payloadDiffPipeline = Payload(
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
+            who="SFM",
             pipelineGraphBytes=self.differentPipelineBytes,
         )
 
@@ -144,6 +151,7 @@ class TestPayloadResult(unittest.TestCase):
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
+            who="SFM",
             startTime=0.0,
             endTime=1.0,
             splitTimings={"step1": 0.5, "step2": 0.3},
@@ -157,6 +165,7 @@ class TestPayloadResult(unittest.TestCase):
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
+            who="SFM",
             startTime=0.0,
             endTime=1.0,
             splitTimings={"step1": 0.5, "step2": 0.3},
@@ -175,6 +184,7 @@ class TestPayloadResult(unittest.TestCase):
                 dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
                 run="test run",
                 pipelineGraphBytes=self.pipelineBytes,
+                who="SFM",
                 startTime=0.0,
                 endTime=1.0,
                 splitTimings={"step1": 0.5, "step2": 0.3},

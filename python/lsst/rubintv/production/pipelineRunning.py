@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import datetime
+import time
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -189,9 +190,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
+        self.log.setLevel("DEBUG")  # XXX remove before merging
         dataIds: list[DataCoordinate] = payload.dataIds
         pipelineGraphBytes: bytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
+        who = payload.who  # who are we running this for?
 
         compoundId = ""
         sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
@@ -202,9 +205,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         else:  # for day_obs or instrument level dataIds.
             compoundId = "+".join([f"{dataId}" for dataId in dataIds])
 
+        self.log.debug(f"Processing {compoundId=}")
+
         # XXX reinstate or remove? we deal with isr differently now...
         # if not self.doProcessImage(dataId):
         #     return
+        self.log.debug(f"{self.step=} {self.dataProduct=}")
 
         try:
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
@@ -226,6 +232,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 where += " OR "
             if where.endswith(" OR "):
                 where = where[:-4]
+            del dataId
+
+            self.log.debug(f"{where=}\n{bind=}")
 
             builder = AllDimensionsQuantumGraphBuilder(
                 self.pipelineGraph,
@@ -237,12 +246,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 output_run=self.runCollection,
             )
 
-            self.log.info(f"Running pipeline for {dataId}")
+            self.log.info(f"Running pipeline for {dataIds}")
 
             # _waitForDataProduct waits for the raw to land in the repo and
             # caches it on the butler, so don't bother to catch the return.
             # Then check for empty qg and raise if that is the case.
-            self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
+            t0 = time.time()
+            for dataId in dataIds:
+                self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
+                self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
+            self.log.info(
+                f"Spent {(time.time()-t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
+                " (should be ~1s per id)"
+            )
 
             qg: QuantumGraph = builder.build(
                 metadata={
@@ -255,7 +271,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
 
             if not qg:
-                raise RuntimeError(f"No work found for {dataId}")
+                raise RuntimeError(f"No work found for {dataIds}")
 
             executor = SingleQuantumExecutor(
                 None,
@@ -269,6 +285,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # up anywhere something is very wrong
                 taskName = "something is deeply wrong"
                 try:
+                    self.log.debug(f"Executing {node.taskDef.taskName}")
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
 
@@ -292,25 +309,33 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.redisHelper.reportFinished(self.instrument, taskName, compoundId, failed=True)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
+            self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
+
             # finished looping over nodes
-            if self.step == "step2a":
-                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
+            if self.step == "step2a":  # XXX this actually needs to SFM-step2 and AOS-step2 now!
+                self.log.debug(f"Announcing completion of step2a for {compoundId} for {who}")
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who)
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
-                self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", compoundId)
+                if who == "SFM":
+                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", compoundId)
             if self.step == "nightlyRollup":
-                self.redisHelper.reportNightLevelFinished(self.instrument)
+                self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
             if self.step == "step2a":
-                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", failed=True)
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who, failed=True)
             if self.step == "nightlyRollup":
-                self.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
+                self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum, processingId) -> None:
+    def postProcessQuantum(self, quantum, compoundId: str) -> None:
         """Write shards here, make sure to keep these bits quick!
+
+        compoundId is a maybe-compound id, either a single exposure or a
+        compound of multiple exposures, depending on the pipeline, joined with
+        a "+".
 
         Also, anything you self.limitedButler.get() make sure to add to
         cache_on_put.
@@ -330,7 +355,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # etc. Would probably mean changes to mergeShardsAndUpload in
             # order to merge dict-like items into their corresponding
             # dicts.
-            self.postProcessCalibrate(quantum, processingId)
+            self.postProcessCalibrate(quantum, compoundId)
         elif "postprocess.ConsolidateVisitSummaryTask".lower() in taskName.lower():
             # ConsolidateVisitSummaryTask regardless of quickLook or NV
             # pipeline, because this is the quantum that holds the
@@ -371,7 +396,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             except Exception:
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
-    def postProcessCalibrate(self, quantum, processingId) -> None:
+    def postProcessCalibrate(self, quantum, compoundId) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
         # refactoring yet, especially as they will probably diverge in the
         # future.
@@ -391,7 +416,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
+        self.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", compoundId)
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
         try:

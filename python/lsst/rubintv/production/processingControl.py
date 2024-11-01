@@ -84,11 +84,11 @@ class VisitProcessingMode(enum.IntEnum):
 
 
 def prepRunCollection(
-    butler,
+    butler: Butler,
     pipelineGraphs: Iterable[PipelineGraph],
-    run,
+    run: str,
     packages: Packages,
-):
+) -> None:
     """This should only be run once with a particular combination of
     pipelinegraph and run.
 
@@ -139,7 +139,7 @@ def prepRunCollection(
                 )
 
 
-def defineVisit(butler, expRecord):
+def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
     """Define a visit in the registry, given an expRecord.
 
     Only runs if the visit hasn't already been defined. Previously, it was
@@ -156,7 +156,9 @@ def defineVisit(butler, expRecord):
     """
     ids = list(butler.registry.queryDimensionRecords("visit", dataId=expRecord.dataId))
     if len(ids) < 1:  # only run if needed
-        instr = Instrument.from_string(butler.registry.defaults.dataId["instrument"], butler.registry)
+        instrumentString = butler.registry.defaults.dataId["instrument"]
+        assert isinstance(instrumentString, str), f"Expected {instrumentString=} to be a string"
+        instr = Instrument.from_string(instrumentString, butler.registry)
         config = DefineVisitsConfig()
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
@@ -165,7 +167,7 @@ def defineVisit(butler, expRecord):
         task.run([{"exposure": expRecord.id}], collections=butler.collections)
 
 
-def getVisitId(butler, expRecord):
+def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
     """Lookup visitId for an expRecord.
 
     Parameters
@@ -179,10 +181,12 @@ def getVisitId(butler, expRecord):
         The visitId, as an int.
     """
     expIdDict = {"exposure": expRecord.id}
-    visitDataIds = butler.registry.queryDataIds(["visit"], dataId=expIdDict)
-    visitDataIds = list(set(visitDataIds))
+    visitDataIds = list(set(butler.registry.queryDataIds(["visit"], dataId=expIdDict)))
     if len(visitDataIds) == 1:
         visitDataId = visitDataIds[0]
+        assert isinstance(
+            visitDataId["visit"], int
+        ), f"Expected visitDataId['visit'] to be an int, got {visitDataId=}"
         return visitDataId["visit"]
     else:
         log = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
@@ -193,7 +197,7 @@ def getVisitId(butler, expRecord):
         return None
 
 
-def getStep2aTriggerTask(pipelineFile):
+def getStep2aTriggerTask(pipelineFile: str) -> str:
     """Get the last task that runs step1, to know when to trigger step2a.
 
     This is the task which is run when a decetor-exposure is complete, and
@@ -222,7 +226,7 @@ def getStep2aTriggerTask(pipelineFile):
         raise ValueError(f"Unsure how to trigger step2a when {pipelineFile=}")
 
 
-def getNightlyRollupTriggerTask(pipelineFile):
+def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
     """Get the last task that runs in step2, to know when to trigger rollup.
 
     This is the task which is run when a decetor-exposure is complete, and
@@ -423,7 +427,7 @@ class HeadProcessController:
             return True
         return False
 
-    def getFreePerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
+    def getPerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
         # TODO: this really should take all the detectorIds that we need a free
         # worker for and return them all at once so that we only have to call
         # redisHelper.getFreeWorkers() once but I'm too low on time right now.
@@ -443,7 +447,7 @@ class HeadProcessController:
             return busyWorker
         return idMatchedWorkers[0]
 
-    def getFreeGatherWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
+    def getGatherWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
@@ -457,7 +461,7 @@ class HeadProcessController:
         self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
         return busyWorker
 
-    def doStep1Fanout(self, expRecord: DimensionRecord) -> None:
+    def doStep1FanoutSfm(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
 
         Parameters
@@ -492,12 +496,13 @@ class HeadProcessController:
         )
 
         for detectorId, dataId in dataIds.items():
-            queueName = self.getFreePerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
+            queueName = self.getPerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
             self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
             payload = Payload(
                 dataIds=[dataId],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
+                who="SFM",
             )
             self.redisHelper.enqueuePayload(payload, queueName)
 
@@ -541,6 +546,7 @@ class HeadProcessController:
                 dataIds=dataIds[detectorId],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
+                who="AOS",
             )
 
         dayObs = expRecords[0].day_obs
@@ -550,7 +556,7 @@ class HeadProcessController:
         )
 
         for detectorId, payload in payloads.items():
-            worker = self.getFreePerDetectorWorker(self.instrument, detectorId, PodFlavor.AOS_WORKER)
+            worker = self.getPerDetectorWorker(self.instrument, detectorId, PodFlavor.AOS_WORKER)
             self.log.info(f"Sending {detectorId=} to {worker} for {dataIds[detectorId]}")
             self.redisHelper.enqueuePayload(payload, worker)
 
@@ -577,7 +583,8 @@ class HeadProcessController:
                 self.log.error(f"No workers available for one-off processing for {idStr}. This is a problem.")
                 return
 
-        payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="")
+        # who value doesn't matter for one-off processing, maybe SFM instead?
+        payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="", who="ONE_OFF")
         self.redisHelper.enqueuePayload(payload, workers[0])
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
@@ -651,35 +658,33 @@ class HeadProcessController:
         if len(allIds) == 0:
             return False
 
+        podFlavour = PodFlavor.STEP2A_AOS_WORKER if who == "AOS" else PodFlavor.STEP2A_WORKER
+
         for idStr in allIds:
             isComplete = idStr in completeIds
-            if who == "SFM":  # _id is a visit int as a string
-                intId = int(idStr)
-                dataCoords = [
-                    DataCoordinate.standardize(
-                        instrument=self.instrument, visit=intId, universe=self.butler.dimensions
-                    )
-                ]
-                podFlavour = PodFlavor.SFM_WORKER
-            else:  # _id is a list of visitIds as a string with a + separator
-                intIds = [int(_id) for _id in idStr.split("+")]
-                dataCoords = [
-                    DataCoordinate.standardize(
-                        instrument=self.instrument, visit=intId, universe=self.butler.dimensions
-                    )
-                    for intId in intIds
-                ]
-                podFlavour = PodFlavor.AOS_WORKER
+
+            # idStr is a list of visitIds as a string with a + separator if AOS
+            # else idStr is a visit int as a string
+            intIds = [int(_id) for _id in idStr.split("+")]
+            self.log.debug(f"Found {len(intIds)} complete visits for dispatch {intIds=}")
+            dataCoords = [
+                DataCoordinate.standardize(
+                    instrument=self.instrument, visit=intId, universe=self.butler.dimensions
+                )
+                for intId in intIds
+            ]
 
             payload = Payload(
                 dataIds=dataCoords,
                 pipelineGraphBytes=self.pipelines[who].graphBytes["step2a"],
                 run=self.outputRun,
+                who=who,
             )
             if isComplete:
-                self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords}")
-                worker = self.getFreeGatherWorker(self.instrument, podFlavour)
+                worker = self.getGatherWorker(self.instrument, podFlavour)
+                self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
                 self.redisHelper.enqueuePayload(payload, worker)
+                self.log.debug(f"Removing task counter for {triggeringTask} for {idStr=}")
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, idStr)
 
                 # never dispatch this incomplete because it relies on a
@@ -693,9 +698,8 @@ class HeadProcessController:
             else:
                 if dispatchIncomplete:
                     self.log.info(f"Dispatching incomplete step2a for {who} with inputs: {dataCoords}")
-                    worker = self.getFreeGatherWorker(self.instrument, podFlavour)
+                    worker = self.getGatherWorker(self.instrument, podFlavour)
                     self.redisHelper.enqueuePayload(payload, worker)
-                    self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, idStr)
                     # NB do not remove the counter key here, as this will be
                     # redispatched once complete, and should only be removed
                     # then
@@ -710,9 +714,9 @@ class HeadProcessController:
         Returns
         -------
         doRollup : `bool`
-            Should we do another rollup?
+            Did we do another rollup?
         """
-        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a")
+        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a", who="SFM")
         if numComplete > self.nNightlyRollups:
             self.log.info(
                 f"Found {numComplete - self.nNightlyRollups} more completed step2a's - "
@@ -727,8 +731,10 @@ class HeadProcessController:
         # TODO: try adding the current day_obs to this dataId
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-        payload = Payload([dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun)
-        queueName = self.getFreeGatherWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
+        payload = Payload(
+            [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
+        )
+        queueName = self.getGatherWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self) -> None:
@@ -758,13 +764,29 @@ class HeadProcessController:
                 else f"expId={completeIds[0]}"
             )
             self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
-            for expId in completeIds:
-                dataId: dict[str, int | str] = {"exposure": expId, "instrument": self.instrument}
+
+            toDispatch: list[int] = []
+            for expId in completeIds:  # split the compound ids from AOS. This whole thing really need a tidy!
+                if "+" in expId:
+                    expIds = [int(e) for e in expId.split("+")]
+                    toDispatch.extend(expIds)
+                else:
+                    toDispatch.append(int(expId))
+
+            for intExpId in toDispatch:  # intExpId because mypy doesn't like reusing loop variables?!
+                dataId: dict[str, int | str] = {"exposure": intExpId, "instrument": self.instrument}
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
-                payload = Payload([dataCoord], b"", dataProduct)
-                queueName = self.getFreeGatherWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+                payload = Payload([dataCoord], b"", dataProduct, who="SFM")
+                queueName = self.getGatherWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
+                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, intExpId)
+
+            # this is awful and should be in the loop, but it's hard because of
+            # the compound ids and this all needs some attention really.
+            # However, the code made it this far, so it's safe to just remove
+            # them like this for now.
+            for expId in completeIds:
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
     def regulateLoopSpeed(self) -> None:
@@ -810,27 +832,6 @@ class HeadProcessController:
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
 
-    def dispatchAosStep2a(self, donutPair: tuple[int, int]) -> None:
-        """Dispatch the AOS step2a processing for a donut pair.
-
-        Parameters
-        ----------
-        donutPair : `tuple` of `int`
-            The pair of donut numbers to process.
-        """
-        return None
-        # TODO: work out how to push the ids through a Payload and how the
-        # pipeline runner will use them in a query
-        # dataId1 = {"visit": donutPair[0], "instrument": self.instrument}
-        # dataId2 = {"visit": donutPair[1], "instrument": self.instrument}
-        # dataCoord1 = DataCoordinate.standardize(dataId1)
-        # dataCoord2 = DataCoordinate.standardize(dataId2)
-        # payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"],
-        #                   run=self.outputRun)
-        # queueName = self.getFreeGatherWorker(self.instrument,
-        #                                          PodFlavor.STEP2A_AOS_WORKER)
-        # self.redisHelper.enqueuePayload(payload, queueName)
-
     def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
@@ -844,7 +845,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 if not isWepImage(expRecord):
-                    self.doStep1Fanout(expRecord)
+                    self.doStep1FanoutSfm(expRecord)
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
             if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach

@@ -70,6 +70,7 @@ class Payload:
     dataIds: list[DataCoordinate]
     pipelineGraphBytes: bytes
     run: str
+    who: str
 
     @classmethod
     def from_json(
@@ -83,12 +84,15 @@ class Payload:
             dataIds.append(butler.registry.expandDataId(dataId))
 
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
-        return cls(dataIds=dataIds, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"])
+        return cls(
+            dataIds=dataIds, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"], who=json_dict["who"]
+        )
 
     def to_json(self) -> str:
         json_dict: dict[str, Any] = {
             "pipelineGraphBytes": base64.b64encode(self.pipelineGraphBytes).decode(),
             "run": self.run,
+            "who": self.who,
         }
         json_dict["dataIds"] = []
         for dataId in self.dataIds:
@@ -96,7 +100,10 @@ class Payload:
         return json.dumps(json_dict)
 
     def __repr__(self):
-        return f"Payload(dataIds={[d for d in self.dataIds]}, run={self.run}, pipelineGraphBytes=<the bytes>)"
+        return (
+            f"Payload(dataIds={[d for d in self.dataIds]}, run={self.run}, who={self.who},"
+            " pipelineGraphBytes=<the bytes>)"
+        )
 
 
 @dataclass(frozen=True)
@@ -123,6 +130,7 @@ class PayloadResult(Payload):
             dataIds=instance.dataIds,
             pipelineGraphBytes=instance.pipelineGraphBytes,
             run=instance.run,
+            who=instance.who,
             startTime=json_dict["startTime"],
             endTime=json_dict["endTime"],
             splitTimings=json_dict["splitTimings"],

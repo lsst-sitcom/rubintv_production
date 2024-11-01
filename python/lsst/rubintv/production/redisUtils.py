@@ -411,7 +411,7 @@ class RedisHelper:
         value = self.redis.hget(key, pid)
         return int(value or 0)
 
-    def reportVisitLevelFinished(self, instrument: str, step: str, failed=False) -> None:
+    def reportVisitLevelFinished(self, instrument: str, step: str, who: str, failed=False) -> None:
         """Count the number of times a visit-level pipeline has finished.
 
         Parameters
@@ -420,17 +420,19 @@ class RedisHelper:
             The name of the instrument.
         step : `str`
             The name of the step which finished processing.
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f"{instrument}-{step}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
         self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
             key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
             self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
-    def getNumVisitLevelFinished(self, instrument: str, step: str) -> int:
+    def getNumVisitLevelFinished(self, instrument: str, step: str, who: str) -> int:
         """Get the number of times a visit-level pipeline has finished.
 
         Parameters
@@ -439,16 +441,18 @@ class RedisHelper:
             The name of the instrument.
         step : `str`
             The name of the step which finished processing.
+        who : `str`
+            Whose pipeline is the step counter for e.g. "SFM" or "AOS".
 
         Returns
         -------
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f"{instrument}-{step}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
         return int(self.redis.get(key) or 0)
 
-    def reportNightLevelFinished(self, instrument: str, failed=False) -> None:
+    def reportNightLevelFinished(self, instrument: str, who: str, failed=False) -> None:
         """Count the number of times a night-level pipeline has finished.
 
         Parameters
@@ -458,7 +462,7 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f"{instrument}-NIGHTLYROLLUP-FINISHEDCOUNTER"
+        key = f"{instrument}-{who}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
 
     def getIdsForTask(self, instrument: str, taskName: str) -> list[str]:
