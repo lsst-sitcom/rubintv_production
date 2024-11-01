@@ -269,11 +269,13 @@ class PipelineComponents:
     graphBytes: dict[str, bytes]
     uris: dict[str, str]
     steps: Iterable[str]
+    pipelineFile: str
 
     def __init__(self, registry: Registry, pipelineFile: str, steps: Iterable[str]) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
+        self.pipelineFile = pipelineFile
 
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
@@ -300,16 +302,12 @@ class HeadProcessController:
         butler: Butler,
         instrument: str,
         locationConfig: LocationConfig,
-        # TODO: remove pipelineFile arg add all graphs on init once we move
-        # from DonutLauncher?
-        pipelineFile: str,
         outputChain: str | None = None,
         forceNewRun: bool = False,
     ) -> None:
         self.butler: Butler = butler
         self.instrument: str = instrument
         self.locationConfig: LocationConfig = locationConfig
-        self._basePipeline: str = pipelineFile
         self.log: Logger = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
         self.redisHelper: RedisHelper = RedisHelper(
             butler=butler, locationConfig=locationConfig, isHeadNode=True
@@ -322,12 +320,9 @@ class HeadProcessController:
         self.remoteController: RemoteController = RemoteController(
             butler=butler, locationConfig=locationConfig
         )
-        self.workTimer: BoxCarTimer = BoxCarTimer(
-            length=100
-        )  # don't start here, the event loop starts the lap timer
-        self.loopTimer: BoxCarTimer = BoxCarTimer(
-            length=100
-        )  # don't start here, the event loop starts the lap timer
+        # don't start here, the event loop starts the lap timer
+        self.workTimer: BoxCarTimer = BoxCarTimer(length=100)
+        self.loopTimer: BoxCarTimer = BoxCarTimer(length=100)
         self.podDetails: PodDetails = PodDetails(
             instrument=instrument, podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None
         )
@@ -347,7 +342,7 @@ class HeadProcessController:
         self.outputChain = outputChain
 
         self.outputRun = self.getLatestRunAndPrep(forceNewRun=forceNewRun)
-        self.runningAos = False
+        self.runningAos = True
         self.log.info(
             f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
             f"Data will be writen data to {self.outputRun}"
@@ -448,7 +443,7 @@ class HeadProcessController:
             return busyWorker
         return idMatchedWorkers[0]
 
-    def getFreeGatherWorkerQueue(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
+    def getFreeGatherWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
@@ -528,9 +523,10 @@ class HeadProcessController:
         # this block will be different when we're observing with LSSTCam the
         # triggering will be too, because it'll be for every image so at that
         # point consider making this part of the normal step1 fanout
+
         detectorIds = []
         results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
-        detectorIds = cast(list[int], [item["detector"] for item in results])
+        detectorIds = cast(list[int], sorted([item["detector"] for item in results]))
 
         dataIds: dict[int, list[DataCoordinate]] = {}
         for detectorId in detectorIds:
@@ -549,7 +545,7 @@ class HeadProcessController:
 
         dayObs = expRecords[0].day_obs
         self.log.info(
-            f"Fanning out {instrument}-{dayObs}-{','.join([r.seq_num for r in expRecords])} for"
+            f"Fanning out {instrument}-{dayObs}-{[r.seq_num for r in expRecords]} for"
             f" {len(detectorIds)} detectors"
         )
 
@@ -627,18 +623,7 @@ class HeadProcessController:
             return 189
         raise ValueError(f"Unknown instrument {instrument=}")
 
-    def _dispatch2a(self, dataCoordinate: DataCoordinate) -> None:
-        payload = Payload(
-            dataIds=[dataCoordinate],
-            pipelineGraphBytes=self.pipelines["SFM"].graphBytes["step2a"],
-            run=self.outputRun,
-        )
-        # caps for the queue name. Maybe should reconsider how that's dealt wit
-        # post OR3
-        queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.STEP2A_WORKER)
-        self.redisHelper.enqueuePayload(payload, queueName)
-
-    def dispatchGatherSteps(self, triggeringTask: str, step: str, dispatchIncomplete: bool = False) -> bool:
+    def dispatchGatherSteps(self, who: str, dispatchIncomplete: bool = False) -> bool:
         """Dispatch any gather steps as needed.
 
         Note that the return value is currently unused, but is planned to be
@@ -652,6 +637,9 @@ class HeadProcessController:
         # allIds is all the incomplete or just-completed exp/visit ids for
         # gather processing. Completed ids are removed once the gather step
         # has been run.
+        assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
+
+        triggeringTask = getStep2aTriggerTask(self.pipelines[who].pipelineFile)
         allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
         completeIds = [
             _id
@@ -663,25 +651,51 @@ class HeadProcessController:
         if len(allIds) == 0:
             return False
 
-        for _id in allIds:
-            isComplete = _id in completeIds
-            dataCoord = DataCoordinate.standardize(
-                instrument=self.instrument, visit=_id, universe=self.butler.dimensions
+        for idStr in allIds:
+            isComplete = idStr in completeIds
+            if who == "SFM":  # _id is a visit int as a string
+                intId = int(idStr)
+                dataCoords = [
+                    DataCoordinate.standardize(
+                        instrument=self.instrument, visit=intId, universe=self.butler.dimensions
+                    )
+                ]
+                podFlavour = PodFlavor.SFM_WORKER
+            else:  # _id is a list of visitIds as a string with a + separator
+                intIds = [int(_id) for _id in idStr.split("+")]
+                dataCoords = [
+                    DataCoordinate.standardize(
+                        instrument=self.instrument, visit=intId, universe=self.butler.dimensions
+                    )
+                    for intId in intIds
+                ]
+                podFlavour = PodFlavor.AOS_WORKER
+
+            payload = Payload(
+                dataIds=dataCoords,
+                pipelineGraphBytes=self.pipelines[who].graphBytes["step2a"],
+                run=self.outputRun,
             )
             if isComplete:
-                self.log.info(f"Dispatching {step} with complete inputs for {dataCoord}")
-                self._dispatch2a(dataCoord)
-                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, _id)
+                self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords}")
+                worker = self.getFreeGatherWorker(self.instrument, podFlavour)
+                self.redisHelper.enqueuePayload(payload, worker)
+                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, idStr)
 
                 # never dispatch this incomplete because it relies on a
                 # specific detector having finished
-                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
-                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+                if who == "SFM":
+                    (expRecord,) = self.butler.registry.queryDimensionRecords(
+                        "exposure", dataId=dataCoords[0]
+                    )
+                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
 
             else:
                 if dispatchIncomplete:
-                    self.log.info(f"Dispatching incomplete {step} for {dataCoord}")
-                    self._dispatch2a(dataCoord)
+                    self.log.info(f"Dispatching incomplete step2a for {who} with inputs: {dataCoords}")
+                    worker = self.getFreeGatherWorker(self.instrument, podFlavour)
+                    self.redisHelper.enqueuePayload(payload, worker)
+                    self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, idStr)
                     # NB do not remove the counter key here, as this will be
                     # redispatched once complete, and should only be removed
                     # then
@@ -714,7 +728,7 @@ class HeadProcessController:
         dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
         dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
         payload = Payload([dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun)
-        queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
+        queueName = self.getFreeGatherWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
         self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self) -> None:
@@ -749,7 +763,7 @@ class HeadProcessController:
                 dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload([dataCoord], b"", dataProduct)
-                queueName = self.getFreeGatherWorkerQueue(self.instrument, PodFlavor.MOSAIC_WORKER)
+                queueName = self.getFreeGatherWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
 
@@ -813,7 +827,7 @@ class HeadProcessController:
         # dataCoord2 = DataCoordinate.standardize(dataId2)
         # payload = Payload(dataCoord, self.pipelineGraphsBytes["step2a"],
         #                   run=self.outputRun)
-        # queueName = self.getFreeGatherWorkerQueue(self.instrument,
+        # queueName = self.getFreeGatherWorker(self.instrument,
         #                                          PodFlavor.STEP2A_AOS_WORKER)
         # self.redisHelper.enqueuePayload(payload, queueName)
 
@@ -849,11 +863,9 @@ class HeadProcessController:
             # with tracking that and dispatching only if the number has gone up
             # *and* there are 2+ free workers, because it's not worth
             # re-dispatching for every single new CCD exposure which finishes.
-            self.dispatchGatherSteps(
-                triggeringTask=getStep2aTriggerTask(self._basePipeline),
-                step="step2a",
-                dispatchIncomplete=False,
-            )
+            self.dispatchGatherSteps(who="SFM", dispatchIncomplete=False)
+
+            self.dispatchGatherSteps(who="AOS", dispatchIncomplete=False)
 
             self.dispatchFocalPlaneMosaics()
 

@@ -19,28 +19,45 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
+
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.processingControl import HeadProcessController
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
+instrument = "LSSTComCam"
 locationConfig = getAutomaticLocationConfig()
-print(f"Running {instrument} head node at {locationConfig.location}...")
+
+workerNum = getPodWorkerNumber()
+podDetails = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.STEP2A_AOS_WORKER, detectorNumber=None, depth=workerNum
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
 butler = dafButler.Butler(  # type: ignore
-    locationConfig.lsstCamButlerPath,
+    locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTCam/defaults",
+        f"{instrument}/defaults",
     ],
-    writeable=True,  # needed for defineVisits
+    writeable=True,
 )
 
-controller = HeadProcessController(
+step2aRunner = SingleCorePipelineRunner(
     butler=butler,
-    instrument=instrument,
     locationConfig=locationConfig,
+    instrument=instrument,
+    pipeline=locationConfig.getAosPipelineFile(instrument),
+    step="step2a",
+    awaitsDataProduct=None,
+    podDetails=podDetails,
+    doRaise=getDoRaise(),
 )
-controller.run()
+step2aRunner.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here

@@ -20,27 +20,44 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import lsst.daf.butler as dafButler
-from lsst.rubintv.production.processingControl import HeadProcessController
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
+instrument = "LSSTComCam"
 locationConfig = getAutomaticLocationConfig()
-print(f"Running {instrument} head node at {locationConfig.location}...")
 
+workerNum = getPodWorkerNumber()
+detectorNum = workerNum % 9
+detectorDepth = workerNum // 9
+podDetails = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.AOS_WORKER, detectorNumber=detectorNum, depth=detectorDepth
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
+
+locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(  # type: ignore
-    locationConfig.lsstCamButlerPath,
+    locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTCam/defaults",
+        f"{instrument}/defaults",
     ],
-    writeable=True,  # needed for defineVisits
+    writeable=True,
 )
 
-controller = HeadProcessController(
+sfmRunner = SingleCorePipelineRunner(
     butler=butler,
-    instrument=instrument,
     locationConfig=locationConfig,
+    instrument=instrument,
+    pipeline=locationConfig.getAosPipelineFile(instrument),
+    step="step1",
+    awaitsDataProduct="raw",
+    podDetails=podDetails,
+    doRaise=getDoRaise(),
 )
-controller.run()
+sfmRunner.run()

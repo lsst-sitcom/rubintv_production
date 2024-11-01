@@ -194,15 +194,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.runCollection = payload.run
 
         compoundId = ""
-        for i, dataId in enumerate(dataIds):
-            if "exposure" in dataId:
-                compoundId += f"{dataId['exposure']}"
-            elif "visit" in dataId:
-                compoundId += f"{dataId['visit']}"
-            else:  # for day_obs or instrument level dataIds.
-                compoundId += f"{dataId}"
-            if i >= 1:
-                compoundId += "+"
+        sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
+        if "exposure" in sampleDataId:
+            compoundId = "+".join([f"{dataId['exposure']}" for dataId in dataIds])
+        elif "visit" in sampleDataId:
+            compoundId = "+".join([f"{dataId['visit']}" for dataId in dataIds])
+        else:  # for day_obs or instrument level dataIds.
+            compoundId = "+".join([f"{dataId}" for dataId in dataIds])
 
         # XXX reinstate or remove? we deal with isr differently now...
         # if not self.doProcessImage(dataId):
@@ -222,11 +220,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             where = ""
             bind = {}
             for i, dataId in enumerate(dataIds):
-                idString = f"_dataId_{i}"
-                where += " AND ".join(f"{k}=_{idString}{k}" for k in dataId.mapping)
-                bind.update({f"_{idString}{k}": v for k, v in dataId.mapping.items()})
-                if i >= 1:
-                    where += " OR "
+                idString = f"dataId_{i}_"
+                where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+                bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
+                where += " OR "
+            if where.endswith(" OR "):
+                where = where[:-4]
 
             builder = AllDimensionsQuantumGraphBuilder(
                 self.pipelineGraph,
