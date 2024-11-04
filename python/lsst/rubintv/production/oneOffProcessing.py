@@ -126,6 +126,13 @@ class OneOffProcessor(BaseButlerChannel):
             md = {seqNum: {"Focus Z": "MISSING VALUE!"}}
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
+    def writeObservationAnnotation(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
+        headerMetadata = exp.metadata.toDict()
+        note = headerMetadata.get("OBSANNOT")
+        if note is not None:
+            md = {seqNum: {"Observation annotation": f"{note}"}}
+            writeMetadataShard(self.shardsDirectory, dayObs, md)
+
     def calcPsfAndWrite(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         try:
             result = self.peekTask.run(exp)
@@ -159,6 +166,9 @@ class OneOffProcessor(BaseButlerChannel):
 
         self.log.info(f"Writing focus Z for {dataId}")
         self.writeFocusZ(postISR, expRecord.day_obs, expRecord.seq_num)
+
+        self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
+        self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
 
         if not isCalibration(expRecord):
             self.log.info(f"Calculating PSF for {dataId}")
