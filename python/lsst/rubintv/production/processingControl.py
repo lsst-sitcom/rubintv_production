@@ -373,7 +373,8 @@ class HeadProcessController:
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
 
-        allRunNums = [int(run.removeprefix(self.outputChain + "/")) for run in allRuns]
+        allRunNums = [int(run.removeprefix(self.outputChain + "/")) for run in allRuns
+                      if self.outputChain in run]
         lastRunNum = max(allRunNums) if allRunNums else 0
         lastRun = f"{self.outputChain}/{lastRunNum}"
 
