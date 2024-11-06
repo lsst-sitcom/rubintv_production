@@ -630,7 +630,7 @@ class HeadProcessController:
             return 189
         raise ValueError(f"Unknown instrument {instrument=}")
 
-    def dispatchGatherSteps(self, who: str, dispatchIncomplete: bool = False) -> bool:
+    def dispatchGatherSteps(self, who: str) -> bool:
         """Dispatch any gather steps as needed.
 
         Note that the return value is currently unused, but is planned to be
@@ -641,32 +641,30 @@ class HeadProcessController:
         dispatchedWork : `bool`
             Was anything sent out?
         """
-        # allIds is all the incomplete or just-completed exp/visit ids for
-        # gather processing. Completed ids are removed once the gather step
-        # has been run.
         assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
+        processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1", who=who)
 
-        triggeringTask = getStep2aTriggerTask(self.pipelines[who].pipelineFile)
-        allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
-        completeIds = [
-            _id
-            for _id in allIds
-            if self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id)
-            == self.getNumExpected(self.instrument)
-        ]
+        if not processedIds:
+            return False
 
-        if len(allIds) == 0:
+        completeIds = []
+        for idStr in processedIds:
+            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1", who, idStr)
+            if nFinished == self.getNumExpected(self.instrument):
+                completeIds.append(idStr)
+
+        if not completeIds:
             return False
 
         podFlavour = PodFlavor.STEP2A_AOS_WORKER if who == "AOS" else PodFlavor.STEP2A_WORKER
 
-        for idStr in allIds:
-            isComplete = idStr in completeIds
+        self.log.debug(f"For {who}: Found {completeIds=} for step1 for {who}")
 
+        for idStr in completeIds:
             # idStr is a list of visitIds as a string with a + separator if AOS
             # else idStr is a visit int as a string
             intIds = [int(_id) for _id in idStr.split("+")]
-            self.log.debug(f"Found {len(intIds)} complete visits for dispatch {intIds=}")
+            self.log.debug(f"Found {len(intIds)} complete visits for {who} dispatch {intIds=}, {idStr}")
             dataCoords = [
                 DataCoordinate.standardize(
                     instrument=self.instrument, visit=intId, universe=self.butler.dimensions
@@ -680,33 +678,21 @@ class HeadProcessController:
                 run=self.outputRun,
                 who=who,
             )
-            if isComplete:
-                worker = self.getGatherWorker(self.instrument, podFlavour)
-                self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
-                self.redisHelper.enqueuePayload(payload, worker)
-                self.log.debug(f"Removing task counter for {triggeringTask} for {idStr=}")
-                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, idStr)
 
-                # never dispatch this incomplete because it relies on a
-                # specific detector having finished
-                if who == "SFM":
-                    (expRecord,) = self.butler.registry.queryDimensionRecords(
-                        "exposure", dataId=dataCoords[0]
-                    )
-                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+            worker = self.getGatherWorker(self.instrument, podFlavour)
+            self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
+            self.redisHelper.enqueuePayload(payload, worker)
+            self.log.debug(f"Removing step1 finished counter for {idStr=}")
+            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1", who, idStr)
 
-            else:
-                if dispatchIncomplete:
-                    self.log.info(f"Dispatching incomplete step2a for {who} with inputs: {dataCoords}")
-                    worker = self.getGatherWorker(self.instrument, podFlavour)
-                    self.redisHelper.enqueuePayload(payload, worker)
-                    # NB do not remove the counter key here, as this will be
-                    # redispatched once complete, and should only be removed
-                    # then
+            # never dispatch this incomplete because it relies on a specific
+            # detector having finished. It might have failed, but that's OK
+            # because the one-off processor will time out quickly.
+            if who == "SFM":
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
+                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
 
-        if completeIds or (dispatchIncomplete and allIds):
-            return True  # we sent something out
-        return False  # nothing was sent
+        return True  # we sent something out
 
     def dispatchRollupIfNecessary(self) -> bool:
         """Check if we should do another rollup, and if so, dispatch it.
@@ -748,11 +734,11 @@ class HeadProcessController:
         dataProducts = ("postISRCCD", "calexp")
 
         for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
-            allIds = set(self.redisHelper.getIdsForTask(self.instrument, triggeringTask))
+            allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
             completeIds = [
                 _id
-                for _id in allIds
-                if self.redisHelper.getNumFinished(self.instrument, triggeringTask, _id)
+                for _id in allDataIds
+                if self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
                 == self.getNumExpected(self.instrument)
             ]
             if not completeIds:
@@ -765,29 +751,12 @@ class HeadProcessController:
             )
             self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
 
-            toDispatch: list[int] = []
-            for expId in completeIds:  # split the compound ids from AOS. This whole thing really need a tidy!
-                if "+" in expId:
-                    expIds = [int(e) for e in expId.split("+")]
-                    toDispatch.extend(expIds)
-                else:
-                    toDispatch.append(int(expId))
-
-            for intExpId in toDispatch:  # intExpId because mypy doesn't like reusing loop variables?!
-                dataId: dict[str, int | str] = {"exposure": intExpId, "instrument": self.instrument}
-                dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
+            for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
                 # TODO: this abuse of Payload really needs improving
-                payload = Payload([dataCoord], b"", dataProduct, who="SFM")
+                payload = Payload([dataId], b"", dataProduct, who="SFM")
                 queueName = self.getGatherWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
-                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, intExpId)
-
-            # this is awful and should be in the loop, but it's hard because of
-            # the compound ids and this all needs some attention really.
-            # However, the code made it this far, so it's safe to just remove
-            # them like this for now.
-            for expId in completeIds:
-                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, expId)
+                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
     def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
@@ -864,9 +833,9 @@ class HeadProcessController:
             # with tracking that and dispatching only if the number has gone up
             # *and* there are 2+ free workers, because it's not worth
             # re-dispatching for every single new CCD exposure which finishes.
-            self.dispatchGatherSteps(who="SFM", dispatchIncomplete=False)
+            self.dispatchGatherSteps(who="SFM")
 
-            self.dispatchGatherSteps(who="AOS", dispatchIncomplete=False)
+            self.dispatchGatherSteps(who="AOS")
 
             self.dispatchFocalPlaneMosaics()
 

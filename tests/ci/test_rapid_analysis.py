@@ -382,8 +382,7 @@ def check_redis_final_contents():
     ]
 
     visits_aos = [
-        2024110200171,
-        2024110200172,
+        "2024110200171+2024110200172",
     ]
 
     # n_visits = len(visits)
@@ -404,7 +403,7 @@ def check_redis_final_contents():
     n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
     if n_visits_aos != n_step2a_aos:
         CHECKS.append(
-            Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_visits_aos}")
+            Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_step2a_aos}")
         )
     else:
         CHECKS.append(Check(True, f"{n_visits_aos}x AOS step2a finished"))

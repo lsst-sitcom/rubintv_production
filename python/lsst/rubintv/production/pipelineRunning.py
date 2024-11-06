@@ -284,16 +284,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # just to make sure taskName is defined, so if this shows
                 # up anywhere something is very wrong
                 taskName = "something is deeply wrong"
+                dataCoord = node.quantum.dataId  # pull this out before the try so you can use in except block
+                assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
                 try:
-                    self.log.debug(f"Executing {node.taskDef.taskName}")
+                    self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
 
-                    taskName = node.taskDef.taskName
+                    taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
                     self.log.info(f"Starting to process {taskName}")
+
                     quantum, _ = executor.execute(node.task_node, node.quantum)
-                    self.postProcessQuantum(quantum, compoundId)
-                    self.redisHelper.reportFinished(self.instrument, taskName, compoundId)
+                    self.postProcessQuantum(quantum)
+                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
 
                 except Exception as e:
                     # don't use quantum directly in this block in case it is
@@ -306,12 +309,17 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # tasks, or only the points used for triggering other
                     # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
-                    self.redisHelper.reportFinished(self.instrument, taskName, compoundId, failed=True)
+                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
             self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
 
             # finished looping over nodes
+            if self.step == "step1":
+                self.log.debug(f"Announcing completion of step1 for {compoundId} for {who}")
+                self.redisHelper.reportDetectorLevelFinished(
+                    self.instrument, "step1", who=who, processingId=compoundId
+                )
             if self.step == "step2a":  # XXX this actually needs to SFM-step2 and AOS-step2 now!
                 self.log.debug(f"Announcing completion of step2a for {compoundId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who)
@@ -330,7 +338,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum, compoundId: str) -> None:
+    def postProcessQuantum(self, quantum) -> None:
         """Write shards here, make sure to keep these bits quick!
 
         compoundId is a maybe-compound id, either a single exposure or a
@@ -355,7 +363,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # etc. Would probably mean changes to mergeShardsAndUpload in
             # order to merge dict-like items into their corresponding
             # dicts.
-            self.postProcessCalibrate(quantum, compoundId)
+            self.postProcessCalibrate(quantum)
         elif "postprocess.ConsolidateVisitSummaryTask".lower() in taskName.lower():
             # ConsolidateVisitSummaryTask regardless of quickLook or NV
             # pipeline, because this is the quantum that holds the
@@ -396,7 +404,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             except Exception:
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
-    def postProcessCalibrate(self, quantum, compoundId) -> None:
+    def postProcessCalibrate(self, quantum) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
         # refactoring yet, especially as they will probably diverge in the
         # future.
@@ -416,7 +424,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", compoundId)
+        self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", quantum.dataId)
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
         try:

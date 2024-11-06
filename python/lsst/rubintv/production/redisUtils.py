@@ -33,11 +33,11 @@ from typing import TYPE_CHECKING, Callable
 
 import redis
 
-from lsst.daf.butler import DimensionRecord
+from lsst.daf.butler import DataCoordinate, DimensionRecord
 
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
-from .utils import expRecordFromJson
+from .utils import expRecordFromJson, removeDetector
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None
@@ -367,8 +367,14 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(f"{instrument}-fromButlerWacher", expRecordJson)
 
-    def reportFinished(self, instrument: str, taskName: str, processingId: int | str, failed=False) -> None:
-        """Report that a task has finished.
+    def reportTaskFinished(
+        self, instrument: str, taskName: str, dataId: DataCoordinate, failed=False
+    ) -> None:
+        """Report that a task has finished, be that a real DM Task or simply
+        that something has happened which needs to be triggered on.
+
+        The detector number is removed from the dataId, and we count the number
+        of tasks which finish for that dataId.
 
         Parameters
         ----------
@@ -376,19 +382,19 @@ class RedisHelper:
             The name of the instrument.
         taskName : `str`
             The name of the task that has finished processing.
-        processingId : `int`
-            Either the exposureId or visitId of the payload that has finished
-            being processed for the specified task.
+        dataId : `DataCoordinate`
+            The dataId the task has finished processing.
         """
         key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
-        pid = str(processingId).encode("utf-8")  # deal with string or int
-        self.redis.hincrby(key, pid, 1)  # creates the key if it doesn't exist
+        dataIdNoDetector = removeDetector(dataId, self.butler)
+        processingId = dataIdNoDetector.to_json().encode("utf-8")
+        self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
             key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
-            self.redis.hincrby(key, pid, 1)  # creates the key if it doesn't exist
+            self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
-    def getNumFinished(self, instrument: str, taskName: str, processingId: int | str) -> int:
+    def getNumTaskFinished(self, instrument: str, taskName: str, dataId: DataCoordinate) -> int:
         """Get the number of items finished for a given task and id.
 
         Parameters
@@ -397,9 +403,8 @@ class RedisHelper:
             The name of the instrument.
         taskName : `str`
             The name of the task that has finished processing.
-        processingId : `int`
-            Either the exposureId or visitId of the payload that has finished
-            being processed for the specified task.
+        dataId : `DataCoordinate`
+            The dataId the task has finished processing.
 
         Returns
         -------
@@ -407,9 +412,121 @@ class RedisHelper:
             The number of times the task has finished.
         """
         key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
-        pid = str(processingId).encode("utf-8")  # deal with string or int
-        value = self.redis.hget(key, pid)
+        dataIdNoDetector = removeDetector(dataId, self.butler)
+        processingId = dataIdNoDetector.to_json().encode("utf-8")
+        value = self.redis.hget(key, processingId)
         return int(value or 0)
+
+    def getAllDataIdsForTask(self, instrument: str, taskName: str) -> list[DataCoordinate]:
+        """Get a list of processed ids for the specified task
+
+        These are returned
+        """
+        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        idList = self.redis.hgetall(key).keys()  # list of bytes
+        return [
+            DataCoordinate.from_json(dataCoordJson, universe=self.butler.dimensions)
+            for dataCoordJson in idList
+        ]
+
+    def removeTaskCounter(self, instrument: str, taskName: str, dataId: DataCoordinate) -> None:
+        """Once a gather step is finished with all the expected data present,
+        remove the counter from the tracking dictionary to save reprocessing it
+        each time.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        taskName : `str`
+            The name of the task that has finished processing.
+        dataId : `DataCoordinate`
+            The dataId the task has finished processing.
+        """
+        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        dataIdNoDetector = removeDetector(dataId, self.butler)
+        processingId = dataIdNoDetector.to_json().encode("utf-8")
+        if self.redis.hexists(key, processingId):
+            self.redis.hdel(key, processingId)
+        else:
+            self.log.warning(
+                f"Key {key} with processingId {processingId.decode('utf-8')} from {dataId} for {taskName}"
+                " did not exist when removal was attempted"
+            )
+
+    def reportDetectorLevelFinished(
+        self, instrument: str, step: str, who: str, processingId: str, failed=False
+    ) -> None:
+        """Count the number of times a detector-level pipeline has finished.
+
+        Increments the FINISHEDCOUNTER for the key corresponding to the
+        instrument, step, and who. If the processing failed, the FAILEDCOUNTER
+        is also incremented.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        step : `str`
+            The name of the step which finished processing.
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        processingId : `str`
+            The processing id, either single or compound.
+        failed : `bool`
+            True if the processing did not fail to complete
+        """
+        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+
+        if failed:  # fails have finished too, so increment finished and failed
+            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
+            self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+
+    def getNumDetectorLevelFinished(self, instrument: str, step: str, who: str, processingId: str) -> int:
+        """Get the number of times a visit-level pipeline has finished.
+
+        Returns the number of times the step has finished for the given
+        processingId.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        step : `str`
+            The name of the step which finished processing.
+        who : `str`
+            Whose pipeline is the step counter for e.g. "SFM" or "AOS".
+        processingId : `str`
+            The processing id, either single or compound.
+
+        Returns
+        -------
+        numFinished : `int`
+            The number of times the step has finished.
+        """
+        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        if not self.redis.hexists(key, processingId):
+            self.log.warning(f"Key {key} with processingId {processingId} does not exist")
+        return int(self.redis.hget(key, processingId) or 0)
+
+    def getAllIdsForDetectorLevel(self, instrument: str, step: str, who: str) -> list[str]:
+        """Get a list of processed ids for the specified step."""
+        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        idList = self.redis.hgetall(key).keys()
+        return [procId.decode("utf-8") for procId in idList]
+
+    def removeFinishedIdDetectorLevel(self, instrument: str, step: str, who: str, processingId: str) -> None:
+        """Remove the specified counter for the processingId from the list of
+        finishing ids.
+        """
+        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        if self.redis.hexists(key, processingId):
+            self.redis.hdel(key, processingId)
+        else:
+            self.log.warning(
+                f"Key {key} with processingId {processingId} did not exist when removal was attempted"
+            )
 
     def reportVisitLevelFinished(self, instrument: str, step: str, who: str, failed=False) -> None:
         """Count the number of times a visit-level pipeline has finished.
@@ -464,44 +581,6 @@ class RedisHelper:
         """
         key = f"{instrument}-{who}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
-
-    def getIdsForTask(self, instrument: str, taskName: str) -> list[str]:
-        # def getIdsForTask(self, instrument: str, taskName: str)
-        # # -> list[int | list[int]]:
-        """Get a list of processed ids for the specified task
-
-        These are returned
-        """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
-        idList = self.redis.hgetall(key).keys()  # list of bytes
-        # toReturn = []
-        # for procId in idList:
-        #     procId = procId.decode("utf-8")
-        #     if "+" not in procId:
-        #         toReturn.append(int(procId))
-        #     else:
-        #         ids = procId.split("+")
-        #         toReturn.append([int(_id) for _id in ids])
-        return [procId.decode("utf-8") for procId in idList]
-
-    def removeTaskCounter(self, instrument: str, taskName: str, processId: int | str) -> None:
-        """Once a gather step is finished with all the expected data present,
-        remove the counter from the tracking dictionary to save reprocessing it
-        each time.
-
-        Parameters
-        ----------
-        instrument : `str`
-            The name of the instrument.
-        taskName : `str`
-            The name of the task that has finished processing.
-        processingId : `int` or `str`
-            Either the exposureId or visitId of the payload that has finished
-            being processed for the specified task.
-        """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
-        pid = str(processId).encode("utf-8")  # deal with string or int
-        self.redis.hdel(key, pid)
 
     def checkButlerWatcherList(self, instrument, expRecord) -> bool:
         """Check if an exposure record has already been processed because it
