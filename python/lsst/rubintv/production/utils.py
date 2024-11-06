@@ -36,7 +36,7 @@ from functools import cached_property
 import numpy as np
 import yaml
 
-from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
 from lsst.resources import ResourcePath
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from lsst.utils import getPackageDir
@@ -1303,3 +1303,22 @@ def isWepImage(expRecord: DimensionRecord) -> bool:
         ``True`` if the exposure is a calibration exposure, else ``False``.
     """
     return expRecord.observation_type.lower() == "cwfs"
+
+
+def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
+    """Remove the detector from a DataCoordinate and return it in minimal form.
+
+    Parameters
+    ----------
+    dataCoord : `DataCoordinate`
+        The data coordinate to remove the detector from.
+    butler : `Butler`
+        The butler to get the dimensions from.
+
+    Returns
+    -------
+    minimalDataCoord : `DataCoordinate`
+        The data coordinate with the detector removed.
+    """
+    noDetector = {k: v for k, v in dataCoord.required.items() if k != "detector"}
+    return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
