@@ -378,11 +378,12 @@ def check_redis_final_contents():
     inst = "LSSTComCam"
 
     visits_sfm = [
-        2024102800045,
+        2024110200170,
     ]
 
     visits_aos = [
-        "2024102800043+2024102800044",
+        2024110200171,
+        2024110200172,
     ]
 
     # n_visits = len(visits)
@@ -400,8 +401,8 @@ def check_redis_final_contents():
         CHECKS.append(Check(True, f"{n_step2a_sfm}x SFM step2a finished"))
     del n_visits_sfm
 
-    n_visits_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
-    if n_visits_aos != n_visits_aos:
+    n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
+    if n_visits_aos != n_step2a_aos:
         CHECKS.append(
             Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_visits_aos}")
         )
@@ -422,7 +423,7 @@ def check_redis_final_contents():
     expected = redisHelper.redis.lpop(key)
     if expected is not None:
         expected = int(expected.decode("utf-8"))
-    if expected == 2024102800045:
+    if expected == visits_sfm[0]:
         CHECKS.append(Check(True, "PSF plotter received the expected visit"))
     else:
         CHECKS.append(Check(False, f"PSF plotter did not receive the expected visit, got {expected}"))
@@ -675,14 +676,14 @@ def check_plots():
     files = os.listdir(locationConfig.plotPath)
     # TODO make this more data-driven
     expected = [
-        "calexp_mosaic_dayObs_20241028_seqNum_000045.jpg",
-        "postISRCCD_mosaic_dayObs_20241028_seqNum_000043.jpg",
-        "postISRCCD_mosaic_dayObs_20241028_seqNum_000044.jpg",
-        "postISRCCD_mosaic_dayObs_20241028_seqNum_000045.jpg",
-        "20241028_43-fp_donut_gallery.png",
-        "20241028_44-fp_donut_gallery.png",
-        "20241028_44-zk_measurement_pyramid.png",
-        "20241028_44-zk_residual_pyramid.png",
+        "calexp_mosaic_dayObs_20241102_seqNum_000170.jpg",
+        "postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
+        "postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
+        "postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
+        "20241102_171-fp_donut_gallery.png",
+        "20241102_172-fp_donut_gallery.png",
+        "20241102_172-zk_measurement_pyramid.png",
+        "20241102_172-zk_residual_pyramid.png",
     ]
 
     for file in expected:

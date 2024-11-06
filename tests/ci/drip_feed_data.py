@@ -23,8 +23,10 @@ butler = dafButler.Butler(
 
 redisHelper = RedisHelper(butler, locationConfig)
 
-# XXX change this back to all three
-where = f"exposure.day_obs=20241028 AND exposure.seq_num in (43..45) AND instrument='{instrument}'"  # on sky!
+where = (
+    "exposure.day_obs=20241102 AND exposure.seq_num in (170..172)"
+    f" AND instrument='{instrument}'"  # on sky!
+)
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 3, f"Expected 3 record, got {len(records)}"
 
@@ -39,4 +41,4 @@ for record in records:  # XXX remove the slice!
     redisHelper.pushToButlerWatcherList(instrument, record)
 
 print("Pushing pair announcement signal to redis (simulating OCS signal)")
-redisHelper.redis.rpush("LSSTComCam-FROM-OCS_DONUTPAIR", "2024102800043,2024102800044")
+redisHelper.redis.rpush("LSSTComCam-FROM-OCS_DONUTPAIR", "2024110200171,2024110200172")
