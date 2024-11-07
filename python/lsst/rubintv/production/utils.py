@@ -1185,7 +1185,7 @@ def getNumExpectedItems(expRecord, logger=None):
         return fallbackValue
 
 
-def getShardPath(locationConfig, expRecord):
+def getShardPath(locationConfig: LocationConfig, expRecord: DimensionRecord, isAos: bool = False) -> str:
     """Get the path to the metadata shard for the given exposure record.
 
     Parameters
@@ -1200,12 +1200,20 @@ def getShardPath(locationConfig, expRecord):
     """
     match expRecord.instrument:
         case "LATISS":
+            if isAos:
+                raise ValueError("No AOS metadata for LATISS")
             return locationConfig.auxTelMetadataShardPath
         case "LSSTComCam":
+            if isAos:
+                return locationConfig.comCamAosMetadataShardPath
             return locationConfig.comCamMetadataShardPath
         case "LSSTComCamSim":
+            if isAos:
+                return locationConfig.comCamSimAosMetadataShardPath
             return locationConfig.comCamSimMetadataShardPath
         case "LSSTCam":
+            if isAos:
+                raise ValueError("No AOS metadata for LSSTCam yet")
             return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")

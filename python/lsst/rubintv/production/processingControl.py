@@ -823,6 +823,9 @@ class HeadProcessController:
                     self.log.info(f"Found a donut pair trigger for {donutPair}")
                     (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
                     (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
+                    aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
+                    writeExpRecordMetadataShard(record1, aosShardPath)
+                    writeExpRecordMetadataShard(record2, aosShardPath)
                     self.doStep1FanoutAos([record1, record2])
 
             # for now, only dispatch to step2a once things are complete because
