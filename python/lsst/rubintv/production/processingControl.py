@@ -362,8 +362,9 @@ class HeadProcessController:
         aosPipelineFile = self.locationConfig.getAosPipelineFile(self.instrument)
 
         self.pipelines = {}
+        self.pipelines["ISR"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["isr"])
         self.pipelines["SFM"] = PipelineComponents(
-            self.butler.registry, sfmPipelineFile, ("isr", "step1", "step2a", "nightlyRollup")
+            self.butler.registry, sfmPipelineFile, ("step1", "step2a", "nightlyRollup")
         )
         self.pipelines["AOS"] = PipelineComponents(self.butler.registry, aosPipelineFile, ("step1", "step2a"))
 
@@ -473,9 +474,11 @@ class HeadProcessController:
         isCalib = isCalibration(expRecord)
         if isCalib:
             self.log.info(f"Sending {expRecord.id} to for calibration processing")
-            targetPipelineBytes = self.pipelines["SFM"].graphBytes["isr"]
+            targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
+            who = "ISR"
         else:
             targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
+            who = "SFM"
 
         detectorIds = []
         nEnabled = None
@@ -484,7 +487,7 @@ class HeadProcessController:
             nEnabled = len(detectorIds)
         else:
             results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
-            detectorIds = [item["detector"] for item in results]
+            detectorIds = sorted([item["detector"] for item in results])
 
         dataIds = {}
         for detectorId in detectorIds:
@@ -496,15 +499,15 @@ class HeadProcessController:
         )
 
         for detectorId, dataId in dataIds.items():
-            queueName = self.getPerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
-            self.log.info(f"Sending {detectorId=} to {queueName} for {dataId}")
+            worker = self.getPerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
+            self.log.info(f"Sending det={detectorId} to {worker.queueName} for {dataId}")
             payload = Payload(
                 dataIds=[dataId],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
-                who="SFM",
+                who=who,
             )
-            self.redisHelper.enqueuePayload(payload, queueName)
+            self.redisHelper.enqueuePayload(payload, worker)
 
         self.nDispatched += 1  # required for the alternating by twos mode
 

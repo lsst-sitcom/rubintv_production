@@ -320,7 +320,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.redisHelper.reportDetectorLevelFinished(
                     self.instrument, "step1", who=who, processingId=compoundId
                 )
-            if self.step == "step2a":  # XXX this actually needs to SFM-step2 and AOS-step2 now!
+            if self.step == "step2a":
                 self.log.debug(f"Announcing completion of step2a for {compoundId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who)
                 # TODO: probably add a utility function on the helper for this
