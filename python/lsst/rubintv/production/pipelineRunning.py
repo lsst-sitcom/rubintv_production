@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
-from lsst.pipe.base import Pipeline, PipelineGraph, QuantumGraph
+from lsst.pipe.base import Pipeline, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
@@ -42,6 +42,7 @@ from .utils import getShardPath, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DataCoordinate
+    from lsst.pipe.base import Quantum
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -128,26 +129,24 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             doRaise=doRaise,
             addUploader=False,  # pipeline running pods don't upload directly
         )
-        self.instrument: str = instrument
-        self.butler: Butler = butler
-        self.step: str = step
-        self.pipeline: str = pipeline + f"#{step}"
-        self.pipelineGraph: PipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(
-            registry=self.butler.registry
-        )
-        self.pipelineGraphBytes: bytes = pipelineGraphToBytes(self.pipelineGraph)
-        self.podDetails: PodDetails = podDetails
+        self.instrument = instrument
+        self.butler = butler
+        self.step = step
+        self.pipeline = pipeline + f"#{step}"
+        self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
+        self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
+        self.podDetails = podDetails
 
         self.runCollection: str | None = None
-        self.limitedButler: CachingLimitedButler = self.makeLimitedButler(butler)
+        self.limitedButler = self.makeLimitedButler(butler)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
-        self.consdbClient: ConsDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
-        self.redisHelper: RedisHelper = RedisHelper(butler, self.locationConfig)
+        self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.redisHelper = RedisHelper(butler, self.locationConfig)
 
-        self.consDBPopulator: ConsDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
-    def makeLimitedButler(self, butler) -> CachingLimitedButler:
+    def makeLimitedButler(self, butler: Butler) -> CachingLimitedButler:
         cachedOnGet = set()
         cachedOnPut = set()
         for name in self.pipelineGraph.dataset_types.keys():
@@ -161,7 +160,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
-    def doProcessImage(self, dataId) -> bool:
+    def doProcessImage(self, dataId: DataCoordinate) -> bool:
         """Determine if we should skip this image.
 
         Should take responsibility for logging the reason for skipping.
@@ -338,7 +337,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum) -> None:
+    def postProcessQuantum(self, quantum: Quantum) -> None:
         """Write shards here, make sure to keep these bits quick!
 
         compoundId is a maybe-compound id, either a single exposure or a
@@ -372,7 +371,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         else:
             return
 
-    def postProcessIsr(self, quantum) -> None:
+    def postProcessIsr(self, quantum: Quantum) -> None:
         dRef = quantum.outputs["postISRCCD"][0]
         exp = self.limitedButler.get(dRef)
 
@@ -404,7 +403,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             except Exception:
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
-    def postProcessCalibrate(self, quantum) -> None:
+    def postProcessCalibrate(self, quantum: Quantum) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
         # refactoring yet, especially as they will probably diverge in the
         # future.
@@ -443,7 +442,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             else:
                 self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
-    def postProcessVisitSummary(self, quantum) -> None:
+    def postProcessVisitSummary(self, quantum: Quantum) -> None:
         dRef = quantum.outputs["visitSummary"][0]
         vs = self.limitedButler.get(dRef)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)

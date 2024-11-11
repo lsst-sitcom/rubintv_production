@@ -64,7 +64,7 @@ KNOWN_INSTRUMENTS = (
 )
 
 
-def getCameraAndPlotName(channel):
+def getCameraAndPlotName(channel: str) -> tuple[str, str] | None:
     """Return the camera name for a given channel name."""
 
     channelLookup = {

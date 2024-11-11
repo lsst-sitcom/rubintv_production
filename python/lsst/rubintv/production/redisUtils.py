@@ -60,8 +60,6 @@ except (ImportError, NameError):
 
 
 if TYPE_CHECKING:
-    from logging import Logger
-
     from lsst.daf.butler import Butler
 
     from .utils import LocationConfig
@@ -70,7 +68,7 @@ if TYPE_CHECKING:
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2
 
 
-def decode_string(value):
+def decode_string(value: bytes) -> str:
     """Decode a string from bytes to UTF-8.
 
     Parameters
@@ -86,7 +84,7 @@ def decode_string(value):
     return value.decode("utf-8")
 
 
-def decode_hash(hash_dict):
+def decode_hash(hash_dict: dict[bytes, bytes]) -> dict[str, str]:
     """Decode a hash dictionary from bytes to UTF-8.
 
     Parameters
@@ -102,7 +100,7 @@ def decode_hash(hash_dict):
     return {k.decode("utf-8"): v.decode("utf-8") for k, v in hash_dict.items()}
 
 
-def decode_list(value_list):
+def decode_list(value_list: list[bytes]) -> list[str]:
     """Decode a list of values from bytes to UTF-8.
 
     Parameters
@@ -118,7 +116,7 @@ def decode_list(value_list):
     return [item.decode("utf-8") for item in value_list]
 
 
-def decode_set(value_set):
+def decode_set(value_set: set[bytes]) -> set[str]:
     """Decode a set of values from bytes to UTF-8.
 
     Parameters
@@ -134,7 +132,7 @@ def decode_set(value_set):
     return {item.decode("utf-8") for item in value_set}
 
 
-def decode_zset(value_zset):
+def decode_zset(value_zset: list[tuple[bytes, bytes]]) -> list[tuple[str, str]]:
     """Decode a zset of values from bytes to UTF-8.
 
     Parameters
@@ -150,17 +148,17 @@ def decode_zset(value_zset):
     return [(item[0].decode("utf-8"), item[1]) for item in value_zset]
 
 
-def getRedisSecret(filename="$HOME/.lsst/redis_secret.ini"):
+def getRedisSecret(filename: str = "$HOME/.lsst/redis_secret.ini") -> str:
     filename = os.path.expandvars(filename)
     with open(filename) as f:
         return f.read().strip()
 
 
-def getNewDataQueueName(instrument):
+def getNewDataQueueName(instrument: str) -> str:
     return f"INCOMING-{instrument}-raw"
 
 
-def _extractExposureIds(exposureBytes, instrument):
+def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
     """Extract the exposure IDs from the byte string.
 
     Parameters
@@ -193,12 +191,12 @@ def _extractExposureIds(exposureBytes, instrument):
 
 class RedisHelper:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, isHeadNode: bool = False) -> None:
-        self.butler: Butler = butler  # needed to expand dataIds when dequeuing payloads
-        self.locationConfig: LocationConfig = locationConfig
-        self.isHeadNode: bool = isHeadNode
-        self.redis: redis.Redis = self._makeRedis()
+        self.butler = butler  # needed to expand dataIds when dequeuing payloads
+        self.locationConfig = locationConfig
+        self.isHeadNode = isHeadNode
+        self.redis = self._makeRedis()
         self._testRedisConnection()
-        self.log: Logger = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
+        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
 
     def _makeRedis(self) -> redis.Redis:
         """Create a redis connection.
@@ -213,7 +211,7 @@ class RedisHelper:
         port: int = int(os.getenv("REDIS_PORT", 6379))
         return redis.Redis(host=host, password=password, port=port)
 
-    def _testRedisConnection(self):
+    def _testRedisConnection(self) -> None:
         """Check that redis is online and can be contacted.
 
         Raises
@@ -582,7 +580,7 @@ class RedisHelper:
         key = f"{instrument}-{who}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
 
-    def checkButlerWatcherList(self, instrument, expRecord) -> bool:
+    def checkButlerWatcherList(self, instrument: str, expRecord) -> bool:
         """Check if an exposure record has already been processed because it
         was seen by the ButlerWatcher.
 
@@ -646,7 +644,7 @@ class RedisHelper:
 
         return commands
 
-    def pushNewExposureToHeadNode(self, expRecord) -> None:
+    def pushNewExposureToHeadNode(self, expRecord: DimensionRecord) -> None:
         """Send an exposure record for processing.
 
         This queue is consumed by the head node, which fans it out for
@@ -666,7 +664,7 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
         self.redis.lpush(queueName, expRecordJson)
 
-    def announceResultInConsDb(self, instrument, table, obsId) -> None:
+    def announceResultInConsDb(self, instrument: str, table: str, obsId: int) -> None:
         """
         Parameters
         ----------
@@ -686,7 +684,7 @@ class RedisHelper:
             self.redis.lpush(key, 1)
         self.redis.expire(key, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
-    def waitForResultInConsdDb(self, instrument, table, obsId, timeout=None) -> bool:
+    def waitForResultInConsdDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
         """Wait for an item to be available in consDB.
 
         NB: this function is only appropriate for items less than 2 days old,
@@ -733,7 +731,7 @@ class RedisHelper:
         else:
             return False
 
-    def getExposureForFanout(self, instrument) -> DimensionRecord | None:
+    def getExposureForFanout(self, instrument: str) -> DimensionRecord | None:
         """Get the next exposure to process for the specified instrument.
 
         Parameters
@@ -754,7 +752,7 @@ class RedisHelper:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
 
-    def checkForOcsDonutPair(self, instrument) -> tuple[int, int] | None:
+    def checkForOcsDonutPair(self, instrument: str) -> tuple[int, int] | None:
         """Get the next exposure to process for the specified instrument.
 
         Parameters
@@ -780,7 +778,7 @@ class RedisHelper:
         else:
             return None
 
-    def enqueuePayload(self, payload, destinationPod: PodDetails, top=True) -> None:
+    def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top=True) -> None:
         """Send a unit of work to a specific worker-queue.
 
         Parameters
@@ -818,7 +816,7 @@ class RedisHelper:
         for key in keys:
             self.redis.delete(key)
 
-    def displayRedisContents(self, instrument=None) -> None:
+    def displayRedisContents(self, instrument: str | None = None) -> None:
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -828,7 +826,7 @@ class RedisHelper:
             ``None`` if the queue is empty.
         """
 
-        def _isPayload(jsonData):
+        def _isPayload(jsonData) -> bool:
             try:
                 loaded = json.loads(jsonData)
                 _ = loaded["dataId"]
@@ -837,7 +835,7 @@ class RedisHelper:
                 pass
             return False
 
-        def _isExpRecord(jsonData):
+        def _isExpRecord(jsonData) -> bool:
             try:
                 loaded = json.loads(jsonData)
                 _ = loaded["definition"]
@@ -846,11 +844,13 @@ class RedisHelper:
                 pass
             return False
 
-        def getPayloadDataId(jsonData):
+        def getPayloadDataId(jsonData) -> str:
+            # XXX pretty sure this now crashes due to it being dataIds plural
+            # check if you can get mypy to catch this when fixing
             loaded = json.loads(jsonData)
             return f"{loaded['dataId']}, run={loaded['run']}"
 
-        def getExpRecordDataId(jsonData):
+        def getExpRecordDataId(jsonData) -> str:
             loaded = json.loads(jsonData)
             expRecordStr = f"{loaded['record']['instrument']}, {loaded['record']['id']}"
             return expRecordStr
@@ -883,7 +883,7 @@ class RedisHelper:
             "fromButlerWacher",
         ]
 
-        def handleLengthKeys(key):
+        def handleLengthKeys(key: str) -> None:
             # just print the key and the length of the list
             print(f"{key}: {r.llen(key)} items")
 
@@ -922,7 +922,7 @@ class RedisHelper:
             else:
                 print(f"Unsupported type for key: {key}")
 
-    def clearRedis(self, force=False) -> None:
+    def clearRedis(self, force: bool = False) -> None:
         """Clear all keys in the Redis database.
 
         Parameters
@@ -940,7 +940,7 @@ class RedisHelper:
                 return
         self.redis.flushdb()
 
-    def clearWorkerQueues(self, force=False) -> None:
+    def clearWorkerQueues(self, force: bool = False) -> None:
         """Clear all keys in the Redis database.
 
         Parameters
@@ -962,7 +962,7 @@ class RedisHelper:
         for key in keys:
             self.redis.delete(key)
 
-    def monitorRedis(self, interval=1) -> None:
+    def monitorRedis(self, interval: float = 1) -> None:
         """Continuously display the contents of Redis database in the console.
 
         This function prints the entire contents of the redis database to

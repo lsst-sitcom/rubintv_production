@@ -19,12 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import logging
 import os
 import time
 import traceback
 from glob import glob
 from time import sleep
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -60,6 +63,13 @@ from .plotting import starTrackerNightReportPlots
 from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
 
+if TYPE_CHECKING:
+    from lsst.afw.image import Exposure
+    from lsst.summit.utils.starTracker import StarTrackerCamera
+
+    from .utils import LocationConfig
+
+
 __all__ = (
     "getCurrentRawDataDir",
     "getDataDir",
@@ -73,21 +83,26 @@ __all__ = (
 _LOG = logging.getLogger(__name__)
 
 
-def getCurrentRawDataDir(rootDataPath, camera):
+def getCurrentRawDataDir(rootDataPath: str, camera: StarTrackerCamera) -> str:
     """Get the raw data dir corresponding to the current dayObs.
 
-    Returns
-    -------
+    Parameters
+    ----------
     path : `str`
         The raw data dir for today.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera to get the raw data for.
+
+    Returns
+    -------
+    dataPath : `str`
+        The path to the data for the current day.
     """
     todayInt = getCurrentDayObs_int()
     return getRawDataDirForDayObs(rootDataPath, camera, todayInt)
 
 
-def getDataDir(rootPath, camera, dayObs):
+def getDataDir(rootPath: str, camera: StarTrackerCamera, dayObs: int) -> str:
     """Get the path to the data for a given camera and dayObs.
 
     Parameters
@@ -110,7 +125,7 @@ def getDataDir(rootPath, camera, dayObs):
     return path
 
 
-def getFilename(rootPath, camera, dayObs, seqNum):
+def getFilename(rootPath: str, camera: StarTrackerCamera, dayObs: int, seqNum: int) -> str:
     """Get the filename for a given camera, dayObs and seqNum.
 
     Parameters
@@ -149,13 +164,13 @@ class StarTrackerWatcher:
 
     cadence = 1  # in seconds
 
-    def __init__(self, *, rootDataPath, camera):
+    def __init__(self, *, rootDataPath: str, camera: StarTrackerCamera):
         self.rootDataPath = rootDataPath
         self.camera = camera
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("watcher")
 
-    def _getLatestImageDataIdAndExpId(self):
+    def _getLatestImageDataIdAndExpId(self) -> tuple[str | None, int | None, int | None, int | None]:
         """Get the dataId and expId for the most recent image in the repo.
 
         Returns
@@ -188,7 +203,7 @@ class StarTrackerWatcher:
         expId = int(str(dayObs) + seqNumAndSuffix.removesuffix(".fits"))
         return latestFile, dayObs, seqNum, expId
 
-    def run(self, callback):
+    def run(self, callback: Callable) -> None:
         """Wait for the image to land, then run callback(filename).
 
         Parameters
@@ -235,7 +250,7 @@ class StarTrackerChannel(BaseChannel):
         Raise on error? Default False, useful for debugging.
     """
 
-    def __init__(self, locationConfig, *, cameraType, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, *, cameraType: str, doRaise: bool = False) -> None:
         if cameraType not in KNOWN_CAMERAS:
             raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
@@ -276,7 +291,7 @@ class StarTrackerChannel(BaseChannel):
         )
         self.fig = plt.figure(figsize=(16, 16))
 
-    def writeDefaultPointingShardForFilename(self, exp, filename):
+    def writeDefaultPointingShardForFilename(self, exp: Exposure, filename: str) -> None:
         """Write a metadata shard for the given filename.
 
         Parameters
@@ -328,7 +343,7 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-    def runAnalysis(self, exp, filename):
+    def runAnalysis(self, exp: Exposure, filename: str) -> None:
         """Run the analysis and upload the results.
 
         Parameters
@@ -448,7 +463,7 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-    def callback(self, filename):
+    def callback(self, filename: str) -> None:
         """Callback for the watcher, called when a new image lands.
 
         Parameters
@@ -520,7 +535,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, dayObs=None, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, *, dayObs: int = None, doRaise: bool = False) -> None:
         name = "starTrackerNightReport"
         log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
@@ -537,7 +552,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
         self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
 
-    def getMetadataTableContents(self):
+    def getMetadataTableContents(self) -> dict[Any, Any] | None:
         """Get the measured data for the current night.
 
         Returns
@@ -569,7 +584,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
         return mdTable
 
-    def createPlotsAndUpload(self):
+    def createPlotsAndUpload(self) -> None:
         """Create and upload all plots defined in nightReportPlots.
 
         All plots defined in PLOT_FACTORIES in nightReportPlots are discovered,
@@ -599,7 +614,7 @@ class StarTrackerNightReportChannel(BaseChannel):
                 self.log.exception(f"Failed to create plot {plotName}")
                 continue
 
-    def finalizeDay(self):
+    def finalizeDay(self) -> None:
         """Perform the end of day actions and roll the day over.
 
         Creates a final version of the plots at the end of the day and rolls
@@ -611,7 +626,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         self.dayObs = getCurrentDayObs_int()
         return
 
-    def callback(self, filename, doCheckDay=True):
+    def callback(self, filename: str, doCheckDay: bool = True) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Parameters
@@ -662,14 +677,14 @@ class StarTrackerCatchup:
     catchupPeriod = 60
     endOfDayDelay = 200
 
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
         self.cameras = [narrowCam, wideCam, fastCam]
         self.log = _LOG.getChild("catchup")
 
-    def getFullyProcessedSeqNums(self, camera, dayObs):
+    def getFullyProcessedSeqNums(self, camera: StarTrackerCamera, dayObs: int) -> list[int]:
         """Get the seqNums for images which were fully processed.
 
         Parameters
@@ -705,7 +720,7 @@ class StarTrackerCatchup:
         processed = [s for s in seqNums if mdTable[successfulFitColumn][s] is not np.nan]
         return processed
 
-    def catchupCamera(self, camera, dayObs):
+    def catchupCamera(self, camera: StarTrackerCamera, dayObs: int) -> None:
         """Catch up a single camera.
 
         TODO: DM-38313 Add a way of recording fails and skipping them in future
@@ -748,7 +763,7 @@ class StarTrackerCatchup:
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
 
-    def runEndOfDayManual(self, dayObs):
+    def runEndOfDayManual(self, dayObs: int) -> None:
         """Manually run the end of day routine for a specific dayObs by hand.
 
         Useful for if the final catchup and end of day animation/clearup have
@@ -763,13 +778,13 @@ class StarTrackerCatchup:
         self.runCatchup()
         return
 
-    def runCatchup(self):
+    def runCatchup(self) -> None:
         """Run the catchup for all cameras."""
         for camera in self.cameras:
             self.log.info(f"Starting catchup for the {camera.cameraType} camera")
             self.catchupCamera(camera, self.dayObs)
 
-    def runEndOfDay(self):
+    def runEndOfDay(self) -> None:
         """Routine to run when the summit dayObs rolls over.
 
         Sets the new dayObs.
@@ -781,7 +796,7 @@ class StarTrackerCatchup:
         finally:
             self.dayObs = getCurrentDayObs_int()
 
-    def run(self):
+    def run(self) -> None:
         """Runs forever, running the catchup services during the night, and
         rolls the dayObs over at the end of the night.
 

@@ -24,6 +24,7 @@ import os
 import subprocess
 import time
 from time import sleep
+from typing import TYPE_CHECKING, Iterable
 
 import matplotlib.font_manager
 from PIL import Image
@@ -42,6 +43,11 @@ try:
 except ImportError:
     HAS_GOOGLE_STORAGE = False
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.rubintv.production.utils import LocationConfig
+
 __all__ = ["DayAnimator", "AllSkyMovieChannel", "dayObsFromDirName", "cleanupAllSkyIntermediates"]
 
 _LOG = logging.getLogger(__name__)
@@ -49,7 +55,7 @@ _LOG = logging.getLogger(__name__)
 SEQNUM_MAX = 99999
 
 
-def _createWritableDir(path):
+def _createWritableDir(path: str) -> None:
     """Create a writeable directory with the specified path.
 
     Parameters
@@ -71,7 +77,7 @@ def _createWritableDir(path):
         raise RuntimeError(f"Output path {path} is not writable.")
 
 
-def dayObsFromDirName(fullDirName, logger):
+def dayObsFromDirName(fullDirName: str, logger: Logger) -> tuple[int, str]:
     """Get the dayObs from the directory name.
 
     Parses the directory path, returning the dayObs as an int and a string if
@@ -108,7 +114,7 @@ def dayObsFromDirName(fullDirName, logger):
         return None, None
 
 
-def getUbuntuFontPath(logger=None):
+def getUbuntuFontPath(logger: Logger = None) -> str:
     """Get the path to the Ubuntu font, if available.
 
     Parameters
@@ -137,20 +143,20 @@ def getUbuntuFontPath(logger=None):
     return ubuntuBoldPath
 
 
-def getDateTimeFromExif(filename, logger=None):
+def getDateTimeFromExif(filename: str, logger: Logger = None) -> tuple[str, str]:
     """Get the image date and time from the exif data.
 
     Parameters
     ----------
     filename : `str`
         The filename to get the exif data from.
+    logger : `logging.logger`
+        The logger, created if needed and not supplied.
 
     Returns
     -------
     dateStr, timeStr : `tuple` of `str`
         The date and time strings, or two empty strings if parsing failed.
-    logger : `logging.logger`
-        The logger, created if needed and not supplied.
     """
     tagMap = {v: k for k, v in TAGS.items()}
 
@@ -171,7 +177,7 @@ def getDateTimeFromExif(filename, logger=None):
     return "", ""
 
 
-def _convertAndAnnotate(inFilename, outFilename, textItems=None):
+def _convertAndAnnotate(inFilename: str, outFilename: str, textItems: Iterable[str] | None = None) -> None:
     """Convert an image file, cropping and stretching for correctly for use
     in the all sky cam TV channel.
 
@@ -225,7 +231,7 @@ def _convertAndAnnotate(inFilename, outFilename, textItems=None):
     subprocess.check_call(r" ".join(cmd), shell=True)
 
 
-def _imagesToMp4(indir, outfile, framerate, verbose=False):
+def _imagesToMp4(indir: str, outfile: str, framerate: float, verbose: bool = False) -> None:
     """Create the movie with ffmpeg, from files.
 
     Parameters
@@ -276,7 +282,7 @@ def _imagesToMp4(indir, outfile, framerate, verbose=False):
     subprocess.check_call(r" ".join(cmd), shell=True)
 
 
-def _seqNumFromFilename(filename):
+def _seqNumFromFilename(filename: str) -> int:
     """Get the seqNum from a filename.
 
     Parameters
@@ -295,7 +301,7 @@ def _seqNumFromFilename(filename):
     return seqNum
 
 
-def _getSortedSubDirs(path):
+def _getSortedSubDirs(path: str) -> list[str]:
     """Get an alphabetically sorted list of directories from a given path.
 
     Parameters
@@ -314,7 +320,7 @@ def _getSortedSubDirs(path):
     return sorted([p for d in dirs if (os.path.isdir(p := os.path.join(path, d)))])
 
 
-def _getFilesetFromDir(path, filetype="jpg"):
+def _getFilesetFromDir(path: str, filetype: str = "jpg") -> set[str]:
     """Get a set of the files of a given type from a dir.
 
     Parameters
@@ -336,7 +342,7 @@ def _getFilesetFromDir(path, filetype="jpg"):
     return set(files)
 
 
-def cleanupAllSkyIntermediates(logger=None):
+def cleanupAllSkyIntermediates(logger: Logger = None) -> None:
     """Delete all intermediate all-sky data products uploaded to GCS.
 
     Deletes all but the most recent static image, and all but the most recent
@@ -430,15 +436,15 @@ class DayAnimator:
     def __init__(
         self,
         *,
-        dayObsInt,
-        todaysDataDir,
-        outputImageDir,
-        outputMovieDir,
-        epoUploader,
-        s3Uploader,
-        channel,
-        bucketName,
-        historical=False,
+        dayObsInt: int,
+        todaysDataDir: str,
+        outputImageDir: str,
+        outputMovieDir: str,
+        epoUploader: Uploader,
+        s3Uploader: MultiUploader,
+        channel: str,
+        bucketName: str,
+        historical: bool = False,
     ):
         self.dayObsInt = dayObsInt
         self.todaysDataDir = todaysDataDir
@@ -450,7 +456,7 @@ class DayAnimator:
         self.historical = historical
         self.log = _LOG.getChild("allSkyDayAnimator")
 
-    def _getConvertedFilename(self, filename):
+    def _getConvertedFilename(self, filename: str) -> str:
         """Get the filename and path to write the converted images to.
 
         Parameters
@@ -465,7 +471,7 @@ class DayAnimator:
         """
         return os.path.join(self.outputImageDir, os.path.basename(filename))
 
-    def convertFiles(self, files, forceRegen=False):
+    def convertFiles(self, files: Iterable[str], forceRegen: bool = False) -> set[str]:
         """Convert a list of files using _convertJpgScale(), writing the
         converted files to self.outputImageDir.
 
@@ -497,7 +503,7 @@ class DayAnimator:
             convertedFiles.add(file)
         return set(convertedFiles)
 
-    def animateFilesAndUpload(self, isFinal=True):
+    def animateFilesAndUpload(self, isFinal: bool = True) -> None:
         """Animate all the files in self.outputImageDir and upload to GCS.
 
         If isFinal is False the filename will end with largest input seqNum in
@@ -545,7 +551,7 @@ class DayAnimator:
             self.log.info(f"Would have uploaded {creationFilename} as {uploadAsFilename}")
         return
 
-    def uploadLastStill(self, convertedFiles):
+    def uploadLastStill(self, convertedFiles: Iterable[str]) -> None:
         """Upload the most recently created still image to GCS.
 
         Parameters
@@ -580,7 +586,7 @@ class DayAnimator:
         else:
             self.log.info(f"Would have uploaded {sourceFilename} as {uploadAsFilename}")
 
-    def run(self, animationPeriod=600):
+    def run(self, animationPeriod: float = 600) -> None:
         """The main entry point.
 
         Keeps watching for new files in self.todaysDataDir. Each time a new
@@ -677,7 +683,7 @@ class AllSkyMovieChannel:
         Raise on error?
     """
 
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.s3Uploader = MultiUploader()
         self.epoUploader = Uploader("epo_rubintv_data")
@@ -692,7 +698,7 @@ class AllSkyMovieChannel:
         self.outputRoot = self.locationConfig.allSkyOutputPath
         _createWritableDir(self.outputRoot)
 
-    def getCurrentRawDataDir(self):
+    def getCurrentRawDataDir(self) -> str:
         """Get the raw data dir corresponding to the current dayObs.
 
         Returns
@@ -704,7 +710,7 @@ class AllSkyMovieChannel:
         today = getCurrentDayObs_datetime().strftime("%y%m%d")
         return os.path.join(self.rootDataPath, f"ut{today}")
 
-    def runDay(self, dayObsInt, todaysDataDir):
+    def runDay(self, dayObsInt: int, todaysDataDir: str) -> None:
         """Create a DayAnimator for the current day and run it.
 
         Parameters
@@ -731,7 +737,7 @@ class AllSkyMovieChannel:
         )
         animator.run()
 
-    def run(self):
+    def run(self) -> None:
         """The main entry point - start running the all sky camera TV channel.
         See class init docs for details.
         """

@@ -25,6 +25,7 @@ import os
 import shutil
 import time
 from time import sleep
+from typing import TYPE_CHECKING
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.daf.butler.registry import ConflictingDefinitionError
@@ -38,6 +39,9 @@ from .metadataServers import TimedMetadataServer
 from .rubinTv import MetadataCreator
 from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf
+
+if TYPE_CHECKING:
+    from .utils import LocationConfig
 
 __all__ = ["RubinTvBackgroundService"]
 
@@ -77,7 +81,7 @@ class RubinTvBackgroundService:
     endOfDayDelay = 600
     allSkyDeletionExtraSleep = 1800  # 30 mins
 
-    def __init__(self, locationConfig, instrument, *, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, instrument: str, *, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.instrument = instrument
         self.s3Uploader = MultiUploader()
@@ -92,7 +96,7 @@ class RubinTvBackgroundService:
             self.locationConfig, instrument=instrument
         )  # costly-ish to create, so put in class
 
-    def getMissingQuickLookIds(self):
+    def getMissingQuickLookIds(self) -> list[dict[str, int | str]]:
         """Get a list of the dataIds for the current dayObs for which
         quickLookExps do not exist in the repo.
 
@@ -113,7 +117,7 @@ class RubinTvBackgroundService:
         return [{"day_obs": self.dayObs, "seq_num": s, "detector": 0} for s in toMakeSeqNums]
 
     @staticmethod
-    def _makeMinimalDataId(dataId):
+    def _makeMinimalDataId(dataId: dict[str, int | str]) -> dict[str, int | str]:
         """Given a dataId, strip it to contain only ``day_obs``, ``seq_num``
         and ``detector``.
 
@@ -133,7 +137,7 @@ class RubinTvBackgroundService:
                 raise ValueError(f"Failed to minimize dataId {dataId}")
         return {"day_obs": dataId["day_obs"], "seq_num": dataId["seq_num"], "detector": dataId["detector"]}
 
-    def catchupIsrRunner(self):
+    def catchupIsrRunner(self) -> None:
         """Create any missing quickLookExps for the current dayObs."""
         # check latest dataId and remove that and previous
         # and then do *not* do that in end of day
@@ -158,7 +162,7 @@ class RubinTvBackgroundService:
             except ConflictingDefinitionError:
                 pass
 
-    def catchupMountTorques(self):
+    def catchupMountTorques(self) -> None:
         """Create and upload any missing mount torque plots for the current
         dayObs.
         """
@@ -172,7 +176,7 @@ class RubinTvBackgroundService:
             notebook=False,
         )
 
-    def catchupMonitor(self):
+    def catchupMonitor(self) -> None:
         """Create and upload any missing monitor images for the current
         dayObs.
         """
@@ -186,12 +190,12 @@ class RubinTvBackgroundService:
             notebook=False,
         )
 
-    def catchupMetadata(self):
+    def catchupMetadata(self) -> None:
         """Create shards for any seqNums missing their metadata. Do not
         upload.
         """
 
-        def _getSidecarFilename(dayObs):
+        def _getSidecarFilename(dayObs: int) -> str:
             """Get the sidecar filename for a given dayObs.
 
             This is a bit of a hack as it makes a whole TimedMetadataServer.
@@ -238,7 +242,7 @@ class RubinTvBackgroundService:
         # the next image. We do, however, call it on end-of-day to catch any
         # leftover shards
 
-    def catchupImageExaminer(self):
+    def catchupImageExaminer(self) -> None:
         """Create and upload any missing imExam images for the current
         dayObs.
         """
@@ -252,7 +256,7 @@ class RubinTvBackgroundService:
             notebook=False,
         )
 
-    def catchupSpectrumExaminer(self):
+    def catchupSpectrumExaminer(self) -> None:
         """Create and upload any missing specExam images for the current
         dayObs.
         """
@@ -266,7 +270,7 @@ class RubinTvBackgroundService:
             notebook=False,
         )
 
-    def runCatchup(self):
+    def runCatchup(self) -> None:
         """Run all the catchup routines: isr, monitor images, mount torques."""
         startTime = time.time()
 
@@ -290,7 +294,7 @@ class RubinTvBackgroundService:
         endTime = time.time()
         self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
 
-    def deleteAllSkyPngs(self):
+    def deleteAllSkyPngs(self) -> None:
         """Delete all the intermediate on-disk files created when making the
         all sky movie for the current day.
         """
@@ -302,7 +306,7 @@ class RubinTvBackgroundService:
             else:
                 self.log.warning(f"Failed to find assumed all-sky png directory {directory}")
 
-    def runEndOfDay(self):
+    def runEndOfDay(self) -> None:
         """Routine to run when the summit dayObs rolls over.
 
         Makes the per-day animation of all the on-sky images and uploads to the
@@ -341,7 +345,7 @@ class RubinTvBackgroundService:
         finally:
             self.dayObs = getCurrentDayObs_int()
 
-    def runEndOfDayManual(self, dayObs):
+    def runEndOfDayManual(self, dayObs: int) -> None:
         """Manually run the end of day routine for a specific dayObs by hand.
 
         Useful for if the final catchup and end of day animation/clearup have
@@ -357,7 +361,7 @@ class RubinTvBackgroundService:
         self.runEndOfDay()
         return
 
-    def run(self):
+    def run(self) -> None:
         """Runs forever, running the catchup services during the day and the
         end of day service when the day ends.
 

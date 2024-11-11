@@ -44,8 +44,6 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from logging import Logger
-
     from lsst.daf.butler import DimensionRecord
 
     from .payloads import Payload
@@ -83,11 +81,11 @@ class FileWatcher:
     def __init__(
         self, *, locationConfig: LocationConfig, instrument: str, dataProduct: str, doRaise=False
     ) -> None:
-        self.locationConfig: LocationConfig = locationConfig
-        self.instrument: str = instrument
-        self.dataProduct: str = dataProduct
-        self.doRaise: bool = doRaise
-        self.log: Logger = _LOG.getChild("fileWatcher")
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.dataProduct = dataProduct
+        self.doRaise = doRaise
+        self.log = _LOG.getChild("fileWatcher")
 
     def getMostRecentExpRecord(self, previousExpId: int | None = None) -> DimensionRecord | None:
         """Get the most recent exposure record from the file system.
@@ -163,14 +161,14 @@ class RedisWatcher:
     """
 
     def __init__(self, butler: Butler, locationConfig: LocationConfig, podDetails: PodDetails) -> None:
-        self.redisHelper: RedisHelper = RedisHelper(butler, locationConfig)
-        self.podDetails: PodDetails = podDetails
-        self.cadence: float = 0.01  # seconds - this is fine, redis likes a beating
-        self.log: Logger = _LOG.getChild("redisWatcher")
-        self.payload: Payload | None = None
+        self.redisHelper = RedisHelper(butler, locationConfig)
+        self.podDetails = podDetails
+        self.cadence = 0.01  # seconds - this is fine, redis likes a beating
+        self.log = _LOG.getChild("redisWatcher")
+        self.payload: Payload | None = None  # XXX that is this for?
 
     def run(self, callback, **kwargs) -> None:
-        """Run forever, calling ``callback`` on each most recent expRecord.
+        """Run forever, calling ``callback`` on each most recent Payload.
 
         Parameters
         ----------
@@ -184,7 +182,7 @@ class RedisWatcher:
             payload = self.redisHelper.dequeuePayload(self.podDetails)
             if payload is not None:
                 try:
-                    self.payload = payload
+                    self.payload = payload  # XXX why is this being saved on the class?
                     self.redisHelper.announceBusy(self.podDetails)
                     callback(payload)
                     self.payload = None
@@ -228,15 +226,15 @@ class ButlerWatcher:
         dataProducts: str | list[str],
         doRaise=False,
     ) -> None:
-        self.locationConfig: LocationConfig = locationConfig
-        self.instrument: str = instrument
-        self.butler: Butler = butler
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.butler = butler
         self.dataProducts: list[str] = list(
             ensure_iterable(dataProducts)
         )  # must call list or we get a generator back
-        self.doRaise: bool = doRaise
-        self.log: Logger = _LOG.getChild("butlerWatcher")
-        self.redisHelper: RedisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
+        self.doRaise = doRaise
+        self.log = _LOG.getChild("butlerWatcher")
+        self.redisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
 
     def _getLatestExpRecords(self) -> dict[str, DimensionRecord | None]:
         """Get the most recent expRecords from the butler.

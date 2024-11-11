@@ -178,7 +178,7 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         detectorNum: int,
         allowUpdate: bool = False,
-    ):
+    ) -> None:
         summaryStats = butler.get("calexp.summaryStats", visit=expRecord.id, detector=detectorNum)
         self.populateCcdVisitRow(expRecord, detectorNum, summaryStats, allowUpdate=allowUpdate)
 

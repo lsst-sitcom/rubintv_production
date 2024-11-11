@@ -33,7 +33,7 @@ from .watchers import FileWatcher, RedisWatcher
 if TYPE_CHECKING:
     from logging import Logger
 
-    from lsst.daf.butler import Butler
+    from lsst.daf.butler import Butler, DataCoordinate
 
     from .podDefinition import PodDetails
     from .utils import LocationConfig
@@ -71,9 +71,9 @@ class BaseChannel(ABC):
         doRaise: bool,
         addUploader: bool = False,
     ) -> None:
-        self.locationConfig: LocationConfig = locationConfig
-        self.log: Logger = log
-        self.watcher: FileWatcher | RedisWatcher = watcher
+        self.locationConfig = locationConfig
+        self.log = log
+        self.watcher = watcher
         self.s3Uploader: MultiUploader | None = None
         if addUploader:
             self.s3Uploader = MultiUploader()
@@ -93,7 +93,7 @@ class BaseChannel(ABC):
         """
         raise NotImplementedError()
 
-    def run(self):
+    def run(self) -> None:
         """Run continuously, calling the callback method with the latest
         expRecord.
         """
@@ -140,9 +140,9 @@ class BaseButlerChannel(BaseChannel):
         channelName: str,
         watcherType: str,
         doRaise: bool,
-        podDetails: (
-            PodDetails | None
-        ) = None,  # only needed for redis watcher. Not the neatest but will do for now
+        # podDetails only needed for redis watcher. Not the neatest but will do
+        # for now
+        podDetails: PodDetails | None = None,
         addUploader: bool = True,
     ) -> None:
         watcher: FileWatcher | RedisWatcher
@@ -167,17 +167,19 @@ class BaseButlerChannel(BaseChannel):
         super().__init__(
             locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise, addUploader=addUploader
         )
-        self.butler: Butler = butler
+        self.butler = butler
         self.dataProduct = dataProduct
-        self.channelName: str = channelName
-        self.detectors: int | list[int] | None = detectors
-        self.podDetails: PodDetails | None = podDetails
+        self.channelName = channelName
+        self.detectors = detectors
+        self.podDetails = podDetails
 
     @abstractmethod
     def callback(self, expRecord):
         raise NotImplementedError()
 
-    def _waitForDataProduct(self, dataId, timeout=20, gettingButler=None) -> Any:
+    def _waitForDataProduct(
+        self, dataId: DataCoordinate, timeout: float = 20, gettingButler: Butler | None = None
+    ) -> Any:
         """Wait for a dataProduct to land inside a repo.
 
         Wait for a maximum of ``timeout`` seconds for a dataProduct to land,

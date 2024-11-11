@@ -19,14 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import enum
 import json
 import logging
 from ast import literal_eval
 from dataclasses import dataclass
-from logging import Logger
 from time import sleep
-from typing import Any, Iterable, Sequence, cast
+from typing import TYPE_CHECKING, Any, Iterable, Sequence, cast
 
 import numpy as np
 
@@ -51,6 +52,9 @@ from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
 from .utils import LocationConfig, getShardPath, isCalibration, isWepImage, writeExpRecordMetadataShard
+
+if TYPE_CHECKING:
+    from lsst.afw.cameraGeom import Detector
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -309,25 +313,21 @@ class HeadProcessController:
         outputChain: str | None = None,
         forceNewRun: bool = False,
     ) -> None:
-        self.butler: Butler = butler
-        self.instrument: str = instrument
-        self.locationConfig: LocationConfig = locationConfig
-        self.log: Logger = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
-        self.redisHelper: RedisHelper = RedisHelper(
-            butler=butler, locationConfig=locationConfig, isHeadNode=True
-        )
+        self.butler = butler
+        self.instrument = instrument
+        self.locationConfig = locationConfig
+        self.log = logging.getLogger("lsst.rubintv.production.processControl.HeadProcessController")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig, isHeadNode=True)
         self.focalPlaneControl: CameraControlConfig | None = (
             CameraControlConfig() if instrument == "LSSTCam" else None
         )
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
-        self.remoteController: RemoteController = RemoteController(
-            butler=butler, locationConfig=locationConfig
-        )
+        self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
         # don't start here, the event loop starts the lap timer
-        self.workTimer: BoxCarTimer = BoxCarTimer(length=100)
-        self.loopTimer: BoxCarTimer = BoxCarTimer(length=100)
-        self.podDetails: PodDetails = PodDetails(
+        self.workTimer = BoxCarTimer(length=100)
+        self.loopTimer = BoxCarTimer(length=100)
+        self.podDetails = PodDetails(
             instrument=instrument, podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None
         )
         self.nDispatched: int = 0
@@ -859,11 +859,11 @@ class HeadProcessController:
 class RemoteController:
     # TODO: consider removing this completely. There has to be a simpler way
     # and this was basically a fun plane project
-    def __init__(self, butler, locationConfig):
+    def __init__(self, butler: Butler, locationConfig: LocationConfig) -> None:
         self.log = logging.getLogger("lsst.rubintv.production.processControl.RemoteController")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
 
-    def sendCommand(self, method, **kwargs):
+    def sendCommand(self, method: str, **kwargs) -> None:
         """Execute the specified method on the head node with the specified
         kwargs.
 
@@ -1003,7 +1003,7 @@ class CameraControlConfig:
     """Processing control for which CCDs will be processed."""
 
     # TODO: Make this camera agnostic if necessary.
-    def __init__(self):
+    def __init__(self) -> None:
         self.camera = LsstCam.getCamera()
         self._detectorStates = {det: False for det in self.camera}
         self._detectors = [det for det in self.camera]
@@ -1013,7 +1013,7 @@ class CameraControlConfig:
         self._focalPlanePlot = FocalPlaneGeometryPlot()
 
     @staticmethod
-    def isWavefront(detector):
+    def isWavefront(detector: Detector) -> bool:
         """Check if the detector is a wavefront sensor.
 
         Parameters
@@ -1029,7 +1029,7 @@ class CameraControlConfig:
         return detector.getPhysicalType() == "ITL_WF"
 
     @staticmethod
-    def isGuider(detector):
+    def isGuider(detector: Detector) -> bool:
         """Check if the detector is a guider.
 
         Parameters
@@ -1045,7 +1045,7 @@ class CameraControlConfig:
         return detector.getPhysicalType() == "ITL_G"
 
     @staticmethod
-    def isImaging(detector):
+    def isImaging(detector: Detector) -> bool:
         """Check if the detector is an imaging sensor.
 
         Parameters
@@ -1061,7 +1061,7 @@ class CameraControlConfig:
         return detector.getPhysicalType() in ["E2V", "ITL"]
 
     @staticmethod
-    def _getRaftTuple(detector):
+    def _getRaftTuple(detector: Detector) -> tuple[int, int]:
         """Get the detector's raft x, y coordinates as integers.
 
         Numbers are zero-indexed, with (0, 0) being at the bottom left.
@@ -1082,7 +1082,7 @@ class CameraControlConfig:
         return int(rString[1]), int(rString[2])
 
     @staticmethod
-    def _getSensorTuple(detector):
+    def _getSensorTuple(detector: Detector) -> tuple[int, int]:
         """Get the detector's x, y coordinates as integers within the raft.
 
         Numbers are zero-indexed, with (0, 0) being at the bottom left.
@@ -1102,7 +1102,7 @@ class CameraControlConfig:
         sString = detector.getName().split("_")[1]
         return int(sString[1]), int(sString[2])
 
-    def _getFullLocationTuple(self, detector):
+    def _getFullLocationTuple(self, detector) -> tuple[int, int]:
         """Get the (colNum, rowNum) of the detector wrt the full focal plane.
 
         0, 0 is the bottom left
@@ -1113,27 +1113,27 @@ class CameraControlConfig:
         row = (raftY * 3) + sensorY + 1
         return col, row
 
-    def setWavefrontOn(self):
+    def setWavefrontOn(self) -> None:
         """Turn all the wavefront sensors on."""
         for detector in self._wavefronts:
             self._detectorStates[detector] = True
 
-    def setWavefrontOff(self):
+    def setWavefrontOff(self) -> None:
         """Turn all the wavefront sensors off."""
         for detector in self._wavefronts:
             self._detectorStates[detector] = False
 
-    def setGuidersOn(self):
+    def setGuidersOn(self) -> None:
         """Turn all the guider sensors on."""
         for detector in self._guiders:
             self._detectorStates[detector] = True
 
-    def setGuidersOff(self):
+    def setGuidersOff(self) -> None:
         """Turn all the wavefront sensors off."""
         for detector in self._guiders:
             self._detectorStates[detector] = False
 
-    def setFullCheckerboard(self, phase=0):
+    def setFullCheckerboard(self, phase: int = 0) -> None:
         """Set a checkerboard pattern at the CCD level.
 
         Parameters
@@ -1147,7 +1147,7 @@ class CameraControlConfig:
             x, y = self._getFullLocationTuple(detector)
             self._detectorStates[detector] = bool(((x % 2) + (y % 2) + phase) % 2)
 
-    def setRaftCheckerboard(self, phase=0):
+    def setRaftCheckerboard(self, phase: int = 0) -> None:
         """Set a checkerboard pattern at the raft level.
 
         Parameters
@@ -1162,38 +1162,38 @@ class CameraControlConfig:
             raftX, raftY = self._getRaftTuple(detector)
             self._detectorStates[detector] = bool(((raftX % 2) + (raftY % 2) + phase) % 2)
 
-    def setE2Von(self):
+    def setE2Von(self) -> None:
         """Turn all e2v sensors on."""
         for detector in self._imaging:
             if detector.getPhysicalType() == "E2V":
                 self._detectorStates[detector] = True
 
-    def setE2Voff(self):
+    def setE2Voff(self) -> None:
         """Turn all e2v sensors off."""
         for detector in self._imaging:
             if detector.getPhysicalType() == "E2V":
                 self._detectorStates[detector] = False
 
-    def setITLon(self):
+    def setITLon(self) -> None:
         """Turn all ITL sensors on."""
         for detector in self._imaging:
             if detector.getPhysicalType() == "ITL":
                 self._detectorStates[detector] = True
 
-    def setITLoff(self):
+    def setITLoff(self) -> None:
         """Turn all ITL sensors off."""
         for detector in self._imaging:
             if detector.getPhysicalType() == "ITL":
                 self._detectorStates[detector] = False
 
-    def setFullFocalPlaneGuidersOn(self):
+    def setFullFocalPlaneGuidersOn(self) -> None:
         """Turn all ITL sensors on."""
         for detector in self._imaging:
             sensorX, sensorY = self._getSensorTuple(detector)
             if sensorX <= 1 and sensorY <= 1:
                 self._detectorStates[detector] = True
 
-    def setAllOn(self):
+    def setAllOn(self) -> None:
         """Turn all sensors on.
 
         Note that this includes wavefront sensors and guiders.
@@ -1201,7 +1201,7 @@ class CameraControlConfig:
         for detector in self._detectors:
             self._detectorStates[detector] = True
 
-    def setAllOff(self):
+    def setAllOff(self) -> None:
         """Turn all sensors off.
 
         Note that this includes wavefront sensors and guiders.
@@ -1209,22 +1209,22 @@ class CameraControlConfig:
         for detector in self._detectors:
             self._detectorStates[detector] = False
 
-    def setAllImagingOn(self):
+    def setAllImagingOn(self) -> None:
         """Turn all imaging sensors on."""
         for detector in self._imaging:
             self._detectorStates[detector] = True
 
-    def setAllImagingOff(self):
+    def setAllImagingOff(self) -> None:
         """Turn all imaging sensors off."""
         for detector in self._imaging:
             self._detectorStates[detector] = False
 
-    def invertImagingSelection(self):
+    def invertImagingSelection(self) -> None:
         """Invert the selection of the imaging chips only."""
         for detector in self._imaging:
             self._detectorStates[detector] = not self._detectorStates[detector]
 
-    def getNumEnabled(self):
+    def getNumEnabled(self) -> int:
         """Get the number of enabled sensors.
 
         Returns
@@ -1234,7 +1234,7 @@ class CameraControlConfig:
         """
         return sum(self._detectorStates.values())
 
-    def getEnabledDetIds(self):
+    def getEnabledDetIds(self) -> list[int]:
         """Get the detectorIds of the enabled sensors.
 
         Returns
@@ -1244,7 +1244,7 @@ class CameraControlConfig:
         """
         return sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
 
-    def asPlotData(self):
+    def asPlotData(self) -> dict[str, list[int] | np.array[int]]:
         """Get the data in a form for rendering as a ``FocalPlaneGeometryPlot``
 
         Returns
@@ -1288,7 +1288,7 @@ class CameraControlConfig:
             "z": np.array(z),
         }
 
-    def plotConfig(self, saveAs=""):
+    def plotConfig(self, saveAs: str = "") -> FocalPlaneGeometryPlot:
         """Plot the current configuration.
 
         Parameters

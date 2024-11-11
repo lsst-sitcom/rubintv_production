@@ -47,7 +47,7 @@ class BoxCarTimer:
         is started.
     """
 
-    def __init__(self, length):
+    def __init__(self, length: int):
         self._buffer = deque(maxlen=length)
         self.lastTime = None
         self.paused = False
@@ -55,12 +55,12 @@ class BoxCarTimer:
         self.totalLaps = 0
         self.started = False
 
-    def start(self):
+    def start(self) -> None:
         """Start the timer."""
         self.lastTime = time.time()
         self.started = True
 
-    def lap(self):
+    def lap(self) -> None:
         """Record the elapsed time since the last lap.
 
         Raises
@@ -79,7 +79,7 @@ class BoxCarTimer:
         self.lastTime = currentTime
         self.totalLaps += 1
 
-    def pause(self):
+    def pause(self) -> None:
         """Pause the timer."""
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot pause.")
@@ -87,7 +87,7 @@ class BoxCarTimer:
             self.pauseStartTime = time.time()
             self.paused = True
 
-    def resume(self):
+    def resume(self) -> None:
         """Resume the timer."""
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot resume.")
@@ -97,7 +97,7 @@ class BoxCarTimer:
             self.paused = False
             self.pauseStartTime = None
 
-    def min(self, frequency=False):
+    def min(self, frequency: bool = False) -> float:
         """Get the minimum lap time in the buffer.
 
         Parameters
@@ -119,7 +119,7 @@ class BoxCarTimer:
             return 1 / minValue if minValue != 0 else float("inf")
         return minValue
 
-    def max(self, frequency=False):
+    def max(self, frequency: bool = False) -> float:
         """Get the maximum lap time in the buffer.
 
         Parameters
@@ -141,7 +141,7 @@ class BoxCarTimer:
             return 1 / maxValue if maxValue != 0 else float("inf")
         return maxValue
 
-    def mean(self, frequency=False):
+    def mean(self, frequency: bool = False) -> float:
         """Get the mean of the lap times in the buffer.
 
         Parameters
@@ -163,7 +163,7 @@ class BoxCarTimer:
             return 1 / meanValue if meanValue != 0 else float("inf")
         return meanValue
 
-    def median(self, frequency=False):
+    def median(self, frequency: bool = False) -> float:
         """Get the median of the lap times in the buffer.
 
         Parameters
@@ -185,7 +185,7 @@ class BoxCarTimer:
             return 1 / medianValue if medianValue != 0 else float("inf")
         return medianValue
 
-    def lastLapTime(self):
+    def lastLapTime(self) -> float | None:
         """Get the time of the previous lap.
 
         Returns

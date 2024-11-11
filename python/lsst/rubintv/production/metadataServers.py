@@ -24,9 +24,13 @@ import logging
 import os
 from glob import glob
 from time import sleep
+from typing import TYPE_CHECKING
 
 from .uploaders import MultiUploader
 from .utils import isFileWorldWritable, raiseIf, sanitizeNans
+
+if TYPE_CHECKING:
+    from lsst.rubintv.production.utils import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 
@@ -63,7 +67,15 @@ class TimedMetadataServer:
     # shards and upload.
     cadence = 1.5
 
-    def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, channelName, doRaise=False):
+    def __init__(
+        self,
+        *,
+        locationConfig: LocationConfig,
+        metadataDirectory: str,
+        shardsDirectory: str,
+        channelName: str,
+        doRaise: bool = False,
+    ):
         self.locationConfig = locationConfig
         self.metadataDirectory = metadataDirectory
         self.shardsDirectory = shardsDirectory
@@ -76,7 +88,7 @@ class TimedMetadataServer:
             # created by the LocationConfig init so this should be impossible
             raise RuntimeError(f"Failed to find/create {self.metadataDirectory}")
 
-    def mergeShardsAndUpload(self):
+    def mergeShardsAndUpload(self) -> None:
         """Merge all the shards in the shard directory into their respective
         files and upload the updated files.
 
@@ -133,7 +145,7 @@ class TimedMetadataServer:
                 self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
         return
 
-    def dayObsFromFilename(self, filename):
+    def dayObsFromFilename(self, filename: str) -> int:
         """Get the dayObs from a metadata sidecar filename.
 
         Parameters
@@ -148,7 +160,7 @@ class TimedMetadataServer:
         """
         return int(os.path.basename(filename).split("_")[1].split(".")[0])
 
-    def getSidecarFilename(self, dayObs):
+    def getSidecarFilename(self, dayObs: int) -> str:
         """Get the name of the metadata sidecar file for the dayObs.
 
         Parameters
@@ -163,7 +175,7 @@ class TimedMetadataServer:
         """
         return os.path.join(self.metadataDirectory, f"dayObs_{dayObs}.json")
 
-    def callback(self):
+    def callback(self) -> None:
         """Method called on a timer to gather the shards and upload as needed.
 
         Adds the metadata to the sidecar file for the dataId and uploads it.
@@ -175,7 +187,7 @@ class TimedMetadataServer:
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def run(self):
+    def run(self) -> None:
         """Run continuously, looking for metadata and uploading."""
         while True:
             self.callback()

@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import glob
 import io
 import json
@@ -32,6 +34,7 @@ from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import yaml
@@ -42,6 +45,10 @@ from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from lsst.utils import getPackageDir
 
 from .channels import PREFIXES
+
+if TYPE_CHECKING:
+    from logging import Logger
+
 
 __all__ = [
     "writeDimensionUniverseFile",
@@ -95,7 +102,7 @@ SHARDED_DATA_TEMPLATE = os.path.join(
 # only.
 
 
-def writeDimensionUniverseFile(butler, locationConfig):
+def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
     """Run on butler watcher startup.
 
     This assumes that all repos in a give location are on the same version, but
@@ -105,12 +112,14 @@ def writeDimensionUniverseFile(butler, locationConfig):
         f.write(json.dumps(butler.dimensions.dimensionConfig.toDict()))
 
 
-def getDimensionUniverse(locationConfig):
+def getDimensionUniverse(locationConfig: LocationConfig) -> DimensionUniverse:
     duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
     return DimensionUniverse(DimensionConfig(duJson))
 
 
-def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
+def writeDataIdFile(
+    dataIdPath: str, dataProduct: str, expRecord: DimensionRecord, log: Logger | None = None
+) -> None:
     """Write a dataId file for a dataProduct to be consumed by a FileWatcher.
 
     Note that the dataProduct can be any string, it need not be restricted to
@@ -140,7 +149,7 @@ def writeDataIdFile(dataIdPath, dataProduct, expRecord, log=None):
         log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
 
 
-def getGlobPatternForDataProduct(dataIdPath, dataProduct, instrument):
+def getGlobPatternForDataProduct(dataIdPath: str, dataProduct: str, instrument: str) -> str:
     """Get a glob-style pattern for finding dataId files for a dataProduct.
 
     These are the dataId files used to signal that a given dataId or
@@ -152,11 +161,15 @@ def getGlobPatternForDataProduct(dataIdPath, dataProduct, instrument):
         The path find the dataIds in.
     dataProduct : `str`
         The data product to find the dataIds for.
+    instrument : `str`
+        The instrument.
     """
     return DATA_ID_TEMPLATE.format(path=dataIdPath, instrument=instrument, dataProduct=dataProduct, expId="*")
 
 
-def getGlobPatternForShardedData(path, dataSetName, instrument, dayObs, seqNum):
+def getGlobPatternForShardedData(
+    path: str, dataSetName: str, instrument: str, dayObs: int, seqNum: int
+) -> str:
     """Get a glob-style pattern for finding sharded data.
 
     These are the sharded data files used to store parts of the output data
@@ -202,7 +215,7 @@ class FakeExposureRecord:
         return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
 
 
-def expRecordFromJson(expRecordJson, locationConfig):
+def expRecordFromJson(expRecordJson: str, locationConfig: LocationConfig) -> DimensionRecord:
     """Deserialize a DimensionRecord from a JSON string.
 
     expRecordJson : `str`
@@ -215,7 +228,9 @@ def expRecordFromJson(expRecordJson, locationConfig):
     return DimensionRecord.from_json(expRecordJson, universe=getDimensionUniverse(locationConfig))
 
 
-def expRecordToUploadFilename(channel, expRecord, extension=".png", zeroPad=False):
+def expRecordToUploadFilename(
+    channel: str, expRecord: DimensionRecord, extension=".png", zeroPad=False
+) -> str:
     """Convert an expRecord to a filename, for use when uploading to a channel.
 
     Names the file in way the frontend app expects, zeropadding the seqNum if
@@ -572,7 +587,7 @@ class LocationConfig:
         return self._config["aosPipelineFile"][instrument]
 
 
-def getAutomaticLocationConfig():
+def getAutomaticLocationConfig() -> LocationConfig:
     """Get a location config, based on RA location and command line args.
 
     If no command line args have been supplied, get the LocationConfig based on
@@ -597,7 +612,7 @@ def getAutomaticLocationConfig():
     return LocationConfig(location.lower())
 
 
-def _loadConfigFile(site):
+def _loadConfigFile(site: str) -> dict[str, str]:
     """Get the site configuration, given a site name.
 
     Parameters
@@ -616,7 +631,7 @@ def _loadConfigFile(site):
     return config
 
 
-def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
+def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger = None) -> None:
     """Check whether the prerequsite installs for RubinTV are present.
 
     Some packages which aren't distributed with any metapackage are required
@@ -661,7 +676,7 @@ def checkRubinTvExternalPackages(exitIfNotFound=True, logger=None):
         exit()
 
 
-def raiseIf(doRaise, error, logger, msg=""):
+def raiseIf(doRaise: bool, error: Exception, logger: Logger, msg: str = "") -> None:
     """Raises the error if ``doRaise`` otherwise logs it as a warning.
 
     Parameters
@@ -689,7 +704,7 @@ def raiseIf(doRaise, error, logger, msg=""):
         logger.exception(msg)
 
 
-def getDoRaise():
+def getDoRaise() -> bool:
     """Get the value of ``RAPID_ANALYSIS_DO_RAISE`` as a bool from the env.
 
     Defaults to False if not present or if the value cannot be interpreted as a
@@ -704,7 +719,7 @@ def getDoRaise():
     return doRaiseString in ["true", "1", "yes"]
 
 
-def isDayObsContiguous(dayObs, otherDayObs):
+def isDayObsContiguous(dayObs: int, otherDayObs: int) -> bool:
     """Check if two dayObs integers are coniguous or not.
 
     DayObs take forms like 20220727 and therefore don't trivially compare.
@@ -727,7 +742,7 @@ def isDayObsContiguous(dayObs, otherDayObs):
     return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
 
 
-def hasDayRolledOver(dayObs, logger=None):
+def hasDayRolledOver(dayObs: int, logger: Logger = None) -> bool:
     """Check if the dayObs has rolled over when running constantly.
 
     Checks if supplied dayObs is the current dayObs and returns False
@@ -761,14 +776,14 @@ def hasDayRolledOver(dayObs, logger=None):
         return True  # the day has still rolled over, just in an unexpected way
 
 
-def catchPrintOutput(functionToCall, *args, **kwargs):
+def catchPrintOutput(functionToCall: Callable, *args, **kwargs) -> str:
     f = io.StringIO()
     with redirect_stdout(f):
         functionToCall(*args, **kwargs)
     return f.getvalue()
 
 
-def sanitizeNans(obj):
+def sanitizeNans(obj: Any) -> Any:
     """Recursively sanitize an object of any NaN-valued items.
 
     Nans are not JSON de-serializable, so this function replaces them with
@@ -806,7 +821,7 @@ class NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def writeMetadataShard(path, dayObs, mdDict):
+def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]) -> None:
     """Write a piece of metadata for uploading to the main table.
 
     Parameters
@@ -846,7 +861,7 @@ def writeMetadataShard(path, dayObs, mdDict):
     return
 
 
-def writeExpRecordMetadataShard(expRecord, metadataShardPath):
+def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: str) -> None:
     """Write the exposure record metedata to a shard.
 
     Only fires once, based on the value of TS8_METADATA_DETECTOR or
@@ -878,7 +893,9 @@ def writeExpRecordMetadataShard(expRecord, metadataShardPath):
     writeMetadataShard(metadataShardPath, dayObs, shardData)
 
 
-def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
+def writeDataShard(
+    path: str, instrument: str, dayObs: int, seqNum: int, dataSetName: str, dataDict: dict[Any, Any]
+) -> None:
     """Write some per-image data for merging later.
 
     Parameters
@@ -931,7 +948,7 @@ def writeDataShard(path, instrument, dayObs, seqNum, dataSetName, dataDict):
     return
 
 
-def createFilenameForDataShard(path, dataSetName, instrument, dayObs, seqNum):
+def createFilenameForDataShard(path: str, dataSetName: str, instrument: str, dayObs: int, seqNum: int) -> str:
     """Get a filename to use for writing sharded data to.
 
     A filename is built from the SHARDED_DATA_TEMPLATE, with a random suffix
@@ -969,17 +986,17 @@ def createFilenameForDataShard(path, dataSetName, instrument, dayObs, seqNum):
 
 
 def getShardedData(
-    path,
-    instrument,
-    dayObs,
-    seqNum,
-    dataSetName,
-    nExpected,
-    timeout,
-    logger=None,
-    deleteIfComplete=True,
-    deleteRegardless=False,
-):
+    path: str,
+    instrument: str,
+    dayObs: int,
+    seqNum: int,
+    dataSetName: str,
+    nExpected: int,
+    timeout: float,
+    logger: Logger = None,
+    deleteIfComplete: bool = True,
+    deleteRegardless: bool = False,
+) -> tuple[dict[Any, Any], int | None, int]:
     """Read back the sharded data for a given dayObs, seqNum, and dataset.
 
     Looks for ``nExpected`` files in the directory ``path``, merges their
@@ -1063,7 +1080,7 @@ def getShardedData(
     return data, len(files)
 
 
-def isFileWorldWritable(filename):
+def isFileWorldWritable(filename: str) -> bool:
     """Check that the file has the correct permissions for write access.
 
     Parameters
@@ -1080,7 +1097,7 @@ def isFileWorldWritable(filename):
     return stat.st_mode & 0o777 == 0o777
 
 
-def safeJsonOpen(filename, timeout=0.3):
+def safeJsonOpen(filename: str, timeout=0.3) -> dict[Any, Any]:
     """Open a JSON file, waiting for it to be populated if necessary.
 
     JSON doesn't like opening zero-byte files, so try to open it, and if it's
@@ -1116,7 +1133,7 @@ def safeJsonOpen(filename, timeout=0.3):
     raise RuntimeError(f"Failed to load data from {filename} after {timeout}s")
 
 
-def getNumExpectedItems(expRecord, logger=None):
+def getNumExpectedItems(expRecord: DimensionRecord, logger: Logger = None) -> int:
     """A placeholder function for getting the number of expected items.
 
     For a given instrument, get the number of detectors which were read out or

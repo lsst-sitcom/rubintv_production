@@ -102,9 +102,9 @@ class OneOffProcessor(BaseButlerChannel):
             doRaise=doRaise,
             addUploader=False,  # pipeline running pods don't upload directly
         )
-        self.instrument: str = instrument
-        self.butler: Butler = butler
-        self.podDetails: PodDetails = podDetails
+        self.instrument = instrument
+        self.butler = butler
+        self.podDetails = podDetails
         self.detector = detectorNumber
         self.shardsDirectory = shardsDirectory
         self.processingStage = processingStage
@@ -114,7 +114,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
-        self.redisHelper: RedisHelper = RedisHelper(butler, self.locationConfig)
+        self.redisHelper = RedisHelper(butler, self.locationConfig)
 
     def writeFocusZ(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
