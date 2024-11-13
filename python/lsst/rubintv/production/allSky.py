@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import logging
 import os
 import subprocess
@@ -77,7 +79,7 @@ def _createWritableDir(path: str) -> None:
         raise RuntimeError(f"Output path {path} is not writable.")
 
 
-def dayObsFromDirName(fullDirName: str, logger: Logger) -> tuple[int, str]:
+def dayObsFromDirName(fullDirName: str, logger: Logger) -> tuple[int, str] | tuple[None, None]:
     """Get the dayObs from the directory name.
 
     Parses the directory path, returning the dayObs as an int and a string if
@@ -114,7 +116,7 @@ def dayObsFromDirName(fullDirName: str, logger: Logger) -> tuple[int, str]:
         return None, None
 
 
-def getUbuntuFontPath(logger: Logger = None) -> str:
+def getUbuntuFontPath(logger: Logger | None = None) -> str | None:
     """Get the path to the Ubuntu font, if available.
 
     Parameters
@@ -134,16 +136,15 @@ def getUbuntuFontPath(logger: Logger = None) -> str:
         if not logger:  # only create if needed
             logger = _LOG.getChild("getUbuntuFontPath")
         logger.warning("Warning - cound not fund Ubuntu bold font!")
-        return
+        return None
     if len(ubuntuBoldPath) != 1:
         if not logger:  # only create if needed
             logger = _LOG.getChild("getUbuntuFontPath")
         logger.warning("Warning - found multiple fonts for Ubuntu bold, picking the first!")
-    ubuntuBoldPath = ubuntuBoldPath[0]
-    return ubuntuBoldPath
+    return ubuntuBoldPath[0]
 
 
-def getDateTimeFromExif(filename: str, logger: Logger = None) -> tuple[str, str]:
+def getDateTimeFromExif(filename: str, logger: Logger | None = None) -> tuple[str, str]:
     """Get the image date and time from the exif data.
 
     Parameters
@@ -296,8 +297,8 @@ def _seqNumFromFilename(filename: str) -> int:
         The seqNum.
     """
     # filenames look like /some/path/asc2204290657.jpg
-    seqNum = os.path.basename(filename)[:-4][-4:]  # 0-padded 4 digit string
-    seqNum = int(seqNum)
+    seqNumStr = os.path.basename(filename)[:-4][-4:]  # 0-padded 4 digit string
+    seqNum = int(seqNumStr)
     return seqNum
 
 
@@ -342,7 +343,7 @@ def _getFilesetFromDir(path: str, filetype: str = "jpg") -> set[str]:
     return set(files)
 
 
-def cleanupAllSkyIntermediates(logger: Logger = None) -> None:
+def cleanupAllSkyIntermediates(logger: Logger | None = None) -> None:
     """Delete all intermediate all-sky data products uploaded to GCS.
 
     Deletes all but the most recent static image, and all but the most recent
@@ -617,7 +618,7 @@ class DayAnimator:
             sleep(1)  # small sleep in case one of the files was being transferred when we listed it
 
             # convert any new files
-            newFiles = allFiles - convertedFiles
+            newFiles = list(allFiles - convertedFiles)
 
             if newFiles:
                 newFiles = sorted(newFiles)
@@ -642,8 +643,8 @@ class DayAnimator:
             if hasDayRolledOver(self.dayObsInt):
                 # final sweep for new images
                 allFiles = _getFilesetFromDir(self.todaysDataDir)
-                newFiles = allFiles - convertedFiles
-                convertedFiles |= self.convertFiles(newFiles)
+                newFileSet = allFiles - convertedFiles
+                convertedFiles |= self.convertFiles(newFileSet)
                 self.uploadLastStill(convertedFiles)
 
                 # make the movie and upload as final
@@ -741,6 +742,9 @@ class AllSkyMovieChannel:
         """The main entry point - start running the all sky camera TV channel.
         See class init docs for details.
         """
+        mostRecentDir = None
+        todaysDataDir = None
+        dayObsInt = None
         while True:
             try:
                 dirs = _getSortedSubDirs(self.rootDataPath)

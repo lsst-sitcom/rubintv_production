@@ -41,8 +41,7 @@ from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
-    from lsst.daf.butler import Butler, DataCoordinate
-    from lsst.pipe.base import Quantum
+    from lsst.daf.butler import Butler, DataCoordinate, Quantum
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -352,6 +351,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         clean.
         """
         taskName = quantum.taskName
+        assert taskName is not None, "taskName is None, this shouldn't be possible in RA"  # mainly for mypy
+
         # ned to catch the old and new isr tasks alike, and also not worry
         # about intermittent namespace stuttering
         if "isr" in taskName.lower():
@@ -423,7 +424,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", quantum.dataId)
+        self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
         try:

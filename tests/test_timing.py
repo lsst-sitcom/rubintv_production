@@ -54,8 +54,12 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         time.sleep(0.2)
         timer.lap()
-        self.assertAlmostEqual(timer.min(), 0.1, places=1)
-        self.assertAlmostEqual(timer.min(frequency=True), 10, places=1)
+        minValue = timer.min()
+        assert minValue is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(minValue, 0.1, places=1)
+        minFreq = timer.min(frequency=True)
+        assert minFreq is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(minFreq, 10, places=1)
 
     def test_max(self) -> None:
         timer = BoxCarTimer(length=3)
@@ -64,8 +68,12 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         time.sleep(0.2)
         timer.lap()
-        self.assertAlmostEqual(timer.max(), 0.2, places=1)
-        self.assertAlmostEqual(timer.max(frequency=True), 5, places=1)
+        maxValue = timer.max()
+        assert maxValue is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(maxValue, 0.2, places=1)
+        maxFreq = timer.max(frequency=True)
+        assert maxFreq is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(maxFreq, 5, places=1)
 
     def test_mean(self) -> None:
         timer = BoxCarTimer(length=3)
@@ -76,8 +84,12 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         time.sleep(0.15)
         timer.lap()
-        self.assertAlmostEqual(timer.mean(), 0.15, places=1)
-        self.assertAlmostEqual(timer.mean(frequency=True), 6.67, places=1)
+        meanValue = timer.mean()
+        assert meanValue is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(meanValue, 0.15, places=1)
+        meanFreq = timer.mean(frequency=True)
+        assert meanFreq is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(meanFreq, 6.67, places=1)
 
     def test_median(self) -> None:
         timer = BoxCarTimer(length=5)
@@ -90,8 +102,12 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         time.sleep(0.3)
         timer.lap()
-        self.assertAlmostEqual(timer.median(), 0.175, places=1)
-        self.assertAlmostEqual(timer.median(frequency=True), 5.714, places=1)
+        medianValue = timer.median()
+        assert medianValue is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(medianValue, 0.175, places=1)
+        medianFreq = timer.median(frequency=True)
+        assert medianFreq is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(medianFreq, 5.714, places=1)
 
     def test_extreme_outliers(self) -> None:
         timer = BoxCarTimer(length=5)
@@ -104,8 +120,12 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         time.sleep(5)
         timer.lap()
-        self.assertAlmostEqual(timer.mean(), 1.325, places=1)
-        self.assertAlmostEqual(timer.median(), 0.1, places=1)
+        meanValue = timer.mean()
+        assert meanValue is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(meanValue, 1.325, places=1)
+        medianValue = timer.median()
+        assert medianValue is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(medianValue, 0.1, places=1)
 
     def test_overflow(self) -> None:
         timer = BoxCarTimer(length=5)
@@ -115,8 +135,9 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         for i in range(5):
             time.sleep(0.1)
             timer.lap()
-
-        self.assertAlmostEqual(timer.mean(), 0.1, places=1)
+        mean_value = timer.mean()
+        assert mean_value is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(mean_value, 0.1, places=1)
 
     def test_empty_buffer(self) -> None:
         timer = BoxCarTimer(length=3)
@@ -133,7 +154,9 @@ class BoxCarTimerTestCase(lsst.utils.tests.TestCase):
         timer.lap()
         time.sleep(0.2)
         timer.lap()
-        self.assertAlmostEqual(timer.lastLapTime(), 0.2, places=1)
+        last_lap = timer.lastLapTime()
+        assert last_lap is not None  # self.assertIsNotNone doesn't work for mypy as it doesn't narrow type
+        self.assertAlmostEqual(last_lap, 0.2, places=1)
 
     def test_pause_resume(self) -> None:
         timer = BoxCarTimer(length=5)

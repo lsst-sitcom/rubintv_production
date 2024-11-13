@@ -29,7 +29,7 @@ import logging
 import os
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import redis
 
@@ -132,7 +132,7 @@ def decode_set(value_set: set[bytes]) -> set[str]:
     return {item.decode("utf-8") for item in value_set}
 
 
-def decode_zset(value_zset: list[tuple[bytes, bytes]]) -> list[tuple[str, str]]:
+def decode_zset(value_zset: list[tuple[Any, float]]) -> list[tuple[str, float]]:
     """Decode a zset of values from bytes to UTF-8.
 
     Parameters
@@ -176,8 +176,8 @@ def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
     ValueError
         If the number of exposure IDs extracted is not equal to 2.
     """
-    exposureIds = exposureBytes.decode("utf-8").split(",")
-    exposureIds = [int(v) for v in exposureIds]
+    exposureIdStrs = exposureBytes.decode("utf-8").split(",")
+    exposureIds = [int(v) for v in exposureIdStrs]
 
     if instrument == "LSSTComCamSim":
         # simulated exp ids are in the year 702X so add this manually, as
@@ -897,16 +897,18 @@ class RedisHelper:
 
             # Handle different Redis data types
             if type_of_key == "string":
-                value = decode_string(r.get(key))
+                toDecode = r.get(key)
+                assert toDecode is not None
+                value = decode_string(toDecode)
                 print(f"{key}: {value}")
             elif type_of_key == "hash":
-                values = decode_hash(r.hgetall(key))
-                print(f"{key}: {values}")
+                hValues = decode_hash(r.hgetall(key))
+                print(f"{key}: {hValues}")
             elif type_of_key == "list":
-                values = decode_list(r.lrange(key, 0, -1))
+                listValues = decode_list(r.lrange(key, 0, -1))
                 print(f"{key}:")
                 indent = 2 * " "
-                for item in values:
+                for item in listValues:
                     if _isPayload(item):
                         print(f"{indent}{getPayloadDataId(item)}")
                     elif _isExpRecord(item):
@@ -914,11 +916,11 @@ class RedisHelper:
                     else:
                         print(f"{indent}{item}")
             elif type_of_key == "set":
-                values = decode_set(r.smembers(key))
-                print(f"{key}: {values}")
+                sValues = decode_set(r.smembers(key))
+                print(f"{key}: {sValues}")
             elif type_of_key == "zset":
-                values = decode_zset(r.zrange(key, 0, -1, withscores=True))
-                print(f"{key}: {values}")
+                zValues = decode_zset(r.zrange(key, 0, -1, withscores=True))
+                print(f"{key}: {zValues}")
             else:
                 print(f"Unsupported type for key: {key}")
 

@@ -18,9 +18,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+from __future__ import annotations
+
 import statistics
 import time
 from collections import deque
+from typing import Deque
 
 __all__ = ["BoxCarTimer"]
 
@@ -48,10 +52,10 @@ class BoxCarTimer:
     """
 
     def __init__(self, length: int):
-        self._buffer = deque(maxlen=length)
-        self.lastTime = None
+        self._buffer: Deque[float] = deque(maxlen=length)
+        self.lastTime: float | None = None
         self.paused = False
-        self.pauseStartTime = None
+        self.pauseStartTime: float | None = None
         self.totalLaps = 0
         self.started = False
 
@@ -92,12 +96,14 @@ class BoxCarTimer:
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot resume.")
         if self.paused:
+            assert self.pauseStartTime is not None
             pauseDuration = time.time() - self.pauseStartTime
+            assert self.lastTime is not None
             self.lastTime += pauseDuration
             self.paused = False
             self.pauseStartTime = None
 
-    def min(self, frequency: bool = False) -> float:
+    def min(self, frequency: bool = False) -> float | None:
         """Get the minimum lap time in the buffer.
 
         Parameters
@@ -119,7 +125,7 @@ class BoxCarTimer:
             return 1 / minValue if minValue != 0 else float("inf")
         return minValue
 
-    def max(self, frequency: bool = False) -> float:
+    def max(self, frequency: bool = False) -> float | None:
         """Get the maximum lap time in the buffer.
 
         Parameters
@@ -141,7 +147,7 @@ class BoxCarTimer:
             return 1 / maxValue if maxValue != 0 else float("inf")
         return maxValue
 
-    def mean(self, frequency: bool = False) -> float:
+    def mean(self, frequency: bool = False) -> float | None:
         """Get the mean of the lap times in the buffer.
 
         Parameters
@@ -163,7 +169,7 @@ class BoxCarTimer:
             return 1 / meanValue if meanValue != 0 else float("inf")
         return meanValue
 
-    def median(self, frequency: bool = False) -> float:
+    def median(self, frequency: bool = False) -> float | None:
         """Get the median of the lap times in the buffer.
 
         Parameters

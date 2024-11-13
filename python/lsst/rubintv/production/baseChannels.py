@@ -33,9 +33,10 @@ from .watchers import FileWatcher, RedisWatcher
 if TYPE_CHECKING:
     from logging import Logger
 
-    from lsst.daf.butler import Butler, DataCoordinate
+    from lsst.daf.butler import Butler, DataCoordinate, LimitedButler
 
     from .podDefinition import PodDetails
+    from .starTracker import StarTrackerWatcher
     from .utils import LocationConfig
 
 
@@ -67,7 +68,7 @@ class BaseChannel(ABC):
         *,
         locationConfig: LocationConfig,
         log: Logger,
-        watcher: FileWatcher | RedisWatcher,
+        watcher: FileWatcher | RedisWatcher | StarTrackerWatcher,
         doRaise: bool,
         addUploader: bool = False,
     ) -> None:
@@ -178,7 +179,7 @@ class BaseButlerChannel(BaseChannel):
         raise NotImplementedError()
 
     def _waitForDataProduct(
-        self, dataId: DataCoordinate, timeout: float = 20, gettingButler: Butler | None = None
+        self, dataId: DataCoordinate, timeout: float = 20, gettingButler: Butler | LimitedButler | None = None
     ) -> Any:
         """Wait for a dataProduct to land inside a repo.
 
@@ -214,6 +215,7 @@ class BaseButlerChannel(BaseChannel):
                     return self.butler.get(self.dataProduct, dataId)
                 else:
                     ref = self.butler.find_dataset(self.dataProduct, dataId)
+                    assert ref is not None, f"Registry error: could not find {self.dataProduct} for {dataId}"
                     return gettingButler.get(ref)
             else:
                 sleep(cadence)

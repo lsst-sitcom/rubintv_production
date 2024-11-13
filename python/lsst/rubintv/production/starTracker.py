@@ -27,7 +27,7 @@ import time
 import traceback
 from glob import glob
 from time import sleep
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import pandas as pd
@@ -64,6 +64,8 @@ from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
+    from pandas import DataFrame
+
     from lsst.afw.image import Exposure
     from lsst.summit.utils.starTracker import StarTrackerCamera
 
@@ -197,8 +199,8 @@ class StarTrackerWatcher:
             return None, None, None, None
 
         # filenames are like GC101_O_20221114_000005.fits
-        _, _, dayObs, seqNumAndSuffix = latestFile.split("_")
-        dayObs = int(dayObs)
+        _, _, dayObsStr, seqNumAndSuffix = latestFile.split("_")
+        dayObs = int(dayObsStr)
         seqNum = int(seqNumAndSuffix.removesuffix(".fits"))
         expId = int(str(dayObs) + seqNumAndSuffix.removesuffix(".fits"))
         return latestFile, dayObs, seqNum, expId
@@ -211,8 +213,8 @@ class StarTrackerWatcher:
         callback : `callable`
             The method to call, with the latest filename as the argument.
         """
-        lastFound = -1
-        filename = "no filename"
+        lastFound: int | None = -1
+        filename: str | None = "no filename"
         while True:
             try:
                 filename, _, _, expId = self._getLatestImageDataIdAndExpId()
@@ -304,6 +306,8 @@ class StarTrackerChannel(BaseChannel):
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         if seqNum is None:
             return  # skip streaming mode files
+        assert dayObs is not None, "dayObs should not be None when parsing filename"
+
         expMd = exp.getMetadata().toDict()
         expTime = exp.visitInfo.exposureTime
         contents = {}
@@ -358,6 +362,8 @@ class StarTrackerChannel(BaseChannel):
         basename = os.path.basename(filename).removesuffix(".fits")
         fittedPngFilename = os.path.join(self.outputRoot, basename + "_fitted.png")
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        assert dayObs is not None, "dayObs should not be None when parsing filename"
+        assert seqNum is not None, "seqNum should not be None when parsing filename"
 
         snr = self.camera.snr
         minPix = self.camera.minPix
@@ -384,6 +390,10 @@ class StarTrackerChannel(BaseChannel):
         )
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        assert self.s3Uploader is not None, "s3Uploader should not be None"
+        assert dayObs is not None, "dayObs should not be None when parsing filename"
+        assert seqNum is not None, "seqNum should not be None when parsing filename"
+
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="startracker" + self.camera.suffix,
             plotName="analysis",
@@ -446,7 +456,7 @@ class StarTrackerChannel(BaseChannel):
 
         deltaRot = newWcs.getRelativeRotationToWcs(oldWcs).asArcseconds()
 
-        result = {
+        results = {
             "Calculated Ra": calculatedRa.asDegrees(),
             "Calculated Dec": calculatedDec.asDegrees(),
             "Calculated Alt": newAlt.asDegrees(),
@@ -459,7 +469,7 @@ class StarTrackerChannel(BaseChannel):
             "RMS scatter arcsec": result.rmsErrorArsec,
             "RMS scatter pixels": result.rmsErrorPixels,
         }
-        contents = {k + self.camera.suffixWithSpace: v for k, v in result.items()}
+        contents = {k + self.camera.suffixWithSpace: v for k, v in results.items()}
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
@@ -483,6 +493,7 @@ class StarTrackerChannel(BaseChannel):
         plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        assert self.s3Uploader is not None, "s3Uploader should not be None"
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="startracker" + self.camera.suffix,
             plotName="raw",
@@ -535,7 +546,9 @@ class StarTrackerNightReportChannel(BaseChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig: LocationConfig, *, dayObs: int = None, doRaise: bool = False) -> None:
+    def __init__(
+        self, locationConfig: LocationConfig, *, dayObs: int | None = None, doRaise: bool = False
+    ) -> None:
         name = "starTrackerNightReport"
         log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
@@ -552,7 +565,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
         self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
 
-    def getMetadataTableContents(self) -> dict[Any, Any] | None:
+    def getMetadataTableContents(self) -> DataFrame | None:
         """Get the measured data for the current night.
 
         Returns
@@ -746,9 +759,11 @@ class StarTrackerCatchup:
         if not toProcess:
             return
 
+        # seqNum should never be None anyway, but remove in list comp for mypy
         filenames = [
             getFilename(self.locationConfig.starTrackerDataPath, camera, self.dayObs, seqNum)
             for seqNum in toProcess
+            if seqNum is not None
         ]
         filenames = [f for f in filenames if os.path.isfile(f)]
         self.log.info(f"of which {len(filenames)} had corresponding files")

@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -38,7 +40,7 @@ LOG_ITEM_MAPPINGS = {
 }
 
 
-def getLogsForDayObs(dayObs: int, logger: Logger = None) -> dict[int, dict[str, Any]]:
+def getLogsForDayObs(dayObs: int, logger: Logger | None = None) -> dict[int, dict[str, Any]] | None:
     """Get a dictionary of log messages for the dayObs, keyed by seqNum.
 
     Parameters

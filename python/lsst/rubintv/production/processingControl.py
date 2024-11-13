@@ -54,6 +54,8 @@ from .timing import BoxCarTimer
 from .utils import LocationConfig, getShardPath, isCalibration, isWepImage, writeExpRecordMetadataShard
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from lsst.afw.cameraGeom import Detector
 
 
@@ -480,14 +482,14 @@ class HeadProcessController:
             targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
             who = "SFM"
 
-        detectorIds = []
+        detectorIds: list[int] = []
         nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
             detectorIds = self.focalPlaneControl.getEnabledDetIds()
             nEnabled = len(detectorIds)
         else:
             results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
-            detectorIds = sorted([item["detector"] for item in results])
+            detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
         dataIds = {}
         for detectorId in detectorIds:
@@ -791,7 +793,9 @@ class HeadProcessController:
                 f" workload of {maxWorkTime:.2f}s in the last {len(self.workTimer._buffer)} loops"
             )
 
-        sleepPeriod = self.targetLoopDuration - self.loopTimer.lastLapTime()
+        lastLap = self.loopTimer.lastLapTime()
+        assert lastLap is not None, "Expected lastLap to be set"
+        sleepPeriod = self.targetLoopDuration - lastLap
         if sleepPeriod > 0:
             self.workTimer.pause()  # don't count the sleeping towards the loop time on work timer
             sleep(sleepPeriod)
@@ -1244,7 +1248,7 @@ class CameraControlConfig:
         """
         return sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
 
-    def asPlotData(self) -> dict[str, list[int] | np.array[int]]:
+    def asPlotData(self) -> dict[str, list[int] | list[None] | NDArray]:
         """Get the data in a form for rendering as a ``FocalPlaneGeometryPlot``
 
         Returns
@@ -1267,10 +1271,10 @@ class CameraControlConfig:
             ``"y"``
                 Focal plane y position, optional.
         """
-        detNums = []
-        ampNames = []
-        x = []
-        y = []
+        detNums: list[int] = []
+        ampNames: list[None] = []
+        x: list[None] = []
+        y: list[None] = []
         z = []
         for detector, state in self._detectorStates.items():
             for amp in detector:

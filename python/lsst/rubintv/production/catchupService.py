@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -91,6 +93,7 @@ class RubinTvBackgroundService:
         self.doRaise = doRaise
         self.butler = butlerUtils.makeDefaultLatissButler()
         self.bestEffort = BestEffortIsr()
+        self.dayObs: int
 
         self.mdServer = MetadataCreator(
             self.locationConfig, instrument=instrument
@@ -108,10 +111,13 @@ class RubinTvBackgroundService:
         allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs)
 
         where = "exposure.day_obs=dayObs AND instrument='LATISS'"
-        expRecords = self.butler.registry.queryDimensionRecords(
-            "exposure", where=where, bind={"dayObs": self.dayObs}, datasets="quickLookExp"
+        expRecords = list(
+            set(
+                self.butler.registry.queryDimensionRecords(
+                    "exposure", where=where, bind={"dayObs": self.dayObs}, datasets="quickLookExp"
+                )
+            )
         )
-        expRecords = list(set(expRecords))
         foundSeqNums = [r.seq_num for r in expRecords]
         toMakeSeqNums = [s for s in allSeqNums if s not in foundSeqNums]
         return [{"day_obs": self.dayObs, "seq_num": s, "detector": 0} for s in toMakeSeqNums]
@@ -287,7 +293,7 @@ class RubinTvBackgroundService:
             self.catchupMountTorques,
         ]:
             try:
-                component.__call__()
+                component()
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
 

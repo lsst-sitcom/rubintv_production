@@ -215,11 +215,11 @@ class FakeExposureRecord:
         return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
 
 
-def expRecordFromJson(expRecordJson: str, locationConfig: LocationConfig) -> DimensionRecord:
+def expRecordFromJson(expRecordJson: str | bytes, locationConfig: LocationConfig) -> DimensionRecord | None:
     """Deserialize a DimensionRecord from a JSON string.
 
-    expRecordJson : `str`
-        The JSON string to deserialize.
+    expRecordJson : `str` or `bytes`
+        The JSON string to deserialize, as either a string or bytes.
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The location configuration, used to determine the dimension universe.
     """
@@ -229,7 +229,7 @@ def expRecordFromJson(expRecordJson: str, locationConfig: LocationConfig) -> Dim
 
 
 def expRecordToUploadFilename(
-    channel: str, expRecord: DimensionRecord, extension=".png", zeroPad=False
+    channel: str, expRecord: DimensionRecord | FakeExposureRecord, extension=".png", zeroPad=False
 ) -> str:
     """Convert an expRecord to a filename, for use when uploading to a channel.
 
@@ -606,7 +606,7 @@ def getAutomaticLocationConfig() -> LocationConfig:
         except FileNotFoundError:
             pass
 
-    location = os.getenv("RAPID_ANALYSIS_LOCATION")
+    location = os.getenv("RAPID_ANALYSIS_LOCATION", "")
     if not location:
         raise RuntimeError("No location was supplied on the command line or via RAPID_ANALYSIS_LOCATION.")
     return LocationConfig(location.lower())
@@ -631,7 +631,7 @@ def _loadConfigFile(site: str) -> dict[str, str]:
     return config
 
 
-def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger = None) -> None:
+def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger | None = None) -> None:
     """Check whether the prerequsite installs for RubinTV are present.
 
     Some packages which aren't distributed with any metapackage are required
@@ -742,7 +742,7 @@ def isDayObsContiguous(dayObs: int, otherDayObs: int) -> bool:
     return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
 
 
-def hasDayRolledOver(dayObs: int, logger: Logger = None) -> bool:
+def hasDayRolledOver(dayObs: int, logger: Logger | None = None) -> bool:
     """Check if the dayObs has rolled over when running constantly.
 
     Checks if supplied dayObs is the current dayObs and returns False
@@ -993,10 +993,10 @@ def getShardedData(
     dataSetName: str,
     nExpected: int,
     timeout: float,
-    logger: Logger = None,
+    logger: Logger | None = None,
     deleteIfComplete: bool = True,
     deleteRegardless: bool = False,
-) -> tuple[dict[Any, Any], int | None, int]:
+) -> tuple[dict[Any, Any], int]:
     """Read back the sharded data for a given dayObs, seqNum, and dataset.
 
     Looks for ``nExpected`` files in the directory ``path``, merges their
@@ -1049,6 +1049,7 @@ def getShardedData(
 
     start = time.time()
     firstLoop = True
+    files = []
     while firstLoop or (time.time() - start < timeout):
         firstLoop = False  # ensure we always run at least once
         files = glob.glob(pattern)
@@ -1068,7 +1069,7 @@ def getShardedData(
         )
 
     if not files:
-        return None, 0
+        return {}, 0
 
     data = {}
     for dataShard in files:
@@ -1097,7 +1098,7 @@ def isFileWorldWritable(filename: str) -> bool:
     return stat.st_mode & 0o777 == 0o777
 
 
-def safeJsonOpen(filename: str, timeout=0.3) -> dict[Any, Any]:
+def safeJsonOpen(filename: str, timeout=0.3) -> str:
     """Open a JSON file, waiting for it to be populated if necessary.
 
     JSON doesn't like opening zero-byte files, so try to open it, and if it's
@@ -1114,8 +1115,9 @@ def safeJsonOpen(filename: str, timeout=0.3) -> dict[Any, Any]:
 
     Returns
     -------
-    jsonData : `dict`
-        The data from the json file as (potentially very nested) a dict.
+    jsonData : `str`
+        The data from the json file as a string, i.e. not put back into a
+        python object.
 
     Raises
     ------
@@ -1133,7 +1135,7 @@ def safeJsonOpen(filename: str, timeout=0.3) -> dict[Any, Any]:
     raise RuntimeError(f"Failed to load data from {filename} after {timeout}s")
 
 
-def getNumExpectedItems(expRecord: DimensionRecord, logger: Logger = None) -> int:
+def getNumExpectedItems(expRecord: DimensionRecord, logger: Logger | None = None) -> int:
     """A placeholder function for getting the number of expected items.
 
     For a given instrument, get the number of detectors which were read out or
@@ -1169,11 +1171,11 @@ def getNumExpectedItems(expRecord: DimensionRecord, logger: Logger = None) -> in
     if instrument == "LSSTComCamSim":
         return fallbackValue  # it's always nine (it's simulated), and this will all be redone soon anyway
 
+    resourcePath = (
+        f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
+        f"{expRecord.obs_id}_expectedSensors.json"
+    )
     try:
-        resourcePath = (
-            f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
-            f"{expRecord.obs_id}_expectedSensors.json"
-        )
         url = ResourcePath(resourcePath)
         jsonData = url.read()
         data = json.loads(jsonData)

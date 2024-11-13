@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import asyncio
 import time
 from typing import TYPE_CHECKING
@@ -41,9 +43,9 @@ if TYPE_CHECKING:
 
     from lsst_efd_client import EfdClient
     from matplotlib.pyplot import Figure
+    from numpy.typing import NDArray
 
     from lsst.daf.butler import Butler, DataCoordinate
-
 
 __all__ = ["calculateMountErrors"]
 
@@ -73,7 +75,7 @@ def calculateMountErrors(
     figure: Figure | None,
     saveFilename: str,
     logger: Logger,
-) -> dict[str, np.array]:
+) -> dict[str, NDArray] | bool:
     """Queries EFD for a given exposure and calculates the RMS errors in the
     axes during the exposure, optionally plotting and saving the data.
 
