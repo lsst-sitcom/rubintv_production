@@ -188,7 +188,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        self.log.setLevel("DEBUG")  # XXX remove before merging
         dataIds: list[DataCoordinate] = payload.dataIds
         pipelineGraphBytes: bytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
@@ -204,10 +203,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             compoundId = "+".join([f"{dataId}" for dataId in dataIds])
 
         self.log.debug(f"Processing {compoundId=}")
-
-        # XXX reinstate or remove? we deal with isr differently now...
-        # if not self.doProcessImage(dataId):
-        #     return
         self.log.debug(f"{self.step=} {self.dataProduct=}")
 
         try:
@@ -281,17 +276,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             for node in qg:
                 # just to make sure taskName is defined, so if this shows
                 # up anywhere something is very wrong
-                taskName = "something is deeply wrong"
                 dataCoord = node.quantum.dataId  # pull this out before the try so you can use in except block
                 assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
+                taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
+                self.log.info(f"Starting to process {taskName}")
                 try:
-                    self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
-
-                    taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
-                    self.log.info(f"Starting to process {taskName}")
-
                     quantum, _ = executor.execute(node.task_node, node.quantum)
                     self.postProcessQuantum(quantum)
                     self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
