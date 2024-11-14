@@ -137,7 +137,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.podDetails = podDetails
 
         self.runCollection: str | None = None
-        self.limitedButler = self.makeLimitedButler(butler)
+        self.cachingButler = self.makeCachingLimitedButler(butler)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
@@ -145,7 +145,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
-    def makeLimitedButler(self, butler: Butler) -> CachingLimitedButler:
+    def makeCachingLimitedButler(self, butler: Butler) -> CachingLimitedButler:
         cachedOnGet = set()
         cachedOnPut = set()
         for name in self.pipelineGraph.dataset_types.keys():
@@ -216,7 +216,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.pipelineGraphBytes = pipelineGraphBytes
                 self.pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
                 # need to remake the caching butler if the pipeline changes
-                self.limitedButler = self.makeLimitedButler(self.butler)
+                self.cachingButler = self.makeCachingLimitedButler(self.butler)
 
             # chain all the dataId components together with AND, and an OR
             # between each dataId. Make sure to bind the dataId components
@@ -252,7 +252,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             t0 = time.time()
             for dataId in dataIds:
                 self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
-                self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
+                self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
             self.log.info(
                 f"Spent {(time.time()-t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
                 " (should be ~1s per id)"
@@ -274,7 +274,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             executor = SingleQuantumExecutor(
                 None,
                 taskFactory=TaskFactory(),
-                limited_butler_factory=lambda _: self.limitedButler,
+                limited_butler_factory=lambda _: self.cachingButler,
                 clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
             )
 
@@ -343,7 +343,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         compound of multiple exposures, depending on the pipeline, joined with
         a "+".
 
-        Also, anything you self.limitedButler.get() make sure to add to
+        Also, anything you self.cachingButler.get() make sure to add to
         cache_on_put.
 
         # TODO: After OR3, move all this out to postprocessQuanta.py, and do
@@ -374,7 +374,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def postProcessIsr(self, quantum: Quantum) -> None:
         dRef = quantum.outputs["postISRCCD"][0]
-        exp = self.limitedButler.get(dRef)
+        exp = self.cachingButler.get(dRef)
 
         writeBinnedImage(
             exp=exp,
@@ -409,7 +409,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # refactoring yet, especially as they will probably diverge in the
         # future.
         dRef = quantum.outputs["calexp"][0]
-        exp = self.limitedButler.get(dRef)
+        exp = self.cachingButler.get(dRef)
 
         writeBinnedImage(
             exp=exp,
@@ -445,7 +445,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def postProcessVisitSummary(self, quantum: Quantum) -> None:
         dRef = quantum.outputs["visitSummary"][0]
-        vs = self.limitedButler.get(dRef)
+        vs = self.cachingButler.get(dRef)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
         nominalPlateScale = 0.199225  # XXX remove the hard-coding for ComCam
