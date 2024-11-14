@@ -131,7 +131,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.instrument = instrument
         self.butler = butler
         self.step = step
-        self.pipeline = pipeline + f"#{step}"
+        self.pipeline = f"{pipeline}#{step}"
         self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
         self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
         self.podDetails = podDetails

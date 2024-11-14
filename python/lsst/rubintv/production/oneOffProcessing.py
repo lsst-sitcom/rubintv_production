@@ -48,7 +48,8 @@ __all__ = [
 
 
 class OneOffProcessor(BaseButlerChannel):
-    """XXX docs
+    """A processor which runs arbitrary code on an arbitrary data product for
+    a single CCD in the focal plane.
 
     Parameters
     ----------
@@ -58,17 +59,17 @@ class OneOffProcessor(BaseButlerChannel):
         The butler to use.
     instrument : `str`
         The instrument name.
-    pipeline : `str`
-        The path to the pipeline yaml file.
-    step : `str`
-        The step of the pipeline to run with this worker.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The details of the pod this worker is running on.
+    detectorNumber : `int`
+        The detector number that this worker should process.
+    shardsDirectory : `str`
+        The directory to write the metadata shards to.
     processingStage : `str`
         The data product that this runner needs in order to run, e.g. if it
         should run once ISR has completed for the specified detector, use
         "postISRCCD", and if it should run after step1 is complete use "calexp"
         (or "pvi" once we switch).
-    queueName : `str`
-        The queue that the worker should consume from.
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """

@@ -41,8 +41,8 @@ from lsst.rubintv.production.utils import LocationConfig, getDoRaise  # noqa: E4
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = False  # XXX Turn on before merging
-DO_CHECK_YAML_FILES = True  # XXX Turn on before merging
+DO_RUN_META_TESTS = True
+DO_CHECK_YAML_FILES = True
 
 REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
@@ -118,8 +118,8 @@ TEST_SCRIPTS_ROUND_3 = [
     # run after the processing pods are torn down, so that, for example, the
     # butler watcher can be checked without attempting to process the image it
     # drops into redis
-    # XXX need to get this to actually run
-    # XXX need to add check that this actually output to redis
+    # TODO need to get this to actually run
+    # TODO need to add check that this actually output to redis
     TestScript("scripts/LSSTComCam/runButlerWatcher.py", ["usdf_testing"]),
 ]
 
@@ -389,7 +389,7 @@ def check_redis_final_contents():
     n_visits_sfm = len(visits_sfm)
     n_visits_aos = len(visits_aos)
 
-    # XXX add something for the task counters too, not just step2a entry etc
+    # TODO add something for the task counters too, not just step2a entry etc
 
     n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
     if n_step2a_sfm != n_visits_sfm:
@@ -723,12 +723,6 @@ def main():
     check_redis_startup()  # Wait for the setup timeout and then check Redis
 
     delete_output_files()
-
-    # XXX really should do an rm -rf here, of the places where things will be
-    # written to, otherwise it could potentially succeed by using previous
-    # outputs for some things, like focal plane plotting. But that needs to be
-    # somewhat safe. Just doing the output data path and plot path for now
-    # should be OK.
 
     # Run each real test script
     run_test_scripts(TEST_SCRIPTS_ROUND_1, TEST_DURATION)
