@@ -431,7 +431,7 @@ def plotFocalPlaneMosaic(
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
-    figureOrDisplay : `matplotlib.figure.Figure` of `afwDisplay.Display`
+    figureOrDisplay : `matplotlib.figure.Figure` or `afwDisplay.Display`
         The figure to plot on, or the display to use.
     expId : `int`
         The exposure id.

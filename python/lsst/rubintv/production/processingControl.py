@@ -115,7 +115,8 @@ def prepRunCollection(
             " prefix and didn't chain it to the output collection."
         )
 
-    log.info(f"Prepping new run {run} with {len(list(pipelineGraphs))} pipelineGraphs")
+    pipelineGraphs = list(pipelineGraphs)
+    log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
     butler.put(packages, "packages", run=run)
 
     for pipelineGraph in pipelineGraphs:
@@ -162,7 +163,7 @@ def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
     """
     ids = list(butler.registry.queryDimensionRecords("visit", dataId=expRecord.dataId))
     if len(ids) < 1:  # only run if needed
-        instrumentString = butler.registry.defaults.dataId["instrument"]
+        instrumentString = expRecord.instrument
         assert isinstance(instrumentString, str), f"Expected {instrumentString=} to be a string"
         instr = Instrument.from_string(instrumentString, butler.registry)
         config = DefineVisitsConfig()
@@ -278,10 +279,10 @@ class PipelineComponents:
     graphs: dict[str, PipelineGraph]
     graphBytes: dict[str, bytes]
     uris: dict[str, str]
-    steps: Iterable[str]
+    steps: list[str]
     pipelineFile: str
 
-    def __init__(self, registry: Registry, pipelineFile: str, steps: Iterable[str]) -> None:
+    def __init__(self, registry: Registry, pipelineFile: str, steps: list[str]) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
@@ -366,9 +367,9 @@ class HeadProcessController:
         self.pipelines = {}
         self.pipelines["ISR"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["isr"])
         self.pipelines["SFM"] = PipelineComponents(
-            self.butler.registry, sfmPipelineFile, ("step1", "step2a", "nightlyRollup")
+            self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
         )
-        self.pipelines["AOS"] = PipelineComponents(self.butler.registry, aosPipelineFile, ("step1", "step2a"))
+        self.pipelines["AOS"] = PipelineComponents(self.butler.registry, aosPipelineFile, ["step1", "step2a"])
 
         self.allGraphs: list[PipelineGraph] = []
         for pipeline in self.pipelines.values():
@@ -488,7 +489,7 @@ class HeadProcessController:
             detectorIds = self.focalPlaneControl.getEnabledDetIds()
             nEnabled = len(detectorIds)
         else:
-            results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
+            results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
         dataIds = {}

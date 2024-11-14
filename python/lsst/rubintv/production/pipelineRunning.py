@@ -345,7 +345,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         taskName = quantum.taskName
         assert taskName is not None, "taskName is None, this shouldn't be possible in RA"  # mainly for mypy
 
-        # ned to catch the old and new isr tasks alike, and also not worry
+        # need to catch the old and new isr tasks alike, and also not worry
         # about intermittent namespace stuttering
         if "isr" in taskName.lower():
             self.postProcessIsr(quantum)
@@ -378,7 +378,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
             try:
-                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+                expRecord = dRef.dataId.records["exposure"]
+                assert expRecord is not None, "expRecord is None, this shouldn't be possible"
                 detectorNum = exp.getDetector().getId()
                 postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
                 ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
@@ -425,7 +426,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # USDF.
             if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
                 summaryStats = exp.getInfo().getSummaryStats()
-                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+                expRecord = dRef.dataId.records["exposure"]
+                assert expRecord is not None, "expRecord is None, this shouldn't be possible"
                 detectorNum = exp.getDetector().getId()
                 self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
                 self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
