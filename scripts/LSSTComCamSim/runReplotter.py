@@ -21,7 +21,7 @@
 
 # XXX I don't think this has been used for a while. Ressurect ASAP or delete?
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import Butler
 from lsst.rubintv.production.slac import Replotter
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
@@ -31,9 +31,7 @@ print("Running ComCamSim replotter...")
 
 locationConfig = getAutomaticLocationConfig()
 
-butler = dafButler.Butler(  # type: ignore
-    locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"]
-)
+butler = Butler.from_config(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 
 plotter = Replotter(  # XXX needs type annotating and moving to podDetails
     butler=butler,

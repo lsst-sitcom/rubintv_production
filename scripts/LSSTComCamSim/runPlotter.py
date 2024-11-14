@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import Butler
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.slac.newPlotting import Plotter
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
@@ -36,9 +36,7 @@ print(
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = dafButler.Butler(  # type: ignore
-    locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"]
-)
+butler = Butler.from_config(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 
 plotter = Plotter(
     butler=butler,

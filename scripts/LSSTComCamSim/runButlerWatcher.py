@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import Butler
 from lsst.rubintv.production import ButlerWatcher
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
@@ -29,10 +29,7 @@ instrument = "LSSTComCamSim"
 locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
-# XXX change to LSSTComCamSim/defaults?
-butler = dafButler.Butler(  # type: ignore
-    locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"]
-)
+butler = Butler.from_config(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
 
 writeDimensionUniverseFile(butler, locationConfig)
 butlerWatcher = ButlerWatcher(

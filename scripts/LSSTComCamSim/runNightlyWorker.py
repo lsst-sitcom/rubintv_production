@@ -21,7 +21,7 @@
 
 import sys
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import Butler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
@@ -40,7 +40,7 @@ print(
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = dafButler.Butler(  # type: ignore
+butler = Butler.from_config(
     locationConfig.comCamButlerPath,
     collections=[
         "LSSTComCamSim/defaults",

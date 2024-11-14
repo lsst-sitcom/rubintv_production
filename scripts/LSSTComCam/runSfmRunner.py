@@ -41,7 +41,7 @@ print(
 )
 
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(  # type: ignore
+butler = dafButler.Butler.from_config(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[

@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import Butler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
@@ -42,7 +42,7 @@ print(
 )
 
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(  # type: ignore
+butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
     collections=[
         "LSSTCam/defaults",

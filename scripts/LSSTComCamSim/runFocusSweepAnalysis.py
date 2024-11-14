@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.daf.butler as dafButler
+from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import FocusSweepAnalysis
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
@@ -36,7 +36,7 @@ if locationConfig.location not in ["summit", "tts", "bts"]:
     )
     raise RuntimeError(msg)
 
-butler = dafButler.Butler(  # type: ignore
+butler = Butler.from_config(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
