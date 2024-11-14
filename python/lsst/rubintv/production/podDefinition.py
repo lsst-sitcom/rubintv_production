@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 
 __all__ = ["PodType", "PodFlavor", "PodDetails", "getQueueName"]
 
@@ -37,23 +37,23 @@ class PodType(Enum):
 class PodFlavor(Enum):
     # all items much contain WORKER if they're not the head node
     # all items must also provide their type via an entry in podFlavorToPodType
-    SFM_WORKER = "SFM_WORKER"
-    AOS_WORKER = "AOS_WORKER"
-    PSF_PLOTTER = "PSF_PLOTTER"
-    NIGHTLYROLLUP_WORKER = "NIGHTLYROLLUP_WORKER"
-    STEP2A_WORKER = "STEP2A_WORKER"
-    STEP2A_AOS_WORKER = "STEP2A_AOS_WORKER"
-    MOSAIC_WORKER = "MOSAIC_WORKER"
-    ONE_OFF_POSTISR_WORKER = "ONE_OFF_POSTISR_WORKER"
-    ONE_OFF_CALEXP_WORKER = "ONE_OFF_CALEXP_WORKER"
+    SFM_WORKER = auto()
+    AOS_WORKER = auto()
+    PSF_PLOTTER = auto()
+    NIGHTLYROLLUP_WORKER = auto()
+    STEP2A_WORKER = auto()
+    STEP2A_AOS_WORKER = auto()
+    MOSAIC_WORKER = auto()
+    ONE_OFF_POSTISR_WORKER = auto()
+    ONE_OFF_CALEXP_WORKER = auto()
 
-    HEAD_NODE = "HEAD_NODE"
+    HEAD_NODE = auto()
 
     @classmethod
     def validate_values(cls):
         for item in cls:
-            if "-" in item.value:
-                raise ValueError(f"Invalid PodFlavor: value with dash: {item.value}")
+            if "-" in item.name:
+                raise ValueError(f"Invalid PodFlavor: value with dash: {item.name}")
 
 
 # trigger this check import, as this is covered by tests: ensures that nobody
@@ -81,7 +81,7 @@ def getQueueName(
     podFlavor: PodFlavor, instrument: str, detectorNumber: int | str | None, depth: int | str | None
 ) -> str:
     podType = podFlavorToPodType(podFlavor)
-    queueName = f"{podFlavor.value}{DELIMITER}{instrument}"
+    queueName = f"{podFlavor.name}{DELIMITER}{instrument}"
 
     if podType == PodType.PER_INSTRUMENT_SINGLETON:
         return queueName
@@ -161,7 +161,7 @@ class PodDetails:
         if len(parts) < 2 or len(parts) > 4:
             raise ValueError(f"Expected 2 to 4 parts in the input string, but got {len(parts)}: {queueName}")
 
-        podFlavor = PodFlavor(parts[0])
+        podFlavor = PodFlavor[parts[0]]
         instrument = parts[1]
         depth = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         detectorNumber = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
