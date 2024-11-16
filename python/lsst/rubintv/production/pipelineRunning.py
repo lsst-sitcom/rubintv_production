@@ -365,6 +365,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # pipeline, because this is the quantum that holds the
             # visitSummary
             self.postProcessVisitSummary(quantum)
+        elif "AggregateZernikeTablesTask".lower() in taskName.lower():
+            self.postProcessAggregateZernikeTables(quantum)
         else:
             return
 
@@ -489,3 +491,31 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
+
+    def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
+        # protect import to stop the whole package depending on ts_wep. If this
+        # becomes a problem we could copy the functions or just accept that RA
+        # needs T&S software.
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth  # type: ignore
+
+        dRef = quantum.outputs["aggregateZernikesAvg"][0]
+        zernikes = self.cachingButler.get(dRef)
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+
+        rowSums = []
+        zkOcs = zernikes["zk_OCS"]
+        for row in zkOcs:
+            zk_fwhm = convertZernikesToPsfWidth(row)
+            rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
+
+        average_result = np.mean(rowSums)
+
+        outputDict = {"Residual AOS FWHM": f"{average_result:.2f}"}
+        labels = {"_" + k: "measured" for k in outputDict.keys()}
+        outputDict.update(labels)
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+
+        shardPath = getShardPath(self.locationConfig, expRecord)
+        writeMetadataShard(shardPath, dayObs, rowData)
