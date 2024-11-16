@@ -322,6 +322,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
+            if self.step == "step1":
+                self.redisHelper.reportDetectorLevelFinished(
+                    self.instrument, "step1", who=who, processingId=compoundId, failed=True
+                )
             if self.step == "step2a":
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who, failed=True)
             if self.step == "nightlyRollup":
