@@ -28,6 +28,7 @@ import numpy as np
 import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
+from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
@@ -117,6 +118,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.redisHelper = RedisHelper(butler, self.locationConfig)
+        self.efdClient = makeEfdClient()
 
     def writeFocusZ(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
@@ -127,6 +129,19 @@ class OneOffProcessor(BaseButlerChannel):
         else:
             md = {seqNum: {"Focus Z": "MISSING VALUE!"}}
         writeMetadataShard(self.shardsDirectory, dayObs, md)
+
+    def writePhysicalRotation(self, expRecord: DimensionRecord) -> None:
+        data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=expRecord)
+        if data.empty:
+            self.log.warning(f"Failed to get physical rotation data for {expRecord.id} - EFD data was empty")
+            return
+
+        outputDict = {"Rotator physical position": f"{np.mean(data['actualPosition']):.3f}"}
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+
+        writeMetadataShard(self.shardsDirectory, dayObs, rowData)
 
     def writeObservationAnnotation(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         headerMetadata = exp.metadata.toDict()
@@ -171,6 +186,9 @@ class OneOffProcessor(BaseButlerChannel):
 
         self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
         self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
+
+        self.log.info(f"Getting physical rotation data from EFD for {dataId}")
+        self.writePhysicalRotation(expRecord)
 
         if not isCalibration(expRecord):
             self.log.info(f"Calculating PSF for {dataId}")
