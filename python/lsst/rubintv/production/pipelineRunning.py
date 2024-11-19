@@ -508,7 +508,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zk_fwhm = convertZernikesToPsfWidth(row)
             rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
 
-        average_result = np.mean(rowSums)
+        average_result = np.nanmean(rowSums)
 
         outputDict = {"Residual AOS FWHM": f"{average_result:.2f}"}
         labels = {"_" + k: "measured" for k in outputDict.keys()}
