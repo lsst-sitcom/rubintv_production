@@ -25,7 +25,7 @@ from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
+setupLogging(longlog=True)
 instrument = "LSSTComCam"
 locationConfig = getAutomaticLocationConfig()
 
