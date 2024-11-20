@@ -460,6 +460,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
         e2 = 2 * vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
 
+        zeropoint = np.nanmean(vs["zeroPoint"])
+        expTime = np.nanmean(vs["expTime"])
+        realZeropoint = zeropoint - 2.5 * np.log10(expTime)
         outputDict = {
             "PSF FWHM": np.nanmean(vs["psfSigma"]) * SIGMA2FWHM * pixToArcseconds,
             "PSF e1": np.nanmean(e1),
@@ -470,7 +473,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             "PSF star count": np.nanmean(vs["nPsfStar"]),
             "Astrometric bias": np.nanmean(vs["astromOffsetMean"]),
             "Astrometric scatter": np.nanmean(vs["astromOffsetStd"]),
-            "Zeropoint": np.nanmean(vs["zeroPoint"]),
+            "Zeropoint": zeropoint,
+            "Real zeropoint": realZeropoint,
         }
 
         # flag all these as measured items to color the cell
