@@ -31,9 +31,11 @@ instrument = "LSSTComCam"
 workerNum = 0
 
 locationConfig = getAutomaticLocationConfig()
-# detectorNumber = None becuase this is a per-instrument type pod
-# detector number below is the actual CCD which will be processed, which
-# should not be controlled by k8s or the head node, and therefore goes there
+
+# The detectorNumber to be processed is defined in the init of the
+# OneOffProcessor class below. However, because this is a one-per-instrument
+# pod type, the detector number defined in the podDetails is therefore None,
+# despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
     instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
 )
