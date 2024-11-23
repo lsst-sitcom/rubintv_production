@@ -204,35 +204,6 @@ def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
         return None
 
 
-def getStep2aTriggerTask(pipelineFile: str) -> str:
-    """Get the last task that runs step1, to know when to trigger step2a.
-
-    This is the task which is run when a decetor-exposure is complete, and
-    therefore means it's time to trigger the step2a processing if all quanta
-    are complete.
-
-    Parameters
-    ----------
-    pipelineFile : `str`
-        The pipelineFile defining the pipeline. Hopefully we can use the real
-        pipeline in the future and thus avoid the hard-coding of strings below.
-
-    Returns
-    -------
-    taskName : `str`
-        The task which triggers step2a processing.
-    """
-    # TODO: See if this can be removed entirely now we have finished counters
-    if "nightly-validation" in pipelineFile:
-        return "lsst.pipe.tasks.postprocess.TransformSourceTableTask"
-    elif "quickLook" in pipelineFile:
-        return "lsst.pipe.tasks.calibrate.CalibrateTask"
-    elif "RapidAnalysisPipeline.yaml":  # this is the AOS pipeline - this is a pretty gross way to detect it
-        return "lsst.ts.wep.task.calcZernikesTask.CalcZernikesTask"
-    else:
-        raise ValueError(f"Unsure how to trigger step2a when {pipelineFile=}")
-
-
 def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
     """Get the last task that runs in step2, to know when to trigger rollup.
 
