@@ -68,7 +68,7 @@ sfmPipelineFile:
 
 aosPipelineFile:
   LSSTComCamSim: $TS_WEP_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
+  LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
 
 outputChains:
   LSSTComCam: LSSTComCam/quickLook
