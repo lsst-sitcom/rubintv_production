@@ -22,14 +22,12 @@
 import json
 import unittest
 
-from pydantic import ValidationError
+from utils import getSampleExpRecord  # type: ignore[import]
 
 import lsst.daf.butler as dafButler
 import lsst.utils.tests
 from lsst.rubintv.production.payloads import Payload, PayloadResult
 from lsst.summit.utils.utils import getSite
-
-from .utils import getSampleExpRecord
 
 NO_BUTLER = True
 if getSite() in ["staff-rsp", "rubin-devl"]:
@@ -120,22 +118,6 @@ class TestPayload(unittest.TestCase):
         self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
-        json_str = (
-            '{"expRecord": '
-            + json.dumps(self.expRecord.to_simple().json())
-            + ', "detector": 3, "pipeline": "test"}'
-        )
-        payload = Payload.from_json(json_str, self.butler)  # type: ignore[arg-type]
-        self.assertEqual(payload, self.payload)
-
-        json_str = (
-            '{"expRecord": '
-            + json.dumps(self.expRecord.to_simple().json())
-            + ', "detector": 3, "pipeline": "test", "illegalItem": "test"}'
-        )
-        with self.assertRaises(ValidationError):
-            payload = Payload.from_json(json_str, self.butler)  # type: ignore[arg-type]
-
 
 class TestPayloadResult(unittest.TestCase):
     def setUp(self) -> None:
@@ -145,93 +127,86 @@ class TestPayloadResult(unittest.TestCase):
 
         self.expRecord = getSampleExpRecord()
         self.expRecord2 = getSampleExpRecord()  # TODO get a different expRecord
-        self.pipelineBytes = "test".encode("utf-8")
 
-        self.payload_result = PayloadResult(
+        self.samplePayload = Payload(
             dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            pipelineGraphBytes="test".encode("utf-8"),
             run="test run",
-            pipelineGraphBytes=self.pipelineBytes,
             who="SFM",
+        )
+
+        self.payloadResult = PayloadResult(
+            payload=self.samplePayload,
             startTime=0.0,
             endTime=1.0,
             splitTimings={"step1": 0.5, "step2": 0.3},
             success=True,
             message="Test message",
         )
-        self.validJson = self.payload_result.to_json()
+        self.validJson = self.payloadResult.to_json()
 
     def test_constructor(self) -> None:
-        payload_result = PayloadResult(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
-            run="test run",
-            pipelineGraphBytes=self.pipelineBytes,
-            who="SFM",
+        payloadResult = PayloadResult(
+            payload=self.samplePayload,
             startTime=0.0,
             endTime=1.0,
             splitTimings={"step1": 0.5, "step2": 0.3},
             success=True,
             message="Test message",
         )
-        self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
-        self.assertEqual(payload_result.startTime, 0.0)
-        self.assertEqual(payload_result.endTime, 1.0)
-        self.assertEqual(payload_result.splitTimings, {"step1": 0.5, "step2": 0.3})
-        self.assertEqual(payload_result.success, True)
-        self.assertEqual(payload_result.message, "Test message")
+        self.assertEqual(payloadResult.payload, self.samplePayload)
+        self.assertEqual(payloadResult.startTime, 0.0)
+        self.assertEqual(payloadResult.endTime, 1.0)
+        self.assertEqual(payloadResult.splitTimings, {"step1": 0.5, "step2": 0.3})
+        self.assertEqual(payloadResult.success, True)
+        self.assertEqual(payloadResult.message, "Test message")
 
         with self.assertRaises(TypeError):
-            payload_result = PayloadResult(
-                dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
-                run="test run",
-                pipelineGraphBytes=self.pipelineBytes,
-                who="SFM",
+            PayloadResult(
+                payload=self.samplePayload,
                 startTime=0.0,
                 endTime=1.0,
                 splitTimings={"step1": 0.5, "step2": 0.3},
                 success=True,
                 message="Test message",
-                illegalKwarg="test",  # type: ignore[call-arg]  # that's the whole point here
+                illegalKwarg="test",  # type: ignore[call-arg]
             )
 
     @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def test_roundtrip(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
-        payload_result = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
-        payload_result_json = payload_result.to_json()
-        reconstructed_payload_result = PayloadResult.from_json(
-            payload_result_json, self.butler  # type: ignore[arg-type]
+        payloadResult = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
+        payloadResultJson = payloadResult.to_json()
+        reconstructedPayloadResult = PayloadResult.from_json(
+            payloadResultJson, self.butler  # type: ignore[arg-type]
         )
-        self.assertEqual(payload_result, reconstructed_payload_result)
+        self.assertEqual(payloadResult, reconstructedPayloadResult)
 
     @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def test_from_json(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
-        payload_result = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
-        self.assertEqual(payload_result.pipelineGraphBytes, self.pipelineBytes)
-        self.assertEqual(payload_result.startTime, 0.0)
-        self.assertEqual(payload_result.endTime, 1.0)
-        self.assertEqual(payload_result.splitTimings, {"step1": 0.5, "step2": 0.3})
-        self.assertEqual(payload_result.success, True)
-        self.assertEqual(payload_result.message, "Test message")
+        payloadResult = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
+        self.assertEqual(payloadResult.payload.pipelineGraphBytes, self.samplePayload.pipelineGraphBytes)
+        self.assertEqual(payloadResult.startTime, 0.0)
+        self.assertEqual(payloadResult.endTime, 1.0)
+        self.assertEqual(payloadResult.splitTimings, {"step1": 0.5, "step2": 0.3})
+        self.assertEqual(payloadResult.success, True)
+        self.assertEqual(payloadResult.message, "Test message")
 
-        json_str = (
-            '{"expRecord": '
-            + json.dumps(self.expRecord.to_simple().json())
-            + ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": '
-            + '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message"}'
+        invalidJson = json.dumps(
+            {
+                "payload": json.loads(self.samplePayload.to_json()),
+                "startTime": 0.0,
+                "endTime": 1.0,
+                "splitTimings": {"step1": 0.5, "step2": 0.3},
+                "success": True,
+                "message": "Test message",
+                "illegalItem": "test",
+            }
         )
-        payload_result = PayloadResult.from_json(json_str, self.butler)  # type: ignore[arg-type]
-        self.assertEqual(payload_result, self.payload_result)
 
-        json_str = (
-            '{"expRecord": '
-            + json.dumps(self.expRecord.to_simple().json())
-            + ', "detector": 3, "pipeline": "test", "startTime": 0.0, "endTime": 1.0, "splitTimings": '
-            + '{"step1": 0.5, "step2": 0.3}, "success": true, "message": "Test message", "illegalItem": '
-            + '"test"}'
-        )
         with self.assertRaises(TypeError):
-            payload_result = PayloadResult.from_json(json_str, self.butler)  # type: ignore[arg-type]
+            PayloadResult.from_json(invalidJson, self.butler)  # type: ignore[arg-type]
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

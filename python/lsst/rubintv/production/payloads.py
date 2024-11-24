@@ -96,7 +96,7 @@ class Payload:
         }
         json_dict["dataIds"] = []
         for dataId in self.dataIds:
-            json_dict["dataIds"].append(dict(dataId.mapping))
+            json_dict["dataIds"].append(dict(dataId.required))
         return json.dumps(json_dict)
 
     def __repr__(self):
@@ -107,11 +107,12 @@ class Payload:
 
 
 @dataclass(frozen=True)
-class PayloadResult(Payload):
+class PayloadResult:
     """
-    A dataclass representing a payload result.
+    A dataclass representing a payload result, composed of a Payload.
     """
 
+    payload: Payload
     startTime: float
     endTime: float
     splitTimings: dict
@@ -124,13 +125,21 @@ class PayloadResult(Payload):
         json_str: str,
         butler: Butler,
     ) -> Self:
-        instance = super().from_json(json_str, butler)
         json_dict = json.loads(json_str)
+
+        # Validate JSON keys
+        allowed_keys = {"payload", "startTime", "endTime", "splitTimings", "success", "message"}
+        unexpected_keys = set(json_dict.keys()) - allowed_keys
+        if unexpected_keys:
+            raise TypeError(f"Unexpected keys in JSON: {unexpected_keys}")
+
+        # Extract the payload section for Payload.from_json
+        payload_dict = json_dict["payload"]
+        payload_json = json.dumps(payload_dict)
+        payload = Payload.from_json(payload_json, butler)
+
         return cls(
-            dataIds=instance.dataIds,
-            pipelineGraphBytes=instance.pipelineGraphBytes,
-            run=instance.run,
-            who=instance.who,
+            payload=payload,
             startTime=json_dict["startTime"],
             endTime=json_dict["endTime"],
             splitTimings=json_dict["splitTimings"],
@@ -140,8 +149,5 @@ class PayloadResult(Payload):
 
     def to_json(self) -> str:
         json_dict = asdict(self)
-        json_dict["pipelineGraphBytes"] = base64.b64encode(self.pipelineGraphBytes).decode()
-        json_dict["dataIds"] = []
-        for dataId in self.dataIds:
-            json_dict["dataIds"].append(dict(dataId.mapping))
+        json_dict["payload"] = json.loads(self.payload.to_json())
         return json.dumps(json_dict)
