@@ -18,9 +18,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+from __future__ import annotations
+
 import statistics
 import time
 from collections import deque
+from typing import Deque
 
 __all__ = ["BoxCarTimer"]
 
@@ -47,20 +51,20 @@ class BoxCarTimer:
         is started.
     """
 
-    def __init__(self, length):
-        self._buffer = deque(maxlen=length)
-        self.lastTime = None
+    def __init__(self, length: int):
+        self._buffer: Deque[float] = deque(maxlen=length)
+        self.lastTime: float | None = None
         self.paused = False
-        self.pauseStartTime = None
+        self.pauseStartTime: float | None = None
         self.totalLaps = 0
         self.started = False
 
-    def start(self):
+    def start(self) -> None:
         """Start the timer."""
         self.lastTime = time.time()
         self.started = True
 
-    def lap(self):
+    def lap(self) -> None:
         """Record the elapsed time since the last lap.
 
         Raises
@@ -79,7 +83,7 @@ class BoxCarTimer:
         self.lastTime = currentTime
         self.totalLaps += 1
 
-    def pause(self):
+    def pause(self) -> None:
         """Pause the timer."""
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot pause.")
@@ -87,17 +91,19 @@ class BoxCarTimer:
             self.pauseStartTime = time.time()
             self.paused = True
 
-    def resume(self):
+    def resume(self) -> None:
         """Resume the timer."""
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot resume.")
         if self.paused:
+            assert self.pauseStartTime is not None
             pauseDuration = time.time() - self.pauseStartTime
+            assert self.lastTime is not None
             self.lastTime += pauseDuration
             self.paused = False
             self.pauseStartTime = None
 
-    def min(self, frequency=False):
+    def min(self, frequency: bool = False) -> float | None:
         """Get the minimum lap time in the buffer.
 
         Parameters
@@ -119,7 +125,7 @@ class BoxCarTimer:
             return 1 / minValue if minValue != 0 else float("inf")
         return minValue
 
-    def max(self, frequency=False):
+    def max(self, frequency: bool = False) -> float | None:
         """Get the maximum lap time in the buffer.
 
         Parameters
@@ -141,7 +147,7 @@ class BoxCarTimer:
             return 1 / maxValue if maxValue != 0 else float("inf")
         return maxValue
 
-    def mean(self, frequency=False):
+    def mean(self, frequency: bool = False) -> float | None:
         """Get the mean of the lap times in the buffer.
 
         Parameters
@@ -163,7 +169,7 @@ class BoxCarTimer:
             return 1 / meanValue if meanValue != 0 else float("inf")
         return meanValue
 
-    def median(self, frequency=False):
+    def median(self, frequency: bool = False) -> float | None:
         """Get the median of the lap times in the buffer.
 
         Parameters
@@ -185,7 +191,7 @@ class BoxCarTimer:
             return 1 / medianValue if medianValue != 0 else float("inf")
         return medianValue
 
-    def lastLapTime(self):
+    def lastLapTime(self) -> float | None:
         """Get the time of the previous lap.
 
         Returns

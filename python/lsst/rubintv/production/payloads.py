@@ -24,7 +24,8 @@ from __future__ import annotations
 import base64
 import io
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any, Self
 
 from lsst.daf.butler import Butler, DataCoordinate
 from lsst.pipe.base import PipelineGraph
@@ -37,7 +38,7 @@ __all__ = [
 ]
 
 
-def pipelineGraphToBytes(pipelineGraph):
+def pipelineGraphToBytes(pipelineGraph: PipelineGraph) -> bytes:
     """
     Convert a pipelineGraph to bytes.
 
@@ -48,7 +49,7 @@ def pipelineGraphToBytes(pipelineGraph):
         return f.getvalue()
 
 
-def pipelineGraphFromBytes(pipelineGraphBytes):
+def pipelineGraphFromBytes(pipelineGraphBytes: bytes) -> PipelineGraph:
     """
     Get a pipelineGraph from bytes.
 
@@ -66,41 +67,87 @@ class Payload:
     These go in minimal, but come out full, by using the butler.
     """
 
-    dataId: DataCoordinate
+    dataIds: list[DataCoordinate]
     pipelineGraphBytes: bytes
     run: str
+    who: str
 
     @classmethod
     def from_json(
         cls,
         json_str: str,
         butler: Butler,
-    ) -> Payload:
+    ) -> Self:
         json_dict = json.loads(json_str)
-        dataId = butler.registry.expandDataId(json_dict["dataId"])
+        dataIds = []
+        for dataId in json_dict["dataIds"]:
+            dataIds.append(butler.registry.expandDataId(dataId))
+
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
-        return cls(dataId=dataId, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"])
+        return cls(
+            dataIds=dataIds, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"], who=json_dict["who"]
+        )
 
     def to_json(self) -> str:
-        json_dict = {
-            "dataId": dict(self.dataId.mapping),
+        json_dict: dict[str, Any] = {
             "pipelineGraphBytes": base64.b64encode(self.pipelineGraphBytes).decode(),
             "run": self.run,
+            "who": self.who,
         }
+        json_dict["dataIds"] = []
+        for dataId in self.dataIds:
+            json_dict["dataIds"].append(dict(dataId.required))
         return json.dumps(json_dict)
 
     def __repr__(self):
-        return f"Payload(dataId={self.dataId}, run={self.run}, pipelineGraphBytes=<the bytes>)"
+        return (
+            f"Payload(dataIds={[d for d in self.dataIds]}, run={self.run}, who={self.who},"
+            " pipelineGraphBytes=<the bytes>)"
+        )
 
 
 @dataclass(frozen=True)
-class PayloadResult(Payload):
+class PayloadResult:
     """
-    A dataclass representing a payload result.
+    A dataclass representing a payload result, composed of a Payload.
     """
 
+    payload: Payload
     startTime: float
     endTime: float
     splitTimings: dict
     success: bool
     message: str
+
+    @classmethod
+    def from_json(
+        cls,
+        json_str: str,
+        butler: Butler,
+    ) -> Self:
+        json_dict = json.loads(json_str)
+
+        # Validate JSON keys
+        allowed_keys = {"payload", "startTime", "endTime", "splitTimings", "success", "message"}
+        unexpected_keys = set(json_dict.keys()) - allowed_keys
+        if unexpected_keys:
+            raise TypeError(f"Unexpected keys in JSON: {unexpected_keys}")
+
+        # Extract the payload section for Payload.from_json
+        payload_dict = json_dict["payload"]
+        payload_json = json.dumps(payload_dict)
+        payload = Payload.from_json(payload_json, butler)
+
+        return cls(
+            payload=payload,
+            startTime=json_dict["startTime"],
+            endTime=json_dict["endTime"],
+            splitTimings=json_dict["splitTimings"],
+            success=json_dict["success"],
+            message=json_dict["message"],
+        )
+
+    def to_json(self) -> str:
+        json_dict = asdict(self)
+        json_dict["payload"] = json.loads(self.payload.to_json())
+        return json.dumps(json_dict)

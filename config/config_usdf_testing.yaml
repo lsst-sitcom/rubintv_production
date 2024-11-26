@@ -32,7 +32,8 @@ starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_meta
 astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
 
 # ComCam configuration:
-comCamButlerPath: /sdf/group/rubin/repo/embargo/butler.yaml
+comCamButlerPath: embargo_new
+# comCamButlerPath: /sdf/data/rubin/repo/aos_imsim/raw/comcam_sensitivity_matrix/repo
 binning: 8
 # # paths for serving TS8 metadata at SLAC
 comCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata
@@ -44,10 +45,16 @@ comCamSimMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_meta
 comCamSimAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata
 comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata/shards
 
+comCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata
+comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata/shards
+
+lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
+lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
+lsstCamButlerPath: /repo/embargo/butler.yaml
+
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /sdf/home/m/mfl/u/rubintv
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
-binnedImagePath: /sdf/home/m/mfl/u/rubintv/binnedImages
 calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
 binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
 
@@ -58,6 +65,11 @@ tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 sfmPipelineFile:
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
+  LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
+
+aosPipelineFile:
+  LSSTComCamSim: $TS_WEP_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
+  LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
 
 outputChains:
   LSSTComCam: LSSTComCam/quickLookTesting

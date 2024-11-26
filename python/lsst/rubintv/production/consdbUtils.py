@@ -100,6 +100,10 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
+def _removeNans(d: dict[str, float | int]) -> dict[str, float | int]:
+    return {k: v for k, v in d.items() if not np.isnan(v)}
+
+
 class ConsDBPopulator:
     def __init__(self, client: ConsDbClient, redisHelper: RedisHelper) -> None:
         self.client = client
@@ -174,7 +178,7 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         detectorNum: int,
         allowUpdate: bool = False,
-    ):
+    ) -> None:
         summaryStats = butler.get("calexp.summaryStats", visit=expRecord.id, detector=detectorNum)
         self.populateCcdVisitRow(expRecord, detectorNum, summaryStats, allowUpdate=allowUpdate)
 
@@ -194,8 +198,8 @@ class ConsDBPopulator:
                 instrument=expRecord.instrument,
                 table=table,
                 obs_id=obsId,
-                values=values,
-                allow_update=allowUpdate,
+                values=_removeNans(values),
+                allow_update=True,
             )
             self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
         except HTTPError as e:
@@ -270,7 +274,7 @@ class ConsDBPopulator:
             instrument=instrument,
             table=table,
             obs_id=visit,
-            values=values,
-            allow_update=allowUpdate,
+            values=_removeNans(values),
+            allow_update=True,
         )
         self.redisHelper.announceResultInConsDb(instrument, table, visit)

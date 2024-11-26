@@ -11,7 +11,7 @@ print(f"Imports took {(time.time()-t0):.2f} seconds")
 t0 = time.time()
 
 
-instrument = "LSSTComCamSim"
+instrument = "LSSTComCam"
 
 locationConfig = getAutomaticLocationConfig()
 butler = dafButler.Butler(
@@ -23,17 +23,22 @@ butler = dafButler.Butler(
 
 redisHelper = RedisHelper(butler, locationConfig)
 
-where = f"exposure.day_obs=20240613 AND exposure.seq_num=17 AND instrument='{instrument}'"  # OR4
+where = (
+    "exposure.day_obs=20241102 AND exposure.seq_num in (170..172)"
+    f" AND instrument='{instrument}'"  # on sky!
+)
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
-assert len(records) == 1, f"Expected 1 record, got {len(records)}"
-record = records[0]
+assert len(records) == 3, f"Expected 3 record, got {len(records)}"
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time()-t0):.2f} seconds")
 
-assert isinstance(record, dafButler.DimensionRecord)
-print(f"Pushing expId={record.id} for {record.instrument} for processing")
+for record in records:  # XXX remove the slice!
+    assert isinstance(record, dafButler.DimensionRecord)
+    print(f"Pushing expId={record.id} for {record.instrument} for processing")
+    # this is what the butlerWatcher does for each new record
+    redisHelper.pushNewExposureToHeadNode(record)
+    redisHelper.pushToButlerWatcherList(instrument, record)
 
-# this is what the butlerWatcher does for each new record
-redisHelper.pushNewExposureToHeadNode(record)
-redisHelper.pushToButlerWatcherList(instrument, record)
+print("Pushing pair announcement signal to redis (simulating OCS signal)")
+redisHelper.redis.rpush("LSSTComCam-FROM-OCS_DONUTPAIR", "2024110200171,2024110200172")

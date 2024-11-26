@@ -19,8 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import asyncio
 import time
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,6 +38,14 @@ try:
 except ImportError:
     pass
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst_efd_client import EfdClient
+    from matplotlib.pyplot import Figure
+    from numpy.typing import NDArray
+
+    from lsst.daf.butler import Butler, DataCoordinate
 
 __all__ = ["calculateMountErrors"]
 
@@ -48,7 +59,7 @@ MOUNT_IMAGE_WARNING_LEVEL = 0.25  # this determines the colouring of the cells i
 MOUNT_IMAGE_BAD_LEVEL = 0.4  # and red for this
 
 
-def _getEfdData(client, dataSeries, startTime, endTime):
+def _getEfdData(client: EfdClient, dataSeries: str, startTime: Time, endTime: Time):
     """A synchronous warpper for geting the data from the EFD.
 
     This exists so that the top level functions don't all have to be async def.
@@ -57,7 +68,14 @@ def _getEfdData(client, dataSeries, startTime, endTime):
     return loop.run_until_complete(client.select_time_series(dataSeries, ["*"], startTime.utc, endTime.utc))
 
 
-def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
+def calculateMountErrors(
+    dataId: DataCoordinate,
+    butler: Butler,
+    client: EfdClient,
+    figure: Figure | None,
+    saveFilename: str,
+    logger: Logger,
+) -> dict[str, NDArray] | bool:
     """Queries EFD for a given exposure and calculates the RMS errors in the
     axes during the exposure, optionally plotting and saving the data.
 
@@ -70,13 +88,14 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
         The dataId for which to plot the mount torques.
     butler : `lsst.daf.butler.Butler`
         The butler to use to retrieve the image metadata.
-    client : `lsst_efd_client.Client`
+    client : `lsst_efd_client.EfdClient`
         The EFD client to retrieve the mount torques.
-    figure : `matplotlib.figure.Figure`
-        A matplotlib figure to re-use. Necessary to pass this in to prevent an
-        ever-growing figure count and the ensuing memory leak.
+    figure : `matplotlib.figure.Figure` or `None`
+        A matplotlib figure to re-use if plotting. Necessary to pass this in to
+        prevent an ever-growing figure count and the ensuing memory leak.
     saveFilename : `str`
-        Full path and filename to save the plot to.
+        Full path and filename to save the plot to. If provided, a figure must
+        be provided too.
     logger : `logging.Logger`
         The logger.
 
@@ -202,6 +221,7 @@ def calculateMountErrors(dataId, butler, client, figure, saveFilename, logger):
     logger.debug(f"Elapsed time for error calculations = {elapsed}")
     start = time.time()
     if saveFilename is not None:
+        assert figure is not None, "Must supply a figure if plotting"
         # Plotting
         figure.clear()
         title = f"Mount Tracking {dataIdString}, Azimuth = {azimuth:.1f}, Elevation = {elevation:.1f}"

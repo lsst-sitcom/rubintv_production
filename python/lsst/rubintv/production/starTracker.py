@@ -19,12 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import logging
 import os
 import time
 import traceback
 from glob import glob
 from time import sleep
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import pandas as pd
@@ -56,10 +59,18 @@ from lsst.summit.utils.utils import (
 )
 
 from .baseChannels import BaseChannel
-from .channels import PREFIXES
 from .plotting import starTrackerNightReportPlots
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf, writeMetadataShard
+
+if TYPE_CHECKING:
+    from pandas import DataFrame
+
+    from lsst.afw.image import Exposure
+    from lsst.summit.utils.starTracker import StarTrackerCamera
+
+    from .utils import LocationConfig
+
 
 __all__ = (
     "getCurrentRawDataDir",
@@ -74,21 +85,26 @@ __all__ = (
 _LOG = logging.getLogger(__name__)
 
 
-def getCurrentRawDataDir(rootDataPath, camera):
+def getCurrentRawDataDir(rootDataPath: str, camera: StarTrackerCamera) -> str:
     """Get the raw data dir corresponding to the current dayObs.
 
-    Returns
-    -------
+    Parameters
+    ----------
     path : `str`
         The raw data dir for today.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera to get the raw data for.
+
+    Returns
+    -------
+    dataPath : `str`
+        The path to the data for the current day.
     """
     todayInt = getCurrentDayObs_int()
     return getRawDataDirForDayObs(rootDataPath, camera, todayInt)
 
 
-def getDataDir(rootPath, camera, dayObs):
+def getDataDir(rootPath: str, camera: StarTrackerCamera, dayObs: int) -> str:
     """Get the path to the data for a given camera and dayObs.
 
     Parameters
@@ -111,7 +127,7 @@ def getDataDir(rootPath, camera, dayObs):
     return path
 
 
-def getFilename(rootPath, camera, dayObs, seqNum):
+def getFilename(rootPath: str, camera: StarTrackerCamera, dayObs: int, seqNum: int) -> str:
     """Get the filename for a given camera, dayObs and seqNum.
 
     Parameters
@@ -137,7 +153,6 @@ def getFilename(rootPath, camera, dayObs, seqNum):
 
 class StarTrackerWatcher:
     """Class for continuously watching for new files landing in the directory.
-    Uploads a heartbeat to the bucket every ``HEARTBEAT_PERIOD`` seconds.
 
     Parameters
     ----------
@@ -145,28 +160,19 @@ class StarTrackerWatcher:
         The root directory to watch for files landing in. Should not include
         the GenericCamera/101/ or GenericCamera/102/ part, just the base
         directory that these are being written to, as visible from k8s.
-    bucketName : `str`
-        The bucket to upload the heartbeats to.
     camera : `lsst.rubintv.production.starTracker.StarTrackerCamera`
         The camera to watch for raw data for.
     """
 
     cadence = 1  # in seconds
 
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 240
-
-    def __init__(self, *, rootDataPath, bucketName, camera):
+    def __init__(self, *, rootDataPath: str, camera: StarTrackerCamera):
         self.rootDataPath = rootDataPath
         self.camera = camera
-        self.uploader = Uploader(bucketName)
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild("watcher")
-        self.heartbeater = None
 
-    def _getLatestImageDataIdAndExpId(self):
+    def _getLatestImageDataIdAndExpId(self) -> tuple[str | None, int | None, int | None, int | None]:
         """Get the dataId and expId for the most recent image in the repo.
 
         Returns
@@ -193,13 +199,13 @@ class StarTrackerWatcher:
             return None, None, None, None
 
         # filenames are like GC101_O_20221114_000005.fits
-        _, _, dayObs, seqNumAndSuffix = latestFile.split("_")
-        dayObs = int(dayObs)
+        _, _, dayObsStr, seqNumAndSuffix = latestFile.split("_")
+        dayObs = int(dayObsStr)
         seqNum = int(seqNumAndSuffix.removesuffix(".fits"))
         expId = int(str(dayObs) + seqNumAndSuffix.removesuffix(".fits"))
         return latestFile, dayObs, seqNum, expId
 
-    def run(self, callback):
+    def run(self, callback: Callable) -> None:
         """Wait for the image to land, then run callback(filename).
 
         Parameters
@@ -207,14 +213,12 @@ class StarTrackerWatcher:
         callback : `callable`
             The method to call, with the latest filename as the argument.
         """
-        lastFound = -1
-        filename = "no filename"
+        lastFound: int | None = -1
+        filename: str | None = "no filename"
         while True:
             try:
                 filename, _, _, expId = self._getLatestImageDataIdAndExpId()
                 self.log.debug(f"{filename}")
-                if self.heartbeater:  # gets set by the channel post-init
-                    self.heartbeater.beat()
 
                 if (filename is None) or (lastFound == expId):
                     self.log.debug("Found nothing, sleeping")
@@ -248,12 +252,7 @@ class StarTrackerChannel(BaseChannel):
         Raise on error? Default False, useful for debugging.
     """
 
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 240
-
-    def __init__(self, locationConfig, *, cameraType, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, *, cameraType: str, doRaise: bool = False) -> None:
         if cameraType not in KNOWN_CAMERAS:
             raise ValueError(f"Invalid camera type {cameraType}, known types are {KNOWN_CAMERAS}")
 
@@ -269,11 +268,11 @@ class StarTrackerChannel(BaseChannel):
         name = "starTracker" + self.camera.suffix
         log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
-        watcher = StarTrackerWatcher(
-            rootDataPath=self.rootDataPath, bucketName=locationConfig.bucketName, camera=self.camera
-        )
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=self.camera)
 
-        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig, log=log, watcher=watcher, addUploader=True, doRaise=doRaise
+        )
 
         self.channelRaw = f"startracker{self.camera.suffix}_raw"  # TODO: DM-43413 remove?
         self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"  # TODO: DM-43413 remove?
@@ -289,26 +288,12 @@ class StarTrackerChannel(BaseChannel):
             except Exception as e:
                 raise RuntimeError(f"Failed to find/create {path}") from e
 
-        self.heartbeaterAnalysis = Heartbeater(
-            self.channelAnalysis,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
-        self.heartbeaterRaw = Heartbeater(
-            self.channelRaw,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
-        self.watcher.heartbeater = self.heartbeaterRaw  # so that it can be called in the watch loop
-
         self.solver = CommandLineSolver(
             indexFilePath=self.locationConfig.astrometryNetRefCatPath, checkInParallel=True, timeout=30
         )
         self.fig = plt.figure(figsize=(16, 16))
 
-    def writeDefaultPointingShardForFilename(self, exp, filename):
+    def writeDefaultPointingShardForFilename(self, exp: Exposure, filename: str) -> None:
         """Write a metadata shard for the given filename.
 
         Parameters
@@ -321,6 +306,8 @@ class StarTrackerChannel(BaseChannel):
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
         if seqNum is None:
             return  # skip streaming mode files
+        assert dayObs is not None, "dayObs should not be None when parsing filename"
+
         expMd = exp.getMetadata().toDict()
         expTime = exp.visitInfo.exposureTime
         contents = {}
@@ -360,30 +347,7 @@ class StarTrackerChannel(BaseChannel):
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-    def _getGoogleUploadFilename(self, channel, filename):
-        """Calculate the filename to use for uploading.
-
-        Parameters
-        ----------
-        channel : `str`
-            The channel name.
-        filename : `str`
-            The filename.
-        """
-        # TODO: remove in DM-43413
-        dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        dayObsStr = dayObsIntToString(dayObs)
-
-        # this is horrible but temporary and all goes away in DM-4341
-        if channel == "startracker_narrow_raw":  # this is horrible but temporary
-            channel = "startracker_raw"
-        if channel == "startracker_narrow_analysis":
-            channel = "startracker_analysis"
-
-        filename = f"{PREFIXES[channel]}_dayObs_{dayObsStr}_seqNum_{seqNum}.png"
-        return filename
-
-    def runAnalysis(self, exp, filename):
+    def runAnalysis(self, exp: Exposure, filename: str) -> None:
         """Run the analysis and upload the results.
 
         Parameters
@@ -398,7 +362,8 @@ class StarTrackerChannel(BaseChannel):
         basename = os.path.basename(filename).removesuffix(".fits")
         fittedPngFilename = os.path.join(self.outputRoot, basename + "_fitted.png")
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        self.heartbeaterAnalysis.beat()  # we're alive and at least trying to solve
+        assert dayObs is not None, "dayObs should not be None when parsing filename"
+        assert seqNum is not None, "seqNum should not be None when parsing filename"
 
         snr = self.camera.snr
         minPix = self.camera.minPix
@@ -424,11 +389,11 @@ class StarTrackerChannel(BaseChannel):
             fig=self.fig,
         )
 
-        # TODO: remove in DM-43413
-        uploadAs = self._getGoogleUploadFilename(self.channelAnalysis, filename)
-        self.uploader.googleUpload(self.channelAnalysis, fittedPngFilename, uploadAs)
-
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        assert self.s3Uploader is not None, "s3Uploader should not be None"
+        assert dayObs is not None, "dayObs should not be None when parsing filename"
+        assert seqNum is not None, "seqNum should not be None when parsing filename"
+
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="startracker" + self.camera.suffix,
             plotName="analysis",
@@ -491,7 +456,7 @@ class StarTrackerChannel(BaseChannel):
 
         deltaRot = newWcs.getRelativeRotationToWcs(oldWcs).asArcseconds()
 
-        result = {
+        results = {
             "Calculated Ra": calculatedRa.asDegrees(),
             "Calculated Dec": calculatedDec.asDegrees(),
             "Calculated Alt": newAlt.asDegrees(),
@@ -504,11 +469,11 @@ class StarTrackerChannel(BaseChannel):
             "RMS scatter arcsec": result.rmsErrorArsec,
             "RMS scatter pixels": result.rmsErrorPixels,
         }
-        contents = {k + self.camera.suffixWithSpace: v for k, v in result.items()}
+        contents = {k + self.camera.suffixWithSpace: v for k, v in results.items()}
         md = {seqNum: contents}
         writeMetadataShard(self.shardsDir, dayObs, md)
 
-    def callback(self, filename):
+    def callback(self, filename: str) -> None:
         """Callback for the watcher, called when a new image lands.
 
         Parameters
@@ -521,18 +486,14 @@ class StarTrackerChannel(BaseChannel):
             return
 
         exp = starTrackerFileToExposure(filename, self.log)  # make the exp and set the wcs from the header
-        self.heartbeaterRaw.beat()  # we loaded the file, so we're alive and running for raws
 
         # plot the raw file and upload it
         basename = os.path.basename(filename).removesuffix(".fits")
         rawPngFilename = os.path.join(self.outputRoot, basename + "_raw.png")  # for saving to disk
         plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
 
-        # TODO: remove in DM-43413
-        uploadFilename = self._getGoogleUploadFilename(self.channelRaw, filename)
-        self.uploader.googleUpload(self.channelRaw, rawPngFilename, uploadFilename)  # TODO: DM-43413
-
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
+        assert self.s3Uploader is not None, "s3Uploader should not be None"
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="startracker" + self.camera.suffix,
             plotName="raw",
@@ -585,7 +546,9 @@ class StarTrackerNightReportChannel(BaseChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, *, dayObs=None, doRaise=False):
+    def __init__(
+        self, locationConfig: LocationConfig, *, dayObs: int | None = None, doRaise: bool = False
+    ) -> None:
         name = "starTrackerNightReport"
         log = logging.getLogger(f"lsst.rubintv.production.{name}")
         self.rootDataPath = locationConfig.starTrackerDataPath
@@ -596,15 +559,13 @@ class StarTrackerNightReportChannel(BaseChannel):
         # is also a DIMM and so is more likely to be relocated). This won't be
         # a problem once we move to ingesting data and using the butler, so the
         # temp/hacky nature of this is fine for now.
-        watcher = StarTrackerWatcher(
-            rootDataPath=self.rootDataPath, bucketName=locationConfig.bucketName, camera=narrowCam
-        )  # tie the night report to the narrow cam for now
+        watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=narrowCam)
 
         super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
 
         self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
 
-    def getMetadataTableContents(self):
+    def getMetadataTableContents(self) -> DataFrame | None:
         """Get the measured data for the current night.
 
         Returns
@@ -636,7 +597,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
         return mdTable
 
-    def createPlotsAndUpload(self):
+    def createPlotsAndUpload(self) -> None:
         """Create and upload all plots defined in nightReportPlots.
 
         All plots defined in PLOT_FACTORIES in nightReportPlots are discovered,
@@ -659,9 +620,6 @@ class StarTrackerNightReportChannel(BaseChannel):
                 plot = plotFactory(
                     dayObs=self.dayObs,
                     locationConfig=self.locationConfig,
-                    # TODO: DM-43413 switch to MultiUploader and
-                    # remove GCS
-                    uploader=self.uploader,
                     s3Uploader=self.s3Uploader,
                 )
                 plot.createAndUpload(md)
@@ -669,7 +627,7 @@ class StarTrackerNightReportChannel(BaseChannel):
                 self.log.exception(f"Failed to create plot {plotName}")
                 continue
 
-    def finalizeDay(self):
+    def finalizeDay(self) -> None:
         """Perform the end of day actions and roll the day over.
 
         Creates a final version of the plots at the end of the day and rolls
@@ -681,7 +639,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         self.dayObs = getCurrentDayObs_int()
         return
 
-    def callback(self, filename, doCheckDay=True):
+    def callback(self, filename: str, doCheckDay: bool = True) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Parameters
@@ -731,27 +689,15 @@ class StarTrackerCatchup:
     loopSleep = 30
     catchupPeriod = 60
     endOfDayDelay = 200
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 240
-    HEARTBEAT_HANDLE = "starTrackerCatchup"
 
-    def __init__(self, locationConfig, doRaise=False):
+    def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.doRaise = doRaise
 
         self.cameras = [narrowCam, wideCam, fastCam]
+        self.log = _LOG.getChild("catchup")
 
-        self.log = _LOG.getChild(self.HEARTBEAT_HANDLE)
-        self.heartbeater = Heartbeater(
-            self.HEARTBEAT_HANDLE,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
-
-    def getFullyProcessedSeqNums(self, camera, dayObs):
+    def getFullyProcessedSeqNums(self, camera: StarTrackerCamera, dayObs: int) -> list[int]:
         """Get the seqNums for images which were fully processed.
 
         Parameters
@@ -787,7 +733,7 @@ class StarTrackerCatchup:
         processed = [s for s in seqNums if mdTable[successfulFitColumn][s] is not np.nan]
         return processed
 
-    def catchupCamera(self, camera, dayObs):
+    def catchupCamera(self, camera: StarTrackerCamera, dayObs: int) -> None:
         """Catch up a single camera.
 
         TODO: DM-38313 Add a way of recording fails and skipping them in future
@@ -813,17 +759,14 @@ class StarTrackerCatchup:
         if not toProcess:
             return
 
+        # seqNum should never be None anyway, but remove in list comp for mypy
         filenames = [
             getFilename(self.locationConfig.starTrackerDataPath, camera, self.dayObs, seqNum)
             for seqNum in toProcess
+            if seqNum is not None
         ]
         filenames = [f for f in filenames if os.path.isfile(f)]
         self.log.info(f"of which {len(filenames)} had corresponding files")
-
-        # send a heartbeat saying we'll be back in a while
-        maxProcessingTimePerFile = 30  # a deliberate massive over-estimate, in seconds
-        forecast = maxProcessingTimePerFile * len(filenames)
-        self.heartbeater.beat(customFlatlinePeriod=forecast)
 
         starTrackerChannel = StarTrackerChannel(
             locationConfig=self.locationConfig, cameraType=camera.cameraType
@@ -835,7 +778,7 @@ class StarTrackerCatchup:
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
 
-    def runEndOfDayManual(self, dayObs):
+    def runEndOfDayManual(self, dayObs: int) -> None:
         """Manually run the end of day routine for a specific dayObs by hand.
 
         Useful for if the final catchup and end of day animation/clearup have
@@ -850,13 +793,13 @@ class StarTrackerCatchup:
         self.runCatchup()
         return
 
-    def runCatchup(self):
+    def runCatchup(self) -> None:
         """Run the catchup for all cameras."""
         for camera in self.cameras:
             self.log.info(f"Starting catchup for the {camera.cameraType} camera")
             self.catchupCamera(camera, self.dayObs)
 
-    def runEndOfDay(self):
+    def runEndOfDay(self) -> None:
         """Routine to run when the summit dayObs rolls over.
 
         Sets the new dayObs.
@@ -868,7 +811,7 @@ class StarTrackerCatchup:
         finally:
             self.dayObs = getCurrentDayObs_int()
 
-    def run(self):
+    def run(self) -> None:
         """Runs forever, running the catchup services during the night, and
         rolls the dayObs over at the end of the night.
 
@@ -886,7 +829,6 @@ class StarTrackerCatchup:
                 timeSince = time.time() - lastRun
                 if timeSince >= self.catchupPeriod:
                     self.runCatchup()
-                    self.heartbeater.beat()
                     lastRun = time.time()
                     if hasDayRolledOver(self.dayObs):
                         sleep(self.endOfDayDelay)  # give time for anything running elsewhere to finish
@@ -895,8 +837,6 @@ class StarTrackerCatchup:
                     remaining = self.catchupPeriod - timeSince
                     self.log.info(f"Waiting for catchup period to elapse, {remaining:.2f}s to go...")
                     sleep(self.loopSleep)
-
-                self.heartbeater.beat()
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)

@@ -19,9 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 import requests
+
+if TYPE_CHECKING:
+    from logging import Logger
+    from typing import Any
 
 EXPOSURE_LOG_URL = "https://summit-lsp.lsst.codes/exposurelog/messages"
 
@@ -33,7 +40,7 @@ LOG_ITEM_MAPPINGS = {
 }
 
 
-def getLogsForDayObs(dayObs, logger=None):
+def getLogsForDayObs(dayObs: int, logger: Logger | None = None) -> dict[int, dict[str, Any]] | None:
     """Get a dictionary of log messages for the dayObs, keyed by seqNum.
 
     Parameters

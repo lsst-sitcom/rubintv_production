@@ -600,7 +600,6 @@ class Plotter:
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
         self.instrument = instrument
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
@@ -770,8 +769,6 @@ class Plotter:
         if doPlotNoises:
             noiseMapFile = self.plotNoises(expRecord, timeout=timeout)
             if noiseMapFile:  # only upload on plot success
-                channel = f"{instPrefix}_noise_map"
-                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, noiseMapFile)
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument=instPrefix,
                     plotName="noise_map",
@@ -783,8 +780,6 @@ class Plotter:
         if doPlotMosaic:
             focalPlaneFile = self.plotFocalPlane(expRecord, timeout=timeout)
             if focalPlaneFile:  # only upload on plot success
-                channel = f"{instPrefix}_focal_plane_mosaic"
-                self.uploader.uploadPerSeqNumPlot(channel, dayObs, seqNum, focalPlaneFile)
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument=instPrefix,
                     plotName="focal_plane_mosaic",

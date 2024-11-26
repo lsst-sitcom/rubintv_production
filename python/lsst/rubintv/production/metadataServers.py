@@ -19,14 +19,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 from glob import glob
 from time import sleep
+from typing import TYPE_CHECKING
 
-from .uploaders import Heartbeater, MultiUploader, Uploader
+from .uploaders import MultiUploader
 from .utils import isFileWorldWritable, raiseIf, sanitizeNans
+
+if TYPE_CHECKING:
+    from lsst.rubintv.production.utils import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 
@@ -54,8 +60,7 @@ class TimedMetadataServer:
         The directory to find the shards in, usually of the form
         ``metadataDirectory`` + ``'/shards'``.
     channelName : `str`
-        The name of the channel to serve the metadata files to, also used for
-        heartbeats.
+        The name of the channel to serve the metadata files to.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
     """
@@ -63,32 +68,29 @@ class TimedMetadataServer:
     # The time between searches of the metadata shard directory to merge the
     # shards and upload.
     cadence = 1.5
-    # upload heartbeat every n seconds
-    HEARTBEAT_UPLOAD_PERIOD = 30
-    # consider service 'dead' if this time exceeded between heartbeats
-    HEARTBEAT_FLATLINE_PERIOD = 120
 
-    def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, channelName, doRaise=False):
+    def __init__(
+        self,
+        *,
+        locationConfig: LocationConfig,
+        metadataDirectory: str,
+        shardsDirectory: str,
+        channelName: str,
+        doRaise: bool = False,
+    ):
         self.locationConfig = locationConfig
         self.metadataDirectory = metadataDirectory
         self.shardsDirectory = shardsDirectory
         self.channelName = channelName
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
-        self.uploader = Uploader(self.locationConfig.bucketName)
         self.s3Uploader = MultiUploader()
-        self.heartbeater = Heartbeater(
-            self.channelName,
-            self.locationConfig.bucketName,
-            self.HEARTBEAT_UPLOAD_PERIOD,
-            self.HEARTBEAT_FLATLINE_PERIOD,
-        )
 
         if not os.path.isdir(self.metadataDirectory):
             # created by the LocationConfig init so this should be impossible
             raise RuntimeError(f"Failed to find/create {self.metadataDirectory}")
 
-    def mergeShardsAndUpload(self):
+    def mergeShardsAndUpload(self) -> None:
         """Merge all the shards in the shard directory into their respective
         files and upload the updated files.
 
@@ -141,12 +143,11 @@ class TimedMetadataServer:
         if filesTouched:
             self.log.info(f"Uploading {len(filesTouched)} metadata files")
             for file in filesTouched:
-                self.uploader.googleUpload(self.channelName, file, isLiveFile=True)
                 dayObs = self.dayObsFromFilename(file)
                 self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
         return
 
-    def dayObsFromFilename(self, filename):
+    def dayObsFromFilename(self, filename: str) -> int:
         """Get the dayObs from a metadata sidecar filename.
 
         Parameters
@@ -161,7 +162,7 @@ class TimedMetadataServer:
         """
         return int(os.path.basename(filename).split("_")[1].split(".")[0])
 
-    def getSidecarFilename(self, dayObs):
+    def getSidecarFilename(self, dayObs: int) -> str:
         """Get the name of the metadata sidecar file for the dayObs.
 
         Parameters
@@ -176,7 +177,7 @@ class TimedMetadataServer:
         """
         return os.path.join(self.metadataDirectory, f"dayObs_{dayObs}.json")
 
-    def callback(self):
+    def callback(self) -> None:
         """Method called on a timer to gather the shards and upload as needed.
 
         Adds the metadata to the sidecar file for the dataId and uploads it.
@@ -188,10 +189,8 @@ class TimedMetadataServer:
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def run(self):
+    def run(self) -> None:
         """Run continuously, looking for metadata and uploading."""
         while True:
             self.callback()
-            if self.heartbeater is not None:
-                self.heartbeater.beat()
             sleep(self.cadence)

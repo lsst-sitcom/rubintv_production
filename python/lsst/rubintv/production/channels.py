@@ -31,12 +31,16 @@ CHANNELS = [
     "comcam_sim_calexp_mosaic",
     "comcam_sim_metadata",
     "comcam_sim_aos_metadata",
+    "comcam_sim_metadata",
     "slac_lsstcam_noise_map",
     "slac_lsstcam_focal_plane_mosaic",
     "slac_lsstcam_metadata",
     "tma_mount_motion_profile",
     "tma_m1m3_hardpoint_profile",
     "tma_metadata",
+    "lsstcam_focal_plane_mosaic",
+    "lsstcam_calexp_mosaic",
+    "lsstcam_metadata",
 ]
 
 PREFIXES = {chan: chan.replace("_", "-") for chan in CHANNELS}
@@ -51,14 +55,16 @@ KNOWN_INSTRUMENTS = (
     "comcam_sim",
     "comcam_sim_prep",
     "comcam_sim_aos",
+    "comcam_aos",
     "slac_lsstcam",
     "slac_ts8",
     "fake_auxtel",
     "tma",
+    "lsstcam",
 )
 
 
-def getCameraAndPlotName(channel):
+def getCameraAndPlotName(channel: str) -> tuple[str, str] | None:
     """Return the camera name for a given channel name."""
 
     channelLookup = {
@@ -100,9 +106,11 @@ def getCameraAndPlotName(channel):
         "comcam_sim_prep_metadata": ("comcam_sim_prep", "metadata"),
         "slac_lsstcam_metadata": ("slac_lsstcam", "metadata"),
         "tma_metadata": ("tma", "metadata"),
+        "comcam_aos_metadata": ("comcam_aos", "metadata"),
         # channels which should never upload, so return None to make things
         # raise
         "auxtel_metadata_creator": None,
         "auxtel_isr_runner": ("auxtel", "isr_runner"),
+        "lsstcam_metadata": ("lsstcam", "metadata"),
     }
     return channelLookup[channel]

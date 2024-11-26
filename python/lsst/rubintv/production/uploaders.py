@@ -19,11 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import logging
 import os
 import tempfile
-import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -54,7 +52,6 @@ except ImportError:
 __all__ = [
     "createLocalS3UploaderForSite",
     "createRemoteS3UploaderForSite",
-    "Heartbeater",
     "Uploader",
     "S3Uploader",
     "UploadError",
@@ -109,9 +106,9 @@ def createRemoteS3UploaderForSite():
                 bucket=Bucket.BTS,
             )
         case "summit":
-            httpsProxy = "http://ocio-gpu03.slac.stanford.edu:3128"
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF, bucket=Bucket.SUMMIT, httpsProxy=httpsProxy
+                endPoint=EndPoint.USDF,
+                bucket=Bucket.SUMMIT,
             )
         case "usdf":
             _LOG.info("No remote uploader is necessary for USDF")
@@ -150,6 +147,7 @@ class EndPoint(Enum):
             Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
             Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
             Bucket.BTS: BucketInformation("rubin-rubintv-data-base", "rubin-rubintv-data-base"),
+            Bucket.TTS: BucketInformation("rubin-rubintv-data-tts", "rubin-rubintv-data-tts"),
         },
     }
 
@@ -687,8 +685,6 @@ class S3Uploader(IUploader):
 class Uploader:
     """Class for handling uploads to the Google Cloud Storage bucket."""
 
-    HEARTBEAT_PREFIX = "heartbeats"
-
     def __init__(self, bucketName):
         if not HAS_GOOGLE_STORAGE:
             from lsst.summit.utils.utils import GOOGLE_CLOUD_MISSING_MSG
@@ -697,48 +693,6 @@ class Uploader:
         self.client = storage.Client()
         self.bucket = self.client.get_bucket(bucketName)
         self.log = _LOG.getChild("googleUploader")
-
-    def uploadHeartbeat(self, channel, flatlinePeriod):
-        """Upload a heartbeat for the specified channel to the bucket.
-
-        Parameters
-        ----------
-        channel : `str`
-            The channel name.
-        flatlinePeriod : `float`
-            The period after which to consider the channel dead.
-
-        Returns
-        -------
-        success : `bool`
-            Did the upload succeed?
-        """
-        filename = "/".join([self.HEARTBEAT_PREFIX, channel]) + ".json"
-
-        currTime = int(time.time())
-        nextExpected = currTime + flatlinePeriod
-
-        heartbeatJsonDict = {
-            "channel": channel,
-            "currTime": currTime,
-            "nextExpected": nextExpected,
-            "errors": {},
-        }
-        heartbeatJson = json.dumps(heartbeatJsonDict)
-
-        blob = self.bucket.blob("/".join([filename]))
-        blob.cache_control = "no-store"  # must set before upload
-
-        # heartbeat retry strategy
-        modified_retry = DEFAULT_RETRY.with_deadline(0.6)  # single retry here
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
-
-        try:
-            blob.upload_from_string(heartbeatJson, retry=modified_retry)
-            self.log.debug(f"Uploaded heartbeat to channel {channel} with datetime {currTime}")
-            return True
-        except Exception:
-            return False
 
     def uploadPerSeqNumPlot(
         self,
@@ -920,56 +874,3 @@ class Uploader:
             return None
 
         return blob
-
-
-class Heartbeater:
-    """A class for uploading heartbeats to the GCS bucket.
-
-    Call ``heartbeater.beat()`` as often as you like. Files will only be
-    uploaded once ``self.uploadPeriod`` has elapsed, or if ``ensure=True`` when
-    calling beat.
-
-    Parameters
-    ----------
-    handle : `str`
-        The name of the channel to which the heartbeat corresponds.
-    bucketName : `str`
-        The name of the bucket to upload the heartbeats to.
-    uploadPeriod : `float`
-        The time, in seconds, which must have passed since the last successful
-        heartbeat for a new upload to be undertaken.
-    flatlinePeriod : `float`
-        If a new heartbeat is not received before the flatlinePeriod elapses,
-        in seconds, the channel will be considered down.
-    """
-
-    def __init__(self, handle, bucketName, uploadPeriod, flatlinePeriod):
-        self.handle = handle
-        self.uploadPeriod = uploadPeriod
-        self.flatlinePeriod = flatlinePeriod
-
-        self.lastUpload = -1
-        self.uploader = Uploader(bucketName)
-
-    def beat(self, ensure=False, customFlatlinePeriod=None):
-        """Upload the heartbeat if enough time has passed or ensure=True.
-
-        customFlatlinePeriod implies ensure, as long forecasts should always be
-        uploaded.
-
-        Parameters
-        ----------
-        ensure : `str`
-            Ensure that the heartbeat is uploaded, even if one has been sent
-            within the last ``uploadPeriod``.
-        customFlatlinePeriod : `float`
-            Upload with a different flatline period. Use before starting long
-            running jobs.
-        """
-        forecast = self.flatlinePeriod if not customFlatlinePeriod else customFlatlinePeriod
-
-        now = time.time()
-        elapsed = now - self.lastUpload
-        if (elapsed >= self.uploadPeriod) or ensure or customFlatlinePeriod:
-            if self.uploader.uploadHeartbeat(self.handle, forecast):  # returns True on successful upload
-                self.lastUpload = now  # only reset this if the upload was successful

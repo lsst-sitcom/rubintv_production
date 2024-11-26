@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import redis
 import yaml
-from ciutils import TestScript, conditional_redirect
+from ciutils import Check, TestScript, conditional_redirect
 
 
 def do_nothing(*args, **kwargs):
@@ -37,19 +37,18 @@ CliLog.initLog = do_nothing
 
 # only import from lsst.anything once the logging configs have been frozen
 # noqa: E402
-# from lsst.rubintv.production.utils import getAutomaticLocationConfig
-from lsst.rubintv.production.utils import getDoRaise  # noqa: E402
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise  # noqa: E402
 
 # --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = True  # XXX Turn on before merging
-DO_CHECK_YAML_FILES = True  # XXX Turn on before merging
+DO_RUN_META_TESTS = True
+DO_CHECK_YAML_FILES = True
 
 REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 400  # How long to leave SFM to run for
+TEST_DURATION = 300  # How long to leave test suites to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -58,44 +57,70 @@ DEBUG = False
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS_ROUND_1 = [
     # the main RA testing - runs data through the processing pods
-    TestScript("scripts/summit/LSSTComCamSim/runPlotter.py", ["usdf_testing"]),
     TestScript(
-        "scripts/summit/LSSTComCamSim/runStep2aWorker.py",
-        ["usdf_testing", "0"],
-        tee_output=True,
-    ),
-    TestScript("scripts/summit/LSSTComCamSim/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
-    TestScript(
-        "scripts/summit/LSSTComCamSim/runSfmRunner.py",
-        ["usdf_testing", "0"],
+        "scripts/LSSTComCam/runPlotter.py",
+        ["usdf_testing"],
         display_on_pass=True,
         tee_output=True,
     ),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "1"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "2"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "3"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "4"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "5"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "6"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "7"]),
-    TestScript("scripts/summit/LSSTComCamSim/runSfmRunner.py", ["usdf_testing", "8"]),
     TestScript(
-        "scripts/summit/LSSTComCamSim/runHeadNode.py",
+        "scripts/LSSTComCam/runStep2aWorker.py",
+        ["usdf_testing", "0"],
+        tee_output=False,
+    ),
+    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
+    TestScript(
+        "scripts/LSSTComCam/runSfmRunner.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+        tee_output=False,
+    ),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "2"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "3"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "4"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "5"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "6"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "7"]),
+    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "8"]),
+    TestScript(
+        "scripts/LSSTComCam/runAosWorker.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+        tee_output=True,
+        # do_debug=True
+    ),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "2"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "3"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "4"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "5"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "6"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "7"]),
+    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "8"]),
+    TestScript(
+        "scripts/LSSTComCam/runStep2aAosWorker.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+    ),
+    TestScript(
+        "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
         tee_output=True,
         display_on_pass=True,
+        # do_debug=True
     ),
     TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
 ]
 
-TEST_SCRIPTS_ROUND_2 = [
+TEST_SCRIPTS_ROUND_3 = [
     # run after the processing pods are torn down, so that, for example, the
     # butler watcher can be checked without attempting to process the image it
     # drops into redis
-    # XXX need to get this to actually run
-    # XXX need to add check that this actually output to redis
-    TestScript("scripts/summit/LSSTComCamSim/runButlerWatcher.py", ["usdf_testing"]),
+    # TODO need to get this to actually run
+    # TODO need to add check that this actually output to redis
+    TestScript("scripts/LSSTComCam/runButlerWatcher.py", ["usdf_testing"]),
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -116,9 +141,8 @@ META_TESTS_PASS_EXPECTED = [
 YAML_FILES_TO_CHECK = [
     # TODO Add the commented out files back in when you're ready
     # "config/config_bts.yaml",
-    # "config/config_tts.yaml",
+    "config/config_tts.yaml",
     "config/config_summit.yaml",
-    # "config/config_slac.yaml",
     "config/config_usdf_testing.yaml",
 ]
 
@@ -131,9 +155,9 @@ TEST_SCRIPTS_ROUND_1 = [
     for test_script in TEST_SCRIPTS_ROUND_1
 ]
 
-TEST_SCRIPTS_ROUND_2 = [
+TEST_SCRIPTS_ROUND_1 = [
     TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
-    for test_script in TEST_SCRIPTS_ROUND_2
+    for test_script in TEST_SCRIPTS_ROUND_1
 ]
 
 META_TESTS_FAIL_EXPECTED = [
@@ -153,6 +177,8 @@ manager = Manager()
 exit_codes = manager.dict()
 outputs = manager.dict()
 REDIS_PROCESS = None
+
+CHECKS = []  # holds the results
 
 
 def exec_script(test_script: TestScript, output_queue):
@@ -349,39 +375,71 @@ def check_redis_final_contents():
     redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
     redisHelper.displayRedisContents()
 
-    inst = "LSSTComCamSim"
-    passed = True
+    inst = "LSSTComCam"
 
-    visits = [
-        7024061300017,
-    ]  # for expansion
-    n_visits = len(visits)
+    visits_sfm = [
+        2024110200170,
+    ]
 
-    n_step2a = redisHelper.getNumVisitLevelFinished(inst, "step2a")
-    if n_step2a != n_visits:
-        print(f"❌ Expected {n_visits} step2a to have finished, got {n_step2a}")
-        passed = False
+    visits_aos = [
+        "2024110200171+2024110200172",
+    ]
+
+    # n_visits = len(visits)
+    n_visits_sfm = len(visits_sfm)
+    n_visits_aos = len(visits_aos)
+
+    # TODO add something for the task counters too, not just step2a entry etc
+
+    n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
+    if n_step2a_sfm != n_visits_sfm:
+        CHECKS.append(
+            Check(False, f"Expected {n_visits_sfm} SFM step2a to have finished, got {n_step2a_sfm}")
+        )
     else:
-        print(f"✅ {n_step2a}x step2a finished")
+        CHECKS.append(Check(True, f"{n_step2a_sfm}x SFM step2a finished"))
+    del n_visits_sfm
 
-    key = f"{inst}-NIGHTLYROLLUP-FINISHEDCOUNTER"
+    n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
+    if n_visits_aos != n_step2a_aos:
+        CHECKS.append(
+            Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_step2a_aos}")
+        )
+    else:
+        CHECKS.append(Check(True, f"{n_visits_aos}x AOS step2a finished"))
+    del n_visits_aos
+
+    key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
     n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
-    if n_nightly_rollups != n_visits:
-        print(f"❌ Expected {n_visits} nightly rollup finished, got {n_nightly_rollups}")
-        passed = False
+    if n_nightly_rollups != 1:
+        CHECKS.append(Check(False, f"Expected {1} nightly rollup finished, got {n_nightly_rollups}"))
     else:
-        print(f"✅ {n_visits} nightly rollup finished")
+        CHECKS.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
+
+    # TODO spin up the PSF plotter and check for an output. For now just check
+    # the signal made it to redis
+    key = f"{inst}-PSFPLOTTER"
+    expected = redisHelper.redis.lpop(key)
+    if expected is not None:
+        expected = int(expected.decode("utf-8"))
+    if expected == visits_sfm[0]:
+        CHECKS.append(Check(True, "PSF plotter received the expected visit"))
+    else:
+        CHECKS.append(Check(False, f"PSF plotter did not receive the expected visit, got {expected}"))
 
     allKeys = redisHelper.redis.keys()
     failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
     if failed_keys:
-        print(f"❌ Found failed keys: {failed_keys}")
-        passed = False
+        CHECKS.append(Check(False, f"Found failed keys: {failed_keys}"))
+    else:
+        CHECKS.append(Check(True, "No failed keys found in redis"))
 
-    return passed
+    return
 
 
-def print_final_result(fails, passes):
+def print_final_result(checks):
+    fails = [check for check in checks if not check.passed]
+    passes = [check for check in checks if check.passed]
     n_fails = len(fails)
     n_passes = len(passes)
     terminal_width = os.get_terminal_size().columns
@@ -403,9 +461,9 @@ def print_final_result(fails, passes):
 
     # Print the centered text with colored padding
     for fail in fails:
-        print(f"❌ {fail} failed")
+        print(fail)
     for testPass in passes:
-        print(f"✅ {testPass} passed")
+        print(testPass)
     print(f"{padding}{text}{padding}")
 
 
@@ -587,10 +645,54 @@ def check_meta_test_results():
         raise RuntimeError("Meta-tests did not pass as expected - fix the test suite and try again.")
 
 
-def main():
-    FAILS = []
-    PASSES = []
+def delete_output_files():
+    locationConfig = LocationConfig("usdf_testing")
+    deletionLocations = [
+        locationConfig.binnedCalexpPath,
+        locationConfig.calculatedDataPath,
+        locationConfig.plotPath,
+    ]
+    import shutil
 
+    for location in deletionLocations:
+        if os.path.exists(location):
+            shutil.rmtree(location)
+            print(f"✅ Deleted output directory: {location}")
+
+    # reinit a config as that creates the dirs again as needed
+    locationConfig = LocationConfig("usdf_testing")
+    # check that all those paths are now empty. Don't check os.listdir()
+    # naively as that will find directories in directories, and some paths are
+    # within others.
+    for location in deletionLocations:
+        if any(os.path.isfile(os.path.join(location, f)) for f in os.listdir(location)):
+            raise RuntimeError(f"Failed to delete files in {location}")
+
+
+def check_plots():
+    locationConfig = LocationConfig("usdf_testing")
+
+    files = os.listdir(locationConfig.plotPath)
+    # TODO make this more data-driven
+    expected = [
+        "calexp_mosaic_dayObs_20241102_seqNum_000170.jpg",
+        "postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
+        "postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
+        "postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
+        "20241102_171-fp_donut_gallery.png",
+        "20241102_172-fp_donut_gallery.png",
+        "20241102_172-zk_measurement_pyramid.png",
+        "20241102_172-zk_residual_pyramid.png",
+    ]
+
+    for file in expected:
+        if file in files:
+            CHECKS.append(Check(True, f"Found expected plot {file}"))
+        else:
+            CHECKS.append(Check(False, f"Did not find expected plot {file}"))
+
+
+def main():
     check_system_size_and_load()
 
     # setup env vars for all processes
@@ -599,7 +701,7 @@ def main():
     if DO_CHECK_YAML_FILES:
         yaml_files_ok = check_yaml_keys()
         if not yaml_files_ok:  # not an instant fail
-            FAILS.append("YAML check")
+            CHECKS.append(Check(False, "YAML check"))
 
     # these exit if any fail because that means everything is broken so there's
     # no point in continuing
@@ -620,6 +722,8 @@ def main():
     start_redis(REDIS_INIT_WAIT_TIME)
     check_redis_startup()  # Wait for the setup timeout and then check Redis
 
+    delete_output_files()
+
     # Run each real test script
     run_test_scripts(TEST_SCRIPTS_ROUND_1, TEST_DURATION)
 
@@ -639,7 +743,7 @@ def main():
 
         stdout, stderr, log_output = outputs[script]
         if result in ["timeout", 0]:
-            PASSES.append(script)
+            CHECKS.append(Check(True, f"{script} passed"))
             if script.display_on_pass:
                 print(f"\n🙂 *Passing* logs from {script}:")
                 print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
@@ -652,15 +756,14 @@ def main():
             print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
             print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
             print("\n")  # put a nice gap between each failing scripts's output
-            FAILS.append(script)
+            CHECKS.append(Check(False, f"{script} failed"))
 
-    if check_redis_final_contents():
-        PASSES.append("Redis content check")
-    else:
-        FAILS.append("Redis content check")
+    check_plots()
+    check_redis_final_contents()
 
-    print_final_result(FAILS, PASSES)
-    if len(FAILS) > 0:
+    print_final_result(CHECKS)
+    overallPass = all(check.passed for check in CHECKS)
+    if not overallPass:
         sys.exit(1)
 
 

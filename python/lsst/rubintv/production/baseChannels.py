@@ -19,15 +19,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import logging
 import time
 from abc import ABC, abstractmethod
 from time import sleep
+from typing import TYPE_CHECKING, Any
 
-import lsst.summit.utils.butlerUtils as butlerUtils
-
-from .uploaders import MultiUploader, Uploader
+from .uploaders import MultiUploader
 from .watchers import FileWatcher, RedisWatcher
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.daf.butler import Butler, DataCoordinate, LimitedButler
+
+    from .podDefinition import PodDetails
+    from .starTracker import StarTrackerWatcher
+    from .utils import LocationConfig
+
 
 __all__ = [
     "BaseChannel",
@@ -48,15 +59,26 @@ class BaseChannel(ABC):
         The file watcher to use.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
+    addUploader : `bool`, optional
+        If ``True``, add an S3 uploader to the channel.
     """
 
-    def __init__(self, *, locationConfig, log, watcher, doRaise):
+    def __init__(
+        self,
+        *,
+        locationConfig: LocationConfig,
+        log: Logger,
+        watcher: FileWatcher | RedisWatcher | StarTrackerWatcher,
+        doRaise: bool,
+        addUploader: bool = False,
+    ) -> None:
         self.locationConfig = locationConfig
         self.log = log
         self.watcher = watcher
-        self.uploader = Uploader(self.locationConfig.bucketName)
-        self.s3Uploader = MultiUploader()
-        self.doRaise = doRaise
+        self.s3Uploader: MultiUploader | None = None
+        if addUploader:
+            self.s3Uploader = MultiUploader()
+        self.doRaise: bool = doRaise
 
     @abstractmethod
     def callback(self, arg, /):
@@ -72,7 +94,7 @@ class BaseChannel(ABC):
         """
         raise NotImplementedError()
 
-    def run(self):
+    def run(self) -> None:
         """Run continuously, calling the callback method with the latest
         expRecord.
         """
@@ -104,49 +126,61 @@ class BaseButlerChannel(BaseChannel):
     queueName : `str`, optional
         If using a `"redis"` type watcher, which queue should this consume
         from.
+    addUploader : `bool`, optional
+        If ``True``, add an S3 uploader to the channel.
     """
 
     def __init__(
         self,
         *,
-        locationConfig,
-        instrument,
-        butler,
-        dataProduct,
-        detectors,
-        channelName,
-        watcherType,
-        doRaise,
-        queueName=None,  # only needed for redis watcher. Not the neatest but will do for now
-    ):
+        locationConfig: LocationConfig,
+        instrument: str,
+        butler: Butler,
+        dataProduct: str | None,
+        detectors: int | list[int] | None,
+        channelName: str,
+        watcherType: str,
+        doRaise: bool,
+        # podDetails only needed for redis watcher. Not the neatest but will do
+        # for now
+        podDetails: PodDetails | None = None,
+        addUploader: bool = True,
+    ) -> None:
+        watcher: FileWatcher | RedisWatcher
         if watcherType == "file":
+            assert dataProduct is not None, "dataProduct must be provided for file watcher"
             watcher = FileWatcher(
                 locationConfig=locationConfig,
                 instrument=instrument,
                 dataProduct=dataProduct,
-                heartbeatChannelName=channelName,
                 doRaise=doRaise,
             )
         elif watcherType == "redis":
+            assert podDetails is not None, "podDetails must be provided for redis watcher"
             watcher = RedisWatcher(
                 butler=butler,
                 locationConfig=locationConfig,
-                queueName=queueName,
+                podDetails=podDetails,
             )
         else:
             raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
         log = logging.getLogger(f"lsst.rubintv.production.{channelName}")
-        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
+        super().__init__(
+            locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise, addUploader=addUploader
+        )
         self.butler = butler
         self.dataProduct = dataProduct
         self.channelName = channelName
         self.detectors = detectors
+        self.podDetails = podDetails
 
     @abstractmethod
     def callback(self, expRecord):
         raise NotImplementedError()
 
-    def _waitForDataProduct(self, dataId, timeout=20, gettingButler=None):
+    def _waitForDataProduct(
+        self, dataId: DataCoordinate, timeout: float = 20, gettingButler: Butler | LimitedButler | None = None
+    ) -> Any:
         """Wait for a dataProduct to land inside a repo.
 
         Wait for a maximum of ``timeout`` seconds for a dataProduct to land,
@@ -175,11 +209,13 @@ class BaseButlerChannel(BaseChannel):
         cadence = 0.25
         start = time.time()
         while time.time() - start < timeout:
-            if butlerUtils.datasetExists(self.butler, self.dataProduct, dataId):
+            self.butler.registry.refresh()
+            if self.butler.exists(self.dataProduct, dataId):
                 if gettingButler is None:
                     return self.butler.get(self.dataProduct, dataId)
                 else:
                     ref = self.butler.find_dataset(self.dataProduct, dataId)
+                    assert ref is not None, f"Registry error: could not find {self.dataProduct} for {dataId}"
                     return gettingButler.get(ref)
             else:
                 sleep(cadence)

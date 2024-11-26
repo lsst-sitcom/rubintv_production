@@ -19,23 +19,34 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 
 import datetime
+import time
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from lsst.pipe.base import Pipeline, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
-from lsst.summit.utils import ConsDbClient
+from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .payloads import pipelineGraphFromBytes, pipelineGraphToBytes
+from .redisUtils import RedisHelper
 from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
+
+if TYPE_CHECKING:
+    from lsst.daf.butler import Butler, DataCoordinate, Quantum
+
+    from .payloads import Payload
+    from .podDefinition import PodDetails
+    from .utils import LocationConfig
+
 
 __all__ = [
     "SingleCorePipelineRunner",
@@ -56,7 +67,7 @@ TASK_ENDPOINTS_TO_TRACK = (
     "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step2a for nightly
 )
 
-NO_COPY_ON_CACHE = ("bias", "dark", "flat", "defects", "camera")
+NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera"}
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):
@@ -89,13 +100,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def __init__(
         self,
-        locationConfig,
-        butler,
-        instrument,
-        pipeline,  # not pulled from the locationConfig to allow notebook/debug usage
-        step,
-        awaitsDataProduct,
-        queueName,
+        locationConfig: LocationConfig,
+        butler: Butler,
+        instrument: str,
+        pipeline: str,  # not pulled from the locationConfig to allow notebook/debug usage
+        step: str,
+        awaitsDataProduct: str | None,
+        podDetails: PodDetails,
         *,
         doRaise=False,
     ):
@@ -113,24 +124,28 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # in some contexts but not all. Maybe default it to
             # ''?
             channelName="",
-            queueName=queueName,
+            podDetails=podDetails,
             doRaise=doRaise,
+            addUploader=False,  # pipeline running pods don't upload directly
         )
         self.instrument = instrument
         self.butler = butler
         self.step = step
-        self.pipeline = pipeline + f"#{step}"
+        self.pipeline = f"{pipeline}#{step}"
         self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
         self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
+        self.podDetails = podDetails
 
-        self.runCollection = None
-        self.limitedButler = self.makeLimitedButler(butler)
-        self.log.info(f"Pipeline running configured to consume from {queueName}")
+        self.runCollection: str | None = None
+        self.cachingButler = self.makeCachingLimitedButler(butler)
+        self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.watcher.redisHelper)
+        self.redisHelper = RedisHelper(butler, self.locationConfig)
 
-    def makeLimitedButler(self, butler):
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+
+    def makeCachingLimitedButler(self, butler: Butler) -> CachingLimitedButler:
         cachedOnGet = set()
         cachedOnPut = set()
         for name in self.pipelineGraph.dataset_types.keys():
@@ -144,7 +159,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
         return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
-    def doProcessImage(self, dataId):
+    def doProcessImage(self, dataId: DataCoordinate) -> bool:
         """Determine if we should skip this image.
 
         Should take responsibility for logging the reason for skipping.
@@ -162,7 +177,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # add any necessary data-driven logic here to choose if we process
         return True
 
-    def callback(self, payload):
+    def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
         Executes the pipeline on the payload's dataId, outputting to the run
@@ -173,42 +188,74 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        dataId = payload.dataId
-        pipelineGraphBytes = payload.pipelineGraphBytes
+        dataIds: list[DataCoordinate] = payload.dataIds
+        pipelineGraphBytes: bytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
+        who = payload.who  # who are we running this for?
 
-        if not self.doProcessImage(dataId):
-            return
+        compoundId = ""
+        sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
+        if "exposure" in sampleDataId:
+            compoundId = "+".join([f"{dataId['exposure']}" for dataId in dataIds])
+        elif "visit" in sampleDataId:
+            compoundId = "+".join([f"{dataId['visit']}" for dataId in dataIds])
+        else:  # for day_obs or instrument level dataIds.
+            compoundId = "+".join([f"{dataId}" for dataId in dataIds])
+
+        self.log.debug(f"Processing {compoundId=}")
+        self.log.debug(f"{self.step=} {self.dataProduct=}")
 
         try:
             if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
                 self.log.warning("Pipeline graph has changed, updating")
-                self.pipelineGraphBytes = pipelineGraphFromBytes(pipelineGraphBytes)
+                self.pipelineGraphBytes = pipelineGraphBytes
+                self.pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
                 # need to remake the caching butler if the pipeline changes
-                self.limitedButler = self.makeLimitedButler(self.butler)
+                self.cachingButler = self.makeCachingLimitedButler(self.butler)
 
-            where = " AND ".join(f"{k}=_{k}" for k in dataId.mapping)
-            bind = {f"_{k}": v for k, v in dataId.mapping.items()}
+            # chain all the dataId components together with AND, and an OR
+            # between each dataId. Make sure to bind the dataId components
+            # correctly by using a unique string for each dataId.
+            where = ""
+            bind = {}
+            for i, dataId in enumerate(dataIds):
+                idString = f"dataId_{i}_"
+                where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+                bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
+                where += " OR "
+            if where.endswith(" OR "):
+                where = where[:-4]
+            del dataId
+
+            self.log.debug(f"{where=}\n{bind=}")
+
             builder = AllDimensionsQuantumGraphBuilder(
                 self.pipelineGraph,
                 self.butler,
                 where=where,
                 bind=bind,
                 clobber=True,
-                input_collections=self.butler.collections + (self.runCollection,),
+                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
                 output_run=self.runCollection,
             )
 
-            self.log.info(f"Running pipeline for {dataId}")
+            self.log.info(f"Running pipeline for {dataIds}")
 
             # _waitForDataProduct waits for the raw to land in the repo and
             # caches it on the butler, so don't bother to catch the return.
             # Then check for empty qg and raise if that is the case.
-            self._waitForDataProduct(dataId, gettingButler=self.limitedButler)
+            t0 = time.time()
+            for dataId in dataIds:
+                self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
+                self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
+            self.log.info(
+                f"Spent {(time.time()-t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
+                " (should be ~1s per id)"
+            )
 
             qg: QuantumGraph = builder.build(
                 metadata={
-                    "input": self.butler.collections + (self.runCollection,),
+                    "input": list(self.butler.collections.defaults) + [self.runCollection],
                     "output_run": self.runCollection,
                     "data_query": where,
                     "bind": bind,
@@ -217,33 +264,29 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
 
             if not qg:
-                raise RuntimeError(f"No work found for {dataId}")
+                raise RuntimeError(f"No work found for {dataIds}")
 
             executor = SingleQuantumExecutor(
                 None,
                 taskFactory=TaskFactory(),
-                limited_butler_factory=lambda _: self.limitedButler,
+                limited_butler_factory=lambda _: self.cachingButler,
                 clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
             )
 
-            if "exposure" in payload.dataId:
-                processingId = payload.dataId["exposure"]  # this works for step1 and step2a
-            else:
-                # TODO need to work out what to do for non-exposure-containing
-                # dataIds. Do we even need this anymore though, now we have a
-                # step2a finished counter?
-                processingId = 1
-
             for node in qg:
+                # just to make sure taskName is defined, so if this shows
+                # up anywhere something is very wrong
+                dataCoord = node.quantum.dataId  # pull this out before the try so you can use in except block
+                assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
+                taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
+                self.log.info(f"Starting to process {taskName}")
                 try:
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
-
-                    taskName = node.taskDef.taskName
-                    self.log.info(f"Starting to process {taskName}")
-                    quantum, _ = executor.execute(node.taskDef, node.quantum)
-                    self.postProcessQuantum(quantum, processingId)
-                    self.watcher.redisHelper.reportFinished(self.instrument, taskName, processingId)
+                    quantum, _ = executor.execute(node.task_node, node.quantum)
+                    self.postProcessQuantum(quantum)
+                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
 
                 except Exception as e:
                     # don't use quantum directly in this block in case it is
@@ -256,64 +299,80 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # tasks, or only the points used for triggering other
                     # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
-                    self.watcher.redisHelper.reportFinished(
-                        self.instrument, taskName, processingId, failed=True
-                    )
+                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
+            self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
+
             # finished looping over nodes
+            if self.step == "step1":
+                self.log.debug(f"Announcing completion of step1 for {compoundId} for {who}")
+                self.redisHelper.reportDetectorLevelFinished(
+                    self.instrument, "step1", who=who, processingId=compoundId
+                )
             if self.step == "step2a":
-                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a")
+                self.log.debug(f"Announcing completion of step2a for {compoundId} for {who}")
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who)
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
-                if "visit" in payload.dataId:
-                    visit = f"{payload.dataId['visit']}"
-                else:
-                    visit = f"{payload.dataId['exposure']}"
-                self.watcher.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", visit)
+                if who == "SFM":
+                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", compoundId)
             if self.step == "nightlyRollup":
-                self.watcher.redisHelper.reportNightLevelFinished(self.instrument)
+                self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
+            if self.step == "step1":
+                self.redisHelper.reportDetectorLevelFinished(
+                    self.instrument, "step1", who=who, processingId=compoundId, failed=True
+                )
             if self.step == "step2a":
-                self.watcher.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", failed=True)
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who, failed=True)
             if self.step == "nightlyRollup":
-                self.watcher.redisHelper.reportNightLevelFinished(self.instrument, failed=True)
+                self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum, processingId):
+    def postProcessQuantum(self, quantum: Quantum) -> None:
         """Write shards here, make sure to keep these bits quick!
 
-        Also, anything you self.limitedButler.get() make sure to add to
+        compoundId is a maybe-compound id, either a single exposure or a
+        compound of multiple exposures, depending on the pipeline, joined with
+        a "+".
+
+        Also, anything you self.cachingButler.get() make sure to add to
         cache_on_put.
 
         # TODO: After OR3, move all this out to postprocessQuanta.py, and do
         the dispatch and function definitions in there to keep the runner
         clean.
         """
-        match quantum.taskName:
-            case "lsst.ip.isr.isrTask.IsrTask":
-                self.postProcessIsr(quantum)
-            case "lsst.pipe.tasks.calibrate.CalibrateTask":
-                # TODO: think about if we could make dicts of some of the
-                # per-CCD quantities like PSF size and 50 sigma source counts
-                # etc. Would probably mean changes to mergeShardsAndUpload in
-                # order to merge dict-like items into their corresponding
-                # dicts.
+        taskName = quantum.taskName
+        assert taskName is not None, "taskName is None, this shouldn't be possible in RA"  # mainly for mypy
 
-                self.postProcessCalibrate(quantum, processingId)
-            case "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask":
-                # ConsolidateVisitSummaryTask regardless of quickLook or NV
-                # pipeline, because this is the quantum that holds the
-                # visitSummary
-                self.postProcessVisitSummary(quantum)
-            case _:
-                return
+        # need to catch the old and new isr tasks alike, and also not worry
+        # about intermittent namespace stuttering
+        if "isr" in taskName.lower():
+            self.postProcessIsr(quantum)
+        elif "calibratetask" in taskName.lower():
+            # TODO: think about if we could make dicts of some of the
+            # per-CCD quantities like PSF size and 50 sigma source counts
+            # etc. Would probably mean changes to mergeShardsAndUpload in
+            # order to merge dict-like items into their corresponding
+            # dicts.
+            self.postProcessCalibrate(quantum)
+        elif "postprocess.ConsolidateVisitSummaryTask".lower() in taskName.lower():
+            # ConsolidateVisitSummaryTask regardless of quickLook or NV
+            # pipeline, because this is the quantum that holds the
+            # visitSummary
+            self.postProcessVisitSummary(quantum)
+        elif "AggregateZernikeTablesTask".lower() in taskName.lower():
+            self.postProcessAggregateZernikeTables(quantum)
+        else:
+            return
 
-    def postProcessIsr(self, quantum):
+    def postProcessIsr(self, quantum: Quantum) -> None:
         dRef = quantum.outputs["postISRCCD"][0]
-        exp = self.limitedButler.get(dRef)
+        exp = self.cachingButler.get(dRef)
 
         writeBinnedImage(
             exp=exp,
@@ -321,15 +380,35 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             outputPath=self.locationConfig.calculatedDataPath,
             binSize=self.locationConfig.binning,
         )
-
         self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
 
-    def postProcessCalibrate(self, quantum, processingId):
+        if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
+            try:
+                expRecord = dRef.dataId.records["exposure"]
+                assert expRecord is not None, "expRecord is None, this shouldn't be possible"
+                detectorNum = exp.getDetector().getId()
+                postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
+                ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
+                self.consdbClient.insert(
+                    instrument=self.instrument,
+                    table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
+                    obs_id=ccdvisitId,
+                    values={"postisr_pixel_median": postIsrMedian},
+                    allow_update=False,
+                )
+                self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
+                md = {expRecord.seq_num: {"PostISR pixel median": postIsrMedian}}
+                shardPath = getShardPath(self.locationConfig, expRecord)
+                writeMetadataShard(shardPath, expRecord.day_obs, md)
+            except Exception:
+                self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
+
+    def postProcessCalibrate(self, quantum: Quantum) -> None:
         # This is very similar indeed to postProcessIsr, but we it's not worth
         # refactoring yet, especially as they will probably diverge in the
         # future.
         dRef = quantum.outputs["calexp"][0]
-        exp = self.limitedButler.get(dRef)
+        exp = self.cachingButler.get(dRef)
 
         writeBinnedImage(
             exp=exp,
@@ -344,35 +423,46 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.watcher.redisHelper.reportFinished(self.instrument, "binnedCalexpCreation", processingId)
+        self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
         self.log.info(f"Wrote binned calexp for {dRef.dataId}")
 
         try:
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            summaryStats = exp.getInfo().getSummaryStats()
-            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
-            detectorNum = exp.getDetector().getId()
-            self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
-            self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
+            if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
+                summaryStats = exp.getInfo().getSummaryStats()
+                expRecord = dRef.dataId.records["exposure"]
+                assert expRecord is not None, "expRecord is None, this shouldn't be possible"
+                detectorNum = exp.getDetector().getId()
+                self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
+                self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
         except Exception:
             if self.locationConfig.location == "summit":
                 self.log.exception("Failed to populate ccd-visit row in ConsDB")
             else:
                 self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
-    def postProcessVisitSummary(self, quantum):
+    def postProcessVisitSummary(self, quantum: Quantum) -> None:
         dRef = quantum.outputs["visitSummary"][0]
-        vs = self.limitedButler.get(dRef)
+        vs = self.cachingButler.get(dRef)
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
-        pixToArcseconds = np.nanmean([row.wcs.getPixelScale().asArcseconds() for row in vs])
+        nominalPlateScale = 0.199225  # XXX remove the hard-coding for ComCam
+        pixToArcseconds = np.nanmean(
+            [
+                row.wcs.getPixelScale().asArcseconds() if row.wcs is not None else nominalPlateScale
+                for row in vs
+            ]
+        )
         SIGMA2FWHM = np.sqrt(8 * np.log(2))
 
         e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
         e2 = 2 * vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
 
+        zeropoint = np.nanmean(vs["zeroPoint"])
+        expTime = np.nanmean(vs["expTime"])
+        realZeropoint = zeropoint - 2.5 * np.log10(expTime)
         outputDict = {
             "PSF FWHM": np.nanmean(vs["psfSigma"]) * SIGMA2FWHM * pixToArcseconds,
             "PSF e1": np.nanmean(e1),
@@ -383,7 +473,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             "PSF star count": np.nanmean(vs["nPsfStar"]),
             "Astrometric bias": np.nanmean(vs["astromOffsetMean"]),
             "Astrometric scatter": np.nanmean(vs["astromOffsetStd"]),
-            "Zeropoint": np.nanmean(vs["zeroPoint"]),
+            "Zeropoint": zeropoint,
+            "Real zeropoint": realZeropoint,
         }
 
         # flag all these as measured items to color the cell
@@ -399,30 +490,36 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            self.consDBPopulator.populateVisitRow(vs, self.instrument)
-            self.log.info(f"Populated consDB visit row for {expRecord.id}")
+            if self.locationConfig.location in ["summit", "bts", "tts"]:
+                self.consDBPopulator.populateVisitRow(vs, self.instrument)
+                self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
 
-    def clobber(self, object, datasetType, visitDataId):
-        """Put object in the butler.
+    def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
+        # protect import to stop the whole package depending on ts_wep. If this
+        # becomes a problem we could copy the functions or just accept that RA
+        # needs T&S software.
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth  # type: ignore
 
-        If there is one already there, remove it beforehand.
+        dRef = quantum.outputs["aggregateZernikesAvg"][0]
+        zernikes = self.cachingButler.get(dRef)
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
-        Parameters
-        ----------
-        object : `object`
-            Any object to put in the butler.
-        datasetType : `str`
-            Dataset type name to put it as.
-        visitDataId : `lsst.daf.butler.DataCoordinate`
-            The data coordinate record of the exposure to put. Must contain the
-            visit id.
-        """
-        self.butler.registry.registerRun(self.outputRunName)
-        if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f"Overwriting existing {datasetType} for {visitDataId}")
-            dRef = self.butler.registry.findDataset(datasetType, visitDataId)
-            self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
-        self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f"Put {datasetType} for {visitDataId}")
+        rowSums = []
+        zkOcs = zernikes["zk_OCS"]
+        for row in zkOcs:
+            zk_fwhm = convertZernikesToPsfWidth(row)
+            rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
+
+        average_result = np.nanmean(rowSums)
+
+        outputDict = {"Residual AOS FWHM": f"{average_result:.2f}"}
+        labels = {"_" + k: "measured" for k in outputDict.keys()}
+        outputDict.update(labels)
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+
+        shardPath = getShardPath(self.locationConfig, expRecord)
+        writeMetadataShard(shardPath, dayObs, rowData)

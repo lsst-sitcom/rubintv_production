@@ -28,7 +28,7 @@ from lsst.rubintv.production.processingControl import CameraControlConfig
 
 class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
 
-    def test_behavior(self):
+    def test_behavior(self) -> None:
         """Checks that everything is properly applied on top of everything
         else and there are no unintended toggles, so be careful if reordering
         or refactoring into separate functions. Runtime is negligible so it's
@@ -120,7 +120,7 @@ class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
         camConfig.setGuidersOn()
         self.assertEqual(nRaftPhase1 + nWavefront + nGuiders, camConfig.getNumEnabled())
 
-    def test_plot(self):
+    def test_plot(self) -> None:
         camConfig = CameraControlConfig()
         camConfig.plotConfig()
 
