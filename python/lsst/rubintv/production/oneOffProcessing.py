@@ -166,13 +166,33 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Wrote measured PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {fwhm:.3f}")
         except Exception as e:
             self.log.error(f"Failed to calculate PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {e}")
-            if self.doRaise:
-                raise
+            return
+
+    def calcTimeSincePrevious(self, expRecord: DimensionRecord) -> None:
+        if expRecord.seq_num == 1:  # nothing to do for first image of the day
+            return
+
+        # this is kinda gross, but it's robust enough for this thing that's
+        # only a convenience for RubinTV. Will occasionally raise when we skip
+        # a seqNum, but that's very rare (less than once per day and usually
+        # at the start of the night when this doesn't matter)
+        try:
+            (previousImage,) = self.butler.registry.queryDimensionRecords(
+                "exposure", exposure=expRecord.id - 1
+            )
+            timeSincePrevious = expRecord.timespan.begin - previousImage.timespan.end
+
+            md = {expRecord.seq_num: {"Time since previous exposure": f"{timeSincePrevious.sec:.2f}"}}
+            writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+        except Exception as e:
+            self.log.error(f"Failed to calculate time since previous exposure for {expRecord.id}: {e}")
             return
 
     def runPostISRCCD(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for postISRCCD for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+
+        self.calcTimeSincePrevious(expRecord)  # do this while we wait for the postISR to land
 
         # redis signal is sent on the dispatch of the raw, so 40s is plenty but
         # not too much
