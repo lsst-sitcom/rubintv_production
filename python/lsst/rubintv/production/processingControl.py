@@ -668,6 +668,10 @@ class HeadProcessController:
             if who == "SFM":
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+            if who == "AOS":
+                for dataCoord in dataCoords:
+                    (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
+                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 
         return True  # we sent something out
 
