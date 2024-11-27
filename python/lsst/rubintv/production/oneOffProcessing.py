@@ -33,7 +33,7 @@ from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
 from .redisUtils import RedisHelper
-from .utils import isCalibration, writeMetadataShard
+from .utils import isCalibration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
@@ -166,6 +166,7 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Wrote measured PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {fwhm:.3f}")
         except Exception as e:
             self.log.error(f"Failed to calculate PSF for {dayObs}-{seqNum} det={exp.detector.getId()}: {e}")
+            raiseIf(self.doRaise, e, self.log)
             return
 
     def calcTimeSincePrevious(self, expRecord: DimensionRecord) -> None:
@@ -186,6 +187,7 @@ class OneOffProcessor(BaseButlerChannel):
             writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
         except Exception as e:
             self.log.error(f"Failed to calculate time since previous exposure for {expRecord.id}: {e}")
+            raiseIf(self.doRaise, e, self.log)
             return
 
     def runPostISRCCD(self, dataId: DataCoordinate) -> None:
