@@ -391,7 +391,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
                 self.consdbClient.insert(
                     instrument=self.instrument,
-                    table=f"cdb_{self.instrument.lower()}.ccdvisit1_quicklook",
+                    table=f"cdb_{self.instrument.lower()}.ccdexposure_quicklook",
                     obs_id=ccdvisitId,
                     values={"postisr_pixel_median": postIsrMedian},
                     allow_update=False,
