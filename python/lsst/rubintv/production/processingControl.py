@@ -809,6 +809,11 @@ class HeadProcessController:
                     aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
                     writeExpRecordMetadataShard(record1, aosShardPath)
                     writeExpRecordMetadataShard(record2, aosShardPath)
+                    # define visits here for the edge case that the donut pair
+                    # signal arrives before the getNewExposureAndDefineVisit
+                    # call in the main loop
+                    defineVisit(self.butler, record1)
+                    defineVisit(self.butler, record2)
                     self.doStep1FanoutAos([record1, record2])
 
             # for now, only dispatch to step2a once things are complete because
