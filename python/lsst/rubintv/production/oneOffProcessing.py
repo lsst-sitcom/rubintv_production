@@ -213,8 +213,6 @@ class OneOffProcessor(BaseButlerChannel):
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
 
-        self.calcTimeSincePrevious(expRecord)  # do this while we wait for the postISR to land
-
         # redis signal is sent on the dispatch of the raw, so 40s is plenty but
         # not too much
         postISR = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=40)
@@ -377,17 +375,23 @@ class OneOffProcessor(BaseButlerChannel):
 
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
 
+    def runExpRecord(self, expRecord: DimensionRecord) -> None:
+        self.calcTimeSincePrevious(expRecord)
+
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
         if len(payload.dataIds) > 1:
             raise ValueError(f"Expected only one dataId, got {len(payload.dataIds)}")
 
-        dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
-
         match self.processingStage:
+            case "expRecord":
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+                self.runExpRecord(expRecord)
             case "postISRCCD":
+                dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
                 self.runPostISRCCD(dataId)
             case "calexp":
+                dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
                 self.runCalexp(dataId)
             case _:
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
