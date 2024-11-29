@@ -31,7 +31,12 @@ import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
-from lsst.summit.utils.simonyi.mountAnalysis import calculateMountErrors, plotMountErrors
+from lsst.summit.utils.simonyi.mountAnalysis import (
+    MOUNT_IMAGE_BAD_LEVEL,
+    MOUNT_IMAGE_WARNING_LEVEL,
+    calculateMountErrors,
+    plotMountErrors,
+)
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
@@ -331,6 +336,21 @@ class OneOffProcessor(BaseButlerChannel):
         )
         self.mountFigure.clear()
         self.mountFigure.gca().clear()
+
+        imageImpact = errors.imageImpactRms
+        key = "Mount motion image degradation"
+        outputDict = {key: f"{imageImpact:.3f}"}
+        if imageImpact > MOUNT_IMAGE_WARNING_LEVEL:
+            flag = f"_{key}"
+            outputDict[flag] = "warning"
+        elif imageImpact > MOUNT_IMAGE_BAD_LEVEL:
+            flag = f"_{key}"
+            outputDict[flag] = "bad"
+
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+        writeMetadataShard(self.shardsDirectory, dayObs, rowData)
 
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
