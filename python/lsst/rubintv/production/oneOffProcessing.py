@@ -43,6 +43,7 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
 )
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
+from lsst.summit.utils.simonyi.mountAnalysis import calculateMountErrors, plotMountErrors
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
@@ -470,8 +471,31 @@ class OneOffProcessor(BaseButlerChannel):
 
         writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
 
+    def runMountAnalysis(self, expRecord: DimensionRecord) -> None:
+        errors, data = calculateMountErrors(expRecord, self.efdClient)
+        if errors is None or data is None:
+            self.log.warning(f"Failed to calculate mount errors for {expRecord.id}")
+            return
+
+        assert errors is not None
+        assert data is not None
+
+        # TODO: DM-45437 Use a context manager here and everywhere
+        tempFilename = tempfile.mktemp(suffix=".png")
+        plotMountErrors(data, errors, self.mountFigure)
+        self.uploader.uploadPerSeqNumPlot(
+            instrument=expRecord.instrument,
+            plotName="mount",
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=tempFilename,
+        )
+        self.mountFigure.clear()
+        self.mountFigure.gca().clear()
+
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
+        self.runMountAnalysis(expRecord)
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
