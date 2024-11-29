@@ -51,7 +51,7 @@ from .monitorPlotting import plotExp
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
-from .utils import isCalibration, raiseIf, writeMetadataShard
+from .utils import getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -401,7 +401,7 @@ class OneOffProcessor(BaseButlerChannel):
         tempFilename = tempfile.mktemp(suffix=".png")
         plotMountErrors(data, errors, self.mountFigure)
         self.uploader.uploadPerSeqNumPlot(
-            instrument=expRecord.instrument,
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName="mount",
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
