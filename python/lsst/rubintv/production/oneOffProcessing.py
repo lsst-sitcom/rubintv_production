@@ -321,7 +321,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         # TODO: DM-45437 Use a context manager here and everywhere
         tempFilename = tempfile.mktemp(suffix=".png")
-        plotMountErrors(data, errors, self.mountFigure)
+        plotMountErrors(data, errors, self.mountFigure, saveFilename=tempFilename)
         self.uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName="mount",
