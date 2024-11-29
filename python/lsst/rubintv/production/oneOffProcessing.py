@@ -491,6 +491,21 @@ class OneOffProcessor(BaseButlerChannel):
         self.mountFigure.clear()
         self.mountFigure.gca().clear()
 
+        imageImpact = errors.imageImpactRms
+        key = "Mount motion image degradation"
+        outputDict = {key: f"{imageImpact:.3f}"}
+        if imageImpact > MOUNT_IMAGE_WARNING_LEVEL:
+            flag = f"_{key}"
+            outputDict[flag] = "warning"
+        elif imageImpact > MOUNT_IMAGE_BAD_LEVEL:
+            flag = f"_{key}"
+            outputDict[flag] = "bad"
+
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+        writeMetadataShard(self.shardsDirectory, dayObs, rowData)
+
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.runMountAnalysis(expRecord)
