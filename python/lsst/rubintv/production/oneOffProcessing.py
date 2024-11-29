@@ -22,11 +22,7 @@
 from __future__ import annotations
 
 import tempfile
-<<<<<<< HEAD
 from typing import TYPE_CHECKING, Any
-=======
-from typing import TYPE_CHECKING
->>>>>>> 3330ba9 (Add mount plot production)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -37,7 +33,6 @@ from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
-<<<<<<< HEAD
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.simonyi.mountAnalysis import (
     MOUNT_IMAGE_BAD_LEVEL,
@@ -48,15 +43,11 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
     plotMountErrors,
 )
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-=======
-from lsst.summit.utils.simonyi.mountAnalysis import calculateMountErrors, plotMountErrors
->>>>>>> 3330ba9 (Add mount plot production)
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
-from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
 from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
@@ -491,7 +482,7 @@ class OneOffProcessor(BaseButlerChannel):
         tempFilename = tempfile.mktemp(suffix=".png")
         plotMountErrors(data, errors, self.mountFigure)
         self.uploader.uploadPerSeqNumPlot(
-            instrument=expRecord.instrument,
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName="mount",
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
