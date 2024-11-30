@@ -1349,3 +1349,29 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     """
     noDetector = {k: v for k, v in dataCoord.required.items() if k != "detector"}
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
+
+
+def getFilterColorName(physicalFilter: str) -> str | None:
+    """Get the color name for a physical filter to color cells on RubinTV.
+
+    If the color doesn't have a mapping, ``None`` is returned.
+
+    Parameters
+    ----------
+    physicalFilter : `str`
+        The physical filter name.
+
+    Returns
+    -------
+    colorName : `str`
+        The color name.
+    """
+    filterMap = {
+        "u_02": "u_color",
+        "g_01": "g_color",
+        "r_03": "r_color",
+        "i_06": "i_color",
+        "z_03": "z_color",
+        "y_04": "y_color",
+    }
+    return filterMap.get(physicalFilter)
