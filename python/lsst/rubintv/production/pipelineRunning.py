@@ -432,10 +432,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # USDF.
             if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
                 summaryStats = exp.getInfo().getSummaryStats()
-                expRecord = dRef.dataId.records["exposure"]
-                assert expRecord is not None, "expRecord is None, this shouldn't be possible"
+                visitRecord = dRef.dataId.records["visit"]
+                assert visitRecord is not None, "visitRecord is None, this shouldn't be possible"
                 detectorNum = exp.getDetector().getId()
-                self.consDBPopulator.populateCcdVisitRow(expRecord, detectorNum, summaryStats)
+                self.consDBPopulator.populateCcdVisitRow(visitRecord, detectorNum, summaryStats)
                 self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
         except Exception:
             if self.locationConfig.location == "summit":
