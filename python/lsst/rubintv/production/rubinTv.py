@@ -590,7 +590,11 @@ class NightReportChannel(BaseButlerChannel):
                 airMassPlotFile = os.path.join(self.locationConfig.nightReportPath, "airmass.png")
                 self.report.plotPerObjectAirMass(saveFig=airMassPlotFile)
                 self.s3Uploader.uploadNightReportData(
-                    instrument="auxtel", dayObs=self.dayObs, filename=airMassPlotFile, plotGroup="Coverage"
+                    instrument="auxtel",
+                    dayObs=self.dayObs,
+                    filename=airMassPlotFile,
+                    plotGroup="Coverage",
+                    uploadAs="airmass.png",
                 )
 
                 # the alt/az coverage polar plot
@@ -601,6 +605,7 @@ class NightReportChannel(BaseButlerChannel):
                     dayObs=self.dayObs,
                     filename=altAzCoveragePlotFile,
                     plotGroup="Coverage",
+                    uploadsAs="alt-az.png",
                 )
 
                 # Add text items here
@@ -620,6 +625,7 @@ class NightReportChannel(BaseButlerChannel):
                     instrument="auxtel",
                     dayObs=self.dayObs,
                     filename=jsonFilename,
+                    isMetadataFile=True,
                 )
 
                 self.log.info(f"Finished updating plots and table for {dataId}")
