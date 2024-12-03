@@ -587,7 +587,7 @@ class S3Uploader(IUploader):
             The full path and filename of the file to upload.
         uploadAs : `str`
             The name of the desination file. Only include the last part, i.e.
-            how it should appear when displayed.
+            how it should appear when displayed, including the extension.
         plotGroup : `str`, optional
             The group to upload the plot to. The 'default' group is used if
             this is not specified. However, people are encouraged to supply

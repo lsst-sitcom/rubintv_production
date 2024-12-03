@@ -86,6 +86,7 @@ class TestS3Uploader(unittest.TestCase):
             dayObs=observationDay,
             filename=filename,
             plotGroup=plotGroup,
+            uploadAs="test_file_0001.txt",
         )
         self.is_correct_check_uploaded_file(uploadedFile, fileContent)
 
