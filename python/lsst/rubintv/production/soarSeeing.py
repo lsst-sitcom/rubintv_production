@@ -59,7 +59,7 @@ class SoarUploader:
                     continue
 
                 self._lastUpdated = self.soar.getMostRecentTimestamp()
-                self.figure = self.soar.plotSeeingForDayObs(dayObs, addMostRecentBox=False, fig=self.figure)
+                self.figure = self.soar.plotSeeingForDayObs(dayObs, addMostRecentBox=True, fig=self.figure)
                 with tempfile.NamedTemporaryFile(suffix=".png") as f:
                     self.log.info(f"Uploading SOAR seeing to night report for {dayObs}")
                     self.figure.savefig(f.name)
