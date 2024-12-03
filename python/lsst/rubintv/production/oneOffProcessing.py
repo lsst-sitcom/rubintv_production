@@ -21,19 +21,30 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import tempfile
+from typing import TYPE_CHECKING, Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst.summit.utils.simonyi.mountAnalysis import (
+    MOUNT_IMAGE_BAD_LEVEL,
+    MOUNT_IMAGE_WARNING_LEVEL,
+    N_REPLACED_BAD_LEVEL,
+    N_REPLACED_WARNING_LEVEL,
+    calculateMountErrors,
+    plotMountErrors,
+)
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
 from .redisUtils import RedisHelper
-from .utils import isCalibration, raiseIf, writeMetadataShard
+from .uploaders import MultiUploader
+from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
@@ -111,6 +122,11 @@ class OneOffProcessor(BaseButlerChannel):
         self.detector = detectorNumber
         self.shardsDirectory = shardsDirectory
         self.processingStage = processingStage
+        if self.processingStage == "expRecord":
+            # remove this conditional once we have the squid proxy
+            self.uploader = MultiUploader()
+
+        self.mountFigure = plt.figure(figsize=(10, 8))
 
         peekConfig = PeekExposureTaskConfig()
         self.peekTask = PeekExposureTask(config=peekConfig)
@@ -193,8 +209,6 @@ class OneOffProcessor(BaseButlerChannel):
     def runPostISRCCD(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for postISRCCD for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
-
-        self.calcTimeSincePrevious(expRecord)  # do this while we wait for the postISR to land
 
         # redis signal is sent on the dispatch of the raw, so 40s is plenty but
         # not too much
@@ -303,17 +317,102 @@ class OneOffProcessor(BaseButlerChannel):
 
         return
 
+    @staticmethod
+    def _setFlag(
+        value: float, key: str, warningLevel: float, badLevel: float, outputDict: dict[str, Any]
+    ) -> dict[str, Any]:
+        if value >= warningLevel:
+            flag = f"_{key}"
+            outputDict[flag] = "warning"
+        elif value >= badLevel:
+            flag = f"_{key}"
+            outputDict[flag] = "bad"
+        return outputDict
+
+    def runMountAnalysis(self, expRecord: DimensionRecord) -> None:
+        errors, data = calculateMountErrors(expRecord, self.efdClient)
+        if errors is None or data is None:
+            self.log.warning(f"Failed to calculate mount errors for {expRecord.id}")
+            return
+
+        assert errors is not None
+        assert data is not None
+
+        outputDict = {}
+
+        value = errors.imageImpactRms
+        key = "Mount motion image degradation"
+        outputDict[key] = f"{value:.3f}"
+        outputDict = self._setFlag(value, key, MOUNT_IMAGE_WARNING_LEVEL, MOUNT_IMAGE_BAD_LEVEL, outputDict)
+
+        value = errors.azRms
+        key = "Mount azimuth RMS"
+        outputDict[key] = f"{value:.3f}"
+
+        value = errors.elRms
+        key = "Mount elevation RMS"
+        outputDict[key] = f"{value:.3f}"
+
+        value = errors.rotRms
+        key = "Mount rotator RMS"
+        outputDict[key] = f"{value:.3f}"
+
+        value = errors.nReplacedAz
+        key = "Mount azimuth points replaced"
+        outputDict[key] = f"{value}"
+        outputDict = self._setFlag(value, key, N_REPLACED_WARNING_LEVEL, N_REPLACED_BAD_LEVEL, outputDict)
+
+        value = errors.nReplacedEl
+        key = "Mount elevation points replaced"
+        outputDict[key] = f"{value}"
+        outputDict = self._setFlag(value, key, N_REPLACED_WARNING_LEVEL, N_REPLACED_BAD_LEVEL, outputDict)
+
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+        self.log.info(f"Writing mount analysis shard for {dayObs}-{seqNum}")
+        writeMetadataShard(self.shardsDirectory, dayObs, rowData)
+
+        # TODO: DM-45437 Use a context manager here and everywhere
+        self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
+        tempFilename = tempfile.mktemp(suffix=".png")
+        plotMountErrors(data, errors, self.mountFigure, saveFilename=tempFilename)
+        self.uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName="mount",
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=tempFilename,
+        )
+        self.mountFigure.clear()
+        self.mountFigure.gca().clear()
+
+    def setFilterCellColor(self, expRecord: DimensionRecord) -> None:
+        filterName = expRecord.physical_filter
+        filterColor = getFilterColorName(filterName)
+        if filterColor:
+            md = {expRecord.seq_num: {"_Filter": filterColor}}
+            writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+
+    def runExpRecord(self, expRecord: DimensionRecord) -> None:
+        self.calcTimeSincePrevious(expRecord)
+        self.setFilterCellColor(expRecord)
+        self.runMountAnalysis(expRecord)
+
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
         if len(payload.dataIds) > 1:
             raise ValueError(f"Expected only one dataId, got {len(payload.dataIds)}")
 
-        dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
-
         match self.processingStage:
+            case "expRecord":
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+                self.runExpRecord(expRecord)
             case "postISRCCD":
+                dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
                 self.runPostISRCCD(dataId)
             case "calexp":
+                dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
                 self.runCalexp(dataId)
             case _:
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
