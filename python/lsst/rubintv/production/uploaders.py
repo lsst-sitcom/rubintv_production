@@ -104,11 +104,17 @@ def createRemoteS3UploaderForSite():
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
+                retries=0,
+                connectTimeout=10,
+                readTimeout=10,
             )
         case "summit":
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.SUMMIT,
+                retries=0,
+                connectTimeout=10,
+                readTimeout=10,
             )
         case "usdf":
             _LOG.info("No remote uploader is necessary for USDF")
@@ -117,6 +123,9 @@ def createRemoteS3UploaderForSite():
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.TTS,
+                retries=0,
+                connectTimeout=10,
+                readTimeout=10,
             )
         case _:
             raise ValueError(f"Unknown site: {site}")
@@ -336,7 +345,13 @@ class S3Uploader(IUploader):
 
     @classmethod
     def from_information(
-        cls, endPoint: EndPoint = EndPoint.USDF, bucket: Bucket = Bucket.USDF, httpsProxy: str = ""
+        cls,
+        endPoint: EndPoint = EndPoint.USDF,
+        bucket: Bucket = Bucket.USDF,
+        httpsProxy: str = "",
+        retries: int = None,
+        connectTimeout: int = None,
+        readTimeout: int = None,
     ):
         """S3 Uploader initialization from bucket information.
 
@@ -348,15 +363,15 @@ class S3Uploader(IUploader):
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
         httpsProxy: `str`, optional
-            URL of an https proxy if needed. Form should be: host:port.
-
-        Raises
-        ------
-        ValueError:
-            If bucket not valid for endpoint selected.
-        ConnectionError:
-            When connection could not be stablished with
-            S3 server.
+            URL of an https proxy if needed.
+        retries : `int`, optional
+            The maximum number of retry attempts. Set to 0 for no retries.
+        connectTimeout : `int`, optional
+            The time (in seconds) till a timeout occurs for a connection
+            attempt.
+        readTimeout : `int`, optional
+            The time (in seconds) till a timeout occurs when waiting for a
+            response.
 
         Returns
         -------
@@ -366,15 +381,25 @@ class S3Uploader(IUploader):
         if bucket not in endPoint.value["buckets_available"].keys():
             raise ValueError("Invalid bucket")
         endPointValue = endPoint.value["end_point"]
-        bucketInfo = endPoint.value["buckets_available"][bucket]  # type: BucketInformation
+        bucketInfo = endPoint.value["buckets_available"][bucket]
         bucket = cls._createBucketConnection(
-            endPoint=endPointValue, bucketInfo=bucketInfo, proxyUrl=httpsProxy
+            endPoint=endPointValue,
+            bucketInfo=bucketInfo,
+            proxyUrl=httpsProxy,
+            retries=retries,
+            connectTimeout=connectTimeout,
+            readTimeout=readTimeout,
         )
         return cls(bucket)
 
     @staticmethod
     def _createBucketConnection(
-        endPoint: str, bucketInfo: BucketInformation, proxyUrl: str = ""
+        endPoint: str,
+        bucketInfo: BucketInformation,
+        proxyUrl: str = "",
+        retries: int = None,
+        connectTimeout: int = None,
+        readTimeout: int = None,
     ) -> ServiceResource:
         """Create bucket connection used to upload files.
 
@@ -382,16 +407,19 @@ class S3Uploader(IUploader):
         ----------
         endPoint: `EndPoint`
             The complete URL to use to construct the S3 client.
-        bucket : `Bucket`
+        bucketInfo : `BucketInformation`
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
-        httpsProxy : `str`, optional
+        proxyUrl : `str`, optional
             URL of an https proxy if needed. Form should be: host:port.
-
-        Raises
-        ------
-        ConnectionError
-            When connection could not be stablished with S3 server.
+        retries : `int`, optional
+            The maximum number of retry attempts. Set to 0 for no retries.
+        connectTimeout : `int`, optional
+            The time (in seconds) till a timeout occurs for a connection
+            attempt.
+        readTimeout : `int`, optional
+            The time (in seconds) till a timeout occurs when waiting for a
+            response.
 
         Returns
         -------
@@ -401,11 +429,25 @@ class S3Uploader(IUploader):
         try:
             proxyDict = {"http": proxyUrl, "https": proxyUrl}
 
+            # Build the retries configuration
+            retries_config = {"max_attempts": retries, "mode": "standard"} if retries is not None else None
+
+            # Build the configuration parameters
+            config_params = {"proxies": proxyDict}
+            if retries_config:
+                config_params["retries"] = retries_config
+            if connectTimeout is not None:
+                config_params["connect_timeout"] = connectTimeout
+            if readTimeout is not None:
+                config_params["read_timeout"] = readTimeout
+
+            config = Config(**config_params)
+
             # Create a custom botocore session
             session = S3_session(profile_name=bucketInfo.profileName)
 
             # Create an S3 resource with the custom botocore session
-            s3Resource = session.resource("s3", endpoint_url=endPoint, config=Config(proxies=proxyDict))
+            s3Resource = session.resource("s3", endpoint_url=endPoint, config=config)
             return s3Resource.Bucket(bucketInfo.bucketName)
         except ClientError:
             raise ConnectionError(f"Failed client connection: {bucketInfo.profileName}")
