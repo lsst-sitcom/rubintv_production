@@ -564,7 +564,10 @@ class S3Uploader(IUploader):
         instrument: str,
         dayObs: int,
         filename: str,
+        uploadAs: str,
         plotGroup: str = None,
+        *,
+        isMetadataFile: bool = False,
     ) -> str:
         """Upload night report type plot or json file
            to a night report channel.
@@ -577,11 +580,17 @@ class S3Uploader(IUploader):
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
+        uploadAs : `str`
+            The name of the desination file. Only include the last part, i.e.
+            how it should appear when displayed.
         plotGroup : `str`, optional
             The group to upload the plot to. The 'default' group is used if
             this is not specified. However, people are encouraged to supply
             groups for their plots, so the 'default' value is not put in the
             function signature to indicate this.
+        isMetadataFile : `bool`, optional
+            If the file is the md.json file, set this to True. Will ignore the
+            plotGroup and uploadAs parameters.
 
         Raises
         ------
@@ -605,29 +614,23 @@ class S3Uploader(IUploader):
         if plotGroup is None:
             plotGroup = "default"
 
-        basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
+        baseName = f"{instrument}/{dayObsStr}/night_report"
 
-        if basename == "md.json":  # it's not a plot, so special case this one case
-            uploadAs = (
-                f"{instrument}/{dayObsStr}/night_report/{instrument}_night_report_{dayObsStr}_{basename}"
-            )
+        if isMetadataFile:
+            destName = f"{baseName}/{instrument}_night_report_{dayObsStr}_md.json"
         else:
-            # the plot filenames have the channel name saved into them in the
-            # form path/channelName-plotName.png, so remove the channel name
-            # and dash
-            plotName = basename.replace(instrument + "_night_reports" + "-", "")
-            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}"
-            uploadAs = f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}"
+            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{uploadAs}"
+            destName = f"{baseName}/{plotGroup}/{plotFilename}"
 
         try:
-            self.upload(destinationFilename=uploadAs, sourceFilename=filename)
-            self._log.info(f"Uploaded {filename} to {uploadAs}")
+            self.upload(destinationFilename=destName, sourceFilename=filename)
+            self._log.info(f"Uploaded {filename} to {destName}")
         except Exception as ex:
-            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
+            self._log.exception(f"Failed to upload {filename} as {destName} for {instrument} night report")
             raise ex
 
-        return uploadAs
+        return destName
 
     @override
     def upload(self, destinationFilename: str, sourceFilename: str) -> str:
