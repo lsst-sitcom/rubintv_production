@@ -64,7 +64,11 @@ class SoarUploader:
                     self.log.info(f"Uploading SOAR seeing to night report for {dayObs}")
                     self.figure.savefig(f.name)
                     self.uploader.uploadNightReportData(
-                        getRubinTvInstrumentName(self.instrument), dayObs, f.name, "SoarSeeingMonitor"
+                        instrument=getRubinTvInstrumentName(self.instrument),
+                        dayObs=dayObs,
+                        filename=f.name,
+                        uploadAs="SoarSeeingMonitor.png",
+                        plotGroup="Seeing",
                     )
                     self.log.info("Done")
                     self.figure.clear()
