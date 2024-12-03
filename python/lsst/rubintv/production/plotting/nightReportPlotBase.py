@@ -179,7 +179,11 @@ class LatissPlot(BasePlot):
         plt.close()
 
         self.s3Uploader.uploadNightReportData(
-            instrument="auxtel", dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
+            instrument="auxtel",
+            dayObs=self.dayObs,
+            filename=saveFile,
+            plotGroup=self.plotGroup,
+            uploadAs=self.plotName,
         )
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
@@ -247,7 +251,11 @@ class StarTrackerPlot(BasePlot):
         plt.close()
 
         self.s3Uploader.uploadNightReportData(
-            instrument="startracker", dayObs=self.dayObs, filename=saveFile, plotGroup=self.plotGroup
+            instrument="startracker",
+            dayObs=self.dayObs,
+            filename=saveFile,
+            plotGroup=self.plotGroup,
+            uploadAs=self.plotName,
         )
         # if things start failing later you don't want old plots sticking
         # around and getting re-uploaded as if they were new
