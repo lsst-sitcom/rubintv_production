@@ -58,7 +58,7 @@ __all__ = [
 ]
 
 
-def createLocalS3UploaderForSite(httpsProxy=""):
+def createLocalS3UploaderForSite(proxyUrl=""):
     """Create the S3Uploader with the correct config for the site
     automatically.
 
@@ -70,21 +70,15 @@ def createLocalS3UploaderForSite(httpsProxy=""):
     site = getSite()
     match site:
         case "base":
-            return S3Uploader.from_information(
-                endPoint=EndPoint.BASE, bucket=Bucket.BTS, httpsProxy=httpsProxy
-            )
+            return S3Uploader.from_information(endPoint=EndPoint.BASE, bucket=Bucket.BTS, proxyUrl=proxyUrl)
         case "summit":
             return S3Uploader.from_information(
-                endPoint=EndPoint.SUMMIT, bucket=Bucket.SUMMIT, httpsProxy=httpsProxy
+                endPoint=EndPoint.SUMMIT, bucket=Bucket.SUMMIT, proxyUrl=proxyUrl
             )
         case site if site in ["usdf-k8s", "rubin-devl", "staff-rsp"]:
-            return S3Uploader.from_information(
-                endPoint=EndPoint.USDF, bucket=Bucket.USDF, httpsProxy=httpsProxy
-            )
+            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF, proxyUrl=proxyUrl)
         case "tucson":
-            return S3Uploader.from_information(
-                endPoint=EndPoint.TUCSON, bucket=Bucket.TTS, httpsProxy=httpsProxy
-            )
+            return S3Uploader.from_information(endPoint=EndPoint.TUCSON, bucket=Bucket.TTS, proxyUrl=proxyUrl)
         case _:
             raise ValueError(f"Unknown site: {site}")
 
@@ -112,6 +106,7 @@ def createRemoteS3UploaderForSite():
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.SUMMIT,
+                proxyUrl="http://squid-service:3128/",
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
@@ -348,7 +343,7 @@ class S3Uploader(IUploader):
         cls,
         endPoint: EndPoint = EndPoint.USDF,
         bucket: Bucket = Bucket.USDF,
-        httpsProxy: str = "",
+        proxyUrl: str = "",
         retries: int = None,
         connectTimeout: int = None,
         readTimeout: int = None,
@@ -362,8 +357,8 @@ class S3Uploader(IUploader):
         bucket : `Bucket`
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
-        httpsProxy: `str`, optional
-            URL of an https proxy if needed.
+        proxyUrl: `str`, optional
+            URL of a proxy if needed.
         retries : `int`, optional
             The maximum number of retry attempts. Set to 0 for no retries.
         connectTimeout : `int`, optional
@@ -385,7 +380,7 @@ class S3Uploader(IUploader):
         bucket = cls._createBucketConnection(
             endPoint=endPointValue,
             bucketInfo=bucketInfo,
-            proxyUrl=httpsProxy,
+            proxyUrl=proxyUrl,
             retries=retries,
             connectTimeout=connectTimeout,
             readTimeout=readTimeout,
@@ -411,7 +406,7 @@ class S3Uploader(IUploader):
             Bucket identifier to connect to. Available buckets: SUMMIT, TTS,
             USDF or BTS.
         proxyUrl : `str`, optional
-            URL of an https proxy if needed. Form should be: host:port.
+            URL of a proxy if needed. Form should be: host:port.
         retries : `int`, optional
             The maximum number of retry attempts. Set to 0 for no retries.
         connectTimeout : `int`, optional
