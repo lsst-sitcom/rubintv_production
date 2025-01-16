@@ -995,7 +995,11 @@ class CameraControlConfig:
         self._imaging = [det for det in self._detectors if self.isImaging(det)]
         self._guiders = [det for det in self._detectors if self.isGuider(det)]
         self._wavefronts = [det for det in self._detectors if self.isWavefront(det)]
+        # plotConfig = FocalPlaneGeometryPlotConfig()
         self._focalPlanePlot = FocalPlaneGeometryPlot()
+        self._focalPlanePlot.showStats = False
+        self._focalPlanePlot.plotMin = 0
+        self._focalPlanePlot.plotMax = 1
 
     @staticmethod
     def isWavefront(detector: Detector) -> bool:
