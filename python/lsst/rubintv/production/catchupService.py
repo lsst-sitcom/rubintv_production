@@ -298,7 +298,7 @@ class RubinTvBackgroundService:
                 raiseIf(self.doRaise, e, self.log)
 
         endTime = time.time()
-        self.log.info(f"Catchup for all channels took {(endTime-startTime):.2f} seconds")
+        self.log.info(f"Catchup for all channels took {(endTime - startTime):.2f} seconds")
 
     def deleteAllSkyPngs(self) -> None:
         """Delete all the intermediate on-disk files created when making the

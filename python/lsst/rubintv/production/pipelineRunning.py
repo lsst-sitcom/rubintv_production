@@ -249,7 +249,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
                 self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
             self.log.info(
-                f"Spent {(time.time()-t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
+                f"Spent {(time.time() - t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
                 " (should be ~1s per id)"
             )
 
@@ -353,7 +353,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # about intermittent namespace stuttering
         if "isr" in taskName.lower():
             self.postProcessIsr(quantum)
-        elif "calibratetask" in taskName.lower():
+        elif "calibratetask" in taskName.lower() or "calibrateimagetask" in taskName.lower():
             # TODO: think about if we could make dicts of some of the
             # per-CCD quantities like PSF size and 50 sigma source counts
             # etc. Would probably mean changes to mergeShardsAndUpload in
@@ -404,9 +404,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
     def postProcessCalibrate(self, quantum: Quantum) -> None:
-        # This is very similar indeed to postProcessIsr, but we it's not worth
-        # refactoring yet, especially as they will probably diverge in the
-        # future.
+        # Currently both calibrateImageTask and calibrateTask write a calexp
+        # so unless they diverge the function can be the same for both tasks.
         dRef = quantum.outputs["calexp"][0]
         exp = self.cachingButler.get(dRef)
 

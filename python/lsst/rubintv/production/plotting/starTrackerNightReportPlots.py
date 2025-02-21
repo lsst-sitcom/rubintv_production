@@ -98,7 +98,7 @@ class RaDecAltAzOverTime(StarTrackerPlot):
                 seriesName = fittedQuantity + suffix  # then try the fitted data
                 if seriesName in metadata.columns:
                     data = metadata[seriesName]
-                    axes[plotNum].plot(mjds, data, f"--{COLORS[seriesNum+1]}", label=seriesName)
+                    axes[plotNum].plot(mjds, data, f"--{COLORS[seriesNum + 1]}", label=seriesName)
 
                 axes[plotNum].legend()
                 axes[plotNum].set_xlabel("MJD", size=axisLabelSize)
@@ -328,13 +328,13 @@ class CameraPointingOffset(StarTrackerPlot):
         fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         fig.subplots_adjust(hspace=0)
 
-        ax[0].plot(deltaRa, label="$\Delta$Ra")  # noqa: W605
-        ax[0].plot(deltaDec, label="$\Delta$Dec")  # noqa: W605
+        ax[0].plot(deltaRa, label=r"$\Delta$Ra")
+        ax[0].plot(deltaDec, label=r"$\Delta$Dec")
         ax[0].legend()
         ax[0].set_title("Narrow Cam")
         ax[0].set_ylabel("Arcsec", fontsize=13)
-        ax[1].plot(deltaRaWide, label="$\Delta$Ra")  # noqa: W605
-        ax[1].plot(deltaDecWide, label="$\Delta$Dec")  # noqa: W605
+        ax[1].plot(deltaRaWide, label=r"$\Delta$Ra")
+        ax[1].plot(deltaDecWide, label=r"$\Delta$Dec")
         ax[1].legend()
         ax[1].set_title("Wide Cam")
         ax[1].set_ylabel("Arcsec", fontsize=13)
@@ -383,14 +383,14 @@ class InterCameraOffset(StarTrackerPlot):
         fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         fig.subplots_adjust(hspace=0)
 
-        ax[0].plot(deltaRaDiff, label="$\Delta$Ra")  # noqa: W605
-        ax[0].plot(deltaDecDiff, label="$\Delta$Dec")  # noqa: W605
+        ax[0].plot(deltaRaDiff, label=r"$\Delta$Ra")
+        ax[0].plot(deltaDecDiff, label=r"$\Delta$Dec")
         ax[0].legend()
-        ax[0].set_title(r"Narrow ($\Delta$Ra, $\Delta$Dec) - Wide ($\Delta$Ra, $\Delta$Dec)")  # noqa: W605
+        ax[0].set_title(r"Narrow ($\Delta$Ra, $\Delta$Dec) - Wide ($\Delta$Ra, $\Delta$Dec)")
         ax[0].set_ylabel("Arcsec", fontsize=13)
-        ax[1].plot(deltaAltDiff, label="$\Delta$Alt")  # noqa: W605
-        ax[1].plot(deltaAzDiff, label="$\Delta$Az")  # noqa: W605
-        ax[1].set_title("Narrow ($\Delta$Alt, $\Delta$Az) - Wide ($\Delta$Alt, $\Delta$Az)")  # noqa: W605
+        ax[1].plot(deltaAltDiff, label=r"$\Delta$Alt")
+        ax[1].plot(deltaAzDiff, label=r"$\Delta$Az")
+        ax[1].set_title(r"Narrow ($\Delta$Alt, $\Delta$Az) - Wide ($\Delta$Alt, $\Delta$Az)")
         ax[1].set_ylabel("Arcsec", fontsize=13)
         ax2 = ax[1].twinx()
         ax2.plot(metadata["Alt"], label="Commanded Alt", alpha=0.3, color="g")
@@ -432,13 +432,13 @@ class CameraAzAltOffset(StarTrackerPlot):
         deltaAzWide = metadata["Delta Az Arcsec wide"]
         fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         fig.subplots_adjust(hspace=0)
-        ax[0].plot(deltaAlt, label="$\Delta$Alt")  # noqa: W605
-        ax[0].plot(deltaAz, label="$\Delta$Az")  # noqa: W605
+        ax[0].plot(deltaAlt, label=r"$\Delta$Alt")
+        ax[0].plot(deltaAz, label=r"$\Delta$Az")
         ax[0].legend()
         ax[0].set_title("Narrow Cam")
         ax[0].set_ylabel("Arcsec", fontsize=13)
-        ax[1].plot(deltaAltWide, label="$\Delta$Alt")  # noqa: W605
-        ax[1].plot(deltaAzWide, label="$\Delta$Az")  # noqa: W605
+        ax[1].plot(deltaAltWide, label=r"$\Delta$Alt")
+        ax[1].plot(deltaAzWide, label=r"$\Delta$Az")
         ax[1].legend()
         ax[1].set_title("Wide Cam")
         ax[1].set_ylabel("Arcsec", fontsize=13)
