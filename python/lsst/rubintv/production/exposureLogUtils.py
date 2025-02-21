@@ -60,7 +60,7 @@ def getLogsForDayObs(dayObs: int, logger: Logger | None = None) -> dict[int, dic
 
     query = (
         f"{EXPOSURE_LOG_URL}?"
-        f"min_day_obs={dayObs}&max_day_obs={dayObs+1}"
+        f"min_day_obs={dayObs}&max_day_obs={dayObs + 1}"
         "&is_human=either&is_valid=true&offset=0&limit=10000"
     )
     response = requests.request("GET", query)

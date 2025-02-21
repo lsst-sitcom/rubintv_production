@@ -922,7 +922,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
             charRes = self.charImage.run(exp)
             tCharacterize = time.time()
-            self.log.info(f"Ran characterizeImageTask in {tCharacterize-tStart:.2f} seconds")
+            self.log.info(f"Ran characterizeImageTask in {tCharacterize - tStart:.2f} seconds")
 
             nSources = len(charRes.sourceCat)
             dayObs = butlerUtils.getDayObs(expRecord)
@@ -939,7 +939,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
                 charRes.exposure, background=charRes.background, icSourceCat=charRes.sourceCat
             )
             tCalibrate = time.time()
-            self.log.info(f"Ran calibrateTask in {tCalibrate-tCharacterize:.2f} seconds")
+            self.log.info(f"Ran calibrateTask in {tCalibrate - tCharacterize:.2f} seconds")
 
             summaryStats = calibrateRes.outputExposure.getInfo().getSummaryStats()
             pixToArcseconds = calibrateRes.outputExposure.getWcs().getPixelScale().asArcseconds()
@@ -970,11 +970,11 @@ class CalibrateCcdRunner(BaseButlerChannel):
             self.log.info(f"Wrote metadata shard. Putting calexp for {dataId}")
             self.clobber(calibrateRes.outputExposure, "calexp", visitDataId)
             tFinal = time.time()
-            self.log.info(f"Ran characterizeImage and calibrate in {tFinal-tStart:.2f} seconds")
+            self.log.info(f"Ran characterizeImage and calibrate in {tFinal - tStart:.2f} seconds")
 
             tVisitInfoStart = time.time()
             self.putVisitSummary(visitDataId)
-            self.log.info(f"Put the visit info summary in {time.time()-tVisitInfoStart:.2f} seconds")
+            self.log.info(f"Put the visit info summary in {time.time() - tVisitInfoStart:.2f} seconds")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)

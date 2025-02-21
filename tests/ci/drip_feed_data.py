@@ -7,7 +7,7 @@ import lsst.daf.butler as dafButler  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.utils import getAutomaticLocationConfig  # noqa: E402
 
-print(f"Imports took {(time.time()-t0):.2f} seconds")
+print(f"Imports took {(time.time() - t0):.2f} seconds")
 t0 = time.time()
 
 
@@ -31,7 +31,7 @@ records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 3, f"Expected 3 record, got {len(records)}"
 
 t1 = time.time()
-print(f"Butler init and query took {(time.time()-t0):.2f} seconds")
+print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
 
 for record in records:  # XXX remove the slice!
     assert isinstance(record, dafButler.DimensionRecord)

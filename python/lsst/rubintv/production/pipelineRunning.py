@@ -249,7 +249,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
                 self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
             self.log.info(
-                f"Spent {(time.time()-t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
+                f"Spent {(time.time() - t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
                 " (should be ~1s per id)"
             )
 

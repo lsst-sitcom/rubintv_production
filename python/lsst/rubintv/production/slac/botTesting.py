@@ -874,7 +874,7 @@ class Replotter(Plotter):
                 records = sorted(records, key=lambda r: r.timespan.end, reverse=True)  # newest first
                 for recordNum, expRecord in enumerate(records):
                     files = leftovers[expRecord]
-                    self.log.info(f"Processing leftover {workload.name} {recordNum+1} of {len(leftovers)}")
+                    self.log.info(f"Processing leftover {workload.name} {recordNum + 1} of {len(leftovers)}")
                     isComplete = getNumExpectedItems(expRecord) == len(files)
                     isStale = getExpRecordAge(expRecord) > self.STALE_AGE_SECONDS
                     if not isStale:
