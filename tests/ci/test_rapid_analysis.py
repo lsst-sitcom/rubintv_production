@@ -140,7 +140,7 @@ META_TESTS_PASS_EXPECTED = [
 
 YAML_FILES_TO_CHECK = [
     # TODO Add the commented out files back in when you're ready
-    # "config/config_bts.yaml",
+    "config/config_bts.yaml",
     "config/config_tts.yaml",
     "config/config_summit.yaml",
     "config/config_usdf_testing.yaml",
