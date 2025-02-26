@@ -22,7 +22,7 @@
 import sys
 
 from lsst.rubintv.production.rubinTv import MetadataCreator
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -35,5 +35,6 @@ print(f"Running AuxTel metadata creator at {location}...")
 mdCreator = MetadataCreator(
     locationConfig=locationConfig,
     instrument="LATISS",
+    doRaise=getDoRaise(),
 )
 mdCreator.run()
