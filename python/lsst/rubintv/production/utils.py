@@ -561,7 +561,6 @@ class LocationConfig:
     @cached_property
     def lsstCamButlerPath(self) -> str:
         directory = self._config["lsstCamButlerPath"]
-        self._checkFile(directory)
         return directory
 
     # TMA config:
