@@ -1292,6 +1292,33 @@ def getPodWorkerNumber() -> int:
     return workerNum
 
 
+def getWitnessDetectorNumber(instrument: str) -> int:
+    """Get the witness detector number for a given instrument.
+
+    This is a placeholder function to provide the interface for if we want to
+    make this user selectable in the future (e.g. via LOVE), or read from a
+    config file. For now, we hard-code the central detectors.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    detectorNum : `int`
+        The witness detector number.
+    """
+    if instrument == "LATISS":
+        return 0
+    elif instrument == "LSSTCam":
+        return 94
+    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
+        return 4
+    else:
+        raise ValueError(f"Unknown instrument {instrument=}")
+
+
 def isCalibration(expRecord: DimensionRecord) -> bool:
     """Check if the exposure is a calibration exposure.
 
