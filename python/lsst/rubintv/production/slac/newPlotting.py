@@ -27,12 +27,12 @@ from typing import TYPE_CHECKING, Any
 import matplotlib.pyplot as plt
 
 import lsst.afw.display as afwDisplay
+from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from ..uploaders import MultiUploader
 from ..utils import LocationConfig, getNumExpectedItems
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
-from .utils import getCamera
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -82,7 +82,7 @@ class Plotter:
     ) -> None:
         self.locationConfig: LocationConfig = locationConfig
         self.butler: Butler = butler
-        self.camera: Camera = getCamera(self.butler, instrument)
+        self.camera: Camera = getCameraFromInstrumentName(instrument)
         self.instrument: str = instrument
         self.s3Uploader: MultiUploader = MultiUploader()
         self.log: Logger = _LOG.getChild(f"plotter_{self.instrument}")
