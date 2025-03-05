@@ -261,8 +261,14 @@ class PipelineComponents:
 
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
-            self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
-            self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            try:
+                self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
+                self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            except Exception as e:
+                log = logging.getLogger("lsst.rubintv.production.processControl.PipelineComponents")
+                log.warning(f"MAJOR ERROR IN PIPELINE CREATION! Failedf to load {self.uris[step]}: {e}")
+                self.graphs[step] = None
+                self.graphBytes[step] = b""
 
         self.steps = steps
 
