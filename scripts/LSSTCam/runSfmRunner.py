@@ -45,7 +45,8 @@ locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
     collections=[
-        "LSSTCam/defaults",
+        "LSSTCam/raw/all",
+        "LSSTCam/calib",
     ],
     writeable=True,
 )
