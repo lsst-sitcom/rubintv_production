@@ -178,7 +178,6 @@ class RedisWatcher:
         """
         while True:
             self.redisHelper.announceFree(self.podDetails)
-            self.redisHelper.butler.registry.refresh()  # make sure new calibs are picked up, takes 1.2ms
             payload = self.redisHelper.dequeuePayload(self.podDetails)
             if payload is not None:
                 try:
