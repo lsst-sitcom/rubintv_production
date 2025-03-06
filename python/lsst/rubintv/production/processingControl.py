@@ -445,7 +445,7 @@ class HeadProcessController:
             The expRecord to process.
         """
         # run isr only for calibs, otherwise run the appropriate step1
-        isCalib = isCalibration(expRecord)
+        isCalib = isCalibration(expRecord) or expRecord.observation_type.lower() == "unknown"
         if isCalib:
             self.log.info(f"Sending {expRecord.id} to for calibration processing")
             targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
