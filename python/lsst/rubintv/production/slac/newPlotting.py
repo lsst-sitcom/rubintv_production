@@ -184,7 +184,7 @@ class Plotter:
             case "LSSTComCamSim":
                 return "comcam_sim"
             case "LSSTCam":
-                return "slac_lsstcam"
+                return "lsstcam"
             case _:
                 raise ValueError(f"Unknown instrument {instrument}")
 
