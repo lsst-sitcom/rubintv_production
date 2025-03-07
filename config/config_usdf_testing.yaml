@@ -50,6 +50,8 @@ comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_meta
 
 lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
+lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: /repo/embargo/butler.yaml
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
