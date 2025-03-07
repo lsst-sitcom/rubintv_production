@@ -38,6 +38,7 @@ from lsst.daf.butler import (
     CollectionType,
     DataCoordinate,
     DatasetNotFoundError,
+    DatasetRef,
     DimensionRecord,
     MissingCollectionError,
     Registry,
@@ -127,14 +128,17 @@ def prepRunCollection(
         initRefs: dict[str, Any] = {}
         taskFactory = TaskFactory()
         for taskNode in pipelineGraph.tasks.values():
-            inputRefs = [
-                (
-                    butler.find_dataset(readEdge.dataset_type_name, collections=[run])
-                    if readEdge.dataset_type_name not in readEdge.dataset_type_name
-                    else initRefs[readEdge.dataset_type_name]
-                )
-                for readEdge in taskNode.init.inputs.values()
-            ]
+            inputRefs = cast(
+                Iterable[DatasetRef] | None,
+                [
+                    (
+                        butler.find_dataset(readEdge.dataset_type_name, collections=[run])
+                        if readEdge.dataset_type_name not in readEdge.dataset_type_name
+                        else initRefs[readEdge.dataset_type_name]
+                    )
+                    for readEdge in taskNode.init.inputs.values()
+                ],
+            )
             task = taskFactory.makeTask(taskNode, butler, inputRefs)
 
             for writeEdge in taskNode.init.outputs.values():
