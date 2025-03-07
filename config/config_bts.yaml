@@ -39,6 +39,8 @@ comCamAosMetadataShardPath: /project/rubintv/LSSTComCamAos/sidecar_metadata/shar
 
 lsstCamMetadataPath: /project/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /project/rubintv/LSSTCam/sidecar_metadata/shards
+lsstCamAosMetadataPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamAosMetadataShardPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: LSSTCam
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
