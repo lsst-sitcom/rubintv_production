@@ -535,6 +535,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def lsstCamAosMetadataPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamAosMetadataShardPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
