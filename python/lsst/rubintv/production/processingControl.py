@@ -24,6 +24,7 @@ from __future__ import annotations
 import enum
 import json
 import logging
+import time
 from ast import literal_eval
 from dataclasses import dataclass
 from time import sleep
@@ -559,6 +560,19 @@ class HeadProcessController:
         busyWorkers = self.redisHelper.getAllWorkers(instrument=self.instrument, podFlavor=podFlavor)
         busyWorkers = sorted(busyWorkers)
 
+        # handle the just started up condition
+        detectorWorkers = {w.detectorNumber for w in freeWorkers + busyWorkers}
+        missingWorkers = [detId for detId in payloads if detId not in detectorWorkers]
+        if missingWorkers:  # probably due to just restarting
+            self.log.warning(f"No workers available for {podFlavor=} for detectors={missingWorkers}")
+            if self.timeAlive < 60:
+                # we've just been rebooted so give workers a chance to come up
+                # and then retry. If we haven't just been rebooted, the rest of
+                # this function will raise, and correctly so.
+                sleep(30)
+                self.dispatchPayloads(payloads, podFlavor)
+                return
+
         for detectorId, payload in payloads.items():
             matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
             if matchingFreeWorkers:
@@ -834,9 +848,14 @@ class HeadProcessController:
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
 
+    @property
+    def timeAlive(self) -> float:
+        return time.time() - self.startTime
+
     def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
+        self.startTime = time.time()
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
