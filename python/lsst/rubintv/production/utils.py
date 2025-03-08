@@ -535,6 +535,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def lsstCamAosMetadataPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamAosMetadataShardPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
@@ -561,7 +573,6 @@ class LocationConfig:
     @cached_property
     def lsstCamButlerPath(self) -> str:
         directory = self._config["lsstCamButlerPath"]
-        self._checkFile(directory)
         return directory
 
     # TMA config:
@@ -1290,6 +1301,33 @@ def getPodWorkerNumber() -> int:
             workerNum = int(sys.argv[2])
 
     return workerNum
+
+
+def getWitnessDetectorNumber(instrument: str) -> int:
+    """Get the witness detector number for a given instrument.
+
+    This is a placeholder function to provide the interface for if we want to
+    make this user selectable in the future (e.g. via LOVE), or read from a
+    config file. For now, we hard-code the central detectors.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    detectorNum : `int`
+        The witness detector number.
+    """
+    if instrument == "LATISS":
+        return 0
+    elif instrument == "LSSTCam":
+        return 94
+    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
+        return 4
+    else:
+        raise ValueError(f"Unknown instrument {instrument=}")
 
 
 def isCalibration(expRecord: DimensionRecord) -> bool:

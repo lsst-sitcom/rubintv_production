@@ -24,6 +24,7 @@ from __future__ import annotations
 import enum
 import json
 import logging
+import time
 from ast import literal_eval
 from dataclasses import dataclass
 from time import sleep
@@ -38,6 +39,7 @@ from lsst.daf.butler import (
     CollectionType,
     DataCoordinate,
     DatasetNotFoundError,
+    DatasetRef,
     DimensionRecord,
     MissingCollectionError,
     Registry,
@@ -127,14 +129,17 @@ def prepRunCollection(
         initRefs: dict[str, Any] = {}
         taskFactory = TaskFactory()
         for taskNode in pipelineGraph.tasks.values():
-            inputRefs = [
-                (
-                    butler.find_dataset(readEdge.dataset_type_name, collections=[run])
-                    if readEdge.dataset_type_name not in readEdge.dataset_type_name
-                    else initRefs[readEdge.dataset_type_name]
-                )
-                for readEdge in taskNode.init.inputs.values()
-            ]
+            inputRefs = cast(
+                Iterable[DatasetRef] | None,
+                [
+                    (
+                        butler.find_dataset(readEdge.dataset_type_name, collections=[run])
+                        if readEdge.dataset_type_name not in readEdge.dataset_type_name
+                        else initRefs[readEdge.dataset_type_name]
+                    )
+                    for readEdge in taskNode.init.inputs.values()
+                ],
+            )
             task = taskFactory.makeTask(taskNode, butler, inputRefs)
 
             for writeEdge in taskNode.init.outputs.values():
@@ -261,8 +266,14 @@ class PipelineComponents:
 
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
-            self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
-            self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            try:
+                self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
+                self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            except Exception as e:
+                log = logging.getLogger("lsst.rubintv.production.processControl.PipelineComponents")
+                log.warning(f"MAJOR ERROR IN PIPELINE CREATION! Failedf to load {self.uris[step]}: {e}")
+                self.graphs[step] = None
+                self.graphBytes[step] = b""
 
         self.steps = steps
 
@@ -403,24 +414,23 @@ class HeadProcessController:
         return False
 
     def getPerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
-        # TODO: this really should take all the detectorIds that we need a free
-        # worker for and return them all at once so that we only have to call
-        # redisHelper.getFreeWorkers() once but I'm too low on time right now.
+        # NOTE: currently unused, replaced by dispatchPayloads() but kept in
+        # case it's needed.
 
-        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
-        sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
+        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
+        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
 
-        idMatchedWorkers = [pod for pod in sfmWorkers if pod.detectorNumber == detectorId]
+        idMatchedWorkers = [pod for pod in freeWorkers if pod.detectorNumber == detectorId]
+        if idMatchedWorkers:
+            return idMatchedWorkers[0]
 
-        if idMatchedWorkers == []:
-            # TODO: until we have a real backlog queue just put it on the last
-            # worker in the stack.
-            busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-            idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
-            busyWorker = idMatchedWorkers[-1]
-            self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
-            return busyWorker
-        return idMatchedWorkers[0]
+        # TODO: until we have a real backlog queue just put it on the last
+        # worker in the stack.
+        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
+        idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
+        busyWorker = idMatchedWorkers[-1]
+        self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
+        return busyWorker
 
     def getGatherWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -445,7 +455,7 @@ class HeadProcessController:
             The expRecord to process.
         """
         # run isr only for calibs, otherwise run the appropriate step1
-        isCalib = isCalibration(expRecord)
+        isCalib = isCalibration(expRecord) or expRecord.observation_type.lower() == "unknown"
         if isCalib:
             self.log.info(f"Sending {expRecord.id} to for calibration processing")
             targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
@@ -463,27 +473,23 @@ class HeadProcessController:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
-        dataIds = {}
-        for detectorId in detectorIds:
-            dataIds[detectorId] = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
-
         self.log.info(
             f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
             f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'}."
         )
 
-        for detectorId, dataId in dataIds.items():
-            worker = self.getPerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
-            self.log.info(f"Sending det={detectorId} to {worker.queueName} for {dataId}")
+        payloads: dict[int, Payload] = {}
+        for detectorId in detectorIds:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
             payload = Payload(
                 dataIds=[dataId],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
             )
-            self.redisHelper.enqueuePayload(payload, worker)
+            payloads[detectorId] = payload
 
-        self.nDispatched += 1  # required for the alternating by twos mode
+        self.dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
     def doStep1FanoutAos(self, expRecords: list[DimensionRecord]) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -532,10 +538,74 @@ class HeadProcessController:
             f" {len(detectorIds)} detectors"
         )
 
+        self.dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+
+    def dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
+        """Distribute payloads to available workers based on detector IDs.
+
+        Attempts to send payloads to workers. It first tries to match payloads
+        with free workers that handle the same detector. If no matching free
+        worker is available, it will try to send to a busy worker handling the
+        same detector. If no worker (free or busy) exists for the detector, an
+        exception is raised, as this means the cluster is misconfigured.
+
+        Parameters
+        ----------
+        payloads : dict[int, Payload]
+            Dictionary mapping detector IDs to payload objects to be processed.
+        podFlavor : PodFlavor
+            The pod flavor to use for worker selection.
+
+        Raises
+        ------
+        RuntimeError
+            If no workers (free or busy) are available for a specific detector.
+        """
+        freeWorkers = self.redisHelper.getFreeWorkers(instrument=self.instrument, podFlavor=podFlavor)
+        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
+        busyWorkers = self.redisHelper.getAllWorkers(instrument=self.instrument, podFlavor=podFlavor)
+        busyWorkers = sorted(busyWorkers)
+
+        # handle the just started up condition
+        detectorWorkers = {w.detectorNumber for w in freeWorkers + busyWorkers}
+        missingWorkers = [detId for detId in payloads if detId not in detectorWorkers]
+        if missingWorkers:  # probably due to just restarting
+            self.log.warning(f"No workers available for {podFlavor=} for detectors={missingWorkers}")
+            if self.timeAlive < 60:
+                # we've just been rebooted so give workers a chance to come up
+                # and then retry. If we haven't just been rebooted, the rest of
+                # this function will raise, and correctly so.
+                sleep(30)
+                self.dispatchPayloads(payloads, podFlavor)
+                return
+
         for detectorId, payload in payloads.items():
-            worker = self.getPerDetectorWorker(self.instrument, detectorId, PodFlavor.AOS_WORKER)
-            self.log.info(f"Sending {detectorId=} to {worker} for {dataIds[detectorId]}")
-            self.redisHelper.enqueuePayload(payload, worker)
+            matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
+            if matchingFreeWorkers:
+                worker = matchingFreeWorkers[0]
+                self.log.info(f"Sending {detectorId=} to free worker {worker.queueName} for {payload.who}")
+                self.redisHelper.enqueuePayload(payload, worker)
+                continue
+
+            else:
+                # No free worker with matching detector, so look for busy one
+                matchingBusyWorkers = [w for w in busyWorkers if w.detectorNumber == detectorId]
+                if matchingBusyWorkers:
+                    worker = matchingBusyWorkers[0]
+                    self.log.warning(
+                        f"No free workers available for {detectorId=},"
+                        f" sending to busy worker {worker.queueName}"
+                    )
+                    self.redisHelper.enqueuePayload(payload, worker)
+                    continue
+                else:
+                    # Consider changing this to a log.exception for production,
+                    # but this should be a raise while we're configuring things
+                    # for LSSTCam
+                    raise RuntimeError(
+                        f"No workers (not even busy ones) available for {detectorId=},",
+                        f" cannot dispatch process for {payload.who}",
+                    )
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -784,9 +854,14 @@ class HeadProcessController:
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
 
+    @property
+    def timeAlive(self) -> float:
+        return time.time() - self.startTime
+
     def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
+        self.startTime = time.time()
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
