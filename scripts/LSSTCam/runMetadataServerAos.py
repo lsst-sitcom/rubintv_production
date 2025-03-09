@@ -19,22 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
-from lsst.rubintv.production.rubinTv import MetadataCreator
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages, getDoRaise
+from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 checkRubinTvExternalPackages()
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running AuxTel metadata creator at {location}...")
+locationConfig = getAutomaticLocationConfig()
+print(f"Running LSSTCam AOS metadata server at {locationConfig.location}...")
 
-mdCreator = MetadataCreator(
+metadataDirectory = locationConfig.lsstCamAosMetadataPath
+shardsDirectory = locationConfig.lsstCamAosMetadataShardPath
+channelName = "lsstcam_aos_metadata"
+
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
-    instrument="LATISS",
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
     doRaise=getDoRaise(),
 )
-mdCreator.run()
+metadataServer.run()
