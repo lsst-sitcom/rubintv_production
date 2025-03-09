@@ -843,7 +843,7 @@ class HeadProcessController:
         else:
             if sleepPeriod < -0.05:  # allow some noise
                 lastLap = self.loopTimer.lastLapTime()
-                lastWork = self.loopTimer.lastLapTime()
+                lastWork = self.workTimer.lastLapTime()
                 self.log.warning(
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
