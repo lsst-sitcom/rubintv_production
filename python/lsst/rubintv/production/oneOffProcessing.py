@@ -45,6 +45,7 @@ from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
+from .monitorPlotting import plotExp
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
 from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
@@ -428,9 +429,33 @@ class OneOffProcessor(BaseButlerChannel):
 
 class OneOffProcessorLatiss(OneOffProcessor):
 
+    def __init__(self):
+        super().__init__()
+        self.monitorFigure = plt.figure(figsize=(12, 12))
+
     def runLatissProcessing(self, exp: Exposure, expRecord: DimensionRecord):
+        # TODO: consider threading and adding a CPU to the pod if this is slow
+        self.runMakeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
+
+    def runMakeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord):
+        self.log.info(f"Making monitor image for {expRecord.dataId}")
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFilename:
+                plotExp(exp, self.monitorFigure, tempFilename, doSmooth=False, scalingOption="CCS")
+                self.log.info("Uploading imExam to storage bucket")
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument="auxtel",
+                    plotName="monitor",
+                    dayObs=expRecord.day_obs,
+                    seqNum=expRecord.seq_num,
+                    filename=tempFilename,
+                )
+                self.log.info("Upload complete")
+
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
 
     def runImexam(self, exp: Exposure, expRecord: DimensionRecord):
         if expRecord.observation_type in ["bias", "dark", "flat"]:
