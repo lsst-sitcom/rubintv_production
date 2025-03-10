@@ -37,8 +37,7 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
-from .rubinTv import MetadataCreator
-from .timedServices import TimedMetadataServer
+from .timedServices import MetadataCreator, TimedMetadataServer
 from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf
 
