@@ -30,7 +30,6 @@ import numpy as np
 from astro_metadata_translator import ObservationInfo
 from astropy.time import Time
 
-import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.summit.utils.utils import dayObsIntToString
 
 try:
@@ -45,7 +44,7 @@ if TYPE_CHECKING:
     from matplotlib.pyplot import Figure
     from numpy.typing import NDArray
 
-    from lsst.daf.butler import Butler, DataCoordinate
+    from lsst.daf.butler import Butler, DimensionRecord
 
 __all__ = ["calculateMountErrors"]
 
@@ -69,7 +68,7 @@ def _getEfdData(client: EfdClient, dataSeries: str, startTime: Time, endTime: Ti
 
 
 def calculateMountErrors(
-    dataId: DataCoordinate,
+    expRecord: DimensionRecord,
     butler: Butler,
     client: EfdClient,
     figure: Figure | None,
@@ -84,8 +83,9 @@ def calculateMountErrors(
 
     Parameters
     ----------
-    dataId : `dict` or `lsst.daf.butler.DataCoordinate`
-        The dataId for which to plot the mount torques.
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The dimension record for the exposure for which to plot the mount
+        torques.
     butler : `lsst.daf.butler.Butler`
         The butler to use to retrieve the image metadata.
     client : `lsst_efd_client.EfdClient`
@@ -116,7 +116,6 @@ def calculateMountErrors(
 
     start = time.time()
 
-    expRecord = butlerUtils.getExpRecordFromDataId(butler, dataId)
     dayString = dayObsIntToString(expRecord.day_obs)
     seqNumString = str(expRecord.seq_num)
     dataIdString = f"{dayString} - seqNum {seqNumString}"
@@ -145,7 +144,7 @@ def calculateMountErrors(
     elevation = 90 - expRecord.zenith_angle
 
     # TODO: DM-33859 remove this once it can be got from the expRecord
-    md = butler.get("raw.metadata", dataId, detector=0)
+    md = butler.get("raw.metadata", expRecord.dataId, detector=0)
     obsInfo = ObservationInfo(md)
     azimuth = obsInfo.altaz_begin.az.value
     logger.debug(f"dataId={dataIdString}, imgType={imgType}, Times={tStart}, {tEnd}")

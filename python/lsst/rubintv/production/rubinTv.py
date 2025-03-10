@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 import time
 from functools import partial
 from time import sleep
@@ -52,7 +51,6 @@ except ImportError:
 
 from lsst.atmospec.utils import isDispersedExp
 from lsst.summit.utils import NightReport
-from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
 from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
 from lsst.summit.utils.m1m3.plots.inertia_compensation_system import plot_hp_measured_data
@@ -66,157 +64,16 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from .baseChannels import BaseButlerChannel
 from .metadataServers import TimedMetadataServer
-from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .plotting import latissNightReportPlots
 from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = [
-    "MountTorqueChannel",
     "CalibrateCcdRunner",
     "NightReportChannel",
     "TmaTelemetryChannel",
 ]
 
 _LOG = logging.getLogger(__name__)
-
-
-class MountTorqueChannel(BaseButlerChannel):
-    """Class for running the mount torque channel on RubinTV.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        if not HAS_EFD_CLIENT:
-            from lsst.summit.utils.utils import EFD_CLIENT_MISSING_MSG
-
-            raise RuntimeError(EFD_CLIENT_MISSING_MSG)
-
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-            detectors=0,
-            watcherType="file",
-            dataProduct="raw",
-            channelName="auxtel_mount_torques",
-            doRaise=doRaise,
-        )
-        self.client = makeEfdClient()
-        self.fig = plt.figure(figsize=(16, 16))
-        self.detector = 0
-
-    def writeMountErrorShard(self, errors, expRecord):
-        """Write a metadata shard for the mount error, including the flag
-        for coloring the cell based on the threshold values.
-
-        Parameters
-        ----------
-        errors : `dict`
-            The mount errors, as a dict, containing keys:
-            ``az_rms`` - The RMS azimuth error.
-            ``el_rms`` - The RMS elevation error.
-            ``rot_rms`` - The RMS rotator error.
-            ``image_az_rms`` - The RMS azimuth error for the image.
-            ``image_el_rms`` - The RMS elevation error for the image.
-            ``image_rot_rms`` - The RMS rotator error for the image.
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        dayObs = butlerUtils.getDayObs(expRecord)
-        seqNum = butlerUtils.getSeqNum(expRecord)
-
-        # the mount error itself, *not* the image component. No quality flags
-        # on this part.
-        az_rms = errors["az_rms"]
-        el_rms = errors["el_rms"]
-        mountError = (az_rms**2 + el_rms**2) ** 0.5
-        if np.isnan(mountError):
-            mountError = None
-        contents = {"Mount jitter RMS": mountError}
-
-        # the contribution to the image error from the mount. This is the part
-        # that matters and gets a quality flag. Note that the rotator error
-        # contibution is zero and the field centre and increases radially, and
-        # is usually very small, so we don't add that here as its contrinution
-        # is not really well definited and including it would be misleading.
-        image_az_rms = errors["image_az_rms"]
-        image_el_rms = errors["image_el_rms"]
-        imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
-        if np.isnan(imageError):
-            mountError = None
-        key = "Mount motion image degradation"
-        flagKey = "_" + key  # color coding of cells always done by prepending with an underscore
-        contents.update({key: imageError})
-
-        if imageError > MOUNT_IMAGE_BAD_LEVEL:
-            contents.update({flagKey: "bad"})
-        elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
-            contents.update({flagKey: "warning"})
-
-        md = {seqNum: contents}
-        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
-        return
-
-    def checkTimebaseErrors(self, expRecord):
-        """Write a metadata shard if an exposure has cRIO timebase errors.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        hasError = hasTimebaseErrors(expRecord, self.client)
-        if hasError:
-            md = {expRecord.seq_num: {"Mount timebase errors": "⚠️"}}
-            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, expRecord.day_obs, md)
-
-    def callback(self, expRecord):
-        """Method called on each new expRecord as it is found in the repo.
-
-        Plot the mount torques, pulling data from the EFD, writing the plot
-        to a temp file, and upload it to Google cloud storage via the uploader.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        try:
-            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            tempFilename = tempfile.mktemp(suffix=".png")
-
-            # calculateMountErrors() calculates the errors, but also performs
-            # the plotting.
-            errors = calculateMountErrors(dataId, self.butler, self.client, self.fig, tempFilename, self.log)
-
-            if os.path.exists(tempFilename):  # skips many image types and short exps
-                self.log.info("Uploading mount torque plot to storage bucket")
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="mount",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFilename,
-                )
-                self.log.info("Upload complete")
-
-            # write the mount error shard, including the cell coloring flag
-            if errors:  # if the mount torque fails or skips it returns False
-                self.writeMountErrorShard(errors, expRecord)
-
-            # check for timebase errors and write a metadata shard if found
-            self.checkTimebaseErrors(expRecord)
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
 
 
 class CalibrateCcdRunner(BaseButlerChannel):
