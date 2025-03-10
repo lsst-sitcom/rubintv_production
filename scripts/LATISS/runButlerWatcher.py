@@ -20,46 +20,22 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production import ButlerWatcher
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
-
-workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
-
+instrument = "LATISS"
 locationConfig = getAutomaticLocationConfig()
-podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
-)
-print(
-    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
-    f"consuming from {podDetails.queueName}..."
-)
+print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
-locationConfig = getAutomaticLocationConfig()
-butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath,
-    collections=[
-        # XXX needs changing to defaults and the quicklook collection creating
-        "LSSTCam/raw/all",
-        "LSSTCam/calib",
-    ],
-    writeable=True,
-)
-
-sfmRunner = SingleCorePipelineRunner(
+butler = Butler.from_config(locationConfig.auxtelButlerPath, collections=["LATISS/raw/all"])
+writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
+butlerWatcher = ButlerWatcher(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step1",
-    awaitsDataProduct="raw",
-    podDetails=podDetails,
+    dataProducts="raw",
     doRaise=getDoRaise(),
 )
-sfmRunner.run()
+butlerWatcher.run()
