@@ -250,6 +250,7 @@ class OneOffProcessor(BaseButlerChannel):
         if isinstance(self, OneOffProcessorLatiss):
             # automatically run the LATISS processing
             # XXX does this actually work? Is this an OK pattern?
+            # Also consider moving this to run ~first for speed of the monitor
             self.runLatissProcessing(postISR, expRecord)
 
     def publishPointingOffsets(
