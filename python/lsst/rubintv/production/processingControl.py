@@ -682,6 +682,9 @@ class HeadProcessController:
         dispatchedWork : `bool`
             Was anything sent out?
         """
+        if self.instrument == "LATISS":  # no gather type steps for single chip cameras
+            return False
+
         assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
         processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1", who=who)
 
@@ -747,6 +750,10 @@ class HeadProcessController:
         doRollup : `bool`
             Did we do another rollup?
         """
+        if self.instrument == "LATISS":
+            self.log.info("Consider making a one-off processor for the night plots and dispatching it here")
+            return False
+
         numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a", who="SFM")
         if numComplete > self.nNightlyRollups:
             self.log.info(
@@ -772,6 +779,11 @@ class HeadProcessController:
         individual CCD mosaics and make the full focal plane mosaic and upload
         to S3. At the moment, it will only work when everything is completed.
         """
+        if self.instrument == "LATISS":
+            # single chip cameras aren't plotted as binned mosaics, so this
+            # happens in a one-off-processor instead for all round ease.
+            return
+
         triggeringTasks = ("lsst.ip.isr.isrTaskLSST.IsrTaskLSST", "binnedCalexpCreation")
         dataProducts = ("postISRCCD", "calexp")
 
