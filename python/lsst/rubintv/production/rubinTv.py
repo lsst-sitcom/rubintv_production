@@ -32,13 +32,11 @@ from time import sleep
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from astro_metadata_translator import ObservationInfo
 
 import lsst.daf.butler as dafButler
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.pipe.base import Instrument
 from lsst.pipe.tasks.calibrate import CalibrateConfig, CalibrateTask
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageConfig, CharacterizeImageTask
@@ -67,7 +65,6 @@ from lsst.summit.utils.tmaUtils import (
 from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from .baseChannels import BaseButlerChannel
-from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .metadataServers import TimedMetadataServer
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .plotting import latissNightReportPlots
@@ -75,51 +72,12 @@ from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, wr
 
 __all__ = [
     "MountTorqueChannel",
-    "MetadataCreator",
     "CalibrateCcdRunner",
     "NightReportChannel",
     "TmaTelemetryChannel",
 ]
 
-
 _LOG = logging.getLogger(__name__)
-
-SIDECAR_KEYS_TO_REMOVE = [
-    "instrument",
-    "obs_id",
-    "seq_start",
-    "seq_end",
-    "group_name",
-    "has_simulated",
-]
-
-# The values here are used in HTML so do not include periods in them, eg "Dec."
-MD_NAMES_MAP = {
-    "id": "Exposure id",
-    "exposure_time": "Exposure time",
-    "dark_time": "Darktime",
-    "observation_type": "Image type",
-    "observation_reason": "Observation reason",
-    "day_obs": "dayObs",
-    "seq_num": "seqNum",
-    "group_id": "Group id",
-    "group": "Group",
-    "target_name": "Target",
-    "science_program": "Science program",
-    "tracking_ra": "RA",
-    "tracking_dec": "Dec",
-    "sky_angle": "Sky angle",
-    "azimuth": "Azimuth",
-    "zenith_angle": "Zenith angle",
-    "time_begin_tai": "TAI",
-    "filter": "Filter",
-    "disperser": "Disperser",
-    "airmass": "Airmass",
-    "focus_z": "Focus-Z",
-    "seeing": "DIMM Seeing",
-    "altitude": "Altitude",
-    "can_see_sky": "Can see the sky?",
-}
 
 
 class MountTorqueChannel(BaseButlerChannel):
@@ -256,174 +214,6 @@ class MountTorqueChannel(BaseButlerChannel):
 
             # check for timebase errors and write a metadata shard if found
             self.checkTimebaseErrors(expRecord)
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
-
-
-class MetadataCreator(BaseButlerChannel):
-    """Class for creating metadata shards for RubinTV. Note the shards are
-    merged and uploaded by a TimedMetadataServer, not this class.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-            detectors=0,
-            watcherType="file",
-            dataProduct="raw",
-            channelName="auxtel_metadata_creator",
-            doRaise=doRaise,
-            addUploader=False,  # this pod doesn't upload anything directly
-        )
-        self.detector = 0  # can be removed once we have the requisite summit DBs
-
-    def expRecordToMetadataDict(self, expRecord, keysToRemove):
-        """Create a dictionary of metadata for an expRecord.
-
-        Given an expRecord, create a dictionary containing all the metadata
-        that should be displayed in the table on RubinTV. The table creation is
-        dynamic, so any entries which should not appear as columns in the table
-        should be removed via keysToRemove.
-
-        Note that for now, while there is data in the headers which cannot be
-        gleaned from the expRecord, we are getting the raw metadata from the
-        butler. Once there are summit databases with all the info we need, or
-        a schema migration is done meaning everything is in the expRecord, this
-        can be stopped.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        keysToRemove : `list` [`str`]
-            Keys to remove from the exposure record.
-
-        Returns
-        -------
-        metadata : `dict` [`dict`]
-            A dict, with a single key, corresponding to the expRecord's seqNum,
-            containing a dict of the exposure's metadata.
-        """
-        seqNum = butlerUtils.getSeqNum(expRecord)
-        d = expRecord.toDict()
-
-        time_begin_tai = expRecord.timespan.begin.to_datetime().strftime("%H:%M:%S")
-        d["time_begin_tai"] = time_begin_tai
-        d.pop("timespan")
-
-        filt, disperser = d["physical_filter"].split(FILTER_DELIMITER)
-        d.pop("physical_filter")
-        d["filter"] = filt
-        d["disperser"] = disperser
-
-        rawmd = self.butler.get("raw.metadata", expRecord.dataId, detector=self.detector)
-        obsInfo = ObservationInfo(rawmd)
-        d["airmass"] = obsInfo.boresight_airmass
-        d["focus_z"] = obsInfo.focus_z.value
-
-        d["altitude"] = None  # altaz_begin is None when not on sky so need check it's not None first
-        if obsInfo.altaz_begin is not None:
-            d["altitude"] = obsInfo.altaz_begin.alt.value
-
-        if "SEEING" in rawmd:  # SEEING not yet in the obsInfo so take direct from header
-            d["seeing"] = rawmd["SEEING"]
-
-        for key in keysToRemove:
-            if key in d:
-                d.pop(key)
-
-        properNames = {MD_NAMES_MAP[attrName]: d[attrName] for attrName in d}
-
-        return {seqNum: properNames}
-
-    def writeShardForExpRecord(self, expRecord):
-        """Write a standard shard for this expRecord.
-
-        Calls expRecordToMetadataDict to get the normal set of metadata
-        components and then writes it to a shard file in the shards directory
-        ready for upload.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        md = self.expRecordToMetadataDict(expRecord, SIDECAR_KEYS_TO_REMOVE)
-        dayObs = butlerUtils.getDayObs(expRecord)
-        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
-        return
-
-    def writeLogMessageShards(self, expRecord):
-        """Write a shard containing all the expLog annotations on the dayObs.
-
-        The expRecord is used to identify the dayObs and nothing else.
-
-        This method is called for each new image, but each time polls the
-        exposureLog for all the logs for the dayObs. This is because it will
-        take time for observers to make annotations, and so this needs
-        constantly updating throughout the night.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record, used only to get the dayObs.
-        """
-        dayObs = expRecord.day_obs
-        logs = getLogsForDayObs(dayObs)
-
-        if not logs:
-            return
-
-        itemsToInclude = ["message_text", "level", "urls", "exposure_flag"]
-
-        md = {seqNum: {} for seqNum in logs.keys()}
-
-        for seqNum, log in logs.items():
-            wasAnnotated = False
-            for item in itemsToInclude:
-                if item in log:
-                    itemValue = log[item]
-                    newName = LOG_ITEM_MAPPINGS[item]
-                    if isinstance(itemValue, str):  # string values often have trailing '\r\n'
-                        itemValue = itemValue.rstrip()
-                    md[seqNum].update({newName: itemValue})
-                    wasAnnotated = True
-
-            if wasAnnotated:
-                md[seqNum].update({"Has annotations?": "🚩"})
-
-        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
-
-    def callback(self, expRecord):
-        """Method called on each new expRecord as it is found in the repo.
-
-        Add the metadata to the sidecar for the expRecord and upload.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        try:
-            self.log.info(f"Writing metadata shard for {expRecord.dataId}")
-            self.writeShardForExpRecord(expRecord)
-            # Note: we do not upload anythere here, as the TimedMetadataServer
-            # does the collation and upload, and runs as a separate process.
-
-            self.log.info(f"Getting exposure log messages for {expRecord.day_obs}")
-            self.writeLogMessageShards(expRecord)
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
