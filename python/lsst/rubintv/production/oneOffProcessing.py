@@ -31,6 +31,7 @@ import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
+from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.simonyi.mountAnalysis import (
@@ -47,11 +48,14 @@ from lsst.summit.utils.utils import calcEclipticCoords
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
+from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
 from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from lsst.afw.image import Exposure
     from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord
 
@@ -488,6 +492,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def __init__(self):
         super().__init__()
         self.monitorFigure = plt.figure(figsize=(12, 12))
+        self.mountFigure = plt.figure(figsize=(16, 16))
         self.s3Uploader = MultiUploader()
 
     def runAuxTelProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
@@ -495,6 +500,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.makeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
+        self.doMountAnalysis(expRecord)
 
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
@@ -565,3 +571,107 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                 self.log.info("Upload complete")
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
+
+    def doMountAnalysis(self, expRecord: DimensionRecord) -> None:
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
+                # calculateMountErrors() calculates the errors, but also
+                # performs the plotting. It skips many image types and short
+                # exps and returns False in these cases, otherwise it returns
+                # errors and will have made the plot
+                errors = calculateMountErrors(
+                    expRecord, self.butler, self.efdClient, self.mountFigure, tempFile.name, self.log
+                )
+                if errors is False:
+                    self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
+                    return
+
+                self.log.info("Uploading mount torque plot to storage bucket")
+                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument="auxtel",
+                    plotName="mount",
+                    dayObs=dayObs,
+                    seqNum=seqNum,
+                    filename=tempFile.name,
+                )
+                self.log.info("Upload complete")
+
+            # write the mount error shard, including the cell coloring flag
+            assert errors is not True and errors is not False  # it's either False or the right type
+            self.writeMountErrorShard(errors, expRecord)
+
+            # check for timebase errors and write a metadata shard if found
+            self.checkTimebaseErrors(expRecord)
+
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
+
+    def writeMountErrorShard(self, errors: dict[str, NDArray], expRecord: DimensionRecord) -> None:
+        """Write a metadata shard for the mount error, including the flag
+        for coloring the cell based on the threshold values.
+
+        Parameters
+        ----------
+        errors : `dict`
+            The mount errors, as a dict, containing keys:
+            ``az_rms`` - The RMS azimuth error.
+            ``el_rms`` - The RMS elevation error.
+            ``rot_rms`` - The RMS rotator error.
+            ``image_az_rms`` - The RMS azimuth error for the image.
+            ``image_el_rms`` - The RMS elevation error for the image.
+            ``image_rot_rms`` - The RMS rotator error for the image.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+
+        # the mount error itself, *not* the image component. No quality flags
+        # on this part.
+        az_rms = errors["az_rms"]
+        el_rms = errors["el_rms"]
+        mountError = (az_rms**2 + el_rms**2) ** 0.5
+        contents = {"Mount jitter RMS": f"{mountError}"}
+        if np.isnan(mountError):
+            contents = {"Mount jitter RMS": "nan"}
+
+        # the contribution to the image error from the mount. This is the part
+        # that matters and gets a quality flag. Note that the rotator error
+        # contibution is zero at the field centre and increases radially, and
+        # is usually very small, so we don't add that here as its contrinution
+        # is not really well definited and including it would be misleading.
+        image_az_rms = errors["image_az_rms"]
+        image_el_rms = errors["image_el_rms"]
+        imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
+
+        key = "Mount motion image degradation"
+        flagKey = "_" + key  # color coding of cells always done by prepending with an underscore
+        contents.update({key: f"{imageError}"})
+        if np.isnan(imageError):
+            contents.update({key: "nan"})
+
+        if imageError > MOUNT_IMAGE_BAD_LEVEL:
+            contents.update({flagKey: "bad"})
+        elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
+            contents.update({flagKey: "warning"})
+
+        md = {seqNum: contents}
+        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+        return
+
+    def checkTimebaseErrors(self, expRecord: DimensionRecord) -> None:
+        """Write a metadata shard if an exposure has cRIO timebase errors.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+        """
+        hasError = hasTimebaseErrors(expRecord, self.efdClient)
+        if hasError:
+            md = {expRecord.seq_num: {"Mount timebase errors": "⚠️"}}
+            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, expRecord.day_obs, md)
