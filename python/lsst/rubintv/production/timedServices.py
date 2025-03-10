@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+__all__ = ["TimedMetadataServer", "TmaTelemetryChannel"]
+
 import json
 import logging
 import os
@@ -54,6 +56,7 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 
 if TYPE_CHECKING:
     from lsst.rubintv.production.utils import LocationConfig
+    from lsst.summit.utils.tmaUtils import TMAEvent
 
 _LOG = logging.getLogger(__name__)
 
@@ -242,7 +245,9 @@ class TmaTelemetryChannel(TimedMetadataServer):
     # The time between sweeps of the EFD for today's data.
     cadence = 10
 
-    def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, doRaise=False):
+    def __init__(
+        self, *, locationConfig: LocationConfig, metadataDirectory: str, shardsDirectory: str, doRaise=False
+    ) -> None:
 
         self.plotChannelName = "tma_mount_motion_profile"
         self.metadataChannelName = "tma_metadata"
@@ -271,13 +276,13 @@ class TmaTelemetryChannel(TimedMetadataServer):
         ]
 
         # keeps track of which plots have been made on a given day
-        self.plotsMade = {"MountMotionAnalysis": set(), "M1M3HardpointAnalysis": set()}
+        self.plotsMade: dict[str, set] = {"MountMotionAnalysis": set(), "M1M3HardpointAnalysis": set()}
 
-    def resetPlotsMade(self):
+    def resetPlotsMade(self) -> None:
         """Reset the tracking of made plots for day-rollover."""
         self.plotsMade = {k: set() for k in self.plotsMade}
 
-    def runMountMotionAnalysis(self, event):
+    def runMountMotionAnalysis(self, event) -> None:
         # get the data separately so we can take some min/max on it etc
         dayObs = event.dayObs
         prePadding = self.slewPrePadding if event.type.name == "SLEWING" else self.trackPrePadding
@@ -363,7 +368,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
             instrument="tma", plotName="mount", dayObs=event.dayObs, seqNum=event.seqNum, filename=filename
         )
 
-    def runM1M3HardpointAnalysis(self, event):
+    def runM1M3HardpointAnalysis(self, event) -> None:
         m1m3ICSHPMaxForces = {}
         m1m3ICSHPMeanForces = {}
 
@@ -418,7 +423,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         commands = getCommandsDuringEvent(self.client, event, self.hardpointCommandsToPlot, doLog=False)
 
-        plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)
+        # TODO: fix how typing is done in the M1M3 package now that we mypy
+        plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)  # type: ignore
         self.figure.savefig(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="tma",
@@ -428,7 +434,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
             filename=filename,
         )
 
-    def processDay(self, dayObs):
+    def processDay(self, dayObs) -> None:
         """ """
         events = self.eventMaker.getEvents(dayObs)
 
@@ -492,14 +498,14 @@ class TmaTelemetryChannel(TimedMetadataServer):
                     self.plotsMade["M1M3HardpointAnalysis"].add(event.seqNum)
 
             if newEvent:
-                data = self.eventToMetadataRow(event)
-                rowData.update(data)
+                eventData = self.eventToMetadataRow(event)
+                rowData.update(eventData)
                 writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
 
         return
 
-    def eventToMetadataRow(self, event):
-        rowData = {}
+    def eventToMetadataRow(self, event: TMAEvent) -> dict[int, dict[str, float | str]]:
+        rowData: dict[str, float | str] = {}
         seqNum = event.seqNum
         rowData["Seq. No."] = event.seqNum
         rowData["Event version number"] = event.version
@@ -509,12 +515,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
         rowData["Time UTC"] = event.begin.isot
         return {seqNum: rowData}
 
-    def _getSaveFilename(self, plotName, dayObs, event):
+    def _getSaveFilename(self, plotName: str, dayObs: int, event: TMAEvent) -> str:
         filename = f"{plotName}_{dayObs}_{event.seqNum:06}.png"
         filename = os.path.join(self.locationConfig.plotPath, filename)
         return filename
 
-    def run(self):
+    def run(self) -> None:
         """Run continuously, updating the plots and uploading the shards."""
         dayObs = getCurrentDayObs_int()
         while True:
