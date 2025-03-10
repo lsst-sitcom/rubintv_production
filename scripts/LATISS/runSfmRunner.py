@@ -26,7 +26,7 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
+instrument = "LATISS"
 
 workerNum = getPodWorkerNumber()
 detectorNum = workerNum % 189
@@ -43,11 +43,11 @@ print(
 
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath,
+    locationConfig.auxtelButlerPath,
     collections=[
         # XXX needs changing to defaults and the quicklook collection creating
-        "LSSTCam/raw/all",
-        "LSSTCam/calib",
+        "LATISS/raw/all",
+        "LATISS/calib",
     ],
     writeable=True,
 )
