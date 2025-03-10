@@ -32,6 +32,7 @@ from lsst.afw.geom import ellipses
 from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.simonyi.mountAnalysis import (
     MOUNT_IMAGE_BAD_LEVEL,
     MOUNT_IMAGE_WARNING_LEVEL,
@@ -40,7 +41,6 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
     calculateMountErrors,
     plotMountErrors,
 )
-from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import calcEclipticCoords
 
@@ -432,46 +432,49 @@ class OneOffProcessorLatiss(OneOffProcessor):
     def __init__(self):
         super().__init__()
         self.monitorFigure = plt.figure(figsize=(12, 12))
+        self.s3Uploader = MultiUploader()
 
-    def runLatissProcessing(self, exp: Exposure, expRecord: DimensionRecord):
+    def runLatissProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         # TODO: consider threading and adding a CPU to the pod if this is slow
         self.runMakeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
 
-    def runMakeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord):
+    def runMakeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFilename:
-                plotExp(exp, self.monitorFigure, tempFilename, doSmooth=False, scalingOption="CCS")
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
+                plotExp(exp, self.monitorFigure, tempFile.name, doSmooth=False, scalingOption="CCS")
                 self.log.info("Uploading imExam to storage bucket")
+                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument="auxtel",
                     plotName="monitor",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFilename,
+                    filename=tempFile.name,
                 )
                 self.log.info("Upload complete")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def runImexam(self, exp: Exposure, expRecord: DimensionRecord):
+    def runImexam(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         if expRecord.observation_type in ["bias", "dark", "flat"]:
             self.log.info(f"Skipping running imExam on calib image: {expRecord.observation_type}")
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFilename:
-                imExam = ImageExaminer(exp, savePlots=tempFilename, doTweakCentroid=True)
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
+                imExam = ImageExaminer(exp, savePlots=tempFile.name, doTweakCentroid=True)
                 self.log.info("Uploading imExam to storage bucket")
+                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument="auxtel",
                     plotName="imexam",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFilename,
+                    filename=tempFile.name,
                 )
                 self.log.info("Upload complete")
                 del imExam
@@ -479,7 +482,7 @@ class OneOffProcessorLatiss(OneOffProcessor):
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def runSpecExam(self, exp: Exposure, expRecord: DimensionRecord):
+    def runSpecExam(self, exp: Exposure, expRecord: DimensionRecord) -> None:
 
         # XXX do we still need to construct this?
         # XXX also need to check Josh's abandoned ticket - did it touch this
@@ -491,16 +494,17 @@ class OneOffProcessorLatiss(OneOffProcessor):
 
         self.log.info(f"Running specExam on {expRecord.dataId}")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFilename:
-                summary = SpectrumExaminer(exp, savePlotAs=tempFilename)
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
+                summary = SpectrumExaminer(exp, savePlotAs=tempFile.name)
                 summary.run()
                 self.log.info("Uploading specExam to storage bucket")
+                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
                 self.s3Uploader.uploadPerSeqNumPlot(
                     instrument="auxtel",
                     plotName="specexam",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFilename,
+                    filename=tempFile.name,
                 )
                 self.log.info("Upload complete")
         except Exception as e:
