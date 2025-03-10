@@ -408,7 +408,7 @@ class HeadProcessController:
         return False
 
     def getPerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
-        # NOTE: currently unused, replaced by dispatchPayloads() but kept in
+        # NOTE: currently unused, replaced by _dispatchPayloads() but kept in
         # case it's needed.
 
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -426,13 +426,15 @@ class HeadProcessController:
         self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
         return busyWorker
 
-    def getGatherWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
+    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
             return freeWorkers[0]
 
-        # We have no free workers of this type, so send to a busy work and warn
+        # We have no free workers of this type, so send to a busy worker and
+        # warn
+
         # TODO: until we have a real backlog queue just put it on the last
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -483,7 +485,7 @@ class HeadProcessController:
             )
             payloads[detectorId] = payload
 
-        self.dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
+        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
     def doStep1FanoutAos(self, expRecords: list[DimensionRecord]) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -532,9 +534,9 @@ class HeadProcessController:
             f" {len(detectorIds)} detectors"
         )
 
-        self.dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+        self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
 
-    def dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
+    def _dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
         """Distribute payloads to available workers based on detector IDs.
 
         Attempts to send payloads to workers. It first tries to match payloads
@@ -570,7 +572,7 @@ class HeadProcessController:
                 # and then retry. If we haven't just been rebooted, the rest of
                 # this function will raise, and correctly so.
                 sleep(30)
-                self.dispatchPayloads(payloads, podFlavor)
+                self._dispatchPayloads(payloads, podFlavor)
                 return
 
         for detectorId, payload in payloads.items():
@@ -614,19 +616,11 @@ class HeadProcessController:
 
         self.log.info(f"Sending signal to one-off processor for {idStr}")
 
-        workers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
-        workers = sorted(workers)
-        if not workers:
-            self.log.warning(f"No free workers available for {idStr} for one-off processing")
-
-            workers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-            if not workers:
-                self.log.error(f"No workers available for one-off processing for {idStr}. This is a problem.")
-                return
+        worker = self.getSingleWorker(expRecord.instrument, podFlavor=podFlavor)
 
         # who value doesn't matter for one-off processing, maybe SFM instead?
         payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="", who="ONE_OFF")
-        self.redisHelper.enqueuePayload(payload, workers[0])
+        self.redisHelper.enqueuePayload(payload, worker)
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
         expRecord = self.redisHelper.getExposureForFanout(self.instrument)
@@ -720,7 +714,7 @@ class HeadProcessController:
                 who=who,
             )
 
-            worker = self.getGatherWorker(self.instrument, podFlavour)
+            worker = self.getSingleWorker(self.instrument, podFlavour)
             self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
             self.redisHelper.enqueuePayload(payload, worker)
             self.log.debug(f"Removing step1 finished counter for {idStr=}")
@@ -754,19 +748,16 @@ class HeadProcessController:
                 " dispatching them for nightly rollup"
             )
             self.nNightlyRollups = numComplete
-            self._dispatchNightlyRollup()
+            # TODO: try adding the current day_obs to this dataId
+            dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
+            dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
+            payload = Payload(
+                [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
+            )
+            queueName = self.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
+            self.redisHelper.enqueuePayload(payload, queueName)
             return True
         return False
-
-    def _dispatchNightlyRollup(self) -> None:
-        # TODO: try adding the current day_obs to this dataId
-        dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
-        dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-        payload = Payload(
-            [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
-        )
-        queueName = self.getGatherWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
-        self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self) -> None:
         """Dispatch the focal plane mosaic task.
@@ -799,7 +790,7 @@ class HeadProcessController:
             for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload([dataId], b"", dataProduct, who="SFM")
-                queueName = self.getGatherWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+                queueName = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
