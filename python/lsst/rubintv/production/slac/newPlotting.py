@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.afw.cameraGeom import Camera
-    from lsst.daf.butler import Butler
+    from lsst.daf.butler import Butler, DimensionRecord
 
     from ..payloads import Payload
     from ..podDefinition import PodDetails
@@ -97,7 +97,7 @@ class Plotter:
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotFocalPlane(self, expRecord, dataProduct, timeout) -> str:
+    def plotFocalPlane(self, expRecord: DimensionRecord, dataProduct: str, timeout: float) -> str:
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -163,7 +163,7 @@ class Plotter:
         return saveFile
 
     @staticmethod
-    def getInstrumentChannelName(instrument) -> str:
+    def getInstrumentChannelName(instrument: str) -> str:
         """Get the instrument channel name for the current instrument.
 
         This is the plot prefix to use for upload.
