@@ -55,7 +55,6 @@ except ImportError:
 from lsst.atmospec.utils import isDispersedExp
 from lsst.summit.utils import NightReport
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
-from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
 from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
 from lsst.summit.utils.m1m3.plots.inertia_compensation_system import plot_hp_measured_data
@@ -70,14 +69,11 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .metadataServers import TimedMetadataServer
-from .monitorPlotting import plotExp
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .plotting import latissNightReportPlots
 from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = [
-    "IsrRunner",
-    "MonitorChannel",
     "MountTorqueChannel",
     "MetadataCreator",
     "CalibrateCcdRunner",
@@ -124,131 +120,6 @@ MD_NAMES_MAP = {
     "altitude": "Altitude",
     "can_see_sky": "Can see the sky?",
 }
-
-
-class IsrRunner(BaseButlerChannel):
-    """Class to run isr for each image that lands in the repo.
-
-    Note: this is currently AuxTel-only.
-
-    Runs isr via BestEffortIsr, and puts the result in the quickLook
-    collection.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        self.bestEffort = BestEffortIsr(embargo=embargo)
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            butler=self.bestEffort.butler,
-            detectors=0,
-            watcherType="file",
-            dataProduct="raw",
-            channelName="auxtel_isr_runner",
-            doRaise=doRaise,
-            addUploader=False,  # this pod doesn't upload directly
-        )
-
-    def callback(self, expRecord):
-        """Method called on each new expRecord as it is found in the repo.
-
-        Produce a quickLookExp of the latest image, and butler.put() it to the
-        repo so that downstream processes can find and use it.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        dataId = expRecord.dataId
-        quickLookExp = self.bestEffort.getExposure(dataId, detector=0)  # noqa: F841 - automatically puts
-        del quickLookExp
-        self.log.info(f"Put quickLookExp for {dataId}, awaiting next image...")
-
-
-class MonitorChannel(BaseButlerChannel):
-    """Class for running the monitor channel on RubinTV.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-            detectors=0,
-            watcherType="file",
-            dataProduct="quickLookExp",
-            channelName="auxtel_monitor",
-            doRaise=doRaise,
-        )
-        self.fig = plt.figure(figsize=(12, 12))
-        self.detector = 0
-
-    def _plotImage(self, exp, outputFilename):
-        """Plot the image.
-
-        Parameters
-        ----------
-        exp : `lsst.afw.image.Exposure`
-            The exposure.
-        outputFilename : `str`
-            The filename to save the plot to.
-        """
-        if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
-            self.log.warning(f"Skipping {outputFilename}")
-            return
-        plotExp(exp, self.fig, outputFilename, doSmooth=False, scalingOption="CCS")
-
-    def callback(self, expRecord):
-        """Method called on each new expRecord as it is found in the repo.
-
-        Plot the image for display on the monitor, writing the plot
-        to a temp file, and upload it to Google cloud storage via the uploader.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        try:
-            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            self.log.info(f"Generating monitor image for {dataId}")
-            tempFilename = tempfile.mktemp(suffix=".png")
-            exp = self._waitForDataProduct(dataId)
-            if not exp:
-                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
-            self._plotImage(exp, tempFilename)
-
-            self.log.info("Uploading monitor image to storage bucket")
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument="auxtel",
-                plotName="monitor",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFilename,
-            )
-            self.log.info("Upload complete")
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
 
 
 class MountTorqueChannel(BaseButlerChannel):
