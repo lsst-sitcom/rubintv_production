@@ -63,8 +63,8 @@ from lsst.summit.utils.tmaUtils import (
 from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from .baseChannels import BaseButlerChannel
-from .metadataServers import TimedMetadataServer
 from .plotting import latissNightReportPlots
+from .timedServices import TimedMetadataServer
 from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, writeMetadataShard
 
 __all__ = [
