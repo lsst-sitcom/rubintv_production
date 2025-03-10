@@ -6,7 +6,8 @@ dimensionUniverseFile: '/home/mfl/rubintv/rubintv/butlerDimensionUniverse.json'
 # Summit items:
 nightReportPath:     '/home/mfl/rubintv/rubintv/nightReportData'
 
-# AuxTel metadata
+# AuxTel
+auxtelButlerPath: /repo/embargo
 auxTelMetadataPath: '/home/mfl/rubintv/rubintv/sidecar_metadata'
 auxTelMetadataShardPath: '/home/mfl/rubintv/rubintv/sidecar_metadata/shards'
 

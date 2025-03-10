@@ -7,7 +7,8 @@ dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
 # Summit items:
 nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
 
-# AuxTel metadata
+# AuxTel
+auxtelButlerPath: /repo/main
 auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
 auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
 
@@ -65,6 +66,7 @@ tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 
 sfmPipelineFile:
+  LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
@@ -74,6 +76,7 @@ aosPipelineFile:
   LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
 
 outputChains:
+  LATISS: LATISS/quickLookTesting
   LSSTComCam: LSSTComCam/quickLookTesting
   LSSTComCamSim: LSSTComCamSim/quickLookTesting
   LSSTCam: LSSTCam/quickLookTesting
