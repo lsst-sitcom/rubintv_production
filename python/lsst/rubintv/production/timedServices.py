@@ -24,12 +24,33 @@ from __future__ import annotations
 import json
 import logging
 import os
+from functools import partial
 from glob import glob
 from time import sleep
 from typing import TYPE_CHECKING
 
+import matplotlib.pyplot as plt
+
 from .uploaders import MultiUploader
-from .utils import isFileWorldWritable, raiseIf, sanitizeNans
+from .utils import hasDayRolledOver, isFileWorldWritable, raiseIf, sanitizeNans, writeMetadataShard
+
+try:
+    from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
+
+    HAS_EFD_CLIENT = True
+except ImportError:
+    HAS_EFD_CLIENT = False
+
+from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
+from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
+from lsst.summit.utils.m1m3.plots.inertia_compensation_system import plot_hp_measured_data
+from lsst.summit.utils.tmaUtils import (
+    TMAEventMaker,
+    getAzimuthElevationDataForEvent,
+    getCommandsDuringEvent,
+    plotEvent,
+)
+from lsst.summit.utils.utils import getCurrentDayObs_int
 
 if TYPE_CHECKING:
     from lsst.rubintv.production.utils import LocationConfig
@@ -194,3 +215,320 @@ class TimedMetadataServer:
         while True:
             self.callback()
             sleep(self.cadence)
+
+
+class TmaTelemetryChannel(TimedMetadataServer):
+    """Class for generating TMA events and plotting their telemetry.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    metadataDirectory : `str`
+        The name of the directory for which the metadata is being served. Note
+        that this directory and the ``shardsDirectory`` are passed in because
+        although the ``LocationConfig`` holds all the location based path info
+        (and the name of the bucket to upload to), many directories containing
+        shards exist, and each one goes to a different page on the web app, so
+        this class must be told which set of files to be collating and
+        uploading to which channel.
+    shardsDirectory : `str`
+        The directory to find the shards in, usually of the form
+        ``metadataDirectory`` + ``'/shards'``.
+    doRaise : `bool`
+        If True, raise exceptions instead of logging them.
+    """
+
+    # The time between sweeps of the EFD for today's data.
+    cadence = 10
+
+    def __init__(self, *, locationConfig, metadataDirectory, shardsDirectory, doRaise=False):
+
+        self.plotChannelName = "tma_mount_motion_profile"
+        self.metadataChannelName = "tma_metadata"
+        self.doRaise = doRaise
+
+        super().__init__(
+            locationConfig=locationConfig,
+            metadataDirectory=metadataDirectory,
+            shardsDirectory=shardsDirectory,
+            channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
+            doRaise=self.doRaise,
+        )
+
+        self.client = makeEfdClient()
+        self.eventMaker = TMAEventMaker(client=self.client)
+        self.figure = plt.figure(figsize=(10, 8))
+        self.slewPrePadding = 1
+        self.trackPrePadding = 1
+        self.slewPostPadding = 2
+        self.trackPostPadding = 0
+        self.commandsToPlot = ["raDecTarget", "moveToTarget", "startTracking", "stopTracking"]
+        self.hardpointCommandsToPlot = [
+            "lsst.sal.MTM1M3.command_setSlewFlag",
+            "lsst.sal.MTM1M3.command_enableHardpointCorrections",
+            "lsst.sal.MTM1M3.command_clearSlewFlag",
+        ]
+
+        # keeps track of which plots have been made on a given day
+        self.plotsMade = {"MountMotionAnalysis": set(), "M1M3HardpointAnalysis": set()}
+
+    def resetPlotsMade(self):
+        """Reset the tracking of made plots for day-rollover."""
+        self.plotsMade = {k: set() for k in self.plotsMade}
+
+    def runMountMotionAnalysis(self, event):
+        # get the data separately so we can take some min/max on it etc
+        dayObs = event.dayObs
+        prePadding = self.slewPrePadding if event.type.name == "SLEWING" else self.trackPrePadding
+        postPadding = self.slewPostPadding if event.type.name == "SLEWING" else self.trackPostPadding
+        azimuthData, elevationData = getAzimuthElevationDataForEvent(
+            self.client, event, prePadding=prePadding, postPadding=postPadding
+        )
+
+        clippedAz = clipDataToEvent(azimuthData, event)
+        clippedEl = clipDataToEvent(elevationData, event)
+
+        md = {}
+        azStart = None
+        azStop = None
+        azMove = None
+
+        elStart = None
+        elStop = None
+        elMove = None
+        maxElTorque = None
+        maxAzTorque = None
+
+        if len(clippedAz) > 0:
+            azStart = clippedAz.iloc[0]["actualPosition"]
+            azStop = clippedAz.iloc[-1]["actualPosition"]
+            azMove = azStop - azStart
+            # key=abs gets the item with the largest absolute value but
+            # keeps the sign so we don't deal with min/max depending on
+            # the direction of the move etc
+            maxAzTorque = max(clippedAz["actualTorque"], key=abs)
+
+        if len(clippedEl) > 0:
+            elStart = clippedEl.iloc[0]["actualPosition"]
+            elStop = clippedEl.iloc[-1]["actualPosition"]
+            elMove = elStop - elStart
+            maxElTorque = max(clippedEl["actualTorque"], key=abs)
+
+        # values could be None by design, for when there is no data
+        # in the clipped dataframes, i.e. from the event window exactly
+        md["Azimuth start"] = azStart
+        md["Elevation start"] = elStart
+        md["Azimuth move"] = azMove
+        md["Elevation move"] = elMove
+        md["Azimuth stop"] = azStop
+        md["Elevation stop"] = elStop
+        md["Largest azimuth torque"] = maxAzTorque
+        md["Largest elevation torque"] = maxElTorque
+
+        rowData = {event.seqNum: md}
+        writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+        commands = getCommandsDuringEvent(
+            self.client,
+            event,
+            self.commandsToPlot,
+            prePadding=prePadding,
+            postPadding=postPadding,
+            doLog=False,
+        )
+        if not all([time is None for time in commands.values()]):
+            rowData = {event.seqNum: {"Has commands?": "✅"}}
+            writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+        metadataWriter = partial(writeMetadataShard, path=self.shardsDirectory)
+
+        plotEvent(
+            self.client,
+            event,
+            fig=self.figure,
+            prePadding=prePadding,
+            postPadding=postPadding,
+            commands=commands,
+            azimuthData=azimuthData,
+            elevationData=elevationData,
+            doFilterResiduals=True,
+            metadataWriter=metadataWriter,
+        )
+
+        plotName = "tma_mount_motion_profile"
+        filename = self._getSaveFilename(plotName, dayObs, event)
+        self.figure.savefig(filename)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument="tma", plotName="mount", dayObs=event.dayObs, seqNum=event.seqNum, filename=filename
+        )
+
+    def runM1M3HardpointAnalysis(self, event):
+        m1m3ICSHPMaxForces = {}
+        m1m3ICSHPMeanForces = {}
+
+        md = {}  # blank out the previous md as it has already been written
+        try:
+            m1m3IcsResult = M1M3ICSAnalysis(
+                event,
+                self.client,
+                log=self.log,
+            )
+        except ValueError:  # control flow error raise when the ICS is off
+            return event
+
+        # package all the items we want into dicts
+        m1m3ICSHPMaxForces = {
+            "measuredForceMax0": m1m3IcsResult.stats.measuredForceMax0,
+            "measuredForceMax1": m1m3IcsResult.stats.measuredForceMax1,
+            "measuredForceMax2": m1m3IcsResult.stats.measuredForceMax2,
+            "measuredForceMax3": m1m3IcsResult.stats.measuredForceMax3,
+            "measuredForceMax4": m1m3IcsResult.stats.measuredForceMax4,
+            "measuredForceMax5": m1m3IcsResult.stats.measuredForceMax5,
+        }
+        m1m3ICSHPMeanForces = {
+            "measuredForceMean0": m1m3IcsResult.stats.measuredForceMean0,
+            "measuredForceMean1": m1m3IcsResult.stats.measuredForceMean1,
+            "measuredForceMean2": m1m3IcsResult.stats.measuredForceMean2,
+            "measuredForceMean3": m1m3IcsResult.stats.measuredForceMean3,
+            "measuredForceMean4": m1m3IcsResult.stats.measuredForceMean4,
+            "measuredForceMean5": m1m3IcsResult.stats.measuredForceMean5,
+        }
+
+        # do the max of the absolute values of the forces
+        md["M1M3 ICS Hardpoint AbsMax-Max Force"] = max(m1m3ICSHPMaxForces.values(), key=abs)
+        md["M1M3 ICS Hardpoint AbsMax-Mean Force"] = max(m1m3ICSHPMeanForces.values(), key=abs)
+
+        # then repackage as strings with 1 dp for display
+        m1m3ICSHPMaxForces = {k: f"{v:.1f}" for k, v in m1m3ICSHPMaxForces.items()}
+        m1m3ICSHPMeanForces = {k: f"{v:.1f}" for k, v in m1m3ICSHPMeanForces.items()}
+
+        md["M1M3 ICS Hardpoint Max Forces"] = m1m3ICSHPMaxForces  # dict
+        md["M1M3 ICS Hardpoint Mean Forces"] = m1m3ICSHPMeanForces  # dict
+
+        # must set string value in dict only after doing the max of the values
+        m1m3ICSHPMaxForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMaxForces else ""
+        m1m3ICSHPMeanForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMeanForces else ""
+
+        rowData = {event.seqNum: md}
+        writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+        plotName = "tma_m1m3_hardpoint_profile"
+        filename = self._getSaveFilename(plotName, event.dayObs, event)
+
+        commands = getCommandsDuringEvent(self.client, event, self.hardpointCommandsToPlot, doLog=False)
+
+        plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)
+        self.figure.savefig(filename)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument="tma",
+            plotName="m1m3_hardpoint",
+            dayObs=event.dayObs,
+            seqNum=event.seqNum,
+            filename=filename,
+        )
+
+    def processDay(self, dayObs):
+        """ """
+        events = self.eventMaker.getEvents(dayObs)
+
+        # check if every event seqNum is in both the M1M3HardpointAnalysis and
+        # MountMotionAnalysis sets, and if not, return immediately
+        if all([event.seqNum in self.plotsMade["MountMotionAnalysis"] for event in events]) and all(
+            [event.seqNum in self.plotsMade["M1M3HardpointAnalysis"] for event in events]
+        ):
+            self.log.info(f"No new events found for {dayObs} (currently {len(events)} events).")
+            return
+
+        for event in events:
+            assert event.dayObs == dayObs
+
+            nMountMotionPlots = len(self.plotsMade["MountMotionAnalysis"])
+            nM1M3HardpointPlots = len(self.plotsMade["M1M3HardpointAnalysis"])
+            # the interesting phrasing in the message is because these plots
+            # don't necessarily exist, due either to failures or M1M3 analyses
+            # only being valid for some events so this is to make it clear
+            # they've been processed.
+            self.log.info(
+                f"Found {len(events)} events for {dayObs=} of which "
+                f"{nMountMotionPlots} have been mount-motion plotted and "
+                f"{nM1M3HardpointPlots} have been M1M3-hardpoint-analysed plots."
+            )
+
+            # kind of worrying that this clear _is_ needed out here, but is
+            # _not_ needed inside each of the plotting parts... maybe either
+            # remove this or add it to the other parts?
+            self.log.info(f"Plotting event {event.seqNum}")
+            self.figure.clear()
+            ax = self.figure.gca()
+            ax.clear()
+
+            newEvent = (
+                event.seqNum not in self.plotsMade["MountMotionAnalysis"]
+                or event.seqNum not in self.plotsMade["M1M3HardpointAnalysis"]
+            )
+
+            rowData = {}
+            if event.seqNum not in self.plotsMade["MountMotionAnalysis"]:
+                try:
+                    self.runMountMotionAnalysis(event)  # writes its own shard
+                except Exception as e:
+                    data = {event.seqNum: {"Plotting failed?": "😔"}}
+                    rowData.update(data)
+                    self.log.exception(f"Failed to plot event {event.seqNum}")
+                    raiseIf(self.doRaise, e, self.log)
+                finally:  # don't retry plotting on failure
+                    self.plotsMade["MountMotionAnalysis"].add(event.seqNum)
+
+            if event.seqNum not in self.plotsMade["M1M3HardpointAnalysis"]:
+                try:
+                    self.runM1M3HardpointAnalysis(event)  # writes its own shard
+                except Exception as e:
+                    data = {event.seqNum: {"ICS processing error?": "😔"}}
+                    rowData.update(data)
+                    self.log.exception(f"Failed to plot event {event.seqNum}")
+                    raiseIf(self.doRaise, e, self.log)
+                finally:  # don't retry plotting on failure
+                    self.plotsMade["M1M3HardpointAnalysis"].add(event.seqNum)
+
+            if newEvent:
+                data = self.eventToMetadataRow(event)
+                rowData.update(data)
+                writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
+
+        return
+
+    def eventToMetadataRow(self, event):
+        rowData = {}
+        seqNum = event.seqNum
+        rowData["Seq. No."] = event.seqNum
+        rowData["Event version number"] = event.version
+        rowData["Event type"] = event.type.name
+        rowData["End reason"] = event.endReason.name
+        rowData["Duration"] = event.duration
+        rowData["Time UTC"] = event.begin.isot
+        return {seqNum: rowData}
+
+    def _getSaveFilename(self, plotName, dayObs, event):
+        filename = f"{plotName}_{dayObs}_{event.seqNum:06}.png"
+        filename = os.path.join(self.locationConfig.plotPath, filename)
+        return filename
+
+    def run(self):
+        """Run continuously, updating the plots and uploading the shards."""
+        dayObs = getCurrentDayObs_int()
+        while True:
+            try:
+                if hasDayRolledOver(dayObs):
+                    dayObs = getCurrentDayObs_int()
+                    self.resetPlotsMade()
+
+                # TODO: need to work out a better way of dealing with pod
+                # restarts. At present this will just remake everything.
+                self.processDay(dayObs)
+                self.mergeShardsAndUpload()  # updates all shards everywhere
+
+                sleep(self.cadence)
+
+            except Exception as e:
+                raiseIf(self.doRaise, e, self.log)
