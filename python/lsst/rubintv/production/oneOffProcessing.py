@@ -29,6 +29,7 @@ import numpy as np
 
 import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
+from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.simonyi.mountAnalysis import (
@@ -39,6 +40,8 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
     calculateMountErrors,
     plotMountErrors,
 )
+from lsst.summit.utils.imageExaminer import ImageExaminer
+from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
@@ -230,6 +233,11 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
+        if isinstance(self, OneOffProcessorLatiss):
+            # automatically run the LATISS processing
+            # XXX does this actually work? Is this an OK pattern?
+            self.runLatissProcessing(postISR, expRecord)
+
     def publishPointingOffsets(
         self,
         calexp: Exposure,
@@ -416,3 +424,59 @@ class OneOffProcessor(BaseButlerChannel):
                 self.runCalexp(dataId)
             case _:
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
+
+
+class OneOffProcessorLatiss(OneOffProcessor):
+
+    def runLatissProcessing(self, exp: Exposure, expRecord: DimensionRecord):
+        self.runImexam(exp, expRecord)
+        self.runSpecExam(exp, expRecord)
+
+    def runImexam(self, exp: Exposure, expRecord: DimensionRecord):
+        if expRecord.observation_type in ["bias", "dark", "flat"]:
+            self.log.info(f"Skipping running imExam on calib image: {expRecord.observation_type}")
+        self.log.info(f"Running imexam on {expRecord.dataId}")
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFilename:
+                imExam = ImageExaminer(exp, savePlots=tempFilename, doTweakCentroid=True)
+                self.log.info("Uploading imExam to storage bucket")
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument="auxtel",
+                    plotName="imexam",
+                    dayObs=expRecord.day_obs,
+                    seqNum=expRecord.seq_num,
+                    filename=tempFilename,
+                )
+                self.log.info("Upload complete")
+                del imExam
+
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
+
+    def runSpecExam(self, exp: Exposure, expRecord: DimensionRecord):
+
+        # XXX do we still need to construct this?
+        # XXX also need to check Josh's abandoned ticket - did it touch this
+        # and/or fix this issue?
+        oldStyleDataId = {"day_obs": expRecord.day_obs, "seq_num": expRecord.seq_num}
+        if not isDispersedDataId(oldStyleDataId, self.butler):
+            self.log.info(f"Skipping running specExam on non dispersed image {expRecord.dataId}")
+            return
+
+        self.log.info(f"Running specExam on {expRecord.dataId}")
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png") as tempFilename:
+                summary = SpectrumExaminer(exp, savePlotAs=tempFilename)
+                summary.run()
+                self.log.info("Uploading specExam to storage bucket")
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument="auxtel",
+                    plotName="specexam",
+                    dayObs=expRecord.day_obs,
+                    seqNum=expRecord.seq_num,
+                    filename=tempFilename,
+                )
+                self.log.info("Upload complete")
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)

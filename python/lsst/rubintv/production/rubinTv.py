@@ -52,15 +52,13 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
-from lsst.atmospec.utils import isDispersedDataId, isDispersedExp
+from lsst.atmospec.utils import isDispersedExp
 from lsst.summit.utils import NightReport
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
-from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
 from lsst.summit.utils.m1m3.plots.inertia_compensation_system import plot_hp_measured_data
-from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.tmaUtils import (
     TMAEventMaker,
     getAzimuthElevationDataForEvent,
@@ -79,8 +77,6 @@ from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, wr
 
 __all__ = [
     "IsrRunner",
-    "ImExaminerChannel",
-    "SpecExaminerChannel",
     "MonitorChannel",
     "MountTorqueChannel",
     "MetadataCreator",
@@ -177,188 +173,6 @@ class IsrRunner(BaseButlerChannel):
         quickLookExp = self.bestEffort.getExposure(dataId, detector=0)  # noqa: F841 - automatically puts
         del quickLookExp
         self.log.info(f"Put quickLookExp for {dataId}, awaiting next image...")
-
-
-class ImExaminerChannel(BaseButlerChannel):
-    """Class for running the ImExam channel on RubinTV.
-
-    Note: this is currently AuxTel-only.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-            detectors=0,
-            watcherType="file",
-            dataProduct="quickLookExp",
-            channelName="summit_imexam",
-            doRaise=doRaise,
-        )
-        self.detector = 0
-
-    def _imExamine(self, exp, outputFilename):
-        """Run the imExam analysis on the exposure.
-
-        Parameters
-        ----------
-        exp : `lsst.afw.image.Exposure`
-            The exposure.
-        outputFilename : `str`
-            The filename to save the plot to.
-        """
-        if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile
-            self.log.warning(f"Skipping {outputFilename}")
-            return
-        imexam = ImageExaminer(exp, savePlots=outputFilename, doTweakCentroid=True)
-        imexam.plot()
-
-    def doProcessImage(self, expRecord):
-        """Determine if we should skip this image.
-
-        Should take responsibility for logging the reason for skipping.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-
-        Returns
-        -------
-        doProcess : `bool`
-            True if the image should be processed, False if we should skip it.
-        """
-        if expRecord.observation_type in ["bias", "dark", "flat"]:
-            self.log.info(f"Skipping calib image: {expRecord.observation_type}")
-            return False
-        return True
-
-    def callback(self, expRecord):
-        """Method called on each new expRecord as it is found in the repo.
-
-        Plot the quick imExam analysis of the latest image, writing the plot
-        to a temp file, and upload it to Google cloud storage via the uploader.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        try:
-            if not self.doProcessImage(expRecord):
-                return
-            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            self.log.info(f"Running imexam on {dataId}")
-            tempFilename = tempfile.mktemp(suffix=".png")
-            exp = self._waitForDataProduct(dataId)
-
-            if not exp:
-                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
-            self._imExamine(exp, tempFilename)
-
-            self.log.info("Uploading imExam to storage bucket")
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument="auxtel",
-                plotName="imexam",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFilename,
-            )
-            self.log.info("Upload complete")
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
-
-
-class SpecExaminerChannel(BaseButlerChannel):
-    """Class for running the SpecExam channel on RubinTV.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-            detectors=0,
-            watcherType="file",
-            dataProduct="quickLookExp",
-            channelName="summit_specexam",
-            doRaise=doRaise,
-        )
-        self.detector = 0
-
-    def _specExamine(self, exp, outputFilename):
-        """Run the specExam analysis on the exposure.
-
-        Parameters
-        ----------
-        exp : `lsst.afw.image.Exposure`
-            The exposure.
-        outputFilename : `str`
-            The filename to save the plot to.
-        """
-        if os.path.exists(outputFilename):  # unnecessary now we're using tmpfile?
-            self.log.warning(f"Skipping {outputFilename}")
-            return
-        summary = SpectrumExaminer(exp, savePlotAs=outputFilename)
-        summary.run()
-
-    def callback(self, expRecord):
-        """Method called on each new expRecord as it is found in the repo.
-
-        Plot the quick spectral reduction of the latest image, writing the plot
-        to a temp file, and upload it to Google cloud storage via the uploader.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        try:
-            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            oldStyleDataId = {"day_obs": expRecord.day_obs, "seq_num": expRecord.seq_num}
-            if not isDispersedDataId(oldStyleDataId, self.butler):
-                self.log.info(f"Skipping non dispersed image {dataId}")
-                return
-
-            self.log.info(f"Running specExam on {dataId}")
-            tempFilename = tempfile.mktemp(suffix=".png")
-            exp = self._waitForDataProduct(dataId)
-            if not exp:
-                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
-            self._specExamine(exp, tempFilename)
-
-            self.log.info("Uploading specExam to storage bucket")
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument="auxtel",
-                plotName="specexam",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFilename,
-            )
-            self.log.info("Upload complete")
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
 
 
 class MonitorChannel(BaseButlerChannel):
