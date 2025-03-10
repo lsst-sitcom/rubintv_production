@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import logging
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
@@ -139,8 +139,12 @@ class Plotter:
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
 
-        plotName = f"{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
-        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
+        # TODO: this template should go somewhere reusable as it's relied upon
+        # elsewhere so this is fragile at present. Linked in animation code.
+        path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
+        path.mkdir(777, True, True)
+        plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
+        saveFile = (path / plotName).as_posix()
 
         plotFocalPlaneMosaic(
             butler=self.butler,
