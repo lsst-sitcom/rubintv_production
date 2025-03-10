@@ -49,7 +49,7 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
             "https://summit-lsp.lsst.codes/exposurelog/messages",
             json=mock_logs,
         )
-        logs = getLogsForDayObs(20230316)
+        logs = getLogsForDayObs("LATISS", 20230316)
         self.assertEqual(logs, {520: mock_logs[0], 521: mock_logs[1]})
 
 
