@@ -874,13 +874,12 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
 def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: str) -> None:
     """Write the exposure record metedata to a shard.
 
-    Only fires once, based on the value of TS8_METADATA_DETECTOR or
-    LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
-
     Parameters
     ----------
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record.
+    metadataShardPath : `str`
+        The directory to write the shard to.
     """
     md = {}
     md["Exposure time"] = expRecord.exposure_time
