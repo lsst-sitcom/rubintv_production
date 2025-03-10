@@ -247,11 +247,11 @@ class OneOffProcessor(BaseButlerChannel):
         # #{expRecord.day_obs}")
         # self.writeLogMessageShards(expRecord.day_obs)
 
-        if isinstance(self, OneOffProcessorLatiss):
+        if isinstance(self, OneOffProcessorAuxTel):
             # automatically run the LATISS processing
             # XXX does this actually work? Is this an OK pattern?
             # Also consider moving this to run ~first for speed of the monitor
-            self.runLatissProcessing(postISR, expRecord)
+            self.runAuxTelProcessing(postISR, expRecord)
 
     def publishPointingOffsets(
         self,
@@ -483,20 +483,20 @@ class OneOffProcessor(BaseButlerChannel):
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
 
 
-class OneOffProcessorLatiss(OneOffProcessor):
+class OneOffProcessorAuxTel(OneOffProcessor):
 
     def __init__(self):
         super().__init__()
         self.monitorFigure = plt.figure(figsize=(12, 12))
         self.s3Uploader = MultiUploader()
 
-    def runLatissProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
+    def runAuxTelProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         # TODO: consider threading and adding a CPU to the pod if this is slow
-        self.runMakeMonitorImage(exp, expRecord)
+        self.makeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
 
-    def runMakeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
+    def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
             with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
