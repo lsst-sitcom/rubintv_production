@@ -45,6 +45,7 @@ from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
+from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
@@ -219,6 +220,7 @@ class OneOffProcessor(BaseButlerChannel):
     def runPostISRCCD(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for postISRCCD for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+        assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
 
         # redis signal is sent on the dispatch of the raw, so 40s is plenty but
         # not too much
@@ -239,6 +241,11 @@ class OneOffProcessor(BaseButlerChannel):
         if not isCalibration(expRecord):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
+
+        # TODO: add this back in once the log-fetcher is fixed
+        # self.log.info(f"Fetching all exposure log messages for day_obs
+        # #{expRecord.day_obs}")
+        # self.writeLogMessageShards(expRecord.day_obs)
 
         if isinstance(self, OneOffProcessorLatiss):
             # automatically run the LATISS processing
@@ -314,6 +321,8 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Waiting for calexp for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataId)
+        assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
+        assert visitRecord.instrument == self.instrument, "Logic error in work distribution!"
 
         visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=self.detector)
 
@@ -329,7 +338,6 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info("Calculating ecliptic coords...")
         self.publishEclipticCoords(calexp, expRecord)
         self.log.info("Finished publishing ecliptic coords")
-
         return
 
     @staticmethod
@@ -413,6 +421,47 @@ class OneOffProcessor(BaseButlerChannel):
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
         self.runMountAnalysis(expRecord)
+
+    def writeLogMessageShards(self, dayObs: int) -> None:
+        """Write a shard containing all the expLog annotations on the dayObs.
+
+        The expRecord is used to identify the dayObs and nothing else.
+
+        This method is called for each new image, but each time polls the
+        exposureLog for all the logs for the dayObs. This is because it will
+        take time for observers to make annotations, and so this needs
+        constantly updating throughout the night.
+
+        Parameters
+        ----------
+        dayObs : `int`
+            The dayObs to get the log messages for.
+        """
+        logs = getLogsForDayObs(self.instrument, dayObs)
+
+        if not logs:
+            self.log.info(f"No exposure log entries found yet for day_obs={dayObs} for {self.instrument}")
+            return
+
+        itemsToInclude = ["message_text", "level", "urls", "exposure_flag"]
+
+        md: dict[int, dict[str, Any]] = {seqNum: {} for seqNum in logs.keys()}
+
+        for seqNum, log in logs.items():
+            wasAnnotated = False
+            for item in itemsToInclude:
+                if item in log:
+                    itemValue = log[item]
+                    newName = LOG_ITEM_MAPPINGS[item]
+                    if isinstance(itemValue, str):  # string values often have trailing '\r\n'
+                        itemValue = itemValue.rstrip()
+                    md[seqNum].update({newName: itemValue})
+                    wasAnnotated = True
+
+            if wasAnnotated:
+                md[seqNum].update({"Has annotations?": "🚩"})
+
+        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
