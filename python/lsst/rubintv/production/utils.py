@@ -40,6 +40,7 @@ import numpy as np
 import yaml
 
 from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from lsst.utils import getPackageDir
@@ -883,18 +884,28 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     """
     md = {}
     md["Exposure time"] = expRecord.exposure_time
+    md["Darktime"] = expRecord.dark_time
     md["Image type"] = expRecord.observation_type
     md["Reason"] = expRecord.observation_reason
     md["Date begin"] = expRecord.timespan.begin.isot
     md["Program"] = expRecord.science_program
     md["Group name"] = expRecord.group
-    md["Filter"] = expRecord.physical_filter
+    md["Group id"] = expRecord.group_id
     md["Target"] = expRecord.target_name
     md["RA"] = expRecord.tracking_ra
     md["Dec"] = expRecord.tracking_dec
     md["Sky angle"] = expRecord.sky_angle
     md["Azimuth"] = expRecord.azimuth
+    md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
+    md["Can see the sky?"] = expRecord.can_see_sky
+
+    if expRecord.instrument == "LATISS":
+        filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
+        md["Filter"] = filt
+        md["Disperser"] = disperser
+    else:
+        md["Filter"] = expRecord.physical_filter
 
     seqNum = expRecord.seq_num
     dayObs = expRecord.day_obs
@@ -1241,7 +1252,7 @@ def getShardPath(locationConfig: LocationConfig, expRecord: DimensionRecord, isA
             return locationConfig.comCamSimMetadataShardPath
         case "LSSTCam":
             if isAos:
-                raise ValueError("No AOS metadata for LSSTCam yet")
+                return locationConfig.lsstCamAosMetadataShardPath
             return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")

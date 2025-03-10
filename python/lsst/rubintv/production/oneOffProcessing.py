@@ -148,6 +148,12 @@ class OneOffProcessor(BaseButlerChannel):
             md = {seqNum: {"Focus Z": f"{focus:.3f}"}}
         else:
             md = {seqNum: {"Focus Z": "MISSING VALUE!"}}
+
+        # TODO XXX see if airmass is in here, and if not, get it from elsewhere
+        # it has been removed from AuxTel in the rewrite and I think we want it
+        # for all instruments anyway
+        # Same for DIMM seeing via the "seeing" header and report that too.
+
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
     def writePhysicalRotation(self, expRecord: DimensionRecord) -> None:
