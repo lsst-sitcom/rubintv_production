@@ -26,8 +26,10 @@ __all__ = ["TimedMetadataServer", "TmaTelemetryChannel"]
 import json
 import logging
 import os
+import subprocess
 from functools import partial
 from glob import glob
+from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 
@@ -246,7 +248,12 @@ class TmaTelemetryChannel(TimedMetadataServer):
     cadence = 10
 
     def __init__(
-        self, *, locationConfig: LocationConfig, metadataDirectory: str, shardsDirectory: str, doRaise=False
+        self,
+        *,
+        locationConfig: LocationConfig,
+        metadataDirectory: str,
+        shardsDirectory: str,
+        doRaise: bool = False,
     ) -> None:
 
         self.plotChannelName = "tma_mount_motion_profile"
@@ -533,6 +540,92 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 # restarts. At present this will just remake everything.
                 self.processDay(dayObs)
                 self.mergeShardsAndUpload()  # updates all shards everywhere
+
+                sleep(self.cadence)
+
+            except Exception as e:
+                raiseIf(self.doRaise, e, self.log)
+
+
+class AllNightAnimator:
+
+    # The time between scans for new images to animate
+    cadence = 1
+
+    def __init__(self, *, locationConfig: LocationConfig, instrument, doRaise: bool = False) -> None:
+        self.locationConfig = locationConfig
+        self.pngPath: Path = Path()
+        self.doRaise = doRaise
+        self.instrument = instrument
+        self.log = _LOG.getChild("")
+
+    def animateDir(self, pngPath: Path) -> None:
+        outputFile = pngPath / "movie.mp4"
+
+        self.pngsToMp4(pngPath.as_posix(), outputFile.as_posix(), 10)
+        self.log.info(f"Uploading new {self.instrument} movie")
+
+        # self.s3Uploader.uploadMovie(self.instrument, self.dayObs, filename)
+        return
+
+    def pngsToMp4(self, orderedPngDir: str, outfile: str, framerate: float, verbose: bool = False) -> None:
+        """Create the movie with ffmpeg, from files."""
+        # NOTE: the order of ffmpeg arguments *REALLY MATTERS*.
+        # Reorder them at your own peril!
+        pathPattern = f'"{os.path.join(orderedPngDir, "*.png")}"'
+        if verbose:
+            ffmpeg_verbose = "info"
+        else:
+            ffmpeg_verbose = "error"
+        cmd = [
+            "ffmpeg",
+            "-v",
+            ffmpeg_verbose,
+            "-f",
+            "image2",
+            "-y",
+            "-pattern_type glob",
+            "-framerate",
+            f"{framerate}",
+            "-i",
+            pathPattern,
+            "-vcodec",
+            "libx264",
+            "-b:v",
+            "20000k",
+            "-profile:v",
+            "main",
+            "-pix_fmt",
+            "yuv420p",
+            "-threads",
+            "10",
+            "-r",
+            f"{framerate}",
+            os.path.join(outfile),
+        ]
+
+        subprocess.check_call(r" ".join(cmd), shell=True)
+
+    def reset(self) -> None:
+        return
+
+    def run(self) -> None:
+        """Run continuously, updating the plots and uploading the shards."""
+        dayObs = getCurrentDayObs_int()
+        lastAnimatedCount = 0
+        while True:
+            try:
+                if hasDayRolledOver(dayObs):
+                    dayObs = getCurrentDayObs_int()
+                    lastAnimatedCount = 0
+
+                # TODO: currently this pattern is hard-coded in the mosaic
+                # plotting code - to be made importable
+                pngPath = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
+                nFiles = len(glob(pngPath / "*.png"))
+                if nFiles > lastAnimatedCount:
+                    self.log.info(f"Creating new movie with {nFiles} frames")
+                    self.animateDir(pngPath)
 
                 sleep(self.cadence)
 
