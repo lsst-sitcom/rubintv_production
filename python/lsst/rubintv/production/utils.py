@@ -341,11 +341,6 @@ class LocationConfig:
         file = self._config["dimensionUniverseFile"]
         return file
 
-    def butlerPath(self):
-        file = self._config["butlerPath"]
-        self._checkFile(file)
-        return file
-
     @cached_property
     def ts8ButlerPath(self):
         file = self._config["ts8ButlerPath"]
