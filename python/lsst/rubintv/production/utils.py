@@ -890,7 +890,6 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Date begin"] = expRecord.timespan.begin.isot
     md["Program"] = expRecord.science_program
     md["Group name"] = expRecord.group
-    md["Group id"] = expRecord.group_id
     md["Target"] = expRecord.target_name
     md["RA"] = expRecord.tracking_ra
     md["Dec"] = expRecord.tracking_dec
