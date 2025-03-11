@@ -49,8 +49,8 @@ butler = Butler.from_config(
     writeable=True,
 )
 
-metadataDirectory = locationConfig.auxtelMetadataPath
-shardsDirectory = locationConfig.auxtelMetadataShardPath
+metadataDirectory = locationConfig.auxTelMetadataPath
+shardsDirectory = locationConfig.auxTelMetadataShardPath
 
 oneOffProcessor = OneOffProcessor(
     butler=butler,
