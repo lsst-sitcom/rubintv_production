@@ -35,9 +35,9 @@ sfmPipelineFile:
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/nightly-validation.yaml
 
 outputChains:
-  LSSTComCam: LSSTComCam/nightlyValidation
-  LSSTComCamSim: LSSTComCamSim/nightlyValidation
-  LSSTCam: LSSTCam/nightlyValidation
+  LSSTComCam: LSSTComCam/runs/nightlyValidation
+  LSSTComCamSim: LSSTComCamSim/runs/nightlyValidation
+  LSSTCam: LSSTCam/runs/nightlyValidation
 
 comCamSimMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata'
 comCamSimMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata/shards'
