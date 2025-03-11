@@ -21,7 +21,6 @@
 
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm, colors
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -98,11 +97,11 @@ def plotExp(exp, figure, saveFilename=None, doSmooth=True, scalingOption="defaul
         # all-white colour bar, and so are left outside of this if-block to
         # help people see that something has gone wrong. The labels are set to
         # nan in the else block below.
-        plt.colorbar(im1, cax=cax)
+        figure.colorbar(im1, cax=cax)
     else:
         # set the tick labels on the cax to all nan manually
         cax.set_yticklabels(["nan" for _ in cax.get_yticklabels()])
 
-    plt.tight_layout()
+    figure.tight_layout()
     if saveFilename:
-        plt.savefig(saveFilename)
+        figure.savefig(saveFilename)
