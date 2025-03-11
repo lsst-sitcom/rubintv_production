@@ -489,8 +489,8 @@ class OneOffProcessor(BaseButlerChannel):
 
 class OneOffProcessorAuxTel(OneOffProcessor):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.monitorFigure = plt.figure(figsize=(12, 12))
         self.mountFigure = plt.figure(figsize=(16, 16))
         self.s3Uploader = MultiUploader()
