@@ -345,7 +345,11 @@ class HeadProcessController:
         self.pipelines["SFM"] = PipelineComponents(
             self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
         )
-        self.pipelines["AOS"] = PipelineComponents(self.butler.registry, aosPipelineFile, ["step1", "step2a"])
+        if self.instrument != "LATISS":
+            # TODO: see if this will matter that this component doesn't exist
+            self.pipelines["AOS"] = PipelineComponents(
+                self.butler.registry, aosPipelineFile, ["step1", "step2a"]
+            )
 
         self.allGraphs: list[PipelineGraph] = []
         for pipeline in self.pipelines.values():
