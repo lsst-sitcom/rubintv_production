@@ -373,8 +373,9 @@ class HeadProcessController:
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
 
-        allRunNums = [int(run.removeprefix(self.outputChain + "/")) for run in allRuns
-                      if self.outputChain in run]
+        allRunNums = [
+            int(run.removeprefix(self.outputChain + "/")) for run in allRuns if self.outputChain in run
+        ]
         lastRunNum = max(allRunNums) if allRunNums else 0
         lastRun = f"{self.outputChain}/{lastRunNum}"
 
@@ -750,7 +751,8 @@ class HeadProcessController:
             Did we do another rollup?
         """
         if self.instrument == "LATISS":
-            self.log.info("Consider making a one-off processor for the night plots and dispatching it here")
+            # self.log.info("Consider making a one-off processor for
+            # the night plots and dispatching it here")
             return False
 
         numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a", who="SFM")
