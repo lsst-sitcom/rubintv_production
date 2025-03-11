@@ -233,6 +233,12 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.warning(f"Failed to get postISRCCD for {dataId}")
             return
 
+        if isinstance(self, OneOffProcessorAuxTel):
+            # automatically run the LATISS processing
+            # XXX does this actually work? Is this an OK pattern?
+            # Also consider moving this to run ~first for speed of the monitor
+            self.runAuxTelProcessing(postISR, expRecord)
+
         self.log.info(f"Writing focus Z for {dataId}")
         self.writeFocusZ(postISR, expRecord.day_obs, expRecord.seq_num)
 
@@ -250,12 +256,6 @@ class OneOffProcessor(BaseButlerChannel):
         # self.log.info(f"Fetching all exposure log messages for day_obs
         # #{expRecord.day_obs}")
         # self.writeLogMessageShards(expRecord.day_obs)
-
-        if isinstance(self, OneOffProcessorAuxTel):
-            # automatically run the LATISS processing
-            # XXX does this actually work? Is this an OK pattern?
-            # Also consider moving this to run ~first for speed of the monitor
-            self.runAuxTelProcessing(postISR, expRecord)
 
     def publishPointingOffsets(
         self,
