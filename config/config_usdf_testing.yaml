@@ -76,7 +76,7 @@ aosPipelineFile:
   LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
 
 outputChains:
-  LATISS: LATISS/quickLookTesting
-  LSSTComCam: LSSTComCam/quickLookTesting
-  LSSTComCamSim: LSSTComCamSim/quickLookTesting
-  LSSTCam: LSSTCam/quickLookTesting
+  LATISS: LATISS/runs/quickLookTesting
+  LSSTComCam: LSSTComCam/runs/quickLookTesting
+  LSSTComCamSim: LSSTComCamSim/runs/quickLookTesting
+  LSSTCam: LSSTCam/runs/quickLookTesting

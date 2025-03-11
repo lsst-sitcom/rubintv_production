@@ -77,7 +77,7 @@ aosPipelineFile:
   LSSTCam: $TS_WEP_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
-  LATISS: LATISS/quickLook
-  LSSTComCam: LSSTComCam/quickLook
-  LSSTComCamSim: LSSTComCamSim/quickLook
-  LSSTCam: LSSTCam/quickLook
+  LATISS: LATISS/runs/quickLook
+  LSSTComCam: LSSTComCam/runs/quickLook
+  LSSTComCamSim: LSSTComCamSim/runs/quickLook
+  LSSTCam: LSSTCam/runs/quickLook
