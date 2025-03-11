@@ -33,6 +33,7 @@ from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.simonyi.mountAnalysis import (
     MOUNT_IMAGE_BAD_LEVEL,
     MOUNT_IMAGE_WARNING_LEVEL,
@@ -43,13 +44,11 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
 )
 from lsst.summit.utils.imageExaminer import ImageExaminer
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-from lsst.summit.utils.simonyi.mountAnalysis import calculateMountErrors, plotMountErrors
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
-from .mountTorques import MOUNT_IMAGE_BAD_LEVEL, MOUNT_IMAGE_WARNING_LEVEL, calculateMountErrors
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
 from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
@@ -551,7 +550,7 @@ class OneOffProcessor(BaseButlerChannel):
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
-        self.runMountAnalysis(expRecord)
+        # self.runMountAnalysis(expRecord)
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
