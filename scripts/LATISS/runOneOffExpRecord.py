@@ -41,7 +41,7 @@ print(
 )
 
 butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
+    locationConfig.auxtelButlerPath,
     collections=[
         f"{instrument}/defaults",
         f"{instrument}/quickLook",  # accesses the outputs
@@ -49,8 +49,8 @@ butler = Butler.from_config(
     writeable=True,
 )
 
-metadataDirectory = locationConfig.comCamMetadataPath
-shardsDirectory = locationConfig.comCamMetadataShardPath
+metadataDirectory = locationConfig.auxtelMetadataPath
+shardsDirectory = locationConfig.auxtelMetadataShardPath
 
 oneOffProcessor = OneOffProcessor(
     butler=butler,
