@@ -549,7 +549,7 @@ class OneOffProcessor(BaseButlerChannel):
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
-        self.runMountAnalysis(expRecord)
+        # self.runMountAnalysis(expRecord)
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
