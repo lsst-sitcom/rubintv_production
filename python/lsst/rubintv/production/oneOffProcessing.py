@@ -257,6 +257,8 @@ class OneOffProcessor(BaseButlerChannel):
         # #{expRecord.day_obs}")
         # self.writeLogMessageShards(expRecord.day_obs)
 
+        self.log.info(f"Finished one-off processing {dataId}")
+
     def publishPointingOffsets(
         self,
         calexp: Exposure,
