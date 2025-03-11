@@ -48,7 +48,7 @@ butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
     collections=[
         f"{instrument}/defaults",
-        f"{instrument}/quickLook",  # accesses the outputs
+        f"{instrument}/runs/quickLook",  # accesses the outputs
     ],
     writeable=True,
 )
