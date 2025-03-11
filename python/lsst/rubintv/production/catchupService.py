@@ -21,7 +21,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
@@ -37,7 +36,6 @@ from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
-from .timedServices import MetadataCreator, TimedMetadataServer
 from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf
 
@@ -94,9 +92,9 @@ class RubinTvBackgroundService:
         self.bestEffort = BestEffortIsr()
         self.dayObs: int
 
-        self.mdServer = MetadataCreator(
-            self.locationConfig, instrument=instrument
-        )  # costly-ish to create, so put in class
+        # self.mdServer = MetadataCreator(
+        #     self.locationConfig, instrument=instrument
+        # )  # costly-ish to create, so put in class
 
     def getMissingQuickLookIds(self) -> list[dict[str, int | str]]:
         """Get a list of the dataIds for the current dayObs for which
@@ -195,57 +193,64 @@ class RubinTvBackgroundService:
             notebook=False,
         )
 
-    def catchupMetadata(self) -> None:
-        """Create shards for any seqNums missing their metadata. Do not
-        upload.
-        """
+    # def catchupMetadata(self) -> None:
+    #     """Create shards for any seqNums missing their metadata. Do not
+    #     upload.
+    #     """
 
-        def _getSidecarFilename(dayObs: int) -> str:
-            """Get the sidecar filename for a given dayObs.
+    #     def _getSidecarFilename(dayObs: int) -> str:
+    #         """Get the sidecar filename for a given dayObs.
 
-            This is a bit of a hack as it makes a whole TimedMetadataServer.
-            There are many better ways of doing this, but this will get things
-            working for now, and because TimedMetadataServers don't have
-            butlers and we're not calling run() on it, it's not really
-            important that it's a little wasteful.
-            """
-            mdServer = TimedMetadataServer(
-                locationConfig=self.locationConfig,
-                metadataDirectory=self.locationConfig.auxTelMetadataPath,
-                shardsDirectory=self.locationConfig.auxTelMetadataShardPath,
-                channelName="auxtel_metadata",
-            )
-            filename = mdServer.getSidecarFilename(dayObs)
-            return filename
+    #         This is a bit of a hack as it makes a whole TimedMetadataServer.
+    #         There are many better ways of doing this, but this will get thing
+    # s
+    #         working for now, and because TimedMetadataServers don't have
+    #         butlers and we're not calling run() on it, it's not really
+    #         important that it's a little wasteful.
+    #         """
+    #         mdServer = TimedMetadataServer(
+    #             locationConfig=self.locationConfig,
+    #             metadataDirectory=self.locationConfig.auxTelMetadataPath,
+    #             shardsDirectory=self.locationConfig.auxTelMetadataShardPath,
+    #             channelName="auxtel_metadata",
+    #         )
+    #         filename = mdServer.getSidecarFilename(dayObs)
+    #         return filename
 
-        self.log.info(f"Catching up metadata for {self.dayObs}")
-        mdFilename = _getSidecarFilename(self.dayObs)
-        if not os.path.isfile(mdFilename):
-            # we haven't taken any data yet today
-            self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does not exist yet, waiting...")
-            return
-        else:
-            with open(mdFilename) as f:
-                data = json.load(f)
+    #     self.log.info(f"Catching up metadata for {self.dayObs}")
+    #     mdFilename = _getSidecarFilename(self.dayObs)
+    #     if not os.path.isfile(mdFilename):
+    #         # we haven't taken any data yet today
+    #         self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does
+    # not exist yet, waiting...")
+    #         return
+    #     else:
+    #         with open(mdFilename) as f:
+    #             data = json.load(f)
 
-        seqNumsPresent = [int(k) for k in data.keys()]
-        allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs)
-        missing = [k for k in allSeqNums if k not in seqNumsPresent]
-        self.log.info(f"Found {len(missing)} rows missing metadata to create shards for")
+    #     seqNumsPresent = [int(k) for k in data.keys()]
+    #     allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs
+    # )
+    #     missing = [k for k in allSeqNums if k not in seqNumsPresent]
+    #     self.log.info(f"Found {len(missing)} rows missing metadata to create
+    # shards for")
 
-        for seqNum in missing:
-            dataId = {"day_obs": self.dayObs, "seq_num": seqNum, "detector": 0}
-            expRecord = butlerUtils.getExpRecordFromDataId(self.butler, dataId)
-            try:
-                self.mdServer.writeShardForExpRecord(expRecord)
-            except Exception as e:
-                self.log.warning(f"Failed to create metadata shard for {dataId}: {e}")
+    #     for seqNum in missing:
+    #         dataId = {"day_obs": self.dayObs, "seq_num": seqNum, "detector":
+    # 0}
+    #         expRecord = butlerUtils.getExpRecordFromDataId(self.butler, dataI
+    # d)
+    #         try:
+    #             self.mdServer.writeShardForExpRecord(expRecord)
+    #         except Exception as e:
+    #             self.log.warning(f"Failed to create metadata shard for {dataI
+    # d}: {e}")
 
-        # note we do *not* call mdServer.mergeShardsAndUpload() here
-        # as that writes to the main file, which could collide with the main
-        # channel. Instead, we leave the shards in place to be uploaded with
-        # the next image. We do, however, call it on end-of-day to catch any
-        # leftover shards
+    #     # note we do *not* call mdServer.mergeShardsAndUpload() here
+    #     # as that writes to the main file, which could collide with the main
+    #     # channel. Instead, we leave the shards in place to be uploaded with
+    #     # the next image. We do, however, call it on end-of-day to catch any
+    #     # leftover shards
 
     def catchupImageExaminer(self) -> None:
         """Create and upload any missing imExam images for the current
@@ -284,7 +289,7 @@ class RubinTvBackgroundService:
         # on the try block in run():
         # the day doesn't roll over, we constantly hammer on the same images...
         for component in [
-            self.catchupMetadata,
+            # self.catchupMetadata,
             self.catchupIsrRunner,
             self.catchupMonitor,
             self.catchupImageExaminer,
