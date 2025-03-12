@@ -313,7 +313,17 @@ class HeadProcessController:
         self.nNightlyRollups: int = 0
 
         if self.focalPlaneControl is not None:
-            self.focalPlaneControl.setAllImagingOn()
+            if self.locationConfig.location == "base":
+                # five on a dice pattern in the middle, plus AOS chips
+                self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setRaftOn("R22")
+                self.focalPlaneControl.setRaftOn("R33")
+                self.focalPlaneControl.setRaftOn("R11")
+                self.focalPlaneControl.setRaftOn("R13")
+                self.focalPlaneControl.setRaftOn("R31")
+            else:
+                self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setAllImagingOn()
 
         self.buildPipelines()
 
@@ -876,7 +886,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
-                if not isWepImage(expRecord):
+                if not isWepImage(expRecord) and self.instrument != "LATISS":
                     self.doStep1FanoutSfm(expRecord)
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
@@ -1253,6 +1263,16 @@ class CameraControlConfig:
         """Turn all ITL sensors off."""
         for detector in self._imaging:
             if detector.getPhysicalType() == "ITL":
+                self._detectorStates[detector] = False
+
+    def setRaftOn(self, raftName: str) -> None:
+        for detector in self._detectors:
+            if detector.getName().startswith(raftName):
+                self._detectorStates[detector] = True
+
+    def setRaftOff(self, raftName: str) -> None:
+        for detector in self._detectors:
+            if detector.getName().startswith(raftName):
                 self._detectorStates[detector] = False
 
     def setFullFocalPlaneGuidersOn(self) -> None:
