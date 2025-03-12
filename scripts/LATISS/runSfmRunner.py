@@ -29,7 +29,7 @@ setupLogging()
 instrument = "LATISS"
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 1
+detectorNum = 0
 detectorDepth = workerNum
 
 locationConfig = getAutomaticLocationConfig()
