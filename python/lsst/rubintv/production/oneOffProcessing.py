@@ -248,7 +248,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Getting physical rotation data from EFD for {dataId}")
         self.writePhysicalRotation(expRecord)
 
-        if not isCalibration(expRecord):
+        if not isCalibration(expRecord) and not isinstance(self, OneOffProcessorAuxTel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
@@ -502,7 +502,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.makeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
-        self.doMountAnalysis(expRecord)
+        # self.doMountAnalysis(expRecord)
 
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
