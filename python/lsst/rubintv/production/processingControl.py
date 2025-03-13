@@ -44,6 +44,7 @@ from lsst.daf.butler import (
     MissingCollectionError,
     Registry,
 )
+from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: DM-XXXXX fix this import
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
@@ -175,8 +176,15 @@ def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
         task = DefineVisitsTask(config=config, butler=butler)
-
-        task.run([{"exposure": expRecord.id}], collections=butler.collections)
+        try:
+            task.run([{"exposure": expRecord.id}], collections=butler.collections)
+        except DatabaseConflictError:
+            log = logging.getLogger("lsst.rubintv.production.processControl.defineVisit")
+            log.warning(
+                f"Failed to define visit for {expRecord.id} due to a conflict error. This is likely"
+                " due to a change in the stack causing a slight difference in the calculated region."
+            )
+            pass
 
 
 def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
