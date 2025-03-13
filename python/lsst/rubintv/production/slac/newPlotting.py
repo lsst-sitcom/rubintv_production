@@ -142,7 +142,7 @@ class Plotter:
         # TODO: this template should go somewhere reusable as it's relied upon
         # elsewhere so this is fragile at present. Linked in animation code.
         path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
-        path.mkdir(777, True, True)
+        path.mkdir(mode=0o777, parents=True, exist_ok=True)
         plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
         saveFile = (path / plotName).as_posix()
 
