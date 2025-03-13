@@ -795,6 +795,7 @@ class HeadProcessController:
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
                 assert self.instrument == expRecord.instrument
+                self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 if not isWepImage(expRecord):
                     self.doStep1FanoutSfm(expRecord)
