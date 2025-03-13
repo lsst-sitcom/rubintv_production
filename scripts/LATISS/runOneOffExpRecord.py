@@ -19,27 +19,47 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
-from lsst.rubintv.production.metadataServers import TimedMetadataServer
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.daf.butler import Butler
+from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
+instrument = "LATISS"
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running AuxTel metadata server at {location}...")
+workerNum = 0
+
+locationConfig = getAutomaticLocationConfig()
+
+podDetails = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER, detectorNumber=None, depth=workerNum
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
+
+butler = Butler.from_config(
+    locationConfig.auxtelButlerPath,
+    collections=[
+        f"{instrument}/defaults",
+        f"{instrument}/quickLook",  # accesses the outputs
+    ],
+    writeable=True,
+)
 
 metadataDirectory = locationConfig.auxTelMetadataPath
 shardsDirectory = locationConfig.auxTelMetadataShardPath
-channelName = "auxtel_metadata"
 
-auxTelMetadataServer = TimedMetadataServer(
+oneOffProcessor = OneOffProcessor(
+    butler=butler,
     locationConfig=locationConfig,
-    metadataDirectory=metadataDirectory,
+    instrument=instrument,
+    podDetails=podDetails,
+    detectorNumber=0,  # unused, but needs to be set for now. Maybe change later, but it looked annoying to do
     shardsDirectory=shardsDirectory,
-    channelName=channelName,
+    processingStage="expRecord",
+    doRaise=getDoRaise(),
 )
-auxTelMetadataServer.run()
+oneOffProcessor.run()

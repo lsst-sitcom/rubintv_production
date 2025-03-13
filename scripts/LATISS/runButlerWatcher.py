@@ -19,20 +19,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
-from lsst.rubintv.production.rubinTv import SpecExaminerChannel
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.daf.butler import Butler
+from lsst.rubintv.production import ButlerWatcher
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running spec examiner at {location}...")
+instrument = "LATISS"
+locationConfig = getAutomaticLocationConfig()
+print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
-specExaminer = SpecExaminerChannel(
+butler = Butler.from_config(locationConfig.auxtelButlerPath, collections=["LATISS/raw/all"])
+writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
+butlerWatcher = ButlerWatcher(
+    butler=butler,
     locationConfig=locationConfig,
-    instrument="LATISS",
+    instrument=instrument,
+    dataProducts="raw",
+    doRaise=getDoRaise(),
 )
-specExaminer.run()
+butlerWatcher.run()

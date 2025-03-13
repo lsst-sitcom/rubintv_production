@@ -19,19 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
-from lsst.rubintv.production.rubinTv import IsrRunner
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.timedServices import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
+checkRubinTvExternalPackages()
 
-print(f"Running isr runner at {location}...")
-isrRunner = IsrRunner(
+locationConfig = getAutomaticLocationConfig()
+print(f"Running LATISS metadata server at {locationConfig.location}...")
+
+metadataDirectory = locationConfig.auxTelMetadataPath
+shardsDirectory = locationConfig.auxTelMetadataShardPath
+channelName = "auxtel_metadata"
+
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
-    instrument="LATISS",
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+    doRaise=getDoRaise(),
 )
-isrRunner.run()
+metadataServer.run()

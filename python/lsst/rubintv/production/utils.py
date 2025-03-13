@@ -40,6 +40,7 @@ import numpy as np
 import yaml
 
 from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from lsst.utils import getPackageDir
@@ -341,10 +342,9 @@ class LocationConfig:
         file = self._config["dimensionUniverseFile"]
         return file
 
-    def butlerPath(self):
-        file = self._config["butlerPath"]
-        self._checkFile(file)
-        return file
+    @cached_property
+    def auxtelButlerPath(self):
+        return self._config["auxtelButlerPath"]
 
     @cached_property
     def ts8ButlerPath(self):
@@ -535,6 +535,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def lsstCamAosMetadataPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamAosMetadataShardPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
@@ -561,7 +573,6 @@ class LocationConfig:
     @cached_property
     def lsstCamButlerPath(self) -> str:
         directory = self._config["lsstCamButlerPath"]
-        self._checkFile(directory)
         return directory
 
     # TMA config:
@@ -864,28 +875,36 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
 def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: str) -> None:
     """Write the exposure record metedata to a shard.
 
-    Only fires once, based on the value of TS8_METADATA_DETECTOR or
-    LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
-
     Parameters
     ----------
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record.
+    metadataShardPath : `str`
+        The directory to write the shard to.
     """
     md = {}
     md["Exposure time"] = expRecord.exposure_time
+    md["Darktime"] = expRecord.dark_time
     md["Image type"] = expRecord.observation_type
     md["Reason"] = expRecord.observation_reason
     md["Date begin"] = expRecord.timespan.begin.isot
     md["Program"] = expRecord.science_program
     md["Group name"] = expRecord.group
-    md["Filter"] = expRecord.physical_filter
     md["Target"] = expRecord.target_name
     md["RA"] = expRecord.tracking_ra
     md["Dec"] = expRecord.tracking_dec
     md["Sky angle"] = expRecord.sky_angle
     md["Azimuth"] = expRecord.azimuth
+    md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
+    md["Can see the sky?"] = expRecord.can_see_sky
+
+    if expRecord.instrument == "LATISS":
+        filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
+        md["Filter"] = filt
+        md["Disperser"] = disperser
+    else:
+        md["Filter"] = expRecord.physical_filter
 
     seqNum = expRecord.seq_num
     dayObs = expRecord.day_obs
@@ -1232,7 +1251,7 @@ def getShardPath(locationConfig: LocationConfig, expRecord: DimensionRecord, isA
             return locationConfig.comCamSimMetadataShardPath
         case "LSSTCam":
             if isAos:
-                raise ValueError("No AOS metadata for LSSTCam yet")
+                return locationConfig.lsstCamAosMetadataShardPath
             return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")
@@ -1292,6 +1311,33 @@ def getPodWorkerNumber() -> int:
     return workerNum
 
 
+def getWitnessDetectorNumber(instrument: str) -> int:
+    """Get the witness detector number for a given instrument.
+
+    This is a placeholder function to provide the interface for if we want to
+    make this user selectable in the future (e.g. via LOVE), or read from a
+    config file. For now, we hard-code the central detectors.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    detectorNum : `int`
+        The witness detector number.
+    """
+    if instrument == "LATISS":
+        return 0
+    elif instrument == "LSSTCam":
+        return 94
+    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
+        return 4
+    else:
+        raise ValueError(f"Unknown instrument {instrument=}")
+
+
 def isCalibration(expRecord: DimensionRecord) -> bool:
     """Check if the exposure is a calibration exposure.
 
@@ -1349,3 +1395,29 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     """
     noDetector = {k: v for k, v in dataCoord.required.items() if k != "detector"}
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
+
+
+def getFilterColorName(physicalFilter: str) -> str | None:
+    """Get the color name for a physical filter to color cells on RubinTV.
+
+    If the color doesn't have a mapping, ``None`` is returned.
+
+    Parameters
+    ----------
+    physicalFilter : `str`
+        The physical filter name.
+
+    Returns
+    -------
+    colorName : `str`
+        The color name.
+    """
+    filterMap = {
+        "u_02": "u_color",
+        "g_01": "g_color",
+        "r_03": "r_color",
+        "i_06": "i_color",
+        "z_03": "z_color",
+        "y_04": "y_color",
+    }
+    return filterMap.get(physicalFilter)

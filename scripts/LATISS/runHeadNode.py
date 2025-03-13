@@ -19,21 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
-from lsst.rubintv.production.rubinTv import MetadataCreator
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.daf.butler import Butler
+from lsst.rubintv.production.processingControl import HeadProcessController
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
+instrument = "LATISS"
+locationConfig = getAutomaticLocationConfig()
+print(f"Running {instrument} head node at {locationConfig.location}...")
 
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running AuxTel metadata creator at {location}...")
-
-mdCreator = MetadataCreator(
-    locationConfig=locationConfig,
-    instrument="LATISS",
+butler = Butler.from_config(
+    locationConfig.auxtelButlerPath,
+    instrument=instrument,
+    collections=[
+        "LATISS/defaults",
+    ],
+    writeable=True,  # needed for defineVisits
 )
-mdCreator.run()
+
+controller = HeadProcessController(
+    butler=butler,
+    instrument=instrument,
+    locationConfig=locationConfig,
+)
+controller.run()

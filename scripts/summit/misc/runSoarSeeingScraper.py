@@ -19,19 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
+from lsst.summit.extras.soarSeeing import SoarDatabaseBuiler
 
-from lsst.rubintv.production.rubinTv import ImExaminerChannel
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
-from lsst.summit.utils.utils import setupLogging
+scraper = SoarDatabaseBuiler()
 
-setupLogging()
-checkRubinTvExternalPackages()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running imExaminer at {location}...")
-imExaminer = ImExaminerChannel(
-    locationConfig=locationConfig,
-    instrument="LATISS",
-)
-imExaminer.run()
+scraper.run()

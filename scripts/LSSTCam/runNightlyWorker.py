@@ -19,25 +19,44 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.timedServices import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
+import sys
+
+from lsst.daf.butler import Butler
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-checkRubinTvExternalPackages()
-
+instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
-print(f"Running ComCam metadata server at {locationConfig.location}...")
 
-metadataDirectory = locationConfig.comCamMetadataPath
-shardsDirectory = locationConfig.comCamMetadataShardPath
-channelName = "comcam_metadata"
+workerNum = getPodWorkerNumber()
+podDetails = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.NIGHTLYROLLUP_WORKER, detectorNumber=None, depth=workerNum
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
-metadataServer = TimedMetadataServer(
+butler = Butler.from_config(
+    locationConfig.lsstCamButlerPath,
+    collections=[
+        "LSSTCam/defaults",
+    ],
+    writeable=True,
+)
+
+rollupRunner = SingleCorePipelineRunner(
+    butler=butler,
     locationConfig=locationConfig,
-    metadataDirectory=metadataDirectory,
-    shardsDirectory=shardsDirectory,
-    channelName=channelName,
+    instrument=instrument,
+    pipeline=locationConfig.getSfmPipelineFile(instrument),
+    step="nightlyRollup",
+    awaitsDataProduct=None,
+    podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-metadataServer.run()
+rollupRunner.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here

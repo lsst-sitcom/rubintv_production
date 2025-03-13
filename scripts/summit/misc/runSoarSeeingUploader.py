@@ -19,22 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
+from lsst.rubintv.production.soarSeeing import SoarUploader
+from lsst.rubintv.production.utils import getDoRaise
 
-import lsst.summit.utils.butlerUtils as butlerUtils
-from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import LocationConfig, writeDimensionUniverseFile
-from lsst.summit.utils.utils import setupLogging
+uploader = SoarUploader(doRaise=getDoRaise())
 
-setupLogging()
-
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running butler watcher at {location}...")
-butler = butlerUtils.makeDefaultLatissButler()
-writeDimensionUniverseFile(butler, locationConfig)
-dataProducts = ["raw", "quickLookExp"]
-butlerWatcher = ButlerWatcher(
-    locationConfig=locationConfig, instrument="LATISS", butler=butler, dataProducts=dataProducts, doRaise=True
-)
-butlerWatcher.run()
+uploader.run()

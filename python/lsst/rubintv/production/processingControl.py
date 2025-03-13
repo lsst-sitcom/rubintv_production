@@ -24,6 +24,7 @@ from __future__ import annotations
 import enum
 import json
 import logging
+import time
 from ast import literal_eval
 from dataclasses import dataclass
 from time import sleep
@@ -38,10 +39,12 @@ from lsst.daf.butler import (
     CollectionType,
     DataCoordinate,
     DatasetNotFoundError,
+    DatasetRef,
     DimensionRecord,
     MissingCollectionError,
     Registry,
 )
+from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: DM-XXXXX fix this import
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
@@ -127,14 +130,17 @@ def prepRunCollection(
         initRefs: dict[str, Any] = {}
         taskFactory = TaskFactory()
         for taskNode in pipelineGraph.tasks.values():
-            inputRefs = [
-                (
-                    butler.find_dataset(readEdge.dataset_type_name, collections=[run])
-                    if readEdge.dataset_type_name not in readEdge.dataset_type_name
-                    else initRefs[readEdge.dataset_type_name]
-                )
-                for readEdge in taskNode.init.inputs.values()
-            ]
+            inputRefs = cast(
+                Iterable[DatasetRef] | None,
+                [
+                    (
+                        butler.find_dataset(readEdge.dataset_type_name, collections=[run])
+                        if readEdge.dataset_type_name not in readEdge.dataset_type_name
+                        else initRefs[readEdge.dataset_type_name]
+                    )
+                    for readEdge in taskNode.init.inputs.values()
+                ],
+            )
             task = taskFactory.makeTask(taskNode, butler, inputRefs)
 
             for writeEdge in taskNode.init.outputs.values():
@@ -170,8 +176,15 @@ def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
         task = DefineVisitsTask(config=config, butler=butler)
-
-        task.run([{"exposure": expRecord.id}], collections=butler.collections)
+        try:
+            task.run([{"exposure": expRecord.id}], collections=butler.collections)
+        except DatabaseConflictError:
+            log = logging.getLogger("lsst.rubintv.production.processControl.defineVisit")
+            log.warning(
+                f"Failed to define visit for {expRecord.id} due to a conflict error. This is likely"
+                " due to a change in the stack causing a slight difference in the calculated region."
+            )
+            pass
 
 
 def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
@@ -261,8 +274,14 @@ class PipelineComponents:
 
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
-            self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
-            self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            try:
+                self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
+                self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            except Exception as e:
+                log = logging.getLogger("lsst.rubintv.production.processControl.PipelineComponents")
+                log.warning(f"MAJOR ERROR IN PIPELINE CREATION! Failedf to load {self.uris[step]}: {e}")
+                self.graphs[step] = None
+                self.graphBytes[step] = b""
 
         self.steps = steps
 
@@ -308,7 +327,17 @@ class HeadProcessController:
         self.nNightlyRollups: int = 0
 
         if self.focalPlaneControl is not None:
-            self.focalPlaneControl.setAllImagingOn()
+            if self.locationConfig.location == "base":
+                # five on a dice pattern in the middle, plus AOS chips
+                self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setRaftOn("R22")
+                self.focalPlaneControl.setRaftOn("R33")
+                self.focalPlaneControl.setRaftOn("R11")
+                self.focalPlaneControl.setRaftOn("R13")
+                self.focalPlaneControl.setRaftOn("R31")
+            else:
+                self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setAllImagingOn()
 
         self.buildPipelines()
 
@@ -340,7 +369,11 @@ class HeadProcessController:
         self.pipelines["SFM"] = PipelineComponents(
             self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
         )
-        self.pipelines["AOS"] = PipelineComponents(self.butler.registry, aosPipelineFile, ["step1", "step2a"])
+        if self.instrument != "LATISS":
+            # TODO: see if this will matter that this component doesn't exist
+            self.pipelines["AOS"] = PipelineComponents(
+                self.butler.registry, aosPipelineFile, ["step1", "step2a"]
+            )
 
         self.allGraphs: list[PipelineGraph] = []
         for pipeline in self.pipelines.values():
@@ -364,7 +397,9 @@ class HeadProcessController:
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
 
-        allRunNums = [int(run.removeprefix(self.outputChain + "/")) for run in allRuns]
+        allRunNums = [
+            int(run.removeprefix(self.outputChain + "/")) for run in allRuns if self.outputChain in run
+        ]
         lastRunNum = max(allRunNums) if allRunNums else 0
         lastRun = f"{self.outputChain}/{lastRunNum}"
 
@@ -403,32 +438,33 @@ class HeadProcessController:
         return False
 
     def getPerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
-        # TODO: this really should take all the detectorIds that we need a free
-        # worker for and return them all at once so that we only have to call
-        # redisHelper.getFreeWorkers() once but I'm too low on time right now.
+        # NOTE: currently unused, replaced by _dispatchPayloads() but kept in
+        # case it's needed.
 
-        sfmWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
-        sfmWorkers = sorted(sfmWorkers)  # the lowest number in the stack will be at the top alphabetically
+        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
+        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
 
-        idMatchedWorkers = [pod for pod in sfmWorkers if pod.detectorNumber == detectorId]
+        idMatchedWorkers = [pod for pod in freeWorkers if pod.detectorNumber == detectorId]
+        if idMatchedWorkers:
+            return idMatchedWorkers[0]
 
-        if idMatchedWorkers == []:
-            # TODO: until we have a real backlog queue just put it on the last
-            # worker in the stack.
-            busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-            idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
-            busyWorker = idMatchedWorkers[-1]
-            self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
-            return busyWorker
-        return idMatchedWorkers[0]
+        # TODO: until we have a real backlog queue just put it on the last
+        # worker in the stack.
+        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
+        idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
+        busyWorker = idMatchedWorkers[-1]
+        self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
+        return busyWorker
 
-    def getGatherWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
+    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
             return freeWorkers[0]
 
-        # We have no free workers of this type, so send to a busy work and warn
+        # We have no free workers of this type, so send to a busy worker and
+        # warn
+
         # TODO: until we have a real backlog queue just put it on the last
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -445,7 +481,7 @@ class HeadProcessController:
             The expRecord to process.
         """
         # run isr only for calibs, otherwise run the appropriate step1
-        isCalib = isCalibration(expRecord)
+        isCalib = isCalibration(expRecord) or expRecord.observation_type.lower() == "unknown"
         if isCalib:
             self.log.info(f"Sending {expRecord.id} to for calibration processing")
             targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
@@ -463,27 +499,23 @@ class HeadProcessController:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
-        dataIds = {}
-        for detectorId in detectorIds:
-            dataIds[detectorId] = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
-
         self.log.info(
             f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
             f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'}."
         )
 
-        for detectorId, dataId in dataIds.items():
-            worker = self.getPerDetectorWorker(expRecord.instrument, detectorId, PodFlavor.SFM_WORKER)
-            self.log.info(f"Sending det={detectorId} to {worker.queueName} for {dataId}")
+        payloads: dict[int, Payload] = {}
+        for detectorId in detectorIds:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
             payload = Payload(
                 dataIds=[dataId],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
             )
-            self.redisHelper.enqueuePayload(payload, worker)
+            payloads[detectorId] = payload
 
-        self.nDispatched += 1  # required for the alternating by twos mode
+        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
     def doStep1FanoutAos(self, expRecords: list[DimensionRecord]) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -532,10 +564,74 @@ class HeadProcessController:
             f" {len(detectorIds)} detectors"
         )
 
+        self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+
+    def _dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
+        """Distribute payloads to available workers based on detector IDs.
+
+        Attempts to send payloads to workers. It first tries to match payloads
+        with free workers that handle the same detector. If no matching free
+        worker is available, it will try to send to a busy worker handling the
+        same detector. If no worker (free or busy) exists for the detector, an
+        exception is raised, as this means the cluster is misconfigured.
+
+        Parameters
+        ----------
+        payloads : dict[int, Payload]
+            Dictionary mapping detector IDs to payload objects to be processed.
+        podFlavor : PodFlavor
+            The pod flavor to use for worker selection.
+
+        Raises
+        ------
+        RuntimeError
+            If no workers (free or busy) are available for a specific detector.
+        """
+        freeWorkers = self.redisHelper.getFreeWorkers(instrument=self.instrument, podFlavor=podFlavor)
+        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
+        busyWorkers = self.redisHelper.getAllWorkers(instrument=self.instrument, podFlavor=podFlavor)
+        busyWorkers = sorted(busyWorkers)
+
+        # handle the just started up condition
+        detectorWorkers = {w.detectorNumber for w in freeWorkers + busyWorkers}
+        missingWorkers = [detId for detId in payloads if detId not in detectorWorkers]
+        if missingWorkers:  # probably due to just restarting
+            self.log.warning(f"No workers available for {podFlavor=} for detectors={missingWorkers}")
+            if self.timeAlive < 60:
+                # we've just been rebooted so give workers a chance to come up
+                # and then retry. If we haven't just been rebooted, the rest of
+                # this function will raise, and correctly so.
+                sleep(30)
+                self._dispatchPayloads(payloads, podFlavor)
+                return
+
         for detectorId, payload in payloads.items():
-            worker = self.getPerDetectorWorker(self.instrument, detectorId, PodFlavor.AOS_WORKER)
-            self.log.info(f"Sending {detectorId=} to {worker} for {dataIds[detectorId]}")
-            self.redisHelper.enqueuePayload(payload, worker)
+            matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
+            if matchingFreeWorkers:
+                worker = matchingFreeWorkers[0]
+                self.log.info(f"Sending {detectorId=} to free worker {worker.queueName} for {payload.who}")
+                self.redisHelper.enqueuePayload(payload, worker)
+                continue
+
+            else:
+                # No free worker with matching detector, so look for busy one
+                matchingBusyWorkers = [w for w in busyWorkers if w.detectorNumber == detectorId]
+                if matchingBusyWorkers:
+                    worker = matchingBusyWorkers[0]
+                    self.log.warning(
+                        f"No free workers available for {detectorId=},"
+                        f" sending to busy worker {worker.queueName}"
+                    )
+                    self.redisHelper.enqueuePayload(payload, worker)
+                    continue
+                else:
+                    # Consider changing this to a log.exception for production,
+                    # but this should be a raise while we're configuring things
+                    # for LSSTCam
+                    raise RuntimeError(
+                        f"No workers (not even busy ones) available for {detectorId=},",
+                        f" cannot dispatch process for {payload.who}",
+                    )
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -550,19 +646,11 @@ class HeadProcessController:
 
         self.log.info(f"Sending signal to one-off processor for {idStr}")
 
-        workers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
-        workers = sorted(workers)
-        if not workers:
-            self.log.warning(f"No free workers available for {idStr} for one-off processing")
-
-            workers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-            if not workers:
-                self.log.error(f"No workers available for one-off processing for {idStr}. This is a problem.")
-                return
+        worker = self.getSingleWorker(expRecord.instrument, podFlavor=podFlavor)
 
         # who value doesn't matter for one-off processing, maybe SFM instead?
         payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="", who="ONE_OFF")
-        self.redisHelper.enqueuePayload(payload, workers[0])
+        self.redisHelper.enqueuePayload(payload, worker)
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
         expRecord = self.redisHelper.getExposureForFanout(self.instrument)
@@ -618,6 +706,9 @@ class HeadProcessController:
         dispatchedWork : `bool`
             Was anything sent out?
         """
+        if self.instrument == "LATISS":  # no gather type steps for single chip cameras
+            return False
+
         assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
         processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1", who=who)
 
@@ -656,7 +747,7 @@ class HeadProcessController:
                 who=who,
             )
 
-            worker = self.getGatherWorker(self.instrument, podFlavour)
+            worker = self.getSingleWorker(self.instrument, podFlavour)
             self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
             self.redisHelper.enqueuePayload(payload, worker)
             self.log.debug(f"Removing step1 finished counter for {idStr=}")
@@ -683,6 +774,11 @@ class HeadProcessController:
         doRollup : `bool`
             Did we do another rollup?
         """
+        if self.instrument == "LATISS":
+            # self.log.info("Consider making a one-off processor for
+            # the night plots and dispatching it here")
+            return False
+
         numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a", who="SFM")
         if numComplete > self.nNightlyRollups:
             self.log.info(
@@ -690,19 +786,16 @@ class HeadProcessController:
                 " dispatching them for nightly rollup"
             )
             self.nNightlyRollups = numComplete
-            self._dispatchNightlyRollup()
+            # TODO: try adding the current day_obs to this dataId
+            dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
+            dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
+            payload = Payload(
+                [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
+            )
+            queueName = self.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
+            self.redisHelper.enqueuePayload(payload, queueName)
             return True
         return False
-
-    def _dispatchNightlyRollup(self) -> None:
-        # TODO: try adding the current day_obs to this dataId
-        dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
-        dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-        payload = Payload(
-            [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
-        )
-        queueName = self.getGatherWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
-        self.redisHelper.enqueuePayload(payload, queueName)
 
     def dispatchFocalPlaneMosaics(self) -> None:
         """Dispatch the focal plane mosaic task.
@@ -711,6 +804,11 @@ class HeadProcessController:
         individual CCD mosaics and make the full focal plane mosaic and upload
         to S3. At the moment, it will only work when everything is completed.
         """
+        if self.instrument == "LATISS":
+            # single chip cameras aren't plotted as binned mosaics, so this
+            # happens in a one-off-processor instead for all round ease.
+            return
+
         triggeringTasks = ("lsst.ip.isr.isrTaskLSST.IsrTaskLSST", "binnedCalexpCreation")
         dataProducts = ("postISRCCD", "calexp")
 
@@ -735,7 +833,7 @@ class HeadProcessController:
             for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload([dataId], b"", dataProduct, who="SFM")
-                queueName = self.getGatherWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+                queueName = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
                 self.redisHelper.enqueuePayload(payload, queueName)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
@@ -779,14 +877,19 @@ class HeadProcessController:
         else:
             if sleepPeriod < -0.05:  # allow some noise
                 lastLap = self.loopTimer.lastLapTime()
-                lastWork = self.loopTimer.lastLapTime()
+                lastWork = self.workTimer.lastLapTime()
                 self.log.warning(
                     f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
                 )
 
+    @property
+    def timeAlive(self) -> float:
+        return time.time() - self.startTime
+
     def run(self) -> None:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
+        self.startTime = time.time()
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
@@ -795,8 +898,9 @@ class HeadProcessController:
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
                 assert self.instrument == expRecord.instrument
+                self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
-                if not isWepImage(expRecord):
+                if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
                     self.doStep1FanoutSfm(expRecord)
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
@@ -1173,6 +1277,28 @@ class CameraControlConfig:
         """Turn all ITL sensors off."""
         for detector in self._imaging:
             if detector.getPhysicalType() == "ITL":
+                self._detectorStates[detector] = False
+
+    def setRaftOn(self, raftName: str) -> None:
+        for detector in self._detectors:
+            if detector.getName().startswith(raftName):
+                self._detectorStates[detector] = True
+
+    def setRaftOff(self, raftName: str) -> None:
+        for detector in self._detectors:
+            if detector.getName().startswith(raftName):
+                self._detectorStates[detector] = False
+
+    def setDetectorOn(self, detectorNumber: int) -> None:
+        # TODO: This really is grossly inefficient and could be costly
+        for detector in self._detectors:
+            if detector.getId() == detectorNumber:
+                self._detectorStates[detector] = True
+
+    def setDetectorOff(self, detectorNumber: int) -> None:
+        # TODO: This really is grossly inefficient and could be costly
+        for detector in self._detectors:
+            if detector.getId() == detectorNumber:
                 self._detectorStates[detector] = False
 
     def setFullFocalPlaneGuidersOn(self) -> None:

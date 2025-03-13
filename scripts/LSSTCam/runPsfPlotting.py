@@ -19,20 +19,31 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
-from lsst.rubintv.production.rubinTv import MountTorqueChannel
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.daf.butler import Butler
+from lsst.rubintv.production.aos import PsfAzElPlotter
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
-checkRubinTvExternalPackages()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-print(f"Running mount torque plotter at {location}...")
+instrument = "LSSTCam"
 
-mountTorquePlotter = MountTorqueChannel(
-    locationConfig=locationConfig,
-    instrument="LATISS",
+setupLogging()
+
+locationConfig = getAutomaticLocationConfig()
+butler = Butler.from_config(
+    locationConfig.lsstCamButlerPath,
+    instrument=instrument,
+    collections=[
+        f"{instrument}/defaults",
+        f"{instrument}/quickLook",
+    ],
 )
-mountTorquePlotter.run()
+print(f"Running psf plotter launcher at {locationConfig.location}")
+
+queueName = f"{instrument}-PSFPLOTTER"
+psfPlotter = PsfAzElPlotter(  # XXX needs type annotations adding and moving to podDetails
+    butler=butler,
+    locationConfig=locationConfig,
+    instrument=instrument,
+    queueName=queueName,
+)
+psfPlotter.run()

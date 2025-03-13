@@ -7,7 +7,8 @@ dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
 # Summit items:
 nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
 
-# AuxTel metadata
+# AuxTel
+auxtelButlerPath: /repo/main
 auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
 auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
 
@@ -50,6 +51,8 @@ comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_meta
 
 lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
+lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: /repo/embargo/butler.yaml
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
@@ -63,6 +66,7 @@ tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 
 sfmPipelineFile:
+  LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
@@ -72,6 +76,7 @@ aosPipelineFile:
   LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
 
 outputChains:
-  LSSTComCam: LSSTComCam/quickLookTesting
-  LSSTComCamSim: LSSTComCamSim/quickLookTesting
-  LSSTCam: LSSTCam/quickLookTesting
+  LATISS: LATISS/runs/quickLookTesting
+  LSSTComCam: LSSTComCam/runs/quickLookTesting
+  LSSTComCamSim: LSSTComCamSim/runs/quickLookTesting
+  LSSTCam: LSSTCam/runs/quickLookTesting
