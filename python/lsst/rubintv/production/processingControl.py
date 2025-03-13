@@ -1275,6 +1275,18 @@ class CameraControlConfig:
             if detector.getName().startswith(raftName):
                 self._detectorStates[detector] = False
 
+    def setDetectorOn(self, detectorNumber: int) -> None:
+        # TODO: This really is grossly inefficient and could be costly
+        for detector in self._detectors:
+            if detector.getId() == detectorNumber:
+                self._detectorStates[detector] = True
+
+    def setDetectorOff(self, detectorNumber: int) -> None:
+        # TODO: This really is grossly inefficient and could be costly
+        for detector in self._detectors:
+            if detector.getId() == detectorNumber:
+                self._detectorStates[detector] = False
+
     def setFullFocalPlaneGuidersOn(self) -> None:
         """Turn all ITL sensors on."""
         for detector in self._imaging:
