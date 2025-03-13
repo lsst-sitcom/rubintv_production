@@ -328,7 +328,7 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R13")
                 self.focalPlaneControl.setRaftOn("R31")
             else:
-                self.focalPlaneControl.setWavefrontOn()
+                # self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
         self.buildPipelines()
