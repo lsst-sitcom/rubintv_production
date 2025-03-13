@@ -886,7 +886,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
-                if not isWepImage(expRecord):
+                if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
                     self.doStep1FanoutSfm(expRecord)
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
