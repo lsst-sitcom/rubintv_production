@@ -54,7 +54,14 @@ from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
-from .utils import LocationConfig, getShardPath, isCalibration, isWepImage, writeExpRecordMetadataShard
+from .utils import (
+    LocationConfig,
+    getShardPath,
+    isCalibration,
+    isWepImage,
+    raiseIf,
+    writeExpRecordMetadataShard,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -446,9 +453,12 @@ class HeadProcessController:
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
-        busyWorker = idMatchedWorkers[-1]
-        self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
-        return busyWorker
+        try:
+            busyWorker = idMatchedWorkers[-1]
+            self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
+            return busyWorker
+        except IndexError as e:
+            raiseIf(self.doRaise, e, self.log)
 
     def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -462,9 +472,12 @@ class HeadProcessController:
         # TODO: until we have a real backlog queue just put it on the last
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-        busyWorker = busyWorkers[-1]
-        self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
-        return busyWorker
+        try:
+            busyWorker = busyWorkers[-1]
+            self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
+            return busyWorker
+        except IndexError as e:
+            raiseIf(self.doRaise, e, self.log)
 
     def doStep1FanoutSfm(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
