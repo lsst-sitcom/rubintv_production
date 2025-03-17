@@ -306,6 +306,7 @@ class HeadProcessController:
         locationConfig: LocationConfig,
         outputChain: str | None = None,
         forceNewRun: bool = False,
+        doRaise: bool = False,
     ) -> None:
         self.butler = butler
         self.instrument = instrument
@@ -324,6 +325,7 @@ class HeadProcessController:
         self.podDetails = PodDetails(
             instrument=instrument, podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None
         )
+        self.doRaise = doRaise
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
 
