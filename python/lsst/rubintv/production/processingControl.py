@@ -757,6 +757,9 @@ class HeadProcessController:
             )
 
             worker = self.getSingleWorker(self.instrument, podFlavour)
+            if not worker:
+                self.log.warning(f"No worker available for {who} step2a")
+                return False
             self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
             self.redisHelper.enqueuePayload(payload, worker)
             self.log.debug(f"Removing step1 finished counter for {idStr=}")
