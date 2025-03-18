@@ -23,6 +23,7 @@ import glob
 import logging
 import os
 import time
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.colors as colors
 import numpy as np
@@ -39,8 +40,19 @@ from lsst.utils.iteration import ensure_iterable
 
 from ..utils import isFileWorldWritable
 
+if TYPE_CHECKING:
+    from logging import Logger
 
-def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
+    from matplotlib.pyplot import Figure
+
+    from lsst.afw.cameraGeom import Camera, Detector
+    from lsst.afw.display import Display
+    from lsst.afw.image import Exposure, Image
+    from lsst.daf.butler import Butler, DeferredDatasetRef
+    from lsst.pipe.base import Struct
+
+
+def getBinnedFilename(expId: int, instrument: str, detectorName: str, dataPath: str, binSize: int) -> str:
     """Get the full path and filename for a binned image.
 
     Parameters
@@ -59,7 +71,7 @@ def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
     return os.path.join(dataPath, f"{expId}_{instrument}_{detectorName}_binned_{binSize}.fits")
 
 
-def getBinnedImageFiles(path, instrument, expId=None):
+def getBinnedImageFiles(path: str, instrument: str, expId: int | None = None) -> list[str]:
     """Get a list of the binned image files for a given instrument.
 
     Optionally filters to only return the matching expId if expId is
@@ -81,7 +93,7 @@ def getBinnedImageFiles(path, instrument, expId=None):
     return binnedImages
 
 
-def getBinnedImageExpIds(path, instrument):
+def getBinnedImageExpIds(path: str, instrument: str) -> list[int]:
     """Get a list of the exposure IDs for which binned images exist.
 
     Parameters
@@ -101,7 +113,9 @@ def getBinnedImageExpIds(path, instrument):
     return expIds
 
 
-def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
+def writeBinnedImageFromDeferredRefs(
+    deferredDatasetRefs: DeferredDatasetRef, outputPath: str, binSize: int
+) -> None:
     """Write a binned image out for a single or list of deferredDatasetRefs.
 
     Parameters
@@ -121,7 +135,7 @@ def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
         writeBinnedImage(exp, instrument=instrument, outputPath=outputPath, binSize=binSize)
 
 
-def writeBinnedImage(exp, instrument, outputPath, binSize):
+def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: int) -> None:
     """Bin an image and write it to disk.
 
     The image is binned by ``binSize`` and written to ``outputPath`` according
@@ -156,7 +170,15 @@ def writeBinnedImage(exp, instrument, outputPath, binSize):
         os.chmod(outFilename, 0o777)
 
 
-def readBinnedImage(expId, instrument, detectorName, dataPath, binSize, deleteAfterReading, logger=None):
+def readBinnedImage(
+    expId: int,
+    instrument: str,
+    detectorName: str,
+    dataPath: str,
+    binSize: int,
+    deleteAfterReading: bool,
+    logger: Logger | None = None,
+) -> Image:
     """Read a pre-binned image in from disk.
 
     Parameters
@@ -214,14 +236,18 @@ class PreBinnedImageSource:
     isTrimmed = True  # required attribute camGeom.utils.showCamera(imageSource)
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
-    def __init__(self, expId, instrument, dataPath, binSize, deleteAfterReading):
+    def __init__(
+        self, expId: int, instrument: str, dataPath: str, binSize: int, deleteAfterReading: bool
+    ) -> None:
         self.expId = expId
         self.instrument = instrument
         self.dataPath = dataPath
         self.binSize = binSize
         self.deleteAfterReading = deleteAfterReading
 
-    def getCcdImage(self, det, imageFactory, binSize, *args, **kwargs):
+    def getCcdImage(
+        self, det: Detector, imageFactory: Any, binSize: int, *args, **kwargs
+    ) -> tuple[Image, Detector]:
         """Call signature is required by camGeom.utils.showCamera(imageSource),
         but we don't use the arguments, e.g. imageFactory.
         """
@@ -239,16 +265,16 @@ class PreBinnedImageSource:
 
 
 def makeMosaic(
-    deferredDatasetRefs,
-    camera,
-    binSize,
-    dataPath,
-    timeout,
-    nExpected,
-    deleteIfComplete,
-    deleteRegardless,
-    logger=None,
-):
+    deferredDatasetRefs: list[DeferredDatasetRef],
+    camera: Camera,
+    binSize: int,
+    dataPath: str,
+    timeout: float,
+    nExpected: int,
+    deleteIfComplete: bool,
+    deleteRegardless: bool,
+    logger: Logger | None = None,
+) -> Struct:
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
     The binsize must match the binning used to write the images to disk
@@ -377,7 +403,7 @@ def makeMosaic(
     return pipeBase.Struct(output_mosaic=output_mosaic)
 
 
-def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
+def _getDetectorNamesWithData(expId: int, camera: Camera, dataPath: str, binSize: int) -> list[str]:
     """Check for existing binned image files and return the detector names
     for those with data.
 
@@ -408,20 +434,20 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
 
 
 def plotFocalPlaneMosaic(
-    butler,
-    figureOrDisplay,
-    expId,
-    camera,
-    binSize,
-    dataPath,
-    savePlotAs,
-    nExpected,
-    stretch,
-    timeout,
-    deleteIfComplete=True,
-    deleteRegardless=False,
-    logger=None,
-):
+    butler: Butler,
+    figureOrDisplay: Figure | Display,
+    expId: int,
+    camera: Camera,
+    binSize: int,
+    dataPath: str,
+    savePlotAs: str,
+    nExpected: int,
+    stretch: str,
+    timeout: float,
+    deleteIfComplete: bool = True,
+    deleteRegardless: bool = False,
+    logger: Logger | None = None,
+) -> Image | None:
     """Save a full focal plane binned mosaic image for a given expId.
 
     The binned images must have been created upstream with the correct binning
@@ -459,8 +485,8 @@ def plotFocalPlaneMosaic(
 
     Returns
     -------
-    existingNames : `list` of `str`
-        The detector names for which binned images exist.
+    mosaic : `lsst.afw.image.Image`
+        The mosaiced image.
     """
     if not logger:
         logger = logging.getLogger("lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic")
@@ -496,7 +522,9 @@ def plotFocalPlaneMosaic(
     return mosaic
 
 
-def _plotFpMosaic(im, figureOrDisplay, scalingOption="CCS", saveAs=""):
+def _plotFpMosaic(
+    im: Image, figureOrDisplay: Figure | Display, scalingOption: str = "CCS", saveAs: str = ""
+) -> Figure | Display:
     """Plot the focal plane mosaic, optionally saving as a png.
 
     Parameters
