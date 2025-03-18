@@ -128,7 +128,7 @@ class Plotter:
 
         self.fig.clear()
 
-        datapath = None
+        datapath = ""
         stretch = "CCS"
         displayToUse = None
         match dataProduct:
@@ -140,6 +140,8 @@ class Plotter:
                 datapath = self.locationConfig.binnedCalexpPath
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
+            case _:
+                raise ValueError(f"Unknown data product: {dataProduct}")
 
         # TODO: this template should go somewhere reusable as it's relied upon
         # elsewhere so this is fragile at present. Linked in animation code.

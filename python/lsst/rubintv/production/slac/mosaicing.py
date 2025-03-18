@@ -43,13 +43,13 @@ from ..utils import isFileWorldWritable
 if TYPE_CHECKING:
     from logging import Logger
 
-    from matplotlib.pyplot import Figure
+    from matplotlib.pyplot import Figure, Normalize
 
     from lsst.afw.cameraGeom import Camera, Detector
     from lsst.afw.display import Display
     from lsst.afw.image import Exposure, Image
-    from lsst.daf.butler import Butler, DeferredDatasetRef
-    from lsst.pipe.base import Struct
+    from lsst.daf.butler import Butler
+    from lsst.pipe.base import DeferredDatasetRef, Struct
 
 
 def getBinnedFilename(expId: int, instrument: str, detectorName: str, dataPath: str, binSize: int) -> str:
@@ -86,9 +86,10 @@ def getBinnedImageFiles(path: str, instrument: str, expId: int | None = None) ->
     expId : `int`, optional
         The exposure ID to filter on.
     """
+    expIdToUse = f"{expId}"
     if expId is None:
-        expId = ""
-    pattern = os.path.join(path, f"{expId}*{instrument}*binned*")
+        expIdToUse = ""
+    pattern = os.path.join(path, f"{expIdToUse}*{instrument}*binned*")
     binnedImages = glob.glob(pattern)
     return binnedImages
 
@@ -114,7 +115,7 @@ def getBinnedImageExpIds(path: str, instrument: str) -> list[int]:
 
 
 def writeBinnedImageFromDeferredRefs(
-    deferredDatasetRefs: DeferredDatasetRef, outputPath: str, binSize: int
+    deferredDatasetRefs: list[DeferredDatasetRef], outputPath: str, binSize: int
 ) -> None:
     """Write a binned image out for a single or list of deferredDatasetRefs.
 
@@ -128,7 +129,7 @@ def writeBinnedImageFromDeferredRefs(
     binSize : `int`
         The binning factor.
     """
-    deferredDatasetRefs = ensure_iterable(deferredDatasetRefs)
+    deferredDatasetRefs = list(ensure_iterable(deferredDatasetRefs))
     for dRef in deferredDatasetRefs:
         exp = dRef.get()
         instrument = dRef.dataId["instrument"]
@@ -347,6 +348,7 @@ def makeMosaic(
     firstWarn = True
     waitTime = -0.000001  # start at minus 1 microsec as an easy fix for the first loop for timeouts of zero
     startTime = time.time()
+    output_mosaic = None
     while (not success) and (waitTime < timeout):
         try:
             # keep trying while we wait for data to finish landing
@@ -515,7 +517,7 @@ def plotFocalPlaneMosaic(
     ).output_mosaic
     if mosaic is None:
         logger.warning(f"Failed to make mosaic for {expId}")
-        return
+        return None
     logger.info(f"Made mosaic image for {expId}")
     _plotFpMosaic(mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
@@ -541,10 +543,17 @@ def _plotFpMosaic(
     useAfwDisplay = scalingOption == "zscale"
 
     if not useAfwDisplay:  # figureOrDisplay is a matplotlib figure
+        if not isinstance(figureOrDisplay, Figure):
+            raise ValueError(
+                f"Wrong type of figure/display provided {type(figureOrDisplay)}"
+                f" for given stretch option {scalingOption}"
+            )
         data = im.array
         ax = figureOrDisplay.gca()
         ax.clear()
-        cmap = cm.gray
+        # XXX why is this type ignore necessary? Can I fix this?
+        cmap = cm.gray  # type: ignore
+        norm: Normalize
         match scalingOption:
             case "asinh":
 
@@ -571,6 +580,11 @@ def _plotFpMosaic(
         if saveAs:
             figureOrDisplay.savefig(saveAs)
     else:  # figureOrDisplay is an afwDisplay
+        if not isinstance(figureOrDisplay, Display):
+            raise ValueError(
+                f"Wrong type of figure/display provided {type(figureOrDisplay)}"
+                f" for given stretch option {scalingOption}"
+            )
         figureOrDisplay.scale("asinh", "zscale")
         figureOrDisplay.image(im)
         figureOrDisplay._impl._figure.tight_layout()
