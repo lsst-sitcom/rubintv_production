@@ -25,7 +25,6 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
-import matplotlib.pyplot as plt
 import numpy as np
 from astro_metadata_translator import ObservationInfo
 from astropy.time import Time
@@ -230,68 +229,75 @@ def calculateMountErrors(
         # Plotting
         figure.clear()
         title = f"Mount Tracking {dataIdString}, Azimuth = {azimuth:.1f}, Elevation = {elevation:.1f}"
-        plt.suptitle(title, fontsize=18)
+        figure.suptitle(title, fontsize=18)
+
         # Azimuth axis
-        plt.subplot(3, 3, 1)
-        ax1 = az["azimuthCalculatedAngle"].plot(legend=True, color="red")
+        ax1 = figure.add_subplot(3, 3, 1)
+        az["azimuthCalculatedAngle"].plot(ax=ax1, legend=True, color="red")
         ax1.set_title("Azimuth axis", fontsize=16)
         ax1.axvline(az.index[0], color="red", linestyle="--")
         ax1.set_xticks([])
         ax1.set_ylabel("Degrees")
-        plt.subplot(3, 3, 4)
-        plt.plot(fit_times, az_error, color="red")
 
-        plt.title(
+        ax4 = figure.add_subplot(3, 3, 4)
+        ax4.plot(fit_times, az_error, color="red")
+        ax4.set_title(
             f"Azimuth RMS error = {az_rms:.2f} arcseconds\n"
             f"  Image RMS error = {image_az_rms:.2f} arcseconds"
         )
-        plt.ylim(-10.0, 10.0)
-        plt.xticks([])
-        plt.ylabel("Arcseconds")
-        plt.subplot(3, 3, 7)
-        ax7 = az_torque_1["azimuthMotor1Torque"].plot(legend=True, color="blue")
-        ax7 = az_torque_2["azimuthMotor2Torque"].plot(legend=True, color="green")
+        ax4.set_ylim(-10.0, 10.0)
+        ax4.set_xticks([])
+        ax4.set_ylabel("Arcseconds")
+
+        ax7 = figure.add_subplot(3, 3, 7)
+        az_torque_1["azimuthMotor1Torque"].plot(ax=ax7, legend=True, color="blue")
+        az_torque_2["azimuthMotor2Torque"].plot(ax=ax7, legend=True, color="green")
         ax7.axvline(az.index[0], color="red", linestyle="--")
         ax7.set_ylabel("Torque (motor current in amps)")
 
         # Elevation axis
-        plt.subplot(3, 3, 2)
-        ax2 = el["elevationCalculatedAngle"].plot(legend=True, color="green")
+        ax2 = figure.add_subplot(3, 3, 2)
+        el["elevationCalculatedAngle"].plot(ax=ax2, legend=True, color="green")
         ax2.set_title("Elevation axis", fontsize=16)
         ax2.axvline(az.index[0], color="red", linestyle="--")
         ax2.set_xticks([])
-        plt.subplot(3, 3, 5)
-        plt.plot(fit_times, el_error, color="green")
-        plt.title(
+
+        ax5 = figure.add_subplot(3, 3, 5)
+        ax5.plot(fit_times, el_error, color="green")
+        ax5.set_title(
             f"Elevation RMS error = {el_rms:.2f} arcseconds\n"
             f"    Image RMS error = {image_el_rms:.2f} arcseconds"
         )
-        plt.ylim(-10.0, 10.0)
-        plt.xticks([])
-        plt.subplot(3, 3, 8)
-        ax8 = el_torque["elevationMotorTorque"].plot(legend=True, color="blue")
+        ax5.set_ylim(-10.0, 10.0)
+        ax5.set_xticks([])
+
+        ax8 = figure.add_subplot(3, 3, 8)
+        el_torque["elevationMotorTorque"].plot(ax=ax8, legend=True, color="blue")
         ax8.axvline(az.index[0], color="red", linestyle="--")
         ax8.set_ylabel("Torque (motor current in amps)")
 
         # Nasmyth2 rotator axis
-        plt.subplot(3, 3, 3)
-        ax3 = rot["nasmyth2CalculatedAngle"].plot(legend=True, color="blue")
+        ax3 = figure.add_subplot(3, 3, 3)
+        rot["nasmyth2CalculatedAngle"].plot(ax=ax3, legend=True, color="blue")
         ax3.set_title("Nasmyth2 axis", fontsize=16)
         ax3.axvline(az.index[0], color="red", linestyle="--")
         ax3.set_xticks([])
-        plt.subplot(3, 3, 6)
-        plt.plot(fit_times, rot_error, color="blue")
-        plt.title(
+
+        ax6 = figure.add_subplot(3, 3, 6)
+        ax6.plot(fit_times, rot_error, color="blue")
+        ax6.set_title(
             f"Nasmyth2 RMS error = {rot_rms:.2f} arcseconds\n"
             f"  Image RMS error <= {image_rot_rms:.2f} arcseconds"
         )
-        plt.ylim(-10.0, 10.0)
-        plt.xticks([])
-        plt.subplot(3, 3, 9)
-        ax9 = rot_torque["nasmyth2MotorTorque"].plot(legend=True, color="blue")
+        ax6.set_ylim(-10.0, 10.0)
+        ax6.set_xticks([])
+
+        ax9 = figure.add_subplot(3, 3, 9)
+        rot_torque["nasmyth2MotorTorque"].plot(ax=ax9, legend=True, color="blue")
         ax9.axvline(az.index[0], color="red", linestyle="--")
         ax9.set_ylabel("Torque (motor current in amps)")
-        plt.savefig(saveFilename)
+
+        figure.savefig(saveFilename)
 
         end = time.time()
         elapsed = end - start
