@@ -346,18 +346,6 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info("Finished publishing ecliptic coords")
         return
 
-    @staticmethod
-    def _setFlag(
-        value: float, key: str, warningLevel: float, badLevel: float, outputDict: dict[str, Any]
-    ) -> dict[str, Any]:
-        if value >= warningLevel:
-            flag = f"_{key}"
-            outputDict[flag] = "warning"
-        elif value >= badLevel:
-            flag = f"_{key}"
-            outputDict[flag] = "bad"
-        return outputDict
-
     def runMountAnalysis(self, expRecord: DimensionRecord) -> None:
         errors, data = calculateMountErrors(expRecord, self.efdClient)
         if errors is None or data is None:
@@ -416,18 +404,6 @@ class OneOffProcessor(BaseButlerChannel):
         self.mountFigure.clear()
         self.mountFigure.gca().clear()
 
-    def setFilterCellColor(self, expRecord: DimensionRecord) -> None:
-        filterName = expRecord.physical_filter
-        filterColor = getFilterColorName(filterName)
-        if filterColor:
-            md = {expRecord.seq_num: {"_Filter": filterColor}}
-            writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
-
-    def runExpRecord(self, expRecord: DimensionRecord) -> None:
-        self.calcTimeSincePrevious(expRecord)
-        self.setFilterCellColor(expRecord)
-        self.runMountAnalysis(expRecord)
-
     def writeLogMessageShards(self, dayObs: int) -> None:
         """Write a shard containing all the expLog annotations on the dayObs.
 
@@ -480,64 +456,6 @@ class OneOffProcessor(BaseButlerChannel):
             flag = f"_{key}"
             outputDict[flag] = "bad"
         return outputDict
-
-    def runMountAnalysis(self, expRecord: DimensionRecord) -> None:
-        errors, data = calculateMountErrors(expRecord, self.efdClient)
-        if errors is None or data is None:
-            self.log.warning(f"Failed to calculate mount errors for {expRecord.id}")
-            return
-
-        assert errors is not None
-        assert data is not None
-
-        outputDict = {}
-
-        value = errors.imageImpactRms
-        key = "Mount motion image degradation"
-        outputDict[key] = f"{value:.3f}"
-        outputDict = self._setFlag(value, key, MOUNT_IMAGE_WARNING_LEVEL, MOUNT_IMAGE_BAD_LEVEL, outputDict)
-
-        value = errors.azRms
-        key = "Mount azimuth RMS"
-        outputDict[key] = f"{value:.3f}"
-
-        value = errors.elRms
-        key = "Mount elevation RMS"
-        outputDict[key] = f"{value:.3f}"
-
-        value = errors.rotRms
-        key = "Mount rotator RMS"
-        outputDict[key] = f"{value:.3f}"
-
-        value = errors.nReplacedAz
-        key = "Mount azimuth points replaced"
-        outputDict[key] = f"{value}"
-        outputDict = self._setFlag(value, key, N_REPLACED_WARNING_LEVEL, N_REPLACED_BAD_LEVEL, outputDict)
-
-        value = errors.nReplacedEl
-        key = "Mount elevation points replaced"
-        outputDict[key] = f"{value}"
-        outputDict = self._setFlag(value, key, N_REPLACED_WARNING_LEVEL, N_REPLACED_BAD_LEVEL, outputDict)
-
-        dayObs = expRecord.day_obs
-        seqNum = expRecord.seq_num
-        rowData = {seqNum: outputDict}
-        self.log.info(f"Writing mount analysis shard for {dayObs}-{seqNum}")
-        writeMetadataShard(self.shardsDirectory, dayObs, rowData)
-
-        # TODO: DM-45437 Use a context manager here and everywhere
-        self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
-        tempFilename = tempfile.mktemp(suffix=".png")
-        plotMountErrors(data, errors, self.mountFigure)
-        self.uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(expRecord.instrument),
-            plotName="mount",
-            dayObs=expRecord.day_obs,
-            seqNum=expRecord.seq_num,
-            filename=tempFilename,
-        )
-        self.mountFigure.clear()
-        self.mountFigure.gca().clear()
 
     def setFilterCellColor(self, expRecord: DimensionRecord) -> None:
         filterName = expRecord.physical_filter
