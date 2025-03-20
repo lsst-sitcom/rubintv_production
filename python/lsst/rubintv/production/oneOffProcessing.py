@@ -642,7 +642,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         az_rms = errors["az_rms"]
         el_rms = errors["el_rms"]
         mountError = (az_rms**2 + el_rms**2) ** 0.5
-        contents = {"Mount jitter RMS": f"{mountError}"}
+        contents: dict[str, Any] = {"Mount jitter RMS": mountError}
         if np.isnan(mountError):
             contents = {"Mount jitter RMS": "nan"}
 
@@ -657,7 +657,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
         key = "Mount motion image degradation"
         flagKey = "_" + key  # color coding of cells always done by prepending with an underscore
-        contents.update({key: f"{imageError}"})
+        contents.update({key: imageError})
         if np.isnan(imageError):
             contents.update({key: "nan"})
 
