@@ -110,9 +110,15 @@ def calculateMountErrors(
         ``image_el_rms`` - The RMS elevation error for the image.
         ``image_rot_rms`` - The RMS rotator error for the image.
     """
-    # lsst-efd-client is not a required import at the top here, but is
-    # implicitly required as a client is passed into this function so is not
-    # rechecked here.
+    # TODO: DM-49609 unify this code with the new code in
+    # summit_utils.simonyi.mountAnalysis at least making this return the
+    # MountErrors class from there. Actually, this means moving it to
+    # summit_utils.auxtel.mount, and making it return the MountData class from
+    # the other file.
+
+    # lsst-efd-client is not a required import at
+    # the top here, but is implicitly required as a client is passed into this
+    # function so is not rechecked here.
 
     start = time.time()
 

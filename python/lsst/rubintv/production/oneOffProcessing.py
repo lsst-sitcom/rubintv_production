@@ -48,6 +48,7 @@ from lsst.summit.utils.utils import calcEclipticCoords
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
+from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
 from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
@@ -467,7 +468,9 @@ class OneOffProcessor(BaseButlerChannel):
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
-        # self.runMountAnalysis(expRecord)
+        if expRecord.instrument != "LATISS":
+            # TODO: DM-49609 unify this code
+            self.runMountAnalysis(expRecord)
 
     def callback(self, payload: Payload) -> None:
         dataId: DataCoordinate = payload.dataIds[0]
@@ -501,7 +504,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.makeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
-        # self.doMountAnalysis(expRecord)
+        self.doMountAnalysis(expRecord)
 
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
@@ -584,7 +587,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                 # performs the plotting. It skips many image types and short
                 # exps and returns False in these cases, otherwise it returns
                 # errors and will have made the plot
-                errors = calculateMountErrors(
+                errors = _calculateMountErrors_oldVersion(
                     expRecord, self.butler, self.efdClient, self.mountFigure, tempFile.name, self.log
                 )
                 if errors is False:
@@ -629,6 +632,8 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         """
+        # TODO: DM-49609 unify this code to work for Simonyi as well
+        assert expRecord.instrument == "LATISS", "This method is only for AuxTel at present"
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
