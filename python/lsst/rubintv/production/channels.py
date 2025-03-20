@@ -26,6 +26,7 @@ CHANNELS = [
     "comcam_noise_map",
     "comcam_focal_plane_mosaic",
     "comcam_metadata",
+    "comcam_mount",
     "comcam_sim_noise_map",
     "comcam_sim_focal_plane_mosaic",
     "comcam_sim_calexp_mosaic",
