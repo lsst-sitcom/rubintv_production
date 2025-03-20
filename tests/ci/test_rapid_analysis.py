@@ -104,6 +104,24 @@ TEST_SCRIPTS_ROUND_1 = [
         display_on_pass=True,
     ),
     TestScript(
+        "scripts/LSSTComCam/runOneOffExpRecord.py",
+        ["usdf_testing"],
+        tee_output=False,
+        display_on_pass=False,
+    ),
+    TestScript(
+        "scripts/LSSTComCam/runOneOffPostIsr.py",
+        ["usdf_testing"],
+        tee_output=False,
+        display_on_pass=False,
+    ),
+    TestScript(
+        "scripts/LSSTComCam/runOneOffCalexp.py",
+        ["usdf_testing"],
+        tee_output=False,
+        display_on_pass=False,
+    ),
+    TestScript(
         "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
