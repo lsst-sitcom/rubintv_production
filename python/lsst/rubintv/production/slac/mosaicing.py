@@ -29,12 +29,14 @@ from typing import TYPE_CHECKING, Any, cast
 import matplotlib.colors as colors
 import numpy as np
 from matplotlib import cm
+from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pipe.base as pipeBase
 from lsst.afw.cameraGeom import utils as cgu
+from lsst.afw.display import Display
 from lsst.afw.fits import FitsError
 from lsst.summit.utils import getQuantiles
 from lsst.utils.iteration import ensure_iterable
@@ -44,10 +46,9 @@ from ..utils import isFileWorldWritable
 if TYPE_CHECKING:
     from logging import Logger
 
-    from matplotlib.pyplot import Figure, Normalize
+    from matplotlib.pyplot import Normalize
 
     from lsst.afw.cameraGeom import Camera, Detector
-    from lsst.afw.display import Display
     from lsst.afw.image import Exposure, Image
     from lsst.daf.butler import Butler, DeferredDatasetHandle
     from lsst.pipe.base import Struct
