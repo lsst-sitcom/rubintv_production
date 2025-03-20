@@ -55,6 +55,7 @@ __all__ = [
     "Uploader",
     "S3Uploader",
     "UploadError",
+    "MultiUploader",
 ]
 
 
