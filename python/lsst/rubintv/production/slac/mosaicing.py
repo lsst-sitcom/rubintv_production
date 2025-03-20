@@ -24,7 +24,7 @@ import glob
 import logging
 import os
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib.colors as colors
 import numpy as np
@@ -49,8 +49,8 @@ if TYPE_CHECKING:
     from lsst.afw.cameraGeom import Camera, Detector
     from lsst.afw.display import Display
     from lsst.afw.image import Exposure, Image
-    from lsst.daf.butler import Butler
-    from lsst.pipe.base import DeferredDatasetRef, Struct
+    from lsst.daf.butler import Butler, DeferredDatasetHandle
+    from lsst.pipe.base import Struct
 
 
 def getBinnedFilename(expId: int, instrument: str, detectorName: str, dataPath: str, binSize: int) -> str:
@@ -116,7 +116,7 @@ def getBinnedImageExpIds(path: str, instrument: str) -> list[int]:
 
 
 def writeBinnedImageFromDeferredRefs(
-    deferredDatasetRefs: list[DeferredDatasetRef], outputPath: str, binSize: int
+    deferredDatasetRefs: list[DeferredDatasetHandle], outputPath: str, binSize: int
 ) -> None:
     """Write a binned image out for a single or list of deferredDatasetRefs.
 
@@ -133,7 +133,7 @@ def writeBinnedImageFromDeferredRefs(
     deferredDatasetRefs = list(ensure_iterable(deferredDatasetRefs))
     for dRef in deferredDatasetRefs:
         exp = dRef.get()
-        instrument = dRef.dataId["instrument"]
+        instrument = cast(str, dRef.dataId["instrument"])
         writeBinnedImage(exp, instrument=instrument, outputPath=outputPath, binSize=binSize)
 
 
@@ -267,7 +267,7 @@ class PreBinnedImageSource:
 
 
 def makeMosaic(
-    deferredDatasetRefs: list[DeferredDatasetRef],
+    deferredDatasetRefs: list[DeferredDatasetHandle],
     camera: Camera,
     binSize: int,
     dataPath: str,
@@ -328,11 +328,12 @@ def makeMosaic(
     instrument = camera.getName()
 
     detectorNameList = []
-    expIds = set()
+    expIds: set[int] = set()
 
     for dRef in deferredDatasetRefs:
         detNum = dRef.dataId["detector"]
-        expIds.add(dRef.dataId["exposure"])  # to check they all match
+        _expId = cast(int, dRef.dataId["exposure"])
+        expIds.add(_expId)  # to check they all match
         detName = camera[detNum].getName()
         detectorNameList.append(detName)
 
@@ -503,10 +504,10 @@ def plotFocalPlaneMosaic(
     logger.info(f"Found {len(dRefs)} dRefs for {expId}")
     # sleazy part - if the raw exists then the binned image will get written
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
-    deferredDrefs = [butler.getDeferred(d) for d in dRefs]
+    deferredDatasetHandles = [butler.getDeferred(d) for d in dRefs]
 
     mosaic = makeMosaic(
-        deferredDrefs,
+        deferredDatasetHandles,
         camera,
         binSize,
         dataPath,

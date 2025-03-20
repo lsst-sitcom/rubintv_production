@@ -481,7 +481,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 or event.seqNum not in self.plotsMade["M1M3HardpointAnalysis"]
             )
 
-            rowData = {}
+            rowData: dict[int, dict[str, float | str]] = {}
+            data: dict[int, dict[str, float | str]] = {}
             if event.seqNum not in self.plotsMade["MountMotionAnalysis"]:
                 try:
                     self.runMountMotionAnalysis(event)  # writes its own shard
