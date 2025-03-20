@@ -633,6 +633,8 @@ class OneOffProcessorAuxTel(OneOffProcessor):
             The exposure record.
         """
         # TODO: DM-49609 unify this code to work for Simonyi as well
+        # also the call to this function to the exposure record processor
+        # from the postISR processor.
         assert expRecord.instrument == "LATISS", "This method is only for AuxTel at present"
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
