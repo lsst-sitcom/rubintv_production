@@ -31,6 +31,7 @@ import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
+from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.imageExaminer import ImageExaminer
@@ -46,6 +47,7 @@ from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import calcEclipticCoords
 
 from .baseChannels import BaseButlerChannel
+from .consdbUtils import ConsDBPopulator
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
@@ -146,6 +148,8 @@ class OneOffProcessor(BaseButlerChannel):
 
         self.redisHelper = RedisHelper(butler, self.locationConfig)
         self.efdClient = makeEfdClient()
+        self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
     def writeFocusZ(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
@@ -613,6 +617,9 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
             # check for timebase errors and write a metadata shard if found
             self.checkTimebaseErrors(expRecord)
+
+            self.log.info("Sending mount jitter to ConsDB")
+            self.consDBPopulator.populateMountErrors(expRecord, errors, "latiss")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
