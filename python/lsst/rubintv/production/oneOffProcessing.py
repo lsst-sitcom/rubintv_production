@@ -48,6 +48,8 @@ from lsst.summit.utils.utils import calcEclipticCoords
 from .baseChannels import BaseButlerChannel
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .monitorPlotting import plotExp
+from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
+from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL_AUXTEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
@@ -663,9 +665,9 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         if np.isnan(imageError):
             contents.update({key: "nan"})
 
-        if imageError > MOUNT_IMAGE_BAD_LEVEL:
+        if imageError > MOUNT_IMAGE_BAD_LEVEL_AUXTEL:
             contents.update({flagKey: "bad"})
-        elif imageError > MOUNT_IMAGE_WARNING_LEVEL:
+        elif imageError > MOUNT_IMAGE_WARNING_LEVEL_AUXTEL:
             contents.update({flagKey: "warning"})
 
         md = {seqNum: contents}
