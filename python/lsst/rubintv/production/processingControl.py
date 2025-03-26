@@ -100,10 +100,7 @@ class VisitProcessingMode(enum.IntEnum):
 
 
 def prepRunCollection(
-    butler: Butler,
-    pipelineGraphs: Iterable[PipelineGraph],
-    run: str,
-    packages: Packages,
+    butler: Butler, pipelineGraphs: Iterable[PipelineGraph], run: str, packages: Packages, outputChain: str
 ) -> None:
     """This should only be run once with a particular combination of
     pipelinegraph and run.
@@ -119,11 +116,13 @@ def prepRunCollection(
     log = logging.getLogger("lsst.rubintv.production.processControl.prepRunCollection")
     newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
     if not newRun:
-        raise RuntimeError(
-            f"New {run=} already exists, so either there is a logic error in the head node"
+        log.warning(
+            f"New {run=} already existed, so either there was a logic error in the head node"
             " init/getLatestRunAndPrep() or someone manually created collections with that"
-            " prefix and didn't chain it to the output collection."
+            " prefix and didn't chain it to the output collection. Chaining it on now"
         )
+        allRuns = butler.registry.getCollectionChain(outputChain)
+        butler.registry.setCollectionChain(outputChain, [run] + list(allRuns))
 
     pipelineGraphs = list(pipelineGraphs)
     log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
@@ -395,7 +394,7 @@ class HeadProcessController:
         if needNewChain:
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
             lastRun = f"{self.outputChain}/0"
-            prepRunCollection(self.butler, self.allGraphs, lastRun, packages)
+            prepRunCollection(self.butler, self.allGraphs, lastRun, packages, self.outputChain)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
             self.log.info(f"Started brand new collection at {lastRun}")
             return lastRun
@@ -411,7 +410,7 @@ class HeadProcessController:
             lastRun = f"{self.outputChain}/{lastRunNum}"
 
             # prepRunCollection is called instead of registerCollection
-            prepRunCollection(self.butler, self.allGraphs, lastRun, packages)
+            prepRunCollection(self.butler, self.allGraphs, lastRun, packages, self.outputChain)
             self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
             self.log.info(f"Started new run collection at {lastRun}")
 
