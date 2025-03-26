@@ -72,9 +72,9 @@ sfmPipelineFile:
 
 aosPipelineFile:
   LATISS: ''
-  LSSTComCamSim: $TS_WEP_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
-  LSSTCam: $TS_WEP_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
+  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
+  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
   LATISS: LATISS/runs/quickLook
