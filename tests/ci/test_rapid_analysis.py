@@ -162,6 +162,7 @@ YAML_FILES_TO_CHECK = [
     "config/config_tts.yaml",
     "config/config_summit.yaml",
     "config/config_usdf_testing.yaml",
+    "config/config_usdf.yaml",
 ]
 
 # --------------- code to make file paths full --------------- #
