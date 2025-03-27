@@ -99,9 +99,13 @@ class VisitProcessingMode(enum.IntEnum):
     ALTERNATING_BY_TWOS = 2
 
 
-def prepRunCollection(
-    butler: Butler, pipelineGraphs: Iterable[PipelineGraph], run: str, packages: Packages, outputChain: str
-) -> None:
+def ensureRunCollection(
+    butler: Butler,
+    pipelineGraphs: Iterable[PipelineGraph],
+    packages: Packages,
+    outputChain: str,
+    runNumber: int,
+) -> str:
     """This should only be run once with a particular combination of
     pipelinegraph and run.
 
@@ -113,16 +117,19 @@ def prepRunCollection(
     created : `bool`
         Was a new run created? ``True`` if so, ``False`` if it already existed.
     """
-    log = logging.getLogger("lsst.rubintv.production.processControl.prepRunCollection")
-    newRun = butler.registry.registerCollection(run, CollectionType.RUN)  # fine to always call this
-    if not newRun:
-        log.warning(
-            f"New {run=} already existed, so either there was a logic error in the head node"
-            " init/getLatestRunAndPrep() or someone manually created collections with that"
-            " prefix and didn't chain it to the output collection. Chaining it on now"
-        )
-        allRuns = butler.registry.getCollectionChain(outputChain)
-        butler.registry.setCollectionChain(outputChain, [run] + list(allRuns))
+    log = logging.getLogger("lsst.rubintv.production.processControl.ensureRunCollection")
+
+    while True:
+        run = f"{outputChain}/{runNumber}"
+        newRun = butler.registry.registerCollection(run, CollectionType.RUN)
+        if not newRun:
+            runNumber += 1
+            log.warning(
+                f"New {run=} already existed, previous init probably failed, incrementing"
+                " run number automatically"
+            )
+        else:
+            break  # success
 
     pipelineGraphs = list(pipelineGraphs)
     log.info(f"Prepping new run {run} with {len(pipelineGraphs)} pipelineGraphs")
@@ -156,6 +163,7 @@ def prepRunCollection(
                     datasetTypeName,
                     run=run,
                 )
+    return run
 
 
 def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
@@ -391,32 +399,31 @@ class HeadProcessController:
         except MissingCollectionError:
             needNewChain = True
 
-        if needNewChain:
+        if needNewChain:  # special case where this is a totally new CHAINED collection
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
-            lastRun = f"{self.outputChain}/0"
-            prepRunCollection(self.butler, self.allGraphs, lastRun, packages, self.outputChain)
-            self.butler.registry.setCollectionChain(self.outputChain, [lastRun])
-            self.log.info(f"Started brand new collection at {lastRun}")
-            return lastRun
+            newCollection = ensureRunCollection(self.butler, self.allGraphs, packages, self.outputChain, 0)
+            self.butler.registry.setCollectionChain(self.outputChain, [newCollection])
+            self.log.info(f"Started brand new collection at {newCollection}")
+            return newCollection
 
         allRunNums = [
             int(run.removeprefix(self.outputChain + "/")) for run in allRuns if self.outputChain in run
         ]
         lastRunNum = max(allRunNums) if allRunNums else 0
-        lastRun = f"{self.outputChain}/{lastRunNum}"
+        latestRun = f"{self.outputChain}/{lastRunNum}"
 
-        if forceNewRun or self.checkIfNewRunNeeded(lastRun, packages):
+        if forceNewRun or self.checkIfNewRunNeeded(latestRun, packages):
             lastRunNum += 1
-            lastRun = f"{self.outputChain}/{lastRunNum}"
+            # ensureRunCollection is called instead of registerCollection
+            latestRun = ensureRunCollection(
+                self.butler, self.allGraphs, packages, self.outputChain, lastRunNum
+            )
+            self.butler.registry.setCollectionChain(self.outputChain, [latestRun] + list(allRuns))
+            self.log.info(f"Started new run collection at {latestRun}")
 
-            # prepRunCollection is called instead of registerCollection
-            prepRunCollection(self.butler, self.allGraphs, lastRun, packages, self.outputChain)
-            self.butler.registry.setCollectionChain(self.outputChain, [lastRun] + list(allRuns))
-            self.log.info(f"Started new run collection at {lastRun}")
+        return latestRun
 
-        return lastRun
-
-    def checkIfNewRunNeeded(self, lastRun: str, packages: Packages) -> bool:
+    def checkIfNewRunNeeded(self, latestRun: str, packages: Packages) -> bool:
         """Check if a new run is needed, and if so, create it and prep it.
 
         Needed if the configs change, or if the software versions change, or if
@@ -432,7 +439,7 @@ class HeadProcessController:
         quickLook this is sufficient.
         """
         try:
-            oldPackages = self.butler.get("packages", collections=[lastRun])
+            oldPackages = self.butler.get("packages", collections=[latestRun])
         except DatasetNotFoundError:  # for bootstrapping a new collection
             return False
         if packages.difference(oldPackages):  # checks if any of the versions are different
