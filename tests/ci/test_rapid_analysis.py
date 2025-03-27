@@ -690,13 +690,11 @@ def delete_output_files():
 def check_plots():
     locationConfig = LocationConfig("usdf_testing")
 
-    files = os.listdir(locationConfig.plotPath)
-    # TODO make this more data-driven
     expected = [
-        "calexp_mosaic_dayObs_20241102_seqNum_000170.jpg",
-        "postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
-        "postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
-        "postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
+        "LSSTComCam/20241102/LSSTComCam_calexp_mosaic_dayObs_20241102_seqNum_000170.jpg",
+        "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
+        "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
+        "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
         "20241102_171-fp_donut_gallery.png",
         "20241102_172-fp_donut_gallery.png",
         "20241102_172-zk_measurement_pyramid.png",
@@ -704,7 +702,8 @@ def check_plots():
     ]
 
     for file in expected:
-        if file in files:
+        full_path = os.path.join(locationConfig.plotPath, file)
+        if os.path.exists(full_path):
             CHECKS.append(Check(True, f"Found expected plot {file}"))
         else:
             CHECKS.append(Check(False, f"Did not find expected plot {file}"))
