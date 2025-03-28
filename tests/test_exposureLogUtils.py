@@ -37,11 +37,19 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
                 "id": "0123",
                 "obs_id": "AT_O_20230316_000520",
                 "seq_num": 520,
+                "instrument": "LATISS",
             },
             {
                 "id": "9999",
                 "obs_id": "AT_O_20230316_000521",
                 "seq_num": 521,
+                "instrument": "LATISS",
+            },
+            {
+                "id": "9998",
+                "obs_id": "AT_O_20230316_000521",
+                "seq_num": 522,
+                "instrument": "LSSTCam",
             },
         ]
         responses.add(

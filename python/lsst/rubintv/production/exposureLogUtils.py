@@ -59,7 +59,6 @@ def getLogsForDayObs(
     logs : `dict` [`int`, `dict`]
         The logs for the dayObs, keyed by seqNum.
     """
-    raise RuntimeError("This function cannot be used until it can differentiate between instruments!")
     if not logger:
         logger = logging.getLogger(__name__)
 
@@ -74,5 +73,5 @@ def getLogsForDayObs(
         return None
 
     logs = response.json()
-    messages = {log["seq_num"]: log for log in logs}
+    messages = {log["seq_num"]: log for log in logs if log["instrument"].lower() == instrument.lower()}
     return messages
