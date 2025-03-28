@@ -37,7 +37,7 @@ CliLog.initLog = do_nothing
 
 # only import from lsst.anything once the logging configs have been frozen
 # noqa: E402
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise  # noqa: E402
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI  # noqa: E402
 
 # --------------- Configuration --------------- #
 
@@ -347,6 +347,7 @@ def run_setup():
     """
     # set other env vars required for RA config
     os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
+    os.environ["RAPID_ANALYSIS_CI"] = "true"
 
     # Set environment variables for Redis
     os.environ["REDIS_HOST"] = REDIS_HOST
@@ -358,6 +359,9 @@ def run_setup():
     os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
     if getDoRaise() is not True:  # confirm that this will be used correctly by services
         raise RuntimeError("getDoRaise is not True")
+
+    if runningCI() is not True:
+        raise RuntimeError("runningCI is not True")
 
     return
 
@@ -696,6 +700,9 @@ def check_plots():
         "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
         "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
         "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
+        "LSSTComCam/20241102/LSSTComCam_mountTorque_dayObs_20241102_seqNum_000170.png",
+        "LSSTComCam/20241102/LSSTComCam_mountTorque_dayObs_20241102_seqNum_000171.png",
+        "LSSTComCam/20241102/LSSTComCam_mountTorque_dayObs_20241102_seqNum_000172.png",
         "20241102_171-fp_donut_gallery.png",
         "20241102_172-fp_donut_gallery.png",
         "20241102_172-zk_measurement_pyramid.png",

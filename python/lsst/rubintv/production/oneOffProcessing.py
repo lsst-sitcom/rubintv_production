@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
@@ -55,7 +56,14 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
-from .utils import getFilterColorName, getRubinTvInstrumentName, isCalibration, raiseIf, writeMetadataShard
+from .utils import (
+    getFilterColorName,
+    getRubinTvInstrumentName,
+    isCalibration,
+    managedTempFile,
+    raiseIf,
+    writeMetadataShard,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -391,23 +399,30 @@ class OneOffProcessor(BaseButlerChannel):
         outputDict[key] = f"{value}"
         outputDict = self._setFlag(value, key, N_REPLACED_WARNING_LEVEL, N_REPLACED_BAD_LEVEL, outputDict)
 
-        dayObs = expRecord.day_obs
-        seqNum = expRecord.seq_num
+        dayObs: int = expRecord.day_obs
+        seqNum: int = expRecord.seq_num
         rowData = {seqNum: outputDict}
         self.log.info(f"Writing mount analysis shard for {dayObs}-{seqNum}")
         writeMetadataShard(self.shardsDirectory, dayObs, rowData)
 
         # TODO: DM-45437 Use a context manager here and everywhere
         self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
-        tempFilename = tempfile.mktemp(suffix=".png")
-        plotMountErrors(data, errors, self.mountFigure, saveFilename=tempFilename)
-        self.uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(expRecord.instrument),
-            plotName="mount",
-            dayObs=expRecord.day_obs,
-            seqNum=expRecord.seq_num,
-            filename=tempFilename,
+
+        ciOutputName = (
+            Path(self.locationConfig.plotPath)
+            / self.instrument
+            / str(dayObs)
+            / f"{self.instrument}_mountTorque_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
         )
+        with managedTempFile(suffix=".png", ciOutputName=ciOutputName.as_posix()) as tempFile:
+            plotMountErrors(data, errors, self.mountFigure, saveFilename=tempFile)
+            self.uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(expRecord.instrument),
+                plotName="mount",
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=tempFile,
+            )
         self.mountFigure.clear()
         self.mountFigure.gca().clear()
 
