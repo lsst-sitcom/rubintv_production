@@ -28,13 +28,14 @@ import logging
 import math
 import os
 import sys
+import tempfile
 import time
 import uuid
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Generator
 
 import numpy as np
 import yaml
@@ -70,8 +71,20 @@ __all__ = [
     "sanitizeNans",
     "safeJsonOpen",
     "getNumExpectedItems",
+    "getShardPath",
+    "getRubinTvInstrumentName",
+    "getPodWorkerNumber",
+    "getWitnessDetectorNumber",
+    "isCalibration",
+    "isWepImage",
+    "removeDetector",
+    "getFilterColorName",
+    "runningCI",
+    "managedTempFile",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
+    "runningCI",
+    "managedTempFile",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -1421,3 +1434,64 @@ def getFilterColorName(physicalFilter: str) -> str | None:
         "y_04": "y_color",
     }
     return filterMap.get(physicalFilter)
+
+
+def runningCI() -> bool:
+    """Check if the code is running in a CI environment."""
+    return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
+
+
+@contextmanager
+def managedTempFile(
+    suffix: str,
+    ciOutputName: str = "",
+) -> Generator[str]:
+    """Context manager for temp files with handling for CI environments.
+
+    In normal operation, this creates a temporary file that is automatically
+    deleted when the context exits. In CI mode, it creates a permanent file in
+    the specified location. This is useful for testing and debugging, as it
+    allows inspection the output files in CI mode. The file is created with
+    a specific name to allow for existence checking.
+
+    Parameters
+    ----------
+    suffix : str
+        File suffix/extension.
+    ciOutputName : str, optional
+        The full name and path to the output file. Must be specified if running
+        in CI mode.
+
+    Yields
+    ------
+    str
+        Path to the temporary file
+    """
+    ciMode = runningCI()
+    if ciMode and not ciOutputName:
+        raise ValueError("CI mode is enabled but no output filename is specified.")
+    if ciMode and os.path.exists(ciOutputName):
+        raise FileExistsError(f"Output file {ciOutputName} already exists.")
+
+    if not ciMode:
+        # Standard operation - use a true temporary file that gets cleaned up
+        # delete=False so that it stays when we yield, but is cleaned up in
+        # finally block.
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tempFile:
+            tempFilename = tempFile.name
+            try:
+                yield tempFilename
+            finally:
+                # Always clean up in normal mode
+                if os.path.exists(tempFilename):
+                    os.unlink(tempFilename)
+    else:
+        # In CI mode, we keep the file for inspection
+        dirname = os.path.dirname(ciOutputName)
+        os.makedirs(dirname, exist_ok=True)
+
+        # Create an empty file to match the behavior of NamedTemporaryFile
+        with open(ciOutputName, "w"):
+            pass
+
+        yield ciOutputName
