@@ -446,7 +446,9 @@ class HeadProcessController:
             return True
         return False
 
-    def getPerDetectorWorker(self, instrument: str, detectorId: int, podFlavor: PodFlavor) -> PodDetails:
+    def getPerDetectorWorker(
+        self, instrument: str, detectorId: int, podFlavor: PodFlavor
+    ) -> PodDetails | None:
         # NOTE: currently unused, replaced by _dispatchPayloads() but kept in
         # case it's needed.
 
@@ -467,8 +469,9 @@ class HeadProcessController:
             return busyWorker
         except IndexError as e:
             raiseIf(self.doRaise, e, self.log)
+            return None
 
-    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails:
+    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
         if freeWorkers:
@@ -486,6 +489,7 @@ class HeadProcessController:
             return busyWorker
         except IndexError as e:
             raiseIf(self.doRaise, e, self.log)
+            return None
 
     def doStep1FanoutSfm(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -662,6 +666,9 @@ class HeadProcessController:
         self.log.info(f"Sending signal to one-off processor for {idStr}")
 
         worker = self.getSingleWorker(expRecord.instrument, podFlavor=podFlavor)
+        if worker is None:
+            self.log.error(f"No worker available for {podFlavor} for {idStr}")
+            return
 
         # who value doesn't matter for one-off processing, maybe SFM instead?
         payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="", who="ONE_OFF")
@@ -810,8 +817,11 @@ class HeadProcessController:
             payload = Payload(
                 [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
             )
-            queueName = self.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
-            self.redisHelper.enqueuePayload(payload, queueName)
+            worker = self.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
+            if worker is None:
+                self.log.error("No free workers available for nightly rollup")
+                return False
+            self.redisHelper.enqueuePayload(payload, worker)
             return True
         return False
 
@@ -851,8 +861,11 @@ class HeadProcessController:
             for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
                 # TODO: this abuse of Payload really needs improving
                 payload = Payload([dataId], b"", dataProduct, who="SFM")
-                queueName = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
-                self.redisHelper.enqueuePayload(payload, queueName)
+                worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+                if worker is None:
+                    self.log.error(f"No free workers available for {dataProduct} mosaic")
+                    continue
+                self.redisHelper.enqueuePayload(payload, worker)
                 self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
     def regulateLoopSpeed(self) -> None:
