@@ -56,23 +56,50 @@ DEBUG = False
 
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS_ROUND_1 = [
+    # LATISS pods:
+    TestScript(
+        "scripts/LATISS/runHeadNode.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+        tee_output=True,
+    ),
+    TestScript(
+        "scripts/LATISS/runSfmRunner.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+    ),
+    # TestScript(
+    #     "scripts/LATISS/runOneOffCalexp.py",
+    #     ["usdf_testing"],
+    # ),
+    TestScript(
+        "scripts/LATISS/runOneOffExpRecord.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+    ),
+    TestScript(
+        "scripts/LATISS/runOneOffPostIsr.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+    ),
+    # ComCam pods:
     # the main RA testing - runs data through the processing pods
     TestScript(
         "scripts/LSSTComCam/runPlotter.py",
         ["usdf_testing"],
-        display_on_pass=True,
-        tee_output=True,
+        display_on_pass=False,
+        tee_output=False,
     ),
     TestScript(
         "scripts/LSSTComCam/runStep2aWorker.py",
         ["usdf_testing", "0"],
         tee_output=False,
     ),
-    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
+    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=False),
     TestScript(
         "scripts/LSSTComCam/runSfmRunner.py",
         ["usdf_testing", "0"],
-        display_on_pass=True,
+        display_on_pass=False,
         tee_output=False,
     ),
     TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
@@ -86,8 +113,8 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript(
         "scripts/LSSTComCam/runAosWorker.py",
         ["usdf_testing", "0"],
-        display_on_pass=True,
-        tee_output=True,
+        display_on_pass=False,
+        tee_output=False,
         # do_debug=True
     ),
     TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),
@@ -101,7 +128,7 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript(
         "scripts/LSSTComCam/runStep2aAosWorker.py",
         ["usdf_testing", "0"],
-        display_on_pass=True,
+        display_on_pass=False,
     ),
     TestScript(
         "scripts/LSSTComCam/runOneOffExpRecord.py",
@@ -125,8 +152,8 @@ TEST_SCRIPTS_ROUND_1 = [
         "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
-        tee_output=True,
-        display_on_pass=True,
+        tee_output=False,
+        display_on_pass=False,
         # do_debug=True
     ),
     TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
@@ -398,6 +425,7 @@ def check_redis_final_contents():
     redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
     redisHelper.displayRedisContents()
 
+    # ComCam section
     inst = "LSSTComCam"
 
     visits_sfm = [
@@ -417,10 +445,12 @@ def check_redis_final_contents():
     n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
     if n_step2a_sfm != n_visits_sfm:
         CHECKS.append(
-            Check(False, f"Expected {n_visits_sfm} SFM step2a to have finished, got {n_step2a_sfm}")
+            Check(
+                False, f"Expected {n_visits_sfm} SFM step2a for {inst} to have finished, got {n_step2a_sfm}"
+            )
         )
     else:
-        CHECKS.append(Check(True, f"{n_step2a_sfm}x SFM step2a finished"))
+        CHECKS.append(Check(True, f"{n_step2a_sfm}x {inst} SFM step2a finished"))
     del n_visits_sfm
 
     n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
@@ -456,6 +486,25 @@ def check_redis_final_contents():
         CHECKS.append(Check(False, f"Found failed keys: {failed_keys}"))
     else:
         CHECKS.append(Check(True, "No failed keys found in redis"))
+
+    # LATISS section
+    inst = "LATISS"
+
+    visits_sfm = [
+        2024081300632,
+    ]
+    n_visits_sfm = len(visits_sfm)
+
+    # TODO add something for the task counters too, not just step2a entry etc
+
+    n_step1_sfm = redisHelper.getNumDetectorLevelFinished(inst, "step1", "SFM", "2024081300632")
+    if n_step1_sfm != n_visits_sfm:
+        CHECKS.append(
+            Check(False, f"Expected {n_visits_sfm} SFM step1 for {inst} to have finished, got {n_step1_sfm}")
+        )
+    else:
+        CHECKS.append(Check(True, f"{n_step1_sfm}x {inst} SFM step1 finished"))
+    del n_visits_sfm
 
     return
 
@@ -700,13 +749,17 @@ def check_plots():
         "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
         "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
         "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
-        "LSSTComCam/20241102/LSSTComCam_mountTorque_dayObs_20241102_seqNum_000170.png",
-        "LSSTComCam/20241102/LSSTComCam_mountTorque_dayObs_20241102_seqNum_000171.png",
-        "LSSTComCam/20241102/LSSTComCam_mountTorque_dayObs_20241102_seqNum_000172.png",
+        "LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000170.png",
+        "LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000171.png",
+        "LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000172.png",
         "20241102_171-fp_donut_gallery.png",
         "20241102_172-fp_donut_gallery.png",
         "20241102_172-zk_measurement_pyramid.png",
         "20241102_172-zk_residual_pyramid.png",
+        "LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png",
+        "LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png",
+        "LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png",
+        "LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png",
     ]
 
     for file in expected:

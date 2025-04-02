@@ -376,10 +376,12 @@ class HeadProcessController:
 
         self.pipelines = {}
         self.pipelines["ISR"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["isr"])
-        self.pipelines["SFM"] = PipelineComponents(
-            self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
-        )
-        if self.instrument != "LATISS":
+        if self.instrument == "LATISS":
+            self.pipelines["SFM"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["step1"])
+        else:
+            self.pipelines["SFM"] = PipelineComponents(
+                self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
+            )
             # TODO: see if this will matter that this component doesn't exist
             self.pipelines["AOS"] = PipelineComponents(
                 self.butler.registry, aosPipelineFile, ["step1", "step2a"]

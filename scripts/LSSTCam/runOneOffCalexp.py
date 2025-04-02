@@ -48,7 +48,7 @@ butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
     collections=[
         f"{instrument}/defaults",
-        f"{instrument}/quickLook",  # accesses the outputs
+        locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
 )

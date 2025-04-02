@@ -46,8 +46,8 @@ butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
     collections=[
         # XXX needs changing to defaults and the quicklook collection creating
-        "LATISS/raw/all",
-        "LATISS/calib",
+        "LATISS/defaults",
+        locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
 )

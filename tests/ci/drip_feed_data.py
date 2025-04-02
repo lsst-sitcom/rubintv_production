@@ -42,3 +42,19 @@ for record in records:  # XXX remove the slice!
 
 print("Pushing pair announcement signal to redis (simulating OCS signal)")
 redisHelper.redis.rpush("LSSTComCam-FROM-OCS_DONUTPAIR", "2024110200171,2024110200172")
+
+# do LATISS with the same drip-feeder
+instrument = "LATISS"
+locationConfig = getAutomaticLocationConfig()
+butler = dafButler.Butler(
+    locationConfig.auxtelButlerPath,
+    collections=[
+        f"{instrument}/defaults",
+    ],
+)
+
+where = f"exposure.day_obs=20240813 AND exposure.seq_num=632 AND instrument='{instrument}'"  # on sky!
+records = list(butler.registry.queryDimensionRecords("exposure", where=where))
+assert len(records) == 1, f"Expected 1 LATISS record, got {len(records)}"
+redisHelper.pushNewExposureToHeadNode(records[0])
+redisHelper.pushToButlerWatcherList(instrument, records[0])

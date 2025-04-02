@@ -21,8 +21,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
@@ -57,11 +55,13 @@ from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersi
 from .redisUtils import RedisHelper
 from .uploaders import MultiUploader
 from .utils import (
+    getCiPlotName,
     getFilterColorName,
     getRubinTvInstrumentName,
     isCalibration,
     managedTempFile,
     raiseIf,
+    runningCI,
     writeMetadataShard,
 )
 
@@ -408,13 +408,8 @@ class OneOffProcessor(BaseButlerChannel):
         # TODO: DM-45437 Use a context manager here and everywhere
         self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
 
-        ciOutputName = (
-            Path(self.locationConfig.plotPath)
-            / self.instrument
-            / str(dayObs)
-            / f"{self.instrument}_mountTorque_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
-        )
-        with managedTempFile(suffix=".png", ciOutputName=ciOutputName.as_posix()) as tempFile:
+        ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             plotMountErrors(data, errors, self.mountFigure, saveFilename=tempFile)
             self.uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(expRecord.instrument),
@@ -530,8 +525,9 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
-                plotExp(exp, self.monitorFigure, tempFile.name, doSmooth=False, scalingOption="CCS")
+            ciName = getCiPlotName(self.locationConfig, expRecord, "monitor")
+            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+                plotExp(exp, self.monitorFigure, tempFile, doSmooth=False, scalingOption="CCS")
                 self.log.info("Uploading imExam to storage bucket")
                 assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
                 self.s3Uploader.uploadPerSeqNumPlot(
@@ -539,7 +535,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                     plotName="monitor",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFile.name,
+                    filename=tempFile,
                 )
                 self.log.info("Upload complete")
 
@@ -552,8 +548,9 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
-                imExam = ImageExaminer(exp, savePlots=tempFile.name, doTweakCentroid=True)
+            ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
+            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+                imExam = ImageExaminer(exp, savePlots=tempFile, doTweakCentroid=True)
                 imExam.plot()
                 self.log.info("Uploading imExam to storage bucket")
                 assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
@@ -562,7 +559,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                     plotName="imexam",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFile.name,
+                    filename=tempFile,
                 )
                 self.log.info("Upload complete")
                 del imExam
@@ -582,8 +579,9 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
         self.log.info(f"Running specExam on {expRecord.dataId}")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
-                summary = SpectrumExaminer(exp, savePlotAs=tempFile.name)
+            ciName = getCiPlotName(self.locationConfig, expRecord, "specexam")
+            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+                summary = SpectrumExaminer(exp, savePlotAs=tempFile)
                 summary.run()
                 self.log.info("Uploading specExam to storage bucket")
                 assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
@@ -592,7 +590,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                     plotName="specexam",
                     dayObs=expRecord.day_obs,
                     seqNum=expRecord.seq_num,
-                    filename=tempFile.name,
+                    filename=tempFile,
                 )
                 self.log.info("Upload complete")
         except Exception as e:
@@ -603,13 +601,14 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         seqNum = expRecord.seq_num
 
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tempFile:
+            ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
+            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 # calculateMountErrors() calculates the errors, but also
                 # performs the plotting. It skips many image types and short
                 # exps and returns False in these cases, otherwise it returns
                 # errors and will have made the plot
                 errors = _calculateMountErrors_oldVersion(
-                    expRecord, self.butler, self.efdClient, self.mountFigure, tempFile.name, self.log
+                    expRecord, self.butler, self.efdClient, self.mountFigure, tempFile, self.log
                 )
                 if errors is False:
                     self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
@@ -622,7 +621,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                     plotName="mount",
                     dayObs=dayObs,
                     seqNum=seqNum,
-                    filename=tempFile.name,
+                    filename=tempFile,
                 )
                 self.log.info("Upload complete")
 
@@ -634,7 +633,8 @@ class OneOffProcessorAuxTel(OneOffProcessor):
             self.checkTimebaseErrors(expRecord)
 
             self.log.info("Sending mount jitter to ConsDB")
-            self.consDBPopulator.populateMountErrors(expRecord, errors, "latiss")
+            if not runningCI():
+                self.consDBPopulator.populateMountErrors(expRecord, errors, "latiss")
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)

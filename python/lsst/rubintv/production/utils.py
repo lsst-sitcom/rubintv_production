@@ -35,6 +35,7 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Generator
 
 import numpy as np
@@ -84,6 +85,7 @@ __all__ = [
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
     "runningCI",
+    "getCiPlotName",
     "managedTempFile",
 ]
 
@@ -1439,6 +1441,18 @@ def getFilterColorName(physicalFilter: str) -> str | None:
 def runningCI() -> bool:
     """Check if the code is running in a CI environment."""
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
+
+
+def getCiPlotName(locationConfig: LocationConfig, expRecord: DimensionRecord, plotType: str) -> str:
+    dayObs: int = expRecord.day_obs
+    seqNum: int = expRecord.seq_num
+    ciOutputName = (
+        Path(locationConfig.plotPath)
+        / expRecord.instrument
+        / str(dayObs)
+        / f"{expRecord.instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+    )
+    return ciOutputName.as_posix()
 
 
 @contextmanager
