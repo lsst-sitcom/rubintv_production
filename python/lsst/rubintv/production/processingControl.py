@@ -395,13 +395,12 @@ class HeadProcessController:
         packages = Packages.fromSystem()
 
         allRuns: Sequence[str] = []
-        needNewChain = False
+
         try:
             allRuns = self.butler.registry.getCollectionChain(self.outputChain)
         except MissingCollectionError:
-            needNewChain = True
-
-        if needNewChain:  # special case where this is a totally new CHAINED collection
+            # special case where this is a totally new CHAINED collection
+            self.log.warning(f"Creating a new CHAINED collection from scratch at {self.outputChain}")
             self.butler.registry.registerCollection(self.outputChain, CollectionType.CHAINED)
             newCollection = ensureRunCollection(self.butler, self.allGraphs, packages, self.outputChain, 0)
             self.butler.registry.setCollectionChain(self.outputChain, [newCollection])
@@ -413,15 +412,18 @@ class HeadProcessController:
         ]
         lastRunNum = max(allRunNums) if allRunNums else 0
         latestRun = f"{self.outputChain}/{lastRunNum}"
+        self.log.info(f"Latest run is {latestRun} at run number {lastRunNum}")
 
         if forceNewRun or self.checkIfNewRunNeeded(latestRun, packages):
             lastRunNum += 1
+            self.log.info(f"New run being created for {self.outputChain}")
             # ensureRunCollection is called instead of registerCollection
             latestRun = ensureRunCollection(
                 self.butler, self.allGraphs, packages, self.outputChain, lastRunNum
             )
-            self.butler.registry.setCollectionChain(self.outputChain, [latestRun] + list(allRuns))
-            self.log.info(f"Started new run collection at {latestRun}")
+            self.log.info(f"New run created at {latestRun}")
+            self.butler.collections.prepend_chain(self.outputChain, latestRun)
+            self.log.info(f"New run chained in as {[latestRun] + list(allRuns)}")
 
         return latestRun
 
@@ -442,8 +444,8 @@ class HeadProcessController:
         """
         try:
             oldPackages = self.butler.get("packages", collections=[latestRun])
-        except DatasetNotFoundError:  # for bootstrapping a new collection
-            return False
+        except (MissingCollectionError, DatasetNotFoundError):  # for bootstrapping a new collections
+            return True
         if packages.difference(oldPackages):  # checks if any of the versions are different
             return True
         return False
