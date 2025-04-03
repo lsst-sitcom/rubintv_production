@@ -29,6 +29,7 @@ import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.atmospec.utils import isDispersedDataId
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
+from lsst.summit.extras.slewTimingSimonyi import plotExposureTiming
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
@@ -118,7 +119,7 @@ class OneOffProcessor(BaseButlerChannel):
         processingStage: str,
         *,
         doRaise=False,
-    ):
+    ) -> None:
         super().__init__(
             locationConfig=locationConfig,
             instrument=instrument,
@@ -479,6 +480,33 @@ class OneOffProcessor(BaseButlerChannel):
             md = {expRecord.seq_num: {"_Filter": filterColor}}
             writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
+    def getPreviousExpRecord(self, expRecord: DimensionRecord) -> DimensionRecord | None:
+        """Get the previous (contiguous) exposure record for the given record.
+
+        Returns the previous contiguous exposure within the dayObs, or None if
+        it's not found, or if images aren't contiguous, or it's the first image
+        of the day.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record.
+
+        Returns
+        -------
+        previous: `lsst.daf.butler.DimensionRecord` or `None`
+            The previous exposure record, or ``None`` if not found.
+        """
+        try:
+            (previousExpRecord,) = self.butler.registry.queryDimensionRecords(
+                "exposure", dataId={"exposure": expRecord.id - 1}  # true for contiguous and with dayObs
+            )
+            return previousExpRecord
+        except ValueError:
+            if expRecord.seq_num > 1:
+                self.log.warning(f"Failed to find previous expRecord for {expRecord.id}")
+            return None
+
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
@@ -486,6 +514,30 @@ class OneOffProcessor(BaseButlerChannel):
             self._doMountAnalysisAuxTel(expRecord)
         else:
             self._doMountAnalysisSimonyi(expRecord)
+            previous = self.getPreviousExpRecord(expRecord)
+            if previous is not None:
+                self.makeExposureTimingPlot(previous, expRecord)
+
+    def makeExposureTimingPlot(self, previousExpRecord: DimensionRecord, expRecord: DimensionRecord) -> None:
+        self.log.info(f"Creating exposure timing plot for {expRecord.id}")
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        fig = plotExposureTiming(self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0)
+        try:
+            ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
+            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+                fig.savefig(tempFile)
+                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+                self.s3Uploader.uploadPerSeqNumPlot(
+                    instrument=getRubinTvInstrumentName(expRecord.instrument),
+                    plotName="event_timeline",
+                    dayObs=dayObs,
+                    seqNum=seqNum,
+                    filename=tempFile,
+                )
+                self.log.info("Event timeline upload complete")
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
 
     def _doMountAnalysisAuxTel(self, expRecord: DimensionRecord) -> None:
         dayObs = expRecord.day_obs

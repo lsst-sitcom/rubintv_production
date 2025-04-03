@@ -744,28 +744,35 @@ def delete_output_files():
 def check_plots():
     locationConfig = LocationConfig("usdf_testing")
 
-    expected = [
-        "LSSTComCam/20241102/LSSTComCam_calexp_mosaic_dayObs_20241102_seqNum_000170.jpg",
-        "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
-        "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
-        "LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
-        "LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000170.png",
-        "LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000171.png",
-        "LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000172.png",
-        "20241102_171-fp_donut_gallery.png",
-        "20241102_172-fp_donut_gallery.png",
-        "20241102_172-zk_measurement_pyramid.png",
-        "20241102_172-zk_residual_pyramid.png",
-        "LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png",
-        "LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png",
-        "LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png",
-        "LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png",
+    expected = [  # (path, size) tuples
+        ("LSSTComCam/20241102/LSSTComCam_calexp_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000170.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000171.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000172.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000170.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000171.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000172.png", 5000),
+        ("20241102_171-fp_donut_gallery.png", 0),  # these are just touch()ed for now
+        ("20241102_172-fp_donut_gallery.png", 0),  # these are just touch()ed for now
+        ("20241102_172-zk_measurement_pyramid.png", 0),  # these are just touch()ed for now
+        ("20241102_172-zk_residual_pyramid.png", 0),  # these are just touch()ed for now
+        ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
+        ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png", 5000),
+        ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
+        ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
     ]
 
-    for file in expected:
+    for file, expected_size in expected:
         full_path = os.path.join(locationConfig.plotPath, file)
         if os.path.exists(full_path):
-            CHECKS.append(Check(True, f"Found expected plot {file}"))
+            file_size = os.path.getsize(full_path)
+            if file_size >= expected_size:
+                CHECKS.append(Check(True, f"Found expected plot {file} with size {file_size} bytes"))
+            else:
+                CHECKS.append(Check(False, f"Plot {file} exists but is too small: {file_size} bytes"))
         else:
             CHECKS.append(Check(False, f"Did not find expected plot {file}"))
 
