@@ -54,7 +54,6 @@ from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
 from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL_AUXTEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
-from .uploaders import MultiUploader
 from .utils import (
     getCiPlotName,
     getFilterColorName,
@@ -134,7 +133,7 @@ class OneOffProcessor(BaseButlerChannel):
             channelName="",
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=False,  # pipeline running pods don't upload directly
+            addUploader=True,
         )
         self.instrument = instrument
         self.butler = butler
@@ -142,9 +141,6 @@ class OneOffProcessor(BaseButlerChannel):
         self.detector = detectorNumber
         self.shardsDirectory = shardsDirectory
         self.processingStage = processingStage
-        if self.processingStage == "expRecord":
-            # remove this conditional once we have the squid proxy
-            self.uploader = MultiUploader()
 
         peekConfig = PeekExposureTaskConfig()
         self.peekTask = PeekExposureTask(config=peekConfig)
@@ -409,7 +405,8 @@ class OneOffProcessor(BaseButlerChannel):
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig = make_figure(figsize=(10, 8))
             plotMountErrors(data, errors, fig, saveFilename=tempFile)
-            self.uploader.uploadPerSeqNumPlot(
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(expRecord.instrument),
                 plotName="mount",
                 dayObs=expRecord.day_obs,
@@ -675,7 +672,6 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.s3Uploader = MultiUploader()
 
     def runAuxTelProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         # TODO: consider threading and adding a CPU to the pod if this is slow
