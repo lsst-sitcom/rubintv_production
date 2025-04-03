@@ -289,7 +289,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
         """Reset the tracking of made plots for day-rollover."""
         self.plotsMade = {k: set() for k in self.plotsMade}
 
-    def runMountMotionAnalysis(self, event) -> None:
+    def runMountMotionAnalysis(self, event: TMAEvent) -> None:
         # get the data separately so we can take some min/max on it etc
         dayObs = event.dayObs
         prePadding = self.slewPrePadding if event.type.name == "SLEWING" else self.trackPrePadding
@@ -375,7 +375,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
             instrument="tma", plotName="mount", dayObs=event.dayObs, seqNum=event.seqNum, filename=filename
         )
 
-    def runM1M3HardpointAnalysis(self, event) -> None:
+    def runM1M3HardpointAnalysis(self, event: TMAEvent) -> None:
         m1m3ICSHPMaxForces = {}
         m1m3ICSHPMeanForces = {}
 
@@ -387,7 +387,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 log=self.log,
             )
         except ValueError:  # control flow error raise when the ICS is off
-            return event
+            return None
 
         # package all the items we want into dicts
         m1m3ICSHPMaxForces = {
@@ -441,7 +441,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
             filename=filename,
         )
 
-    def processDay(self, dayObs) -> None:
+    def processDay(self, dayObs: int) -> None:
         """ """
         events = self.eventMaker.getEvents(dayObs)
 
@@ -553,7 +553,7 @@ class AllNightAnimator:
     # The time between scans for new images to animate
     cadence = 1
 
-    def __init__(self, *, locationConfig: LocationConfig, instrument, doRaise: bool = False) -> None:
+    def __init__(self, *, locationConfig: LocationConfig, instrument: str, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.pngPath: Path = Path()
         self.doRaise = doRaise
@@ -623,7 +623,7 @@ class AllNightAnimator:
                 # TODO: currently this pattern is hard-coded in the mosaic
                 # plotting code - to be made importable
                 pngPath = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
-                nFiles = len(glob(pngPath / "*.png"))
+                nFiles = len(glob((pngPath / "*.png").as_posix()))
                 if nFiles > lastAnimatedCount:
                     self.log.info(f"Creating new movie with {nFiles} frames")
                     self.animateDir(pngPath)
