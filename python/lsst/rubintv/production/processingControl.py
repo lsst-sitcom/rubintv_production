@@ -56,14 +56,7 @@ from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
-from .utils import (
-    LocationConfig,
-    getShardPath,
-    isCalibration,
-    isWepImage,
-    raiseIf,
-    writeExpRecordMetadataShard,
-)
+from .utils import LocationConfig, getShardPath, isWepImage, raiseIf, writeExpRecordMetadataShard
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -533,7 +526,7 @@ class HeadProcessController:
             raiseIf(self.doRaise, e, self.log)
             return None
 
-    def doStep1FanoutSfm(self, expRecord: DimensionRecord) -> None:
+    def doDetectorFanout(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
 
         Parameters
@@ -542,14 +535,29 @@ class HeadProcessController:
             The expRecord to process.
         """
         # run isr only for calibs, otherwise run the appropriate step1
-        isCalib = isCalibration(expRecord) or expRecord.observation_type.lower() == "unknown"
-        if isCalib:
-            self.log.info(f"Sending {expRecord.id} to for calibration processing")
-            targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
-            who = "ISR"
-        else:
-            targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
-            who = "SFM"
+        targetPipelineBytes: bytes = b""
+
+        imageType = expRecord.observation_type.lower()
+        match imageType:
+            case "bias":
+                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
+                targetPipelineBytes = self.pipelines["BIAS"].graphBytes["verifyBiasIsr"]
+                who = "ISR"
+            case "dark":
+                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style dark processing")
+                targetPipelineBytes = self.pipelines["DARK"].graphBytes["verifyDarkIsr"]
+                who = "ISR"
+            case "flat":
+                self.log.info(f"Sending {expRecord.id} {imageType=}  to for cp_verify style flat processing")
+                targetPipelineBytes = self.pipelines["FLAT"].graphBytes["verifyFlatIsr"]
+                who = "ISR"
+            case "unknown":
+                self.log.info(f"Sending {expRecord.id} {imageType=} for full ISR processing")
+                targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
+                who = "ISR"
+            case _:  # all non-calib, properly headered images
+                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
+                who = "SFM"
 
         detectorIds: list[int] = []
         nEnabled = None
@@ -974,7 +982,7 @@ class HeadProcessController:
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
-                    self.doStep1FanoutSfm(expRecord)
+                    self.doDetectorFanout(expRecord)
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
             if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
