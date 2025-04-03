@@ -27,6 +27,7 @@ import logging
 import time
 from ast import literal_eval
 from dataclasses import dataclass
+from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING, Any, Iterable, Sequence, cast
 
@@ -48,6 +49,7 @@ from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: D
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
+from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
@@ -272,6 +274,9 @@ class PipelineComponents:
         The URI of the pipeline graph, i.e. the filename#step.
     steps : `str`
         The steps of the pipeline without the file prepended.
+    overrides : `list` [`tuple`], optional
+        The config overrides to apply to the pipeline graph as a list of tuples
+        of (label, key, value), passed to `Pipeline.addConfigOverride()`.
     """
 
     graphs: dict[str, PipelineGraph]
@@ -280,7 +285,13 @@ class PipelineComponents:
     steps: list[str]
     pipelineFile: str
 
-    def __init__(self, registry: Registry, pipelineFile: str, steps: list[str]) -> None:
+    def __init__(
+        self,
+        registry: Registry,
+        pipelineFile: str,
+        steps: list[str],
+        overrides: list[tuple[str, str, str]] | None = None,
+    ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
@@ -288,7 +299,11 @@ class PipelineComponents:
 
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
-            self.graphs[step] = Pipeline.fromFile(self.uris[step]).to_graph(registry=registry)
+            pipeline = Pipeline.fromFile(self.uris[step])
+            if overrides:
+                for override in overrides:
+                    pipeline.addConfigOverride(*override)
+            self.graphs[step] = pipeline.to_graph(registry=registry)
             self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
 
         self.steps = steps
@@ -349,6 +364,7 @@ class HeadProcessController:
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
+        self.pipelines: dict[str, PipelineComponents] = {}
         self.buildPipelines()
 
         if outputChain is None:
@@ -374,7 +390,29 @@ class HeadProcessController:
         sfmPipelineFile = self.locationConfig.getSfmPipelineFile(self.instrument)
         aosPipelineFile = self.locationConfig.getAosPipelineFile(self.instrument)
 
-        self.pipelines = {}
+        cpVerifyDir = getPackageDir("cp_verify")
+        biasFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyBias.yaml").as_posix()
+        darkFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyDark.yaml").as_posix()
+        flatFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyFlat.yaml").as_posix()
+        self.pipelines["BIAS"] = PipelineComponents(
+            self.butler.registry,
+            biasFile,
+            ["verifyBiasIsr"],
+            overrides=[("verifyBiasIsr", "connections.outputExposure", "postISRCCD")],
+        )
+        self.pipelines["DARK"] = PipelineComponents(
+            self.butler.registry,
+            darkFile,
+            ["verifyDarkIsr"],
+            overrides=[("verifyDarkIsr", "connections.outputExposure", "postISRCCD")],
+        )
+        self.pipelines["FLAT"] = PipelineComponents(
+            self.butler.registry,
+            flatFile,
+            ["verifyFlatIsr"],
+            overrides=[("verifyFlatIsr", "connections.outputExposure", "postISRCCD")],
+        )
+
         self.pipelines["ISR"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["isr"])
         if self.instrument == "LATISS":
             self.pipelines["SFM"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["step1"])
