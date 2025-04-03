@@ -67,8 +67,6 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
-
     from lsst.afw.image import Exposure
     from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord
 
@@ -584,7 +582,7 @@ class OneOffProcessor(BaseButlerChannel):
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def writeMountErrorShardAuxTel(self, errors: dict[str, NDArray], expRecord: DimensionRecord) -> None:
+    def writeMountErrorShardAuxTel(self, errors: dict[str, float], expRecord: DimensionRecord) -> None:
         """Write a metadata shard for the mount error, including the flag
         for coloring the cell based on the threshold values.
 

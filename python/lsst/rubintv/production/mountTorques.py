@@ -41,7 +41,6 @@ if TYPE_CHECKING:
 
     from lsst_efd_client import EfdClient
     from matplotlib.pyplot import Figure
-    from numpy.typing import NDArray
 
     from lsst.daf.butler import Butler, DimensionRecord
 
@@ -73,7 +72,7 @@ def calculateMountErrors(
     figure: Figure | None,
     saveFilename: str,
     logger: Logger,
-) -> dict[str, NDArray] | bool:
+) -> dict[str, float] | bool:
     """Queries EFD for a given exposure and calculates the RMS errors in the
     axes during the exposure, optionally plotting and saving the data.
 
@@ -211,12 +210,12 @@ def calculateMountErrors(
     rot_error = (rot_vals - rot_model) * 3600
 
     # Calculate RMS
-    az_rms = np.sqrt(np.mean(az_error * az_error))
-    el_rms = np.sqrt(np.mean(el_error * el_error))
-    rot_rms = np.sqrt(np.mean(rot_error * rot_error))
+    az_rms = float(np.sqrt(np.mean(az_error * az_error)))  # cast to float to let mypy know this is scalar
+    el_rms = float(np.sqrt(np.mean(el_error * el_error)))
+    rot_rms = float(np.sqrt(np.mean(rot_error * rot_error)))
 
     # Calculate Image impact RMS
-    image_az_rms = az_rms * np.cos(el_vals[0] * np.pi / 180.0)
+    image_az_rms = az_rms * float(np.cos(el_vals[0] * np.pi / 180.0))
     image_el_rms = el_rms
     image_rot_rms = rot_rms * AUXTEL_ANGLE_TO_EDGE_OF_FIELD_ARCSEC * np.pi / 180.0 / 3600.0
 
