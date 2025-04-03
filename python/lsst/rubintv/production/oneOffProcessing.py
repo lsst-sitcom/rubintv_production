@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import lsst.daf.butler as dafButler
@@ -44,6 +43,7 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
 )
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
 from lsst.summit.utils.utils import calcEclipticCoords
+from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
@@ -146,8 +146,6 @@ class OneOffProcessor(BaseButlerChannel):
         if self.processingStage == "expRecord":
             # remove this conditional once we have the squid proxy
             self.uploader = MultiUploader()
-
-        self.mountFigure = plt.figure(figsize=(10, 8))
 
         peekConfig = PeekExposureTaskConfig()
         self.peekTask = PeekExposureTask(config=peekConfig)
@@ -410,7 +408,8 @@ class OneOffProcessor(BaseButlerChannel):
 
         ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            plotMountErrors(data, errors, self.mountFigure, saveFilename=tempFile)
+            fig = make_figure(figsize=(10, 8))
+            plotMountErrors(data, errors, fig, saveFilename=tempFile)
             self.uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(expRecord.instrument),
                 plotName="mount",
@@ -418,8 +417,7 @@ class OneOffProcessor(BaseButlerChannel):
                 seqNum=expRecord.seq_num,
                 filename=tempFile,
             )
-        self.mountFigure.clear()
-        self.mountFigure.gca().clear()
+            del fig
 
     def writeLogMessageShards(self, dayObs: int) -> None:
         """Write a shard containing all the expLog annotations on the dayObs.
@@ -511,8 +509,6 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.mountFigure = plt.figure(figsize=(16, 16))
-        self.monitorFigure = plt.figure(figsize=(12, 12))
         self.s3Uploader = MultiUploader()
 
     def runAuxTelProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
@@ -527,7 +523,8 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         try:
             ciName = getCiPlotName(self.locationConfig, expRecord, "monitor")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                plotExp(exp, self.monitorFigure, tempFile, doSmooth=False, scalingOption="CCS")
+                fig = make_figure(figsize=(12, 12))
+                plotExp(exp, fig, tempFile, doSmooth=False, scalingOption="CCS")
                 self.log.info("Uploading imExam to storage bucket")
                 assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
                 self.s3Uploader.uploadPerSeqNumPlot(
@@ -538,6 +535,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                     filename=tempFile,
                 )
                 self.log.info("Upload complete")
+                del fig
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -607,8 +605,9 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                 # performs the plotting. It skips many image types and short
                 # exps and returns False in these cases, otherwise it returns
                 # errors and will have made the plot
+                fig = make_figure(figsize=(16, 16))
                 errors = _calculateMountErrors_oldVersion(
-                    expRecord, self.butler, self.efdClient, self.mountFigure, tempFile, self.log
+                    expRecord, self.butler, self.efdClient, fig, tempFile, self.log
                 )
                 if errors is False:
                     self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
@@ -624,6 +623,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
                     filename=tempFile,
                 )
                 self.log.info("Upload complete")
+                del fig
 
             # write the mount error shard, including the cell coloring flag
             assert errors is not True and errors is not False  # it's either False or the right type
