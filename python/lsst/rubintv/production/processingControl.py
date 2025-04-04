@@ -1161,6 +1161,8 @@ class CameraControlConfig:
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
+        self.GUIDER_NUMS = tuple(det.getId() for det in self._guiders)
+        self.CWFS_NUMS = tuple(det.getId() for det in self._wavefronts)
 
     @staticmethod
     def isWavefront(detector: Detector) -> bool:
