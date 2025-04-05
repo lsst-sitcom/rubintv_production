@@ -4,12 +4,14 @@ import itertools
 import logging
 import multiprocessing
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import time
 import traceback
 from multiprocessing import Manager
+from pathlib import Path
 from unittest.mock import patch
 
 import redis
@@ -43,6 +45,7 @@ from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI 
 
 DO_RUN_META_TESTS = True
 DO_CHECK_YAML_FILES = True
+COPY_PLOTS_TO_PUBLIC_HTML = True
 
 REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
@@ -765,9 +768,20 @@ def check_plots():
         ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
     ]
 
+    destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
+    if COPY_PLOTS_TO_PUBLIC_HTML:
+        if destinationDir.exists():
+            shutil.rmtree(destinationDir)
+        if destinationDir.exists():
+            CHECKS.append(Check(False, "Failed to remove output dir - files in there cannot be trusted!"))
+
     for file, expected_size in expected:
         full_path = os.path.join(locationConfig.plotPath, file)
         if os.path.exists(full_path):
+            if COPY_PLOTS_TO_PUBLIC_HTML:
+                destination = destinationDir / file
+                os.makedirs(destination.parent, exist_ok=True)
+                shutil.copy(full_path, destination)
             file_size = os.path.getsize(full_path)
             if file_size >= expected_size:
                 CHECKS.append(Check(True, f"Found expected plot {file} with size {file_size} bytes"))
