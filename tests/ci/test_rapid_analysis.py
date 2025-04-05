@@ -16,7 +16,10 @@ from unittest.mock import patch
 
 import redis
 import yaml
-from ciutils import Check, TestScript, conditional_redirect
+
+# it would be great not to type: ignore this, but I can't make this work while
+# also having the code itself run - mypy config is really hard
+from ciutils import Check, TestScript, conditional_redirect  # type: ignore
 
 
 def do_nothing(*args, **kwargs):
@@ -34,7 +37,7 @@ from lsst.daf.butler.cli.cliLog import CliLog  # noqa: E402
 # call this once and then also disable it so it doesn't interfere with the log
 # capture later on
 CliLog.initLog(False)
-CliLog.initLog = do_nothing
+CliLog.initLog = do_nothing  # type: ignore
 
 
 # only import from lsst.anything once the logging configs have been frozen
@@ -257,14 +260,14 @@ def exec_script(test_script: TestScript, output_queue):
     root_logger.addHandler(log_handler)
     root_logger.setLevel(logging.INFO)
 
-    exit_code = None
+    exit_code: str | int | None = None
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
     lsstDebug = None
     if test_script.do_debug:
-        import ciutils
-        import lsstDebug
+        import ciutils  # type: ignore
+        import lsstDebug  # type: ignore
 
         def getConnection():
             debugConfig = {
@@ -289,7 +292,7 @@ def exec_script(test_script: TestScript, output_queue):
                     "CliLog": CliLog,
                     "lsstDebug": lsstDebug,
                 }
-                sys.argv = [script_path] + script_args
+                sys.argv = [script_path] + script_args if script_args else [script_path]
                 time.sleep(test_script.delay)
                 exec(script_content, exec_globals)
                 exit_code = 0

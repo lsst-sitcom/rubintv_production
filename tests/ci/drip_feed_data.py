@@ -3,7 +3,7 @@ import time
 
 t0 = time.time()
 
-import lsst.daf.butler as dafButler  # noqa: E402
+from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.utils import getAutomaticLocationConfig  # noqa: E402
 
@@ -14,7 +14,7 @@ t0 = time.time()
 instrument = "LSSTComCam"
 
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
+butler = Butler.from_config(
     locationConfig.comCamButlerPath,
     collections=[
         "LSSTComCamSim/defaults",
@@ -34,7 +34,7 @@ t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
 
 for record in records:  # XXX remove the slice!
-    assert isinstance(record, dafButler.DimensionRecord)
+    assert isinstance(record, DimensionRecord)
     print(f"Pushing expId={record.id} for {record.instrument} for processing")
     # this is what the butlerWatcher does for each new record
     redisHelper.pushNewExposureToHeadNode(record)
@@ -46,7 +46,7 @@ redisHelper.redis.rpush("LSSTComCam-FROM-OCS_DONUTPAIR", "2024110200171,20241102
 # do LATISS with the same drip-feeder
 instrument = "LATISS"
 locationConfig = getAutomaticLocationConfig()
-butler = dafButler.Butler(
+butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
     collections=[
         f"{instrument}/defaults",
