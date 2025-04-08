@@ -481,31 +481,6 @@ class HeadProcessController:
             return True
         return False
 
-    def getPerDetectorWorker(
-        self, instrument: str, detectorId: int, podFlavor: PodFlavor
-    ) -> PodDetails | None:
-        # NOTE: currently unused, replaced by _dispatchPayloads() but kept in
-        # case it's needed.
-
-        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
-        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
-
-        idMatchedWorkers = [pod for pod in freeWorkers if pod.detectorNumber == detectorId]
-        if idMatchedWorkers:
-            return idMatchedWorkers[0]
-
-        # TODO: until we have a real backlog queue just put it on the last
-        # worker in the stack.
-        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-        idMatchedWorkers = [pod for pod in busyWorkers if pod.detectorNumber == detectorId]
-        try:
-            busyWorker = idMatchedWorkers[-1]
-            self.log.warning(f"No free workers available for {detectorId=}, sending work to {busyWorker=}")
-            return busyWorker
-        except IndexError as e:
-            raiseIf(self.doRaise, e, self.log)
-            return None
-
     def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
