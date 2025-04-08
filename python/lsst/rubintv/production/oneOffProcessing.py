@@ -241,9 +241,6 @@ class OneOffProcessor(BaseButlerChannel):
             return
 
         if isinstance(self, OneOffProcessorAuxTel):
-            # automatically run the LATISS processing
-            # XXX does this actually work? Is this an OK pattern?
-            # Also consider moving this to run ~first for speed of the monitor
             self.runAuxTelProcessing(postISR, expRecord)
 
         self.log.info(f"Writing focus Z for {dataId}")
