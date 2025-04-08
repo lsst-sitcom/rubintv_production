@@ -193,65 +193,6 @@ class RubinTvBackgroundService:
             notebook=False,
         )
 
-    # def catchupMetadata(self) -> None:
-    #     """Create shards for any seqNums missing their metadata. Do not
-    #     upload.
-    #     """
-
-    #     def _getSidecarFilename(dayObs: int) -> str:
-    #         """Get the sidecar filename for a given dayObs.
-
-    #         This is a bit of a hack as it makes a whole TimedMetadataServer.
-    #         There are many better ways of doing this, but this will get thing
-    # s
-    #         working for now, and because TimedMetadataServers don't have
-    #         butlers and we're not calling run() on it, it's not really
-    #         important that it's a little wasteful.
-    #         """
-    #         mdServer = TimedMetadataServer(
-    #             locationConfig=self.locationConfig,
-    #             metadataDirectory=self.locationConfig.auxTelMetadataPath,
-    #             shardsDirectory=self.locationConfig.auxTelMetadataShardPath,
-    #             channelName="auxtel_metadata",
-    #         )
-    #         filename = mdServer.getSidecarFilename(dayObs)
-    #         return filename
-
-    #     self.log.info(f"Catching up metadata for {self.dayObs}")
-    #     mdFilename = _getSidecarFilename(self.dayObs)
-    #     if not os.path.isfile(mdFilename):
-    #         # we haven't taken any data yet today
-    #         self.log.info(f"Metadata file {mdFilename} for {self.dayObs} does
-    # not exist yet, waiting...")
-    #         return
-    #     else:
-    #         with open(mdFilename) as f:
-    #             data = json.load(f)
-
-    #     seqNumsPresent = [int(k) for k in data.keys()]
-    #     allSeqNums = butlerUtils.getSeqNumsForDayObs(self.butler, self.dayObs
-    # )
-    #     missing = [k for k in allSeqNums if k not in seqNumsPresent]
-    #     self.log.info(f"Found {len(missing)} rows missing metadata to create
-    # shards for")
-
-    #     for seqNum in missing:
-    #         dataId = {"day_obs": self.dayObs, "seq_num": seqNum, "detector":
-    # 0}
-    #         expRecord = butlerUtils.getExpRecordFromDataId(self.butler, dataI
-    # d)
-    #         try:
-    #             self.mdServer.writeShardForExpRecord(expRecord)
-    #         except Exception as e:
-    #             self.log.warning(f"Failed to create metadata shard for {dataI
-    # d}: {e}")
-
-    #     # note we do *not* call mdServer.mergeShardsAndUpload() here
-    #     # as that writes to the main file, which could collide with the main
-    #     # channel. Instead, we leave the shards in place to be uploaded with
-    #     # the next image. We do, however, call it on end-of-day to catch any
-    #     # leftover shards
-
     def catchupImageExaminer(self) -> None:
         """Create and upload any missing imExam images for the current
         dayObs.
