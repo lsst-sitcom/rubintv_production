@@ -620,8 +620,8 @@ class AllNightAnimator:
                     dayObs = getCurrentDayObs_int()
                     lastAnimatedCount = 0
 
-                # TODO: currently this pattern is hard-coded in the mosaic
-                # plotting code - to be made importable
+                # TODO DM-49948: currently this pattern is hard-coded in the
+                # mosaic plotting code - to be made importable
                 pngPath = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
                 nFiles = len(glob((pngPath / "*.png").as_posix()))
                 if nFiles > lastAnimatedCount:
