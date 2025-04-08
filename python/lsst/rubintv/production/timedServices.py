@@ -68,7 +68,7 @@ class TimedMetadataServer:
 
     Metadata shards are written to a /shards directory, which are collated on a
     timer and uploaded if new shards were found. This happens on a timer,
-    defined by ``self.cadence``.
+    defined by ``self.cadenceSeconds``.
 
     Parameters
     ----------
@@ -93,7 +93,7 @@ class TimedMetadataServer:
 
     # The time between searches of the metadata shard directory to merge the
     # shards and upload.
-    cadence = 1.5
+    cadenceSeconds = 1.5
 
     def __init__(
         self,
@@ -219,7 +219,7 @@ class TimedMetadataServer:
         """Run continuously, looking for metadata and uploading."""
         while True:
             self.callback()
-            sleep(self.cadence)
+            sleep(self.cadenceSeconds)
 
 
 class TmaTelemetryChannel(TimedMetadataServer):
@@ -245,7 +245,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
     """
 
     # The time between sweeps of the EFD for today's data.
-    cadence = 10
+    cadenceSeconds = 10
 
     def __init__(
         self,
@@ -542,7 +542,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
                 self.processDay(dayObs)
                 self.mergeShardsAndUpload()  # updates all shards everywhere
 
-                sleep(self.cadence)
+                sleep(self.cadenceSeconds)
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
@@ -551,7 +551,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
 class AllNightAnimator:
 
     # The time between scans for new images to animate
-    cadence = 1
+    cadenceSeconds = 1
 
     def __init__(self, *, locationConfig: LocationConfig, instrument: str, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
@@ -628,7 +628,7 @@ class AllNightAnimator:
                     self.log.info(f"Creating new movie with {nFiles} frames")
                     self.animateDir(pngPath)
 
-                sleep(self.cadence)
+                sleep(self.cadenceSeconds)
 
             except Exception as e:
                 raiseIf(self.doRaise, e, self.log)
