@@ -611,7 +611,7 @@ class OneOffProcessor(BaseButlerChannel):
         # that matters and gets a quality flag. Note that the rotator error
         # contibution is zero at the field centre and increases radially, and
         # is usually very small, so we don't add that here as its contrinution
-        # is not really well definited and including it would be misleading.
+        # is not really well defined and including it would be misleading.
         image_az_rms = errors["image_az_rms"]
         image_el_rms = errors["image_el_rms"]
         imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
