@@ -256,10 +256,8 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
-        # TODO: add this back in once the log-fetcher is fixed
-        # self.log.info(f"Fetching all exposure log messages for day_obs
-        # #{expRecord.day_obs}")
-        # self.writeLogMessageShards(expRecord.day_obs)
+        self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
+        self.writeLogMessageShards(expRecord.day_obs)
 
         self.log.info(f"Finished one-off processing {dataId}")
 
@@ -451,7 +449,7 @@ class OneOffProcessor(BaseButlerChannel):
             if wasAnnotated:
                 md[seqNum].update({"Has annotations?": "🚩"})
 
-        writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, md)
+        writeMetadataShard(self.shardsDirectory, dayObs, md)
 
     @staticmethod
     def _setFlag(
