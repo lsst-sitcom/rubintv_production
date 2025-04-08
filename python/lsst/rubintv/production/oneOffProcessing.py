@@ -152,7 +152,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
-    def writeFocusZ(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
+    def writeVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
         focus = vi.focusZ
         if focus is not None and not np.isnan(focus):
@@ -161,10 +161,10 @@ class OneOffProcessor(BaseButlerChannel):
         else:
             md = {seqNum: {"Focus Z": "MISSING VALUE!"}}
 
-        # TODO XXX see if airmass is in here, and if not, get it from elsewhere
-        # it has been removed from AuxTel in the rewrite and I think we want it
-        # for all instruments anyway
-        # Same for DIMM seeing via the "seeing" header and report that too.
+        airmass = vi.boresightAirmass
+        if airmass is not None and not np.isnan(airmass):
+            airmass = float(airmass)
+            md[seqNum].update({"Airmass": f"{airmass:.3f}"})
 
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
@@ -244,7 +244,7 @@ class OneOffProcessor(BaseButlerChannel):
             self.runAuxTelProcessing(postISR, expRecord)
 
         self.log.info(f"Writing focus Z for {dataId}")
-        self.writeFocusZ(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
         self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
