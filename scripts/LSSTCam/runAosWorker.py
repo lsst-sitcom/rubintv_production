@@ -46,6 +46,7 @@ butler = Butler.from_config(
     instrument=instrument,
     collections=[
         f"{instrument}/defaults",
+        locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
 )

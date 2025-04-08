@@ -44,7 +44,8 @@ butler = Butler.from_config(
     locationConfig.comCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTComCam/defaults",
+        f"{instrument}/defaults",
+        locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
 )

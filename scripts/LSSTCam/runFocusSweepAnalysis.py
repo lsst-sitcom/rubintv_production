@@ -41,7 +41,7 @@ butler = Butler.from_config(
     instrument=instrument,
     collections=[
         f"{instrument}/defaults",
-        f"{instrument}/quickLook",
+        locationConfig.getOutputChain(instrument),
     ],
 )
 print(f"Running focus sweep plotter at {locationConfig.location}")
