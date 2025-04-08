@@ -725,9 +725,8 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
     def runSpecExam(self, exp: Exposure, expRecord: DimensionRecord) -> None:
 
-        # XXX do we still need to construct this?
-        # XXX also need to check Josh's abandoned ticket - did it touch this
-        # and/or fix this issue?
+        # TODO: DM-41764 see if we can remove the need to construct a dataId
+        # when this ticket is done.
         oldStyleDataId = {"day_obs": expRecord.day_obs, "seq_num": expRecord.seq_num}
         if not isDispersedDataId(oldStyleDataId, self.butler):
             self.log.info(f"Skipping running specExam on non dispersed image {expRecord.dataId}")
