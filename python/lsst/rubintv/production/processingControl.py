@@ -589,6 +589,7 @@ class HeadProcessController:
                 targetPipelineGraph = self.pipelines["ISR"].graphs["isr"]
                 who = "ISR"
             case _:  # all non-calib, properly headered images
+                self.log.info(f"Sending {expRecord.id} {imageType=} for full step1 SFM")
                 targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
                 targetPipelineGraph = self.pipelines["SFM"].graphs["step1"]
                 who = "SFM"
