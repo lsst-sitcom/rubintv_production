@@ -234,6 +234,7 @@ def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
 
 
 def getIsrConfigDict(graph: PipelineGraph) -> dict[str, str]:
+    # TODO: DM-50003 Make this config dumping more robust
     isrTasks = [task for name, task in graph.tasks.items() if "isr" in name.lower()]
     if len(isrTasks) != 1:
         log = logging.getLogger("lsst.rubintv.production.processControl.getIsrConfigDict")
@@ -564,6 +565,8 @@ class HeadProcessController:
 
         imageType = expRecord.observation_type.lower()
         shardPath = getShardPath(self.locationConfig, expRecord)
+
+        # TODO: DM-50003 Make this data-driven dispatch config instead of code
         match imageType:
             case "bias":
                 self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
