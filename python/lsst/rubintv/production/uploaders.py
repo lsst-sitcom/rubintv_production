@@ -99,6 +99,7 @@ def createRemoteS3UploaderForSite():
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
+                proxyUrl="http://squid-service:3128/",
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
