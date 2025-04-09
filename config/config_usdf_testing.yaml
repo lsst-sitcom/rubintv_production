@@ -33,7 +33,7 @@ starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_meta
 astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
 
 # ComCam configuration:
-comCamButlerPath: embargo
+comCamButlerPath: /repo/main
 # comCamButlerPath: /sdf/data/rubin/repo/aos_imsim/raw/comcam_sensitivity_matrix/repo
 binning: 8
 # # paths for serving TS8 metadata at SLAC
