@@ -32,12 +32,12 @@ from matplotlib import cm
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-import lsst.pipe.base as pipeBase
 from lsst.afw.cameraGeom import utils as cgu
 from lsst.afw.display import Display
 from lsst.afw.fits import FitsError
+from lsst.afw.image import Exposure, Image, ImageF
+from lsst.pipe.base import Struct
 from lsst.summit.utils import getQuantiles
 from lsst.utils.iteration import ensure_iterable
 
@@ -49,9 +49,7 @@ if TYPE_CHECKING:
     from matplotlib.pyplot import Normalize
 
     from lsst.afw.cameraGeom import Camera, Detector
-    from lsst.afw.image import Exposure, Image
     from lsst.daf.butler import Butler, DeferredDatasetHandle
-    from lsst.pipe.base import Struct
 
 
 def getBinnedFilename(expId: int, instrument: str, detectorName: str, dataPath: str, binSize: int) -> str:
@@ -160,9 +158,9 @@ def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: i
     It would be easy to make this take images rather than exposures, if needed,
     it would just require the detector name and expId to be passed in.
     """
-    if not isinstance(exp, afwImage.Exposure):
+    if not isinstance(exp, Exposure):
         raise ValueError(f"exp must be an Exposure, got {type(exp)}")
-    binnedImage = afwMath.binImage(exp.image, binSize)  # turns the exp into an afwImage.Image
+    binnedImage = afwMath.binImage(exp.image, binSize)  # turns the exp into an Image
 
     expId = exp.visitInfo.id  # note this is *not* exp.info.id, as that has the detNum on the end!
     detName = exp.detector.getName()
@@ -207,7 +205,7 @@ def readBinnedImage(
         The binned image.
     """
     filename = getBinnedFilename(expId, instrument, detectorName, dataPath, binSize)
-    image = afwImage.ImageF(filename)
+    image = ImageF(filename)
     if deleteAfterReading:
         try:
             os.remove(filename)
@@ -310,7 +308,7 @@ def makeMosaic(
     Returns
     -------
     result : `lsst.pipe.base.Struct`
-        A pipeBase struct containing the ``output_mosaic`` as an
+        A `Struct` containing the ``output_mosaic`` as an
         `lsst.afw.image.Image`, or `None` if the mosaic could not be made.
 
     Notes
@@ -398,14 +396,14 @@ def makeMosaic(
 
         if len(detectorNameList) == 0:
             logger.warning(f"Found {len(detectorNameList)} binned detector images, so no mosaic can be made.")
-            return pipeBase.Struct(output_mosaic=None)
+            return Struct(output_mosaic=None)
 
         logger.info(f"Making mosaic with {len(detectorNameList)} detectors")
         output_mosaic = cgu.showCamera(
             camera, imageSource=imageSource, detectorNameList=detectorNameList, binSize=binSize
         )
 
-    return pipeBase.Struct(output_mosaic=output_mosaic)
+    return Struct(output_mosaic=output_mosaic)
 
 
 def _getDetectorNamesWithData(expId: int, camera: Camera, dataPath: str, binSize: int) -> list[str]:
