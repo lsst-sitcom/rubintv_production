@@ -56,7 +56,14 @@ from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
-from .utils import LocationConfig, getShardPath, isWepImage, raiseIf, writeExpRecordMetadataShard
+from .utils import (
+    LocationConfig,
+    getShardPath,
+    isWepImage,
+    raiseIf,
+    writeExpRecordMetadataShard,
+    writeMetadataShard,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -224,6 +231,49 @@ def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
             " define-visits?"
         )
         return None
+
+
+def getIsrConfigDict(graph: PipelineGraph) -> dict[str, str]:
+    # TODO: DM-50003 Make this config dumping more robust
+    isrTasks = [task for name, task in graph.tasks.items() if "isr" in name.lower()]
+    if len(isrTasks) != 1:
+        log = logging.getLogger("lsst.rubintv.production.processControl.getIsrConfigDict")
+        log.warning(f"Found {len(isrTasks)} isr tasks in pipeline graph!")
+        return {}
+    isrTask = isrTasks[0]
+    isrDict: dict[str, str] = {}
+    config: Any = isrTask.config  # annotate as Any to save having to do all the type ignores
+    isrDict["doDiffNonLinearCorrection"] = f"{config.doDiffNonLinearCorrection}"
+    isrDict["doCorrectGains"] = f"{config.doCorrectGains}"
+    isrDict["doSaturation"] = f"{config.doSaturation}"
+    isrDict["doApplyGains"] = f"{config.doApplyGains}"
+    isrDict["doCrosstalk"] = f"{config.doCrosstalk}"
+    isrDict["doLinearize"] = f"{config.doLinearize}"
+    isrDict["doDeferredCharge"] = f"{config.doDeferredCharge}"
+    isrDict["doITLEdgeBleedMask"] = f"{config.doITLEdgeBleedMask}"
+    isrDict["doITLSatSagMask"] = f"{config.doITLSatSagMask}"
+    isrDict["doITLDipMask"] = f"{config.doITLDipMask}"
+    isrDict["doBias"] = f"{config.doBias}"
+    isrDict["doDark"] = f"{config.doDark}"
+    isrDict["doDefect"] = f"{config.doDefect}"
+    isrDict["doBrighterFatter"] = f"{config.doBrighterFatter}"
+    isrDict["doFlat"] = f"{config.doFlat}"
+    isrDict["doInterpolate"] = f"{config.doInterpolate}"
+    isrDict["doAmpOffset"] = f"{config.doAmpOffset}"
+    isrDict["ampOffset.doApplyAmpOffset"] = f"{config.ampOffset.doApplyAmpOffset}"
+    return isrDict
+
+
+def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardDir: str) -> None:
+    """Write the ISR config to a shard.
+
+    This is used to check if the ISR config has changed, and if so, to
+    create a new run. It should be called after the pipeline graph has been
+    created, but before it is run.
+    """
+    isrDict = getIsrConfigDict(graph)
+    isrDict["DISPLAY_VALUE"] = "📖"
+    writeMetadataShard(shardDir, expRecord.day_obs, {expRecord.seq_num: {"ISR config": isrDict}})
 
 
 def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
@@ -514,26 +564,36 @@ class HeadProcessController:
         targetPipelineBytes: bytes = b""
 
         imageType = expRecord.observation_type.lower()
+        shardPath = getShardPath(self.locationConfig, expRecord)
+
+        # TODO: DM-50003 Make this data-driven dispatch config instead of code
         match imageType:
             case "bias":
                 self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
                 targetPipelineBytes = self.pipelines["BIAS"].graphBytes["verifyBiasIsr"]
+                targetPipelineGraph = self.pipelines["BIAS"].graphs["verifyBiasIsr"]
                 who = "ISR"
             case "dark":
                 self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style dark processing")
                 targetPipelineBytes = self.pipelines["DARK"].graphBytes["verifyDarkIsr"]
+                targetPipelineGraph = self.pipelines["DARK"].graphs["verifyDarkIsr"]
                 who = "ISR"
             case "flat":
                 self.log.info(f"Sending {expRecord.id} {imageType=}  to for cp_verify style flat processing")
                 targetPipelineBytes = self.pipelines["FLAT"].graphBytes["verifyFlatIsr"]
+                targetPipelineGraph = self.pipelines["FLAT"].graphs["verifyFlatIsr"]
                 who = "ISR"
             case "unknown":
                 self.log.info(f"Sending {expRecord.id} {imageType=} for full ISR processing")
                 targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
+                targetPipelineGraph = self.pipelines["ISR"].graphs["isr"]
                 who = "ISR"
             case _:  # all non-calib, properly headered images
                 targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
+                targetPipelineGraph = self.pipelines["SFM"].graphs["step1"]
                 who = "SFM"
+
+        writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
 
         detectorIds: list[int] = []
         nEnabled = None
@@ -578,6 +638,13 @@ class HeadProcessController:
 
         self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
         targetPipelineBytes = self.pipelines["AOS"].graphBytes["step1"]
+        targetPipelineGraph = self.pipelines["AOS"].graphs["step1"]
+
+        # deliberately do NOT set isAos=True here because we want this written
+        # to the main table, not the AOS page on RubinTV
+        for expRecord in expRecords:
+            shardPath = getShardPath(self.locationConfig, expRecord)
+            writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
 
         # this block will be different when we're observing with LSSTCam the
         # triggering will be too, because it'll be for every image so at that
@@ -1161,6 +1228,8 @@ class CameraControlConfig:
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
+        self.GUIDER_NUMS = tuple(det.getId() for det in self._guiders)
+        self.CWFS_NUMS = tuple(det.getId() for det in self._wavefronts)
 
     @staticmethod
     def isWavefront(detector: Detector) -> bool:

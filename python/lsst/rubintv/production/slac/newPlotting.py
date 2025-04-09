@@ -26,10 +26,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import matplotlib.pyplot as plt
-
 import lsst.afw.display as afwDisplay
 from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.utils.plotting.figures import make_figure
 
 from ..uploaders import MultiUploader
 from ..utils import LocationConfig, getNumExpectedItems
@@ -94,7 +93,6 @@ class Plotter:
             locationConfig=locationConfig,
             podDetails=podDetails,
         )
-        self.fig: Any = plt.figure(figsize=(12, 12))
         self.afwDisplay = afwDisplay.getDisplay(backend="matplotlib", figsize=(20, 20))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
@@ -126,16 +124,14 @@ class Plotter:
 
         nExpected = getNumExpectedItems(expRecord, self.log)
 
-        self.fig.clear()
-
         datapath = ""
         stretch = "CCS"
-        displayToUse = None
+        displayToUse: Any = None
         match dataProduct:
             case "postISRCCD":
                 datapath = self.locationConfig.calculatedDataPath
                 stretch = "CCS"
-                displayToUse = self.fig
+                displayToUse = make_figure(figsize=(12, 12))
             case "calexp":
                 datapath = self.locationConfig.binnedCalexpPath
                 stretch = "zscale"

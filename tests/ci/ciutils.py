@@ -7,7 +7,7 @@ from dataclasses import dataclass
 @dataclass
 class TestScript:
     path: str
-    args: list[str] = None
+    args: list[str] | None = None
     delay: float = 0.0
     display_on_pass: bool = False
     tee_output: bool = False
