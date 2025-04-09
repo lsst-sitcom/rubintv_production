@@ -295,7 +295,8 @@ class PipelineComponents:
             pipeline = Pipeline.fromFile(self.uris[step])
             if overrides:
                 for override in overrides:
-                    pipeline.addConfigOverride(*override)
+                    if override[0] in pipeline.task_labels:
+                        pipeline.addConfigOverride(*override)
             self.graphs[step] = pipeline.to_graph(registry=registry)
             self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
 
