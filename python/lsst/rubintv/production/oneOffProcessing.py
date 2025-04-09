@@ -256,8 +256,9 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
-        self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
-        self.writeLogMessageShards(expRecord.day_obs)
+        if self.locationConfig.location == "summit":
+            self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
+            self.writeLogMessageShards(expRecord.day_obs)
 
         self.log.info(f"Finished one-off processing {dataId}")
 
