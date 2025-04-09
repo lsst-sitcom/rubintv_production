@@ -396,7 +396,7 @@ class HeadProcessController:
         self.nNightlyRollups: int = 0
 
         if self.focalPlaneControl is not None:
-            if self.locationConfig.location == "base":
+            if self.locationConfig.location == "bts":
                 # five on a dice pattern in the middle, plus AOS chips
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setRaftOn("R22")
