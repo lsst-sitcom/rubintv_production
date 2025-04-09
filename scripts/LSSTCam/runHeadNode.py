@@ -33,7 +33,7 @@ butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTCam/defaults",
+        f"{instrument}/defaults",
     ],
     writeable=True,  # needed for defineVisits
 )

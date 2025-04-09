@@ -40,11 +40,15 @@ LOG_ITEM_MAPPINGS = {
 }
 
 
-def getLogsForDayObs(dayObs: int, logger: Logger | None = None) -> dict[int, dict[str, Any]] | None:
+def getLogsForDayObs(
+    instrument: str, dayObs: int, logger: Logger | None = None
+) -> dict[int, dict[str, Any]] | None:
     """Get a dictionary of log messages for the dayObs, keyed by seqNum.
 
     Parameters
     ----------
+    instrument : `str`
+        The instrument to get the logs for.
     dayObs : `int`
         The dayObs to get logs for.
     logger : `logging.Logger`, optional
@@ -69,5 +73,5 @@ def getLogsForDayObs(dayObs: int, logger: Logger | None = None) -> dict[int, dic
         return None
 
     logs = response.json()
-    messages = {log["seq_num"]: log for log in logs}
+    messages = {log["seq_num"]: log for log in logs if log["instrument"].lower() == instrument.lower()}
     return messages

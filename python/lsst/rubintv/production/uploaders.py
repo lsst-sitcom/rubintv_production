@@ -32,7 +32,7 @@ from boto3.resources.base import ServiceResource
 from boto3.session import Session as S3_session
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
-from typing_extensions import Optional, override
+from typing_extensions import override
 
 from lsst.summit.utils.utils import dayObsIntToString, getSite
 
@@ -55,6 +55,7 @@ __all__ = [
     "Uploader",
     "S3Uploader",
     "UploadError",
+    "MultiUploader",
 ]
 
 
@@ -189,32 +190,50 @@ class IUploader(ABC):
 
     @abstractmethod
     def uploadNightReportData(
-        self, channel: str, dayObs: int, filename: str, plotGroup: Optional[str]
+        self,
+        instrument: str,
+        dayObs: int,
+        filename: str,
+        uploadAs: str,
+        plotGroup: str = None,
+        *,
+        isMetadataFile: bool = False,
     ) -> str:
-        """Upload night report type plot or json file to a night
-           report channel.
+        """Upload night report type plot or json file
+           to a night report channel.
 
         Parameters
         ----------
-        channel : `str`
-            The RubinTV channel to upload to.
-        observation_day : `int`
+        instrument : `str`
+            The instrument.
+        dayObs : `int`
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
+        uploadAs : `str`
+            The name of the desination file. Only include the last part, i.e.
+            how it should appear when displayed, including the extension.
         plotGroup : `str`, optional
             The group to upload the plot to. The 'default' group is used if
             this is not specified. However, people are encouraged to supply
             groups for their plots, so the 'default' value is not put in the
             function signature to indicate this.
+        isMetadataFile : `bool`, optional
+            If the file is the md.json file, set this to True. Will ignore the
+            plotGroup and uploadAs parameters.
 
         Raises
         ------
         ValueError
             Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS.
+            channels as specified in CHANNELS
         UploadError
-            Raised if uploading the file to the Bucket was not possible.
+            Raised if uploading the file to the Bucket was not possible
+
+        Returns
+        -------
+        uploadAs: `str``
+            Path and filename for the destination file in the bucket
         """
         raise NotImplementedError()
 
@@ -564,7 +583,10 @@ class S3Uploader(IUploader):
         instrument: str,
         dayObs: int,
         filename: str,
+        uploadAs: str,
         plotGroup: str = None,
+        *,
+        isMetadataFile: bool = False,
     ) -> str:
         """Upload night report type plot or json file
            to a night report channel.
@@ -577,11 +599,17 @@ class S3Uploader(IUploader):
             The dayObs.
         filename : `str`
             The full path and filename of the file to upload.
+        uploadAs : `str`
+            The name of the desination file. Only include the last part, i.e.
+            how it should appear when displayed, including the extension.
         plotGroup : `str`, optional
             The group to upload the plot to. The 'default' group is used if
             this is not specified. However, people are encouraged to supply
             groups for their plots, so the 'default' value is not put in the
             function signature to indicate this.
+        isMetadataFile : `bool`, optional
+            If the file is the md.json file, set this to True. Will ignore the
+            plotGroup and uploadAs parameters.
 
         Raises
         ------
@@ -605,29 +633,23 @@ class S3Uploader(IUploader):
         if plotGroup is None:
             plotGroup = "default"
 
-        basename = os.path.basename(filename)
         dayObsStr = dayObsIntToString(dayObs)
+        baseName = f"{instrument}/{dayObsStr}/night_report"
 
-        if basename == "md.json":  # it's not a plot, so special case this one case
-            uploadAs = (
-                f"{instrument}/{dayObsStr}/night_report/{instrument}_night_report_{dayObsStr}_{basename}"
-            )
+        if isMetadataFile:
+            destName = f"{baseName}/{instrument}_night_report_{dayObsStr}_md.json"
         else:
-            # the plot filenames have the channel name saved into them in the
-            # form path/channelName-plotName.png, so remove the channel name
-            # and dash
-            plotName = basename.replace(instrument + "_night_reports" + "-", "")
-            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{plotName}"
-            uploadAs = f"{instrument}/{dayObsStr}/night_report/{plotGroup}/{plotFilename}"
+            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{uploadAs}"
+            destName = f"{baseName}/{plotGroup}/{plotFilename}"
 
         try:
-            self.upload(destinationFilename=uploadAs, sourceFilename=filename)
-            self._log.info(f"Uploaded {filename} to {uploadAs}")
+            self.upload(destinationFilename=destName, sourceFilename=filename)
+            self._log.info(f"Uploaded {filename} to {destName}")
         except Exception as ex:
-            self._log.exception(f"Failed to upload {filename} as {uploadAs} for {instrument} night report")
+            self._log.exception(f"Failed to upload {filename} as {destName} for {instrument} night report")
             raise ex
 
-        return uploadAs
+        return destName
 
     @override
     def upload(self, destinationFilename: str, sourceFilename: str) -> str:
@@ -792,63 +814,6 @@ class Uploader:
             self.log.info(f"Uploaded {filename} to {uploadAs}")
         except Exception:
             self.log.exception(f"Failed to upload {filename} as {uploadAs} to {channel}")
-            return None
-
-        return blob
-
-    def uploadNightReportData(
-        self,
-        channel,
-        dayObs,
-        filename,
-        plotGroup="",
-    ):
-        """Upload night report type plot or json file to a night report channel
-
-        Parameters
-        ----------
-        channel : `str`
-            The RubinTV channel to upload to.
-        dayObsInt : `int`
-            The dayObs.
-        filename : `str`
-            The full path and filename of the file to upload.
-        plotGroup : `str`, optional
-            The group to upload the plot to. The 'default' group is used if
-            this is not specified. However, people are encouraged to supply
-            groups for their plots, so the 'default' value is not put in the
-            function signature to indicate this.
-
-        Raises
-        ------
-        ValueError
-            Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS
-        """
-        if channel not in CHANNELS:
-            raise ValueError(f"Error: {channel} not in {CHANNELS}")
-
-        basename = os.path.basename(filename)  # deals with png vs jpeg
-
-        # the plot filenames have the channel name saved into them in the form
-        # path/channelName-plotName.png, so remove the channel name and dash
-        basename = basename.replace(channel + "-", "")
-        uploadAs = f"{channel}/{dayObs}/{plotGroup if plotGroup else 'default'}/{basename}"
-
-        blob = self.bucket.blob(uploadAs)
-        blob.cache_control = "no-store"
-
-        # retry strategy here is also gentle as these plots are routintely
-        # updated, so we'll get a new version soon enough.
-        timeout = 60  # default is 60s
-        deadline = 2.0
-        modified_retry = DEFAULT_RETRY.with_deadline(deadline)  # in seconds
-        modified_retry = modified_retry.with_delay(initial=0.5, multiplier=1.2, maximum=2)
-        try:
-            blob.upload_from_filename(filename, retry=modified_retry, timeout=timeout)
-            self.log.info(f"Uploaded {filename} to {uploadAs}")
-        except Exception as e:
-            self.log.warning(f"Failed to upload {uploadAs} to {channel} because {repr(e)}")
             return None
 
         return blob

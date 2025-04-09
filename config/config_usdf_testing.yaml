@@ -7,7 +7,8 @@ dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
 # Summit items:
 nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
 
-# AuxTel metadata
+# AuxTel
+auxtelButlerPath: /repo/main
 auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
 auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
 
@@ -32,7 +33,7 @@ starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_meta
 astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
 
 # ComCam configuration:
-comCamButlerPath: embargo_new
+comCamButlerPath: /repo/main
 # comCamButlerPath: /sdf/data/rubin/repo/aos_imsim/raw/comcam_sensitivity_matrix/repo
 binning: 8
 # # paths for serving TS8 metadata at SLAC
@@ -50,7 +51,9 @@ comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_meta
 
 lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
-lsstCamButlerPath: /repo/embargo/butler.yaml
+lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamButlerPath: embargo
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /sdf/home/m/mfl/u/rubintv
@@ -62,16 +65,22 @@ binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 
+consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
 sfmPipelineFile:
+  LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
 
 aosPipelineFile:
-  LSSTComCamSim: $TS_WEP_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
+  LATISS: ''
+  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
+  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
+  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
-  LSSTComCam: LSSTComCam/quickLookTesting
-  LSSTComCamSim: LSSTComCamSim/quickLookTesting
-  LSSTCam: LSSTCam/quickLookTesting
+  LATISS: LATISS/runs/quickLookTesting
+  LSSTComCam: LSSTComCam/runs/quickLookTesting
+  LSSTComCamSim: LSSTComCamSim/runs/quickLookTesting
+  LSSTCam: LSSTCam/runs/quickLookTesting

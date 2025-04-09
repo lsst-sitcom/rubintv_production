@@ -21,7 +21,7 @@
 
 import sys
 
-from lsst.rubintv.production.metadataServers import TimedMetadataServer
+from lsst.rubintv.production.timedServices import TimedMetadataServer
 from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 

@@ -18,6 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
 
 import glob
 import logging
@@ -25,7 +26,7 @@ import os
 from dataclasses import dataclass
 from functools import partial
 from time import sleep
-from typing import Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import matplotlib.pyplot as plt
 
@@ -56,6 +57,13 @@ from .utils import (
     getGains,
     waitForDataProduct,
 )
+
+if TYPE_CHECKING:
+    from lsst.afw.image import Exposure
+    from lsst.daf.butler import Butler, DimensionRecord
+    from lsst.pipe.base import Task
+
+    from ..utils import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 
@@ -198,7 +206,7 @@ LSSTCAM_X_RANGE = (-325, 325)
 LSSTCAM_Y_RANGE = (-325, 325)
 
 
-def isOneRaft(instrument):
+def isOneRaft(instrument: str) -> bool:
     """A convenience function for checking if we are processing a single raft.
 
     Parameters
@@ -228,7 +236,14 @@ class RawProcesser:
         If True, raise exceptions instead of logging them.
     """
 
-    def __init__(self, butler, locationConfig, instrument, detectors, doRaise=False):
+    def __init__(
+        self,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        detectors: list[int],
+        doRaise=False,
+    ) -> None:
         if instrument not in ["LSST-TS8", "LSSTCam", "LSSTComCam", "LSSTComCamSim"]:
             raise ValueError(f"Instrument {instrument} not supported, must be LSST-TS8 or LSSTCam")
         self.locationConfig = locationConfig
@@ -256,7 +271,7 @@ class RawProcesser:
 
         self.isrTask = self.makeIsrTask()
 
-    def makeIsrTask(self):
+    def makeIsrTask(self) -> Task:
         """Make an isrTask with the appropriate configuration.
 
         Returns
@@ -287,7 +302,7 @@ class RawProcesser:
 
         return IsrTask(config=isrConfig)
 
-    def runIsr(self, raw):
+    def runIsr(self, raw: Exposure):
         """Run the isrTask to get a post-ISR exposure.
 
         Parameters
@@ -301,7 +316,7 @@ class RawProcesser:
             The post-ISR exposure.
         """
         ptcDataset = None
-        if self.isrTask.config.doApplyGains:
+        if self.isrTask.config.doApplyGains:  # type: ignore
             gains = getGains(self.instrument)
 
             match self.instrument:
@@ -317,13 +332,15 @@ class RawProcesser:
                 case "LSSTCam":
                     # the dict is keyed by the detector's full name e.g R01_S21
                     detNameForGains = raw.detector.getName()
+                case _:
+                    raise ValueError(f"Unknown instrument {self.instrument}")
 
             ptcDataset = gainsToPtcDataset(gains[detNameForGains])
 
-        postIsr = self.isrTask.run(raw, ptc=ptcDataset).exposure
+        postIsr = self.isrTask.run(raw, ptc=ptcDataset).exposure  # type: ignore
         return postIsr
 
-    def writeExpRecordMetadataShard(self, expRecord):
+    def writeExpRecordMetadataShard(self, expRecord: DimensionRecord) -> None:
         """Write the exposure record metedata to a shard.
 
         Only fires once, based on the value of TS8_METADATA_DETECTOR or
@@ -385,7 +402,7 @@ class RawProcesser:
         mean, _ = stats.getResult(afwMath.MEANCLIP)
         return std, mean
 
-    def writeImageMetadataShard(self, expRecord, exposureMetadata):
+    def writeImageMetadataShard(self, expRecord: DimensionRecord, exposureMetadata: dict[Any, Any]) -> None:
         """Write the image metadata to a shard.
 
         Note that all these header values are constant across all detectors,
@@ -419,7 +436,7 @@ class RawProcesser:
 
         writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
-    def writeRebHeaderShard(self, expRecord, raw):
+    def writeRebHeaderShard(self, expRecord: DimensionRecord, raw: Exposure) -> None:
         """Write the REB condition metadata to a shard.
 
         Note that all these header values are constant across all detectors, so
@@ -471,7 +488,7 @@ class RawProcesser:
 
         writeMetadataShard(self.metadataShardPath, dayObs, shardData)
 
-    def callback(self, expRecord):
+    def callback(self, expRecord: DimensionRecord) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Current behaviour is to:
@@ -595,7 +612,9 @@ class Plotter:
         If True, raise exceptions instead of logging them.
     """
 
-    def __init__(self, butler, locationConfig, instrument, doRaise=False):
+    def __init__(
+        self, butler: Butler, locationConfig: LocationConfig, instrument: str, doRaise: bool = False
+    ) -> None:
         self.locationConfig = locationConfig
         self.butler = butler
         self.camera = getCamera(self.butler, instrument)
@@ -613,7 +632,7 @@ class Plotter:
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotNoises(self, expRecord, timeout):
+    def plotNoises(self, expRecord: DimensionRecord, timeout: float) -> str | None:
         """Create a focal plane heatmap of the per-amplifier noises as a png.
 
         Parameters
@@ -668,7 +687,7 @@ class Plotter:
 
         return saveFile
 
-    def plotFocalPlane(self, expRecord, timeout):
+    def plotFocalPlane(self, expRecord: DimensionRecord, timeout: float) -> str:
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -698,13 +717,14 @@ class Plotter:
         self.fig.clear()
         plotFocalPlaneMosaic(
             butler=self.butler,
-            figure=self.fig,
+            figureOrDisplay=self.fig,
             expId=expId,
             camera=self.camera,
             binSize=self.locationConfig.binning,
             dataPath=self.locationConfig.calculatedDataPath,
             savePlotAs=saveFile,
             nExpected=nExpected,
+            stretch="CCS",
             timeout=timeout,
             logger=self.log,
         )
@@ -712,7 +732,7 @@ class Plotter:
         return saveFile
 
     @staticmethod
-    def getInstrumentChannelName(instrument):
+    def getInstrumentChannelName(instrument: str) -> str:
         """Get the instrument channel name for the current instrument.
 
         This is the plot prefix to use for upload.
@@ -739,7 +759,13 @@ class Plotter:
             case _:
                 raise ValueError(f"Unknown instrument {instrument}")
 
-    def callback(self, expRecord, doPlotMosaic=False, doPlotNoises=False, timeout=5):
+    def callback(
+        self,
+        expRecord: DimensionRecord,
+        doPlotMosaic: bool = False,
+        doPlotNoises: bool = False,
+        timeout: float = 5,
+    ) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Note: the callback is used elsewhere to reprocess old data, so the
@@ -796,6 +822,10 @@ class Plotter:
 
 
 class Replotter(Plotter):
+    # TODO: Consider removing this whole class. If it's not in use by the time
+    # we're on sky then that's probably the right time. I think the redis
+    # system will mean we don't need this, but let's wait until we're sure, and
+    # then delete.
 
     @dataclass
     class ReplotterWorkload(Uploader):  # TODO: DM-44166 why does this inherit from Uploader?!

@@ -7,7 +7,8 @@ dimensionUniverseFile: /project/rubintv/butlerDimensionUniverse.json
 # Summit items:
 nightReportPath: /project/rubintv/nightReportData
 
-# AuxTel metadata
+# AuxTel
+auxtelButlerPath: LATISS
 auxTelMetadataPath: /project/rubintv/sidecar_metadata
 auxTelMetadataShardPath: /project/rubintv/sidecar_metadata/shards
 
@@ -49,7 +50,9 @@ comCamAosMetadataShardPath: /project/rubintv/LSSTComCamAos/sidecar_metadata/shar
 
 lsstCamMetadataPath: /project/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /project/rubintv/LSSTCam/sidecar_metadata/shards
-lsstCamButlerPath: /repo/LSSTCam/butler.yaml
+lsstCamAosMetadataPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamAosMetadataShardPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamButlerPath: LSSTCam
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath: /project/rubintv/
@@ -61,16 +64,22 @@ binnedCalexpPath: /project/rubintv/calculatedData/calexps
 tmaMetadataPath: /project/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /project/rubintv/tma/sidecar_metadata/shards
 
+consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
 sfmPipelineFile:
+  LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
 
 aosPipelineFile:
-  LSSTComCamSim: $TS_WEP_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $TS_WEP_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
+  LATISS: ''
+  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
+  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
+  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
-  LSSTComCam: LSSTComCam/quickLook
-  LSSTComCamSim: LSSTComCamSim/quickLook
-  LSSTCam: LSSTCam/quickLook
+  LATISS: LATISS/runs/quickLook
+  LSSTComCam: LSSTComCam/runs/quickLook
+  LSSTComCamSim: LSSTComCamSim/runs/quickLook
+  LSSTCam: LSSTCam/runs/quickLook

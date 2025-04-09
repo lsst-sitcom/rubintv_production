@@ -20,10 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Test cases for utils."""
+import os
+import tempfile
 import unittest
 
 import lsst.utils.tests
-from lsst.rubintv.production.utils import isDayObsContiguous, sanitizeNans
+from lsst.rubintv.production.utils import isDayObsContiguous, managedTempFile, sanitizeNans
 
 
 class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
@@ -36,6 +38,7 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
         self.assertTrue(isDayObsContiguous(dayObs, nextDay))
         self.assertTrue(isDayObsContiguous(nextDay, dayObs))
         self.assertFalse(isDayObsContiguous(nextDay, differentDay))
+        self.assertFalse(isDayObsContiguous(dayObs, dayObs))  # same day
 
     def test_sanitizeNans(self) -> None:
         self.assertEqual(sanitizeNans({"a": 1.0, "b": float("nan")}), {"a": 1.0, "b": None})
@@ -50,6 +53,108 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
 
         noneKeyedDict = {None: 1.0, "b": {"c": float("nan"), "d": 2.0}}
         self.assertEqual(sanitizeNans(noneKeyedDict), {None: 1.0, "b": {"c": None, "d": 2.0}})
+
+
+class ManagedTempFileTestCase(lsst.utils.tests.TestCase):
+    """Tests for managedTempFile context manager."""
+
+    def setUp(self):
+        # Save original environment value if exists
+        self.original_ci_env = os.environ.get("RAPID_ANALYSIS_CI", None)
+
+    def tearDown(self):
+        # Restore original environment
+        if self.original_ci_env is not None:
+            os.environ["RAPID_ANALYSIS_CI"] = self.original_ci_env
+        elif "RAPID_ANALYSIS_CI" in os.environ:
+            del os.environ["RAPID_ANALYSIS_CI"]
+
+    def test_standard_temp_file(self):
+        """Test standard operation creates and cleans up temp file."""
+        # Ensure CI mode is off
+        if "RAPID_ANALYSIS_CI" in os.environ:
+            del os.environ["RAPID_ANALYSIS_CI"]
+
+        filename = None
+        # Use the context manager
+        with managedTempFile(suffix=".txt") as temp_file:
+            filename = temp_file
+            # File should exist within context
+            self.assertTrue(os.path.exists(filename))
+            # Write some content
+            with open(filename, "w") as f:
+                f.write("test content")
+
+        # File should be deleted after context exit
+        self.assertFalse(os.path.exists(filename))
+
+    def test_suffix_handling(self):
+        """Test that suffix is applied correctly."""
+        if "RAPID_ANALYSIS_CI" in os.environ:
+            del os.environ["RAPID_ANALYSIS_CI"]
+
+        with managedTempFile(suffix=".test_suffix") as temp_file:
+            self.assertTrue(temp_file.endswith(".test_suffix"))
+
+    def test_ci_mode(self):
+        """Test CI mode operation."""
+        # Set CI mode
+        os.environ["RAPID_ANALYSIS_CI"] = "true"
+
+        # Create a test directory that will be cleaned up
+        test_dir = tempfile.mkdtemp()
+        try:
+            test_file = os.path.join(test_dir, "test_ci_file.txt")
+
+            # Use the context manager
+            with managedTempFile(suffix=".txt", ciOutputName=test_file) as temp_file:
+                self.assertEqual(temp_file, test_file)
+                # File should exist
+                self.assertTrue(os.path.exists(temp_file))
+                # Write some content
+                with open(temp_file, "w") as f:
+                    f.write("CI test content")
+
+            # File should still exist after context in CI mode
+            self.assertTrue(os.path.exists(test_file))
+
+            # Clean up
+            os.unlink(test_file)
+        finally:
+            # Clean up test directory
+            if os.path.exists(test_dir):
+                os.rmdir(test_dir)
+
+    def test_ci_mode_no_output_name(self):
+        """Test CI mode raises ValueError when no output name provided."""
+        os.environ["RAPID_ANALYSIS_CI"] = "true"
+
+        with self.assertRaises(ValueError):
+            with managedTempFile(suffix=".txt") as _:
+                pass
+
+    def test_ci_mode_file_exists(self):
+        """Test CI mode raises FileExistsError when file already exists."""
+        os.environ["RAPID_ANALYSIS_CI"] = "true"
+
+        # Create a test file
+        test_dir = tempfile.mkdtemp()
+        try:
+            test_file = os.path.join(test_dir, "existing_file.txt")
+            with open(test_file, "w") as f:
+                f.write("existing content")
+
+            # Should raise FileExistsError
+            with self.assertRaises(FileExistsError):
+                with managedTempFile(suffix=".txt", ciOutputName=test_file) as _:
+                    pass
+
+            # Clean up
+            os.unlink(test_file)
+        finally:
+            # Clean up test directory
+            if os.path.exists(test_dir):
+                os.rmdir(test_dir)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

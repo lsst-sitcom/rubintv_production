@@ -37,11 +37,19 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
                 "id": "0123",
                 "obs_id": "AT_O_20230316_000520",
                 "seq_num": 520,
+                "instrument": "LATISS",
             },
             {
                 "id": "9999",
                 "obs_id": "AT_O_20230316_000521",
                 "seq_num": 521,
+                "instrument": "LATISS",
+            },
+            {
+                "id": "9998",
+                "obs_id": "AT_O_20230316_000521",
+                "seq_num": 522,
+                "instrument": "LSSTCam",
             },
         ]
         responses.add(
@@ -49,7 +57,7 @@ class ExposurLogUtilsTestCase(lsst.utils.tests.TestCase):
             "https://summit-lsp.lsst.codes/exposurelog/messages",
             json=mock_logs,
         )
-        logs = getLogsForDayObs(20230316)
+        logs = getLogsForDayObs("LATISS", 20230316)
         self.assertEqual(logs, {520: mock_logs[0], 521: mock_logs[1]})
 
 

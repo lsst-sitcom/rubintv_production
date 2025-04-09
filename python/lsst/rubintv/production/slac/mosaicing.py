@@ -18,29 +18,41 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
 
 import glob
 import logging
 import os
 import time
+from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib.colors as colors
 import numpy as np
 from matplotlib import cm
+from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-import lsst.pipe.base as pipeBase
 from lsst.afw.cameraGeom import utils as cgu
+from lsst.afw.display import Display
 from lsst.afw.fits import FitsError
+from lsst.afw.image import Exposure, Image, ImageF
+from lsst.pipe.base import Struct
 from lsst.summit.utils import getQuantiles
 from lsst.utils.iteration import ensure_iterable
 
 from ..utils import isFileWorldWritable
 
+if TYPE_CHECKING:
+    from logging import Logger
 
-def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
+    from matplotlib.pyplot import Normalize
+
+    from lsst.afw.cameraGeom import Camera, Detector
+    from lsst.daf.butler import Butler, DeferredDatasetHandle
+
+
+def getBinnedFilename(expId: int, instrument: str, detectorName: str, dataPath: str, binSize: int) -> str:
     """Get the full path and filename for a binned image.
 
     Parameters
@@ -59,7 +71,7 @@ def getBinnedFilename(expId, instrument, detectorName, dataPath, binSize):
     return os.path.join(dataPath, f"{expId}_{instrument}_{detectorName}_binned_{binSize}.fits")
 
 
-def getBinnedImageFiles(path, instrument, expId=None):
+def getBinnedImageFiles(path: str, instrument: str, expId: int | None = None) -> list[str]:
     """Get a list of the binned image files for a given instrument.
 
     Optionally filters to only return the matching expId if expId is
@@ -74,14 +86,15 @@ def getBinnedImageFiles(path, instrument, expId=None):
     expId : `int`, optional
         The exposure ID to filter on.
     """
+    expIdToUse = f"{expId}"
     if expId is None:
-        expId = ""
-    pattern = os.path.join(path, f"{expId}*{instrument}*binned*")
+        expIdToUse = ""
+    pattern = os.path.join(path, f"{expIdToUse}*{instrument}*binned*")
     binnedImages = glob.glob(pattern)
     return binnedImages
 
 
-def getBinnedImageExpIds(path, instrument):
+def getBinnedImageExpIds(path: str, instrument: str) -> list[int]:
     """Get a list of the exposure IDs for which binned images exist.
 
     Parameters
@@ -101,7 +114,9 @@ def getBinnedImageExpIds(path, instrument):
     return expIds
 
 
-def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
+def writeBinnedImageFromDeferredRefs(
+    deferredDatasetRefs: list[DeferredDatasetHandle], outputPath: str, binSize: int
+) -> None:
     """Write a binned image out for a single or list of deferredDatasetRefs.
 
     Parameters
@@ -114,14 +129,14 @@ def writeBinnedImageFromDeferredRefs(deferredDatasetRefs, outputPath, binSize):
     binSize : `int`
         The binning factor.
     """
-    deferredDatasetRefs = ensure_iterable(deferredDatasetRefs)
+    deferredDatasetRefs = list(ensure_iterable(deferredDatasetRefs))
     for dRef in deferredDatasetRefs:
         exp = dRef.get()
-        instrument = dRef.dataId["instrument"]
+        instrument = cast(str, dRef.dataId["instrument"])
         writeBinnedImage(exp, instrument=instrument, outputPath=outputPath, binSize=binSize)
 
 
-def writeBinnedImage(exp, instrument, outputPath, binSize):
+def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: int) -> None:
     """Bin an image and write it to disk.
 
     The image is binned by ``binSize`` and written to ``outputPath`` according
@@ -143,9 +158,9 @@ def writeBinnedImage(exp, instrument, outputPath, binSize):
     It would be easy to make this take images rather than exposures, if needed,
     it would just require the detector name and expId to be passed in.
     """
-    if not isinstance(exp, afwImage.Exposure):
+    if not isinstance(exp, Exposure):
         raise ValueError(f"exp must be an Exposure, got {type(exp)}")
-    binnedImage = afwMath.binImage(exp.image, binSize)  # turns the exp into an afwImage.Image
+    binnedImage = afwMath.binImage(exp.image, binSize)  # turns the exp into an Image
 
     expId = exp.visitInfo.id  # note this is *not* exp.info.id, as that has the detNum on the end!
     detName = exp.detector.getName()
@@ -156,7 +171,15 @@ def writeBinnedImage(exp, instrument, outputPath, binSize):
         os.chmod(outFilename, 0o777)
 
 
-def readBinnedImage(expId, instrument, detectorName, dataPath, binSize, deleteAfterReading, logger=None):
+def readBinnedImage(
+    expId: int,
+    instrument: str,
+    detectorName: str,
+    dataPath: str,
+    binSize: int,
+    deleteAfterReading: bool,
+    logger: Logger | None = None,
+) -> Image:
     """Read a pre-binned image in from disk.
 
     Parameters
@@ -182,7 +205,7 @@ def readBinnedImage(expId, instrument, detectorName, dataPath, binSize, deleteAf
         The binned image.
     """
     filename = getBinnedFilename(expId, instrument, detectorName, dataPath, binSize)
-    image = afwImage.ImageF(filename)
+    image = ImageF(filename)
     if deleteAfterReading:
         try:
             os.remove(filename)
@@ -214,14 +237,18 @@ class PreBinnedImageSource:
     isTrimmed = True  # required attribute camGeom.utils.showCamera(imageSource)
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
-    def __init__(self, expId, instrument, dataPath, binSize, deleteAfterReading):
+    def __init__(
+        self, expId: int, instrument: str, dataPath: str, binSize: int, deleteAfterReading: bool
+    ) -> None:
         self.expId = expId
         self.instrument = instrument
         self.dataPath = dataPath
         self.binSize = binSize
         self.deleteAfterReading = deleteAfterReading
 
-    def getCcdImage(self, det, imageFactory, binSize, *args, **kwargs):
+    def getCcdImage(
+        self, det: Detector, imageFactory: Any, binSize: int, *args, **kwargs
+    ) -> tuple[Image, Detector]:
         """Call signature is required by camGeom.utils.showCamera(imageSource),
         but we don't use the arguments, e.g. imageFactory.
         """
@@ -239,16 +266,16 @@ class PreBinnedImageSource:
 
 
 def makeMosaic(
-    deferredDatasetRefs,
-    camera,
-    binSize,
-    dataPath,
-    timeout,
-    nExpected,
-    deleteIfComplete,
-    deleteRegardless,
-    logger=None,
-):
+    deferredDatasetRefs: list[DeferredDatasetHandle],
+    camera: Camera,
+    binSize: int,
+    dataPath: str,
+    timeout: float,
+    nExpected: int,
+    deleteIfComplete: bool,
+    deleteRegardless: bool,
+    logger: Logger | None = None,
+) -> Struct:
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
     The binsize must match the binning used to write the images to disk
@@ -281,7 +308,7 @@ def makeMosaic(
     Returns
     -------
     result : `lsst.pipe.base.Struct`
-        A pipeBase struct containing the ``output_mosaic`` as an
+        A `Struct` containing the ``output_mosaic`` as an
         `lsst.afw.image.Image`, or `None` if the mosaic could not be made.
 
     Notes
@@ -300,11 +327,12 @@ def makeMosaic(
     instrument = camera.getName()
 
     detectorNameList = []
-    expIds = set()
+    expIds: set[int] = set()
 
     for dRef in deferredDatasetRefs:
         detNum = dRef.dataId["detector"]
-        expIds.add(dRef.dataId["exposure"])  # to check they all match
+        _expId = cast(int, dRef.dataId["exposure"])
+        expIds.add(_expId)  # to check they all match
         detName = camera[detNum].getName()
         detectorNameList.append(detName)
 
@@ -321,6 +349,7 @@ def makeMosaic(
     firstWarn = True
     waitTime = -0.000001  # start at minus 1 microsec as an easy fix for the first loop for timeouts of zero
     startTime = time.time()
+    output_mosaic = None
     while (not success) and (waitTime < timeout):
         try:
             # keep trying while we wait for data to finish landing
@@ -367,17 +396,17 @@ def makeMosaic(
 
         if len(detectorNameList) == 0:
             logger.warning(f"Found {len(detectorNameList)} binned detector images, so no mosaic can be made.")
-            return pipeBase.Struct(output_mosaic=None)
+            return Struct(output_mosaic=None)
 
         logger.info(f"Making mosaic with {len(detectorNameList)} detectors")
         output_mosaic = cgu.showCamera(
             camera, imageSource=imageSource, detectorNameList=detectorNameList, binSize=binSize
         )
 
-    return pipeBase.Struct(output_mosaic=output_mosaic)
+    return Struct(output_mosaic=output_mosaic)
 
 
-def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
+def _getDetectorNamesWithData(expId: int, camera: Camera, dataPath: str, binSize: int) -> list[str]:
     """Check for existing binned image files and return the detector names
     for those with data.
 
@@ -408,20 +437,20 @@ def _getDetectorNamesWithData(expId, camera, dataPath, binSize):
 
 
 def plotFocalPlaneMosaic(
-    butler,
-    figureOrDisplay,
-    expId,
-    camera,
-    binSize,
-    dataPath,
-    savePlotAs,
-    nExpected,
-    stretch,
-    timeout,
-    deleteIfComplete=True,
-    deleteRegardless=False,
-    logger=None,
-):
+    butler: Butler,
+    figureOrDisplay: Figure | Display,
+    expId: int,
+    camera: Camera,
+    binSize: int,
+    dataPath: str,
+    savePlotAs: str,
+    nExpected: int,
+    stretch: str,
+    timeout: float,
+    deleteIfComplete: bool = True,
+    deleteRegardless: bool = False,
+    logger: Logger | None = None,
+) -> Image | None:
     """Save a full focal plane binned mosaic image for a given expId.
 
     The binned images must have been created upstream with the correct binning
@@ -459,8 +488,8 @@ def plotFocalPlaneMosaic(
 
     Returns
     -------
-    existingNames : `list` of `str`
-        The detector names for which binned images exist.
+    mosaic : `lsst.afw.image.Image`
+        The mosaiced image.
     """
     if not logger:
         logger = logging.getLogger("lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic")
@@ -474,10 +503,10 @@ def plotFocalPlaneMosaic(
     logger.info(f"Found {len(dRefs)} dRefs for {expId}")
     # sleazy part - if the raw exists then the binned image will get written
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
-    deferredDrefs = [butler.getDeferred(d) for d in dRefs]
+    deferredDatasetHandles = [butler.getDeferred(d) for d in dRefs]
 
     mosaic = makeMosaic(
-        deferredDrefs,
+        deferredDatasetHandles,
         camera,
         binSize,
         dataPath,
@@ -489,14 +518,16 @@ def plotFocalPlaneMosaic(
     ).output_mosaic
     if mosaic is None:
         logger.warning(f"Failed to make mosaic for {expId}")
-        return
+        return None
     logger.info(f"Made mosaic image for {expId}")
     _plotFpMosaic(mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, saveAs=savePlotAs)
     logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
     return mosaic
 
 
-def _plotFpMosaic(im, figureOrDisplay, scalingOption="CCS", saveAs=""):
+def _plotFpMosaic(
+    im: Image, figureOrDisplay: Figure | Display, scalingOption: str = "CCS", saveAs: str = ""
+) -> Figure | Display:
     """Plot the focal plane mosaic, optionally saving as a png.
 
     Parameters
@@ -513,10 +544,17 @@ def _plotFpMosaic(im, figureOrDisplay, scalingOption="CCS", saveAs=""):
     useAfwDisplay = scalingOption == "zscale"
 
     if not useAfwDisplay:  # figureOrDisplay is a matplotlib figure
+        if not isinstance(figureOrDisplay, Figure):
+            raise ValueError(
+                f"Wrong type of figure/display provided {type(figureOrDisplay)}"
+                f" for given stretch option {scalingOption}"
+            )
         data = im.array
         ax = figureOrDisplay.gca()
         ax.clear()
-        cmap = cm.gray
+        # XXX why is this type ignore necessary? Can I fix this?
+        cmap = cm.gray  # type: ignore
+        norm: Normalize
         match scalingOption:
             case "asinh":
 
@@ -543,6 +581,11 @@ def _plotFpMosaic(im, figureOrDisplay, scalingOption="CCS", saveAs=""):
         if saveAs:
             figureOrDisplay.savefig(saveAs)
     else:  # figureOrDisplay is an afwDisplay
+        if not isinstance(figureOrDisplay, Display):
+            raise ValueError(
+                f"Wrong type of figure/display provided {type(figureOrDisplay)}"
+                f" for given stretch option {scalingOption}"
+            )
         figureOrDisplay.scale("asinh", "zscale")
         figureOrDisplay.image(im)
         figureOrDisplay._impl._figure.tight_layout()

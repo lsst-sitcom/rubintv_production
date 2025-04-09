@@ -20,25 +20,27 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
+__all__ = ["Plotter"]
+
 import logging
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
 import lsst.afw.display as afwDisplay
+from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from ..uploaders import MultiUploader
 from ..utils import LocationConfig, getNumExpectedItems
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
-from .utils import getCamera
 
 if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.afw.cameraGeom import Camera
-    from lsst.daf.butler import Butler
+    from lsst.daf.butler import Butler, DimensionRecord
 
     from ..payloads import Payload
     from ..podDefinition import PodDetails
@@ -82,7 +84,7 @@ class Plotter:
     ) -> None:
         self.locationConfig: LocationConfig = locationConfig
         self.butler: Butler = butler
-        self.camera: Camera = getCamera(self.butler, instrument)
+        self.camera: Camera = getCameraFromInstrumentName(instrument)
         self.instrument: str = instrument
         self.s3Uploader: MultiUploader = MultiUploader()
         self.log: Logger = _LOG.getChild(f"plotter_{self.instrument}")
@@ -97,7 +99,7 @@ class Plotter:
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotFocalPlane(self, expRecord, dataProduct, timeout) -> str:
+    def plotFocalPlane(self, expRecord: DimensionRecord, dataProduct: str, timeout: float) -> str:
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -126,7 +128,7 @@ class Plotter:
 
         self.fig.clear()
 
-        datapath = None
+        datapath = ""
         stretch = "CCS"
         displayToUse = None
         match dataProduct:
@@ -138,9 +140,16 @@ class Plotter:
                 datapath = self.locationConfig.binnedCalexpPath
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
+            case _:
+                raise ValueError(f"Unknown data product: {dataProduct}")
 
-        plotName = f"{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
-        saveFile = os.path.join(self.locationConfig.plotPath, plotName)
+        # TODO: DM-49948 this template should go somewhere reusable as it's
+        # relied upon elsewhere so this is fragile at present. Linked in
+        # animation code.
+        path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
+        path.mkdir(mode=0o777, parents=True, exist_ok=True)
+        plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
+        saveFile = (path / plotName).as_posix()
 
         plotFocalPlaneMosaic(
             butler=self.butler,
@@ -159,7 +168,7 @@ class Plotter:
         return saveFile
 
     @staticmethod
-    def getInstrumentChannelName(instrument) -> str:
+    def getInstrumentChannelName(instrument: str) -> str:
         """Get the instrument channel name for the current instrument.
 
         This is the plot prefix to use for upload.
@@ -184,7 +193,7 @@ class Plotter:
             case "LSSTComCamSim":
                 return "comcam_sim"
             case "LSSTCam":
-                return "slac_lsstcam"
+                return "lsstcam"
             case _:
                 raise ValueError(f"Unknown instrument {instrument}")
 

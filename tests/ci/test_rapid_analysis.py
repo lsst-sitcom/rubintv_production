@@ -37,7 +37,7 @@ CliLog.initLog = do_nothing
 
 # only import from lsst.anything once the logging configs have been frozen
 # noqa: E402
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise  # noqa: E402
+from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI  # noqa: E402
 
 # --------------- Configuration --------------- #
 
@@ -56,23 +56,50 @@ DEBUG = False
 
 # List of test scripts to run, defined relative to package root
 TEST_SCRIPTS_ROUND_1 = [
+    # LATISS pods:
+    TestScript(
+        "scripts/LATISS/runHeadNode.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+        tee_output=True,
+    ),
+    TestScript(
+        "scripts/LATISS/runSfmRunner.py",
+        ["usdf_testing", "0"],
+        display_on_pass=True,
+    ),
+    # TestScript(
+    #     "scripts/LATISS/runOneOffCalexp.py",
+    #     ["usdf_testing"],
+    # ),
+    TestScript(
+        "scripts/LATISS/runOneOffExpRecord.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+    ),
+    TestScript(
+        "scripts/LATISS/runOneOffPostIsr.py",
+        ["usdf_testing"],
+        display_on_pass=True,
+    ),
+    # ComCam pods:
     # the main RA testing - runs data through the processing pods
     TestScript(
         "scripts/LSSTComCam/runPlotter.py",
         ["usdf_testing"],
-        display_on_pass=True,
-        tee_output=True,
+        display_on_pass=False,
+        tee_output=False,
     ),
     TestScript(
         "scripts/LSSTComCam/runStep2aWorker.py",
         ["usdf_testing", "0"],
         tee_output=False,
     ),
-    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=True),
+    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=False),
     TestScript(
         "scripts/LSSTComCam/runSfmRunner.py",
         ["usdf_testing", "0"],
-        display_on_pass=True,
+        display_on_pass=False,
         tee_output=False,
     ),
     TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
@@ -86,8 +113,8 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript(
         "scripts/LSSTComCam/runAosWorker.py",
         ["usdf_testing", "0"],
-        display_on_pass=True,
-        tee_output=True,
+        display_on_pass=False,
+        tee_output=False,
         # do_debug=True
     ),
     TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),
@@ -101,14 +128,32 @@ TEST_SCRIPTS_ROUND_1 = [
     TestScript(
         "scripts/LSSTComCam/runStep2aAosWorker.py",
         ["usdf_testing", "0"],
-        display_on_pass=True,
+        display_on_pass=False,
+    ),
+    TestScript(
+        "scripts/LSSTComCam/runOneOffExpRecord.py",
+        ["usdf_testing"],
+        tee_output=False,
+        display_on_pass=False,
+    ),
+    TestScript(
+        "scripts/LSSTComCam/runOneOffPostIsr.py",
+        ["usdf_testing"],
+        tee_output=False,
+        display_on_pass=False,
+    ),
+    TestScript(
+        "scripts/LSSTComCam/runOneOffCalexp.py",
+        ["usdf_testing"],
+        tee_output=False,
+        display_on_pass=False,
     ),
     TestScript(
         "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
-        tee_output=True,
-        display_on_pass=True,
+        tee_output=False,
+        display_on_pass=False,
         # do_debug=True
     ),
     TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
@@ -140,10 +185,11 @@ META_TESTS_PASS_EXPECTED = [
 
 YAML_FILES_TO_CHECK = [
     # TODO Add the commented out files back in when you're ready
-    # "config/config_bts.yaml",
+    "config/config_bts.yaml",
     "config/config_tts.yaml",
     "config/config_summit.yaml",
     "config/config_usdf_testing.yaml",
+    "config/config_usdf.yaml",
 ]
 
 # --------------- code to make file paths full --------------- #
@@ -328,6 +374,7 @@ def run_setup():
     """
     # set other env vars required for RA config
     os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
+    os.environ["RAPID_ANALYSIS_CI"] = "true"
 
     # Set environment variables for Redis
     os.environ["REDIS_HOST"] = REDIS_HOST
@@ -339,6 +386,9 @@ def run_setup():
     os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
     if getDoRaise() is not True:  # confirm that this will be used correctly by services
         raise RuntimeError("getDoRaise is not True")
+
+    if runningCI() is not True:
+        raise RuntimeError("runningCI is not True")
 
     return
 
@@ -375,6 +425,7 @@ def check_redis_final_contents():
     redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
     redisHelper.displayRedisContents()
 
+    # ComCam section
     inst = "LSSTComCam"
 
     visits_sfm = [
@@ -394,10 +445,12 @@ def check_redis_final_contents():
     n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
     if n_step2a_sfm != n_visits_sfm:
         CHECKS.append(
-            Check(False, f"Expected {n_visits_sfm} SFM step2a to have finished, got {n_step2a_sfm}")
+            Check(
+                False, f"Expected {n_visits_sfm} SFM step2a for {inst} to have finished, got {n_step2a_sfm}"
+            )
         )
     else:
-        CHECKS.append(Check(True, f"{n_step2a_sfm}x SFM step2a finished"))
+        CHECKS.append(Check(True, f"{n_step2a_sfm}x {inst} SFM step2a finished"))
     del n_visits_sfm
 
     n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
@@ -433,6 +486,25 @@ def check_redis_final_contents():
         CHECKS.append(Check(False, f"Found failed keys: {failed_keys}"))
     else:
         CHECKS.append(Check(True, "No failed keys found in redis"))
+
+    # LATISS section
+    inst = "LATISS"
+
+    visits_sfm = [
+        2024081300632,
+    ]
+    n_visits_sfm = len(visits_sfm)
+
+    # TODO add something for the task counters too, not just step2a entry etc
+
+    n_step1_sfm = redisHelper.getNumDetectorLevelFinished(inst, "step1", "SFM", "2024081300632")
+    if n_step1_sfm != n_visits_sfm:
+        CHECKS.append(
+            Check(False, f"Expected {n_visits_sfm} SFM step1 for {inst} to have finished, got {n_step1_sfm}")
+        )
+    else:
+        CHECKS.append(Check(True, f"{n_step1_sfm}x {inst} SFM step1 finished"))
+    del n_visits_sfm
 
     return
 
@@ -672,22 +744,35 @@ def delete_output_files():
 def check_plots():
     locationConfig = LocationConfig("usdf_testing")
 
-    files = os.listdir(locationConfig.plotPath)
-    # TODO make this more data-driven
-    expected = [
-        "calexp_mosaic_dayObs_20241102_seqNum_000170.jpg",
-        "postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg",
-        "postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg",
-        "postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg",
-        "20241102_171-fp_donut_gallery.png",
-        "20241102_172-fp_donut_gallery.png",
-        "20241102_172-zk_measurement_pyramid.png",
-        "20241102_172-zk_residual_pyramid.png",
+    expected = [  # (path, size) tuples
+        ("LSSTComCam/20241102/LSSTComCam_calexp_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000170.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000171.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000172.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000170.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000171.png", 5000),
+        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000172.png", 5000),
+        ("20241102_171-fp_donut_gallery.png", 0),  # these are just touch()ed for now
+        ("20241102_172-fp_donut_gallery.png", 0),  # these are just touch()ed for now
+        ("20241102_172-zk_measurement_pyramid.png", 0),  # these are just touch()ed for now
+        ("20241102_172-zk_residual_pyramid.png", 0),  # these are just touch()ed for now
+        ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
+        ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png", 5000),
+        ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
+        ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
     ]
 
-    for file in expected:
-        if file in files:
-            CHECKS.append(Check(True, f"Found expected plot {file}"))
+    for file, expected_size in expected:
+        full_path = os.path.join(locationConfig.plotPath, file)
+        if os.path.exists(full_path):
+            file_size = os.path.getsize(full_path)
+            if file_size >= expected_size:
+                CHECKS.append(Check(True, f"Found expected plot {file} with size {file_size} bytes"))
+            else:
+                CHECKS.append(Check(False, f"Plot {file} exists but is too small: {file_size} bytes"))
         else:
             CHECKS.append(Check(False, f"Did not find expected plot {file}"))
 
@@ -732,9 +817,20 @@ def main():
     if DO_RUN_META_TESTS:
         expected += [s for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
     if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
-        raise RuntimeError(
-            "Not all test scripts have had their results collected somehow - this is drastically wrong!"
-        )
+        missing_exit_codes = set(expected) - set(exit_codes.keys())
+        missing_outputs = set(expected) - set(outputs.keys())
+        extra_exit_codes = set(exit_codes.keys()) - set(expected)
+        extra_outputs = set(outputs.keys()) - set(expected)
+        msg = "Not all test scripts have had their results collected somehow - this is drastically wrong!\n"
+        if missing_exit_codes:
+            msg += f"Missing exit codes for: {missing_exit_codes}\n"
+        if missing_outputs:
+            msg += f"Missing outputs for: {missing_outputs}\n"
+        if extra_exit_codes:
+            msg += f"Unexpected exit codes for: {extra_exit_codes}\n"
+        if extra_outputs:
+            msg += f"Unexpected outputs for: {extra_outputs}\n"
+        raise RuntimeError(msg)
 
     print("\nTest Results:")
     for script, result in exit_codes.items():

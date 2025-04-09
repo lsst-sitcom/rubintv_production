@@ -61,6 +61,39 @@ class Tee:
         for f in self.files:
             f.flush()
 
+    def fileno(self):
+        # Return the file descriptor of the first file that has one
+        for f in self.files:
+            if hasattr(f, "fileno"):
+                return f.fileno()
+        # If none of the files has a fileno method, raise
+        raise IOError("This Tee instance doesn't have a valid file descriptor")
+
+    def isatty(self):
+        # Check if any file is connected to a tty
+        for f in self.files:
+            if hasattr(f, "isatty") and f.isatty():
+                return True
+        return False
+
+    def close(self):
+        # Close all files
+        for f in self.files:
+            if hasattr(f, "close"):
+                f.close()
+
+    def writable(self):
+        # We're a stdout replacement so we should be writable
+        return True
+
+    def readable(self):
+        # Stdout is typically not readable
+        return False
+
+    def seekable(self):
+        # Stdout is typically not seekable
+        return False
+
 
 class LoggingTee(logging.Handler):
     def __init__(self, *handlers):

@@ -20,30 +20,32 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
+instrument = "LATISS"
 
-workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
+workerNum = 0
 
 locationConfig = getAutomaticLocationConfig()
+
+# The detectorNumber to be processed is defined in the init of the
+# OneOffProcessor class below. However, because this is a one-per-instrument
+# pod type, the detector number defined in the podDetails is therefore None,
+# despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
+    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
 
-locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath,
+    locationConfig.auxtelButlerPath,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -51,14 +53,17 @@ butler = Butler.from_config(
     writeable=True,
 )
 
-sfmRunner = SingleCorePipelineRunner(
+metadataDirectory = locationConfig.auxTelMetadataPath
+shardsDirectory = locationConfig.auxTelMetadataShardPath
+
+oneOffProcessor = OneOffProcessor(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step1",
-    awaitsDataProduct="raw",
     podDetails=podDetails,
+    detectorNumber=0,
+    shardsDirectory=shardsDirectory,
+    processingStage="spectractorSpectrum",
     doRaise=getDoRaise(),
 )
-sfmRunner.run()
+oneOffProcessor.run()

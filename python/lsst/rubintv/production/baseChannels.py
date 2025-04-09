@@ -209,7 +209,6 @@ class BaseButlerChannel(BaseChannel):
         cadence = 0.25
         start = time.time()
         while time.time() - start < timeout:
-            self.butler.registry.refresh()
             if self.butler.exists(self.dataProduct, dataId):
                 if gettingButler is None:
                     return self.butler.get(self.dataProduct, dataId)

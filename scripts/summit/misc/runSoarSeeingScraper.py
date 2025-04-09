@@ -19,19 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
+from lsst.summit.extras.soarSeeing import SoarDatabaseBuiler
 
-from lsst.rubintv.production.rubinTv import IsrRunner
-from lsst.rubintv.production.utils import LocationConfig
-from lsst.summit.utils.utils import setupLogging
+scraper = SoarDatabaseBuiler()
 
-setupLogging()
-location = "summit" if len(sys.argv) < 2 else sys.argv[1]
-locationConfig = LocationConfig(location)
-
-print(f"Running isr runner at {location}...")
-isrRunner = IsrRunner(
-    locationConfig=locationConfig,
-    instrument="LATISS",
-)
-isrRunner.run()
+scraper.run()

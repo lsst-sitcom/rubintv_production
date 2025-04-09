@@ -27,14 +27,13 @@ from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 instrument = "LSSTCam"
+locationConfig = getAutomaticLocationConfig()
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
-
-locationConfig = getAutomaticLocationConfig()
+detectorNum = workerNum % 9
+detectorDepth = workerNum // 9
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
+    instrument=instrument, podFlavor=PodFlavor.AOS_WORKER, detectorNumber=detectorNum, depth=detectorDepth
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -44,6 +43,7 @@ print(
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -55,7 +55,7 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
+    pipeline=locationConfig.getAosPipelineFile(instrument),
     step="step1",
     awaitsDataProduct="raw",
     podDetails=podDetails,

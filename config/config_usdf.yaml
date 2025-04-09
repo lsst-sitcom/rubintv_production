@@ -3,23 +3,11 @@ dataIdScanPath: '/sdf/scratch/rubin/rapid-analysis/dataIds'
 bucketName: 'rubintv_data_slac'
 dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUniverse.json'
 
-# Butler paths - use full paths not aliases here as path existence is checked
-ts8ButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
-botButlerPath: '/sdf/group/rubin/repo/ir2/butler.yaml'
-
 # # data paths
 scratchPath: ''
 plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
 calculatedDataPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData'
 binnedCalexpPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData/calexps'
-
-# # paths for serving TS8 metadata at SLAC
-ts8MetadataPath: '/sdf/scratch/rubin/rapid-analysis/ts8/sidecar_metadata'
-ts8MetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/ts8/sidecar_metadata/shards'
-
-# # paths for serving BOT metadata at SLAC
-botMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata'
-botMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata'
 
 # configuration
 binning: 8
@@ -30,14 +18,53 @@ comCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
+# LSSTCam config:
+lsstCamAosMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata
+lsstCamAosMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata/shards
+lsstCamMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
+lsstCamMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
+lsstCamButlerPath: /repo/embargo/butler.yaml
+
+consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
+aosPipelineFile:
+  LATISS: ''
+  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
+  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
+  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+
 sfmPipelineFile:
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/nightly-validation.yaml
 
 outputChains:
-  LSSTComCam: LSSTComCam/nightlyValidation
-  LSSTComCamSim: LSSTComCamSim/nightlyValidation
-  LSSTCam: LSSTCam/nightlyValidation
+  LSSTComCam: LSSTComCam/runs/nightlyValidation
+  LSSTComCamSim: LSSTComCamSim/runs/nightlyValidation
+  LSSTCam: LSSTCam/runs/nightlyValidation
 
 comCamSimMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata'
 comCamSimMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCamSim/sidecar_metadata/shards'
+
+#### These are currently all unused, but are listed explicitly for clarity to
+#  make it clear what is not being run at USDF, and so that LocationConfigs
+# will have access to all the same items in principle.
+starTrackerDataPath: ''
+starTrackerOutputPath: ''
+starTrackerMetadataPath: ''
+starTrackerMetadataShardPath: ''
+tmaMetadataPath: ''
+tmaMetadataShardPath: ''
+allSkyOutputPath: ''
+allSkyRootDataPath: ''
+astrometryNetRefCatPath: ''
+auxTelMetadataPath: ''
+auxTelMetadataShardPath: ''
+auxtelButlerPath: ''
+comCamAosMetadataPath: ''
+comCamAosMetadataShardPath: ''
+comCamSimAosMetadataPath: ''
+comCamSimAosMetadataShardPath: ''
+
+# might be used soon
+moviePngPath: ''
+nightReportPath: ''

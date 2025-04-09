@@ -28,18 +28,21 @@ import logging
 import math
 import os
 import sys
+import tempfile
 import time
 import uuid
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Generator
 
 import numpy as np
 import yaml
 
 from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
 from lsst.utils import getPackageDir
@@ -69,8 +72,21 @@ __all__ = [
     "sanitizeNans",
     "safeJsonOpen",
     "getNumExpectedItems",
+    "getShardPath",
+    "getRubinTvInstrumentName",
+    "getPodWorkerNumber",
+    "getWitnessDetectorNumber",
+    "isCalibration",
+    "isWepImage",
+    "removeDetector",
+    "getFilterColorName",
+    "runningCI",
+    "managedTempFile",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
+    "runningCI",
+    "getCiPlotName",
+    "managedTempFile",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -341,10 +357,9 @@ class LocationConfig:
         file = self._config["dimensionUniverseFile"]
         return file
 
-    def butlerPath(self):
-        file = self._config["butlerPath"]
-        self._checkFile(file)
-        return file
+    @cached_property
+    def auxtelButlerPath(self):
+        return self._config["auxtelButlerPath"]
 
     @cached_property
     def ts8ButlerPath(self):
@@ -421,6 +436,10 @@ class LocationConfig:
     @cached_property
     def binning(self):
         return self._config["binning"]
+
+    @cached_property
+    def consDBURL(self):
+        return self._config["consDBURL"]
 
     # start of the summit migration stuff:
     # star tracker paths
@@ -535,6 +554,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def lsstCamAosMetadataPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def lsstCamAosMetadataShardPath(self) -> str:
+        directory = self._config["lsstCamAosMetadataShardPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
@@ -561,7 +592,6 @@ class LocationConfig:
     @cached_property
     def lsstCamButlerPath(self) -> str:
         directory = self._config["lsstCamButlerPath"]
-        self._checkFile(directory)
         return directory
 
     # TMA config:
@@ -864,28 +894,36 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
 def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: str) -> None:
     """Write the exposure record metedata to a shard.
 
-    Only fires once, based on the value of TS8_METADATA_DETECTOR or
-    LSSTCOMCAM_METADATA_DETECTOR, depending on the instrument.
-
     Parameters
     ----------
     expRecord : `lsst.daf.butler.DimensionRecord`
         The exposure record.
+    metadataShardPath : `str`
+        The directory to write the shard to.
     """
     md = {}
     md["Exposure time"] = expRecord.exposure_time
+    md["Darktime"] = expRecord.dark_time
     md["Image type"] = expRecord.observation_type
     md["Reason"] = expRecord.observation_reason
     md["Date begin"] = expRecord.timespan.begin.isot
     md["Program"] = expRecord.science_program
     md["Group name"] = expRecord.group
-    md["Filter"] = expRecord.physical_filter
     md["Target"] = expRecord.target_name
     md["RA"] = expRecord.tracking_ra
     md["Dec"] = expRecord.tracking_dec
     md["Sky angle"] = expRecord.sky_angle
     md["Azimuth"] = expRecord.azimuth
+    md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
+    md["Can see the sky?"] = expRecord.can_see_sky
+
+    if expRecord.instrument == "LATISS":
+        filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
+        md["Filter"] = filt
+        md["Disperser"] = disperser
+    else:
+        md["Filter"] = expRecord.physical_filter
 
     seqNum = expRecord.seq_num
     dayObs = expRecord.day_obs
@@ -1232,7 +1270,7 @@ def getShardPath(locationConfig: LocationConfig, expRecord: DimensionRecord, isA
             return locationConfig.comCamSimMetadataShardPath
         case "LSSTCam":
             if isAos:
-                raise ValueError("No AOS metadata for LSSTCam yet")
+                return locationConfig.lsstCamAosMetadataShardPath
             return locationConfig.lsstCamMetadataShardPath
         case _:
             raise ValueError(f"Unknown instrument {expRecord.instrument=}")
@@ -1290,6 +1328,33 @@ def getPodWorkerNumber() -> int:
             workerNum = int(sys.argv[2])
 
     return workerNum
+
+
+def getWitnessDetectorNumber(instrument: str) -> int:
+    """Get the witness detector number for a given instrument.
+
+    This is a placeholder function to provide the interface for if we want to
+    make this user selectable in the future (e.g. via LOVE), or read from a
+    config file. For now, we hard-code the central detectors.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    detectorNum : `int`
+        The witness detector number.
+    """
+    if instrument == "LATISS":
+        return 0
+    elif instrument == "LSSTCam":
+        return 94
+    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
+        return 4
+    else:
+        raise ValueError(f"Unknown instrument {instrument=}")
 
 
 def isCalibration(expRecord: DimensionRecord) -> bool:
@@ -1375,3 +1440,76 @@ def getFilterColorName(physicalFilter: str) -> str | None:
         "y_04": "y_color",
     }
     return filterMap.get(physicalFilter)
+
+
+def runningCI() -> bool:
+    """Check if the code is running in a CI environment."""
+    return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
+
+
+def getCiPlotName(locationConfig: LocationConfig, expRecord: DimensionRecord, plotType: str) -> str:
+    dayObs: int = expRecord.day_obs
+    seqNum: int = expRecord.seq_num
+    ciOutputName = (
+        Path(locationConfig.plotPath)
+        / expRecord.instrument
+        / str(dayObs)
+        / f"{expRecord.instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+    )
+    return ciOutputName.as_posix()
+
+
+@contextmanager
+def managedTempFile(
+    suffix: str,
+    ciOutputName: str = "",
+) -> Generator[str]:
+    """Context manager for temp files with handling for CI environments.
+
+    In normal operation, this creates a temporary file that is automatically
+    deleted when the context exits. In CI mode, it creates a permanent file in
+    the specified location. This is useful for testing and debugging, as it
+    allows inspection the output files in CI mode. The file is created with
+    a specific name to allow for existence checking.
+
+    Parameters
+    ----------
+    suffix : str
+        File suffix/extension.
+    ciOutputName : str, optional
+        The full name and path to the output file. Must be specified if running
+        in CI mode.
+
+    Yields
+    ------
+    str
+        Path to the temporary file
+    """
+    ciMode = runningCI()
+    if ciMode and not ciOutputName:
+        raise ValueError("CI mode is enabled but no output filename is specified.")
+    if ciMode and os.path.exists(ciOutputName):
+        raise FileExistsError(f"Output file {ciOutputName} already exists.")
+
+    if not ciMode:
+        # Standard operation - use a true temporary file that gets cleaned up
+        # delete=False so that it stays when we yield, but is cleaned up in
+        # finally block.
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tempFile:
+            tempFilename = tempFile.name
+            try:
+                yield tempFilename
+            finally:
+                # Always clean up in normal mode
+                if os.path.exists(tempFilename):
+                    os.unlink(tempFilename)
+    else:
+        # In CI mode, we keep the file for inspection
+        dirname = os.path.dirname(ciOutputName)
+        os.makedirs(dirname, exist_ok=True)
+
+        # Create an empty file to match the behavior of NamedTemporaryFile
+        with open(ciOutputName, "w"):
+            pass
+
+        yield ciOutputName

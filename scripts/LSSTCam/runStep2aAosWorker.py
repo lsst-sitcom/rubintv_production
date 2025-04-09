@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
+
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
@@ -27,23 +29,20 @@ from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 instrument = "LSSTCam"
+locationConfig = getAutomaticLocationConfig()
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
-
-locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
+    instrument=instrument, podFlavor=PodFlavor.STEP2A_AOS_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
 
-locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -51,14 +50,15 @@ butler = Butler.from_config(
     writeable=True,
 )
 
-sfmRunner = SingleCorePipelineRunner(
+step2aRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step1",
-    awaitsDataProduct="raw",
+    pipeline=locationConfig.getAosPipelineFile(instrument),
+    step="step2a",
+    awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-sfmRunner.run()
+step2aRunner.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here

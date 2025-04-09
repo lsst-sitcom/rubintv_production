@@ -20,45 +20,38 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.aos import FocusSweepAnalysis
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 instrument = "LSSTCam"
 
-workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
-
 locationConfig = getAutomaticLocationConfig()
-podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
-)
-print(
-    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
-    f"consuming from {podDetails.queueName}..."
-)
+if locationConfig.location not in ["summit", "tts", "bts"]:
+    msg = (
+        "This script is only intended to be run on summit-like locations -"
+        " the signals from OCS for focus sweep triggering go straight to the redis database and aren't"
+        " accessible at USDF or elsewhere"
+    )
+    raise RuntimeError(msg)
 
-locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
     ],
-    writeable=True,
 )
+print(f"Running focus sweep plotter at {locationConfig.location}")
 
-sfmRunner = SingleCorePipelineRunner(
+queueName = f"{instrument}-FROM-OCS_FOCUSSWEEP"
+focusSweepAnalyzer = FocusSweepAnalysis(  # XXX still needs type annotations and to move to using podDetails
     butler=butler,
     locationConfig=locationConfig,
+    queueName=queueName,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step1",
-    awaitsDataProduct="raw",
-    podDetails=podDetails,
-    doRaise=getDoRaise(),
+    metadataShardPath=locationConfig.lsstCamAosMetadataShardPath,
 )
-sfmRunner.run()
+focusSweepAnalyzer.run()
