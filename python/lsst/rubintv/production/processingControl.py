@@ -605,6 +605,8 @@ class HeadProcessController:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, who)
+
         self.log.info(
             f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
             f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'}."
@@ -654,6 +656,14 @@ class HeadProcessController:
         detectorIds = []
         results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
         detectorIds = cast(list[int], sorted([item["detector"] for item in results]))
+
+        identifier = "+".join(str(r.id) for r in expRecords)
+        self.redisHelper.writeDetectorsToExpect(self.instrument, identifier, detectorIds, "AOS")
+        for expRecord in expRecords:
+            # send expect signal with who=SFM for single expIds as these are
+            # for the focal plane mosaicing, and send above with who=AOS as
+            # + joined above, as this is the real dispatch
+            self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "SFM")
 
         dataIds: dict[int, list[DataCoordinate]] = {}
         for detectorId in detectorIds:
@@ -799,18 +809,6 @@ class HeadProcessController:
             case _:
                 raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
-    def getNumExpected(self, instrument: str) -> int:
-        if instrument in ("LSSTComCam", "LSSTComCamSim"):
-            return 9
-        elif instrument == "LSSTCam":
-            # TODO: probably should redirect this to utils.py
-            # getNumExpectedItems() soon, but that will need to be
-            # site-dependent to properly work, and we also need Tony to start
-            # writing out the expected sensors file too, before it's useful on
-            # the summit.
-            return 189
-        raise ValueError(f"Unknown instrument {instrument=}")
-
     def dispatchGatherSteps(self, who: str) -> bool:
         """Dispatch any gather steps as needed.
 
@@ -833,8 +831,10 @@ class HeadProcessController:
 
         completeIds = []
         for idStr in processedIds:
+            # idStr is "<int>" or "<int>+<int"> for AOS pairs
             nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1", who, idStr)
-            if nFinished == self.getNumExpected(self.instrument):
+            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, idStr, who))
+            if nFinished == nExpected:
                 completeIds.append(idStr)
 
         if not completeIds:
@@ -940,7 +940,13 @@ class HeadProcessController:
                 _id
                 for _id in allDataIds
                 if self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
-                == self.getNumExpected(self.instrument)
+                == len(
+                    self.redisHelper.getExpectedDetectors(
+                        self.instrument,
+                        int(_id["exposure"]) if "exposure" in _id else int(_id["visit"]),
+                        who="SFM",
+                    )
+                )
             ]
             if not completeIds:
                 continue

@@ -816,6 +816,50 @@ class RedisHelper:
         for key in keys:
             self.redis.delete(key)
 
+    def writeDetectorsToExpect(
+        self, instrument: str, indentifier: int | str, detectors: list[int], who: str
+    ) -> None:
+        """Write the detectors we are processing for a given exposureId.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        indentifier : `int` or `str`
+            The exposure or visit ID(s) the detectors are being processed for.
+        detectors : `list` of `int`
+            The list of detectors to expect.
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        """
+        key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
+        self.redis.set(key, ",".join(str(det) for det in detectors))
+        self.redis.expire(key, 86400 * 2)  # expire in 2 days
+
+    def getExpectedDetectors(self, instrument: str, indentifier: int | str, who: str) -> list[int]:
+        """Get the expected detectors for a given exposure or visit ID.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        indentifier : `int` or `str`
+            The exposure or visit ID(s).
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+
+        Returns
+        -------
+        detectors : `list` of `int` or `None`
+            The list of expected detectors, or ``None`` if not found.
+        """
+        key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
+        value = self.redis.get(key)
+        if value is None:
+            self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
+            return []
+        return [int(det) for det in value.decode("utf-8").split(",")]
+
     def displayRedisContents(self, instrument: str | None = None) -> None:
         """Get the next unit of work from a specific worker queue.
 

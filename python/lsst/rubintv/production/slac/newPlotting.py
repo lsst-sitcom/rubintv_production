@@ -30,8 +30,9 @@ import lsst.afw.display as afwDisplay
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
+from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig, getNumExpectedItems
+from ..utils import LocationConfig
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
@@ -93,6 +94,7 @@ class Plotter:
             locationConfig=locationConfig,
             podDetails=podDetails,
         )
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.afwDisplay = afwDisplay.getDisplay(backend="matplotlib", figsize=(20, 20))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
@@ -122,7 +124,7 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        nExpected = getNumExpectedItems(expRecord, self.log)
+        nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="SFM"))
 
         datapath = ""
         stretch = "CCS"
