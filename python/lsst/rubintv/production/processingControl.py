@@ -838,7 +838,7 @@ class HeadProcessController:
             )
             self.nNightlyRollups = numComplete
             # TODO: DM-49947 try adding the current day_obs to this dataId
-            dataId = {"instrument": self.instrument, "skymap": "ops_rehersal_prep_2k_v1"}
+            dataId = {"instrument": self.instrument, "skymap": "lsst_cells_v1"}
             dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
             payload = Payload(
                 [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
