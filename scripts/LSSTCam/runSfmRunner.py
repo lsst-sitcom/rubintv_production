@@ -29,8 +29,8 @@ setupLogging()
 instrument = "LSSTCam"
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
+detectorNum = workerNum % 205
+detectorDepth = workerNum // 205
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
