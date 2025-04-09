@@ -152,7 +152,7 @@ class EndPoint(Enum):
         "buckets_available": {
             Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
             Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
-            Bucket.BTS: BucketInformation("rubin-rubintv-data-base", "rubin-rubintv-data-base"),
+            Bucket.BTS: BucketInformation("rubin-rubintv-data-bts", "rubin-rubintv-data-bts"),
             Bucket.TTS: BucketInformation("rubin-rubintv-data-tts", "rubin-rubintv-data-tts"),
         },
     }
