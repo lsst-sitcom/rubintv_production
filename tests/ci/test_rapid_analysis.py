@@ -817,9 +817,20 @@ def main():
     if DO_RUN_META_TESTS:
         expected += [s for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
     if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
-        raise RuntimeError(
-            "Not all test scripts have had their results collected somehow - this is drastically wrong!"
-        )
+        missing_exit_codes = set(expected) - set(exit_codes.keys())
+        missing_outputs = set(expected) - set(outputs.keys())
+        extra_exit_codes = set(exit_codes.keys()) - set(expected)
+        extra_outputs = set(outputs.keys()) - set(expected)
+        msg = "Not all test scripts have had their results collected somehow - this is drastically wrong!\n"
+        if missing_exit_codes:
+            msg += f"Missing exit codes for: {missing_exit_codes}\n"
+        if missing_outputs:
+            msg += f"Missing outputs for: {missing_outputs}\n"
+        if extra_exit_codes:
+            msg += f"Unexpected exit codes for: {extra_exit_codes}\n"
+        if extra_outputs:
+            msg += f"Unexpected outputs for: {extra_outputs}\n"
+        raise RuntimeError(msg)
 
     print("\nTest Results:")
     for script, result in exit_codes.items():
