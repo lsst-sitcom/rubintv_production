@@ -53,6 +53,8 @@ binnedCalexpPath: /project/rubintv/calculatedData/calexps
 tmaMetadataPath: '/project/rubintv/tma/sidecar_metadata'
 tmaMetadataShardPath: '/project/rubintv/tma/sidecar_metadata/shards'
 
+consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
 sfmPipelineFile:
   LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml

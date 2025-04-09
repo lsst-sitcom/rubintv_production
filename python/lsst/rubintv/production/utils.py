@@ -437,6 +437,10 @@ class LocationConfig:
     def binning(self):
         return self._config["binning"]
 
+    @cached_property
+    def consDBURL(self):
+        return self._config["consDBURL"]
+
     # start of the summit migration stuff:
     # star tracker paths
     @cached_property

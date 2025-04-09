@@ -149,7 +149,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         self.redisHelper = RedisHelper(butler, self.locationConfig)
         self.efdClient = makeEfdClient()
-        self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
     def writeVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:

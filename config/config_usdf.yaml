@@ -25,6 +25,8 @@ lsstCamMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metada
 lsstCamMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: /repo/embargo/butler.yaml
 
+consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
 aosPipelineFile:
   LATISS: ''
   LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
