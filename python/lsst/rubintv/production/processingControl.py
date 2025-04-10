@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from lsst.afw.cameraGeom import Detector
+    from lsst.pipe.base.pipeline_graph import TaskNode
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -351,6 +352,19 @@ class PipelineComponents:
             self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
 
         self.steps = steps
+
+    def getTasks(self) -> dict[str, TaskNode]:
+        """Get the tasks in the pipeline graph.
+
+        Returns
+        -------
+        tasks : `dict` [`str`, `PipelineGraph`]
+            The tasks in the pipeline graph.
+        """
+        tasks: dict[str, TaskNode] = {}
+        for step in self.steps:
+            tasks.update(self.graphs[step].tasks)
+        return tasks
 
 
 class HeadProcessController:
