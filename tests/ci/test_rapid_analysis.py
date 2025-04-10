@@ -120,7 +120,7 @@ TEST_SCRIPTS_ROUND_1 = [
         "scripts/LSSTComCam/runAosWorker.py",
         ["usdf_testing", "0"],
         display_on_pass=False,
-        tee_output=False,
+        tee_output=True,
         # do_debug=True
     ),
     TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),
@@ -158,7 +158,7 @@ TEST_SCRIPTS_ROUND_1 = [
         "scripts/LSSTComCam/runHeadNode.py",
         ["usdf_testing"],
         delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
-        tee_output=False,
+        tee_output=True,
         display_on_pass=False,
         # do_debug=True
     ),
@@ -636,13 +636,13 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
             p.terminate()  # Send SIGTERM signal
 
     print("Post SIGTERM sleep")
-    time.sleep(3)  # leave time to die
+    time.sleep(10)  # leave time to die
 
     # Ensure all processes have terminated
     for p in list(processes.keys()):
         if DEBUG:
             print(f"Joining terminated process {p.pid}.")
-        p.join(timeout=3)
+        p.join(timeout=6)
 
     if DEBUG:
         print("Finished terminating running processes, collecting outputs...")
