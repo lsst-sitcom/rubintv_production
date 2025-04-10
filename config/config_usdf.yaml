@@ -23,7 +23,7 @@ lsstCamAosMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metada
 lsstCamAosMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata/shards
 lsstCamMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
 lsstCamMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
-lsstCamButlerPath: /repo/embargo/butler.yaml
+lsstCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
 
@@ -35,7 +35,8 @@ aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsst
 
 sfmPipelineFile:
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml
-  LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/nightly-validation.yaml
+# Temporary before nightly validation pipeline is ready.
+  LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/nightly-validation.yaml
 
 aosPipelineFile:
   LATISS: ''
