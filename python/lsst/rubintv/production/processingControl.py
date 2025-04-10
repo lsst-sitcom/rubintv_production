@@ -605,6 +605,7 @@ class HeadProcessController:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, who)
 
         self.log.info(
@@ -663,7 +664,7 @@ class HeadProcessController:
             # send expect signal with who=SFM for single expIds as these are
             # for the focal plane mosaicing, and send above with who=AOS as
             # + joined above, as this is the real dispatch
-            self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "SFM")
+            self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
 
         dataIds: dict[int, list[DataCoordinate]] = {}
         for detectorId in detectorIds:
@@ -944,7 +945,7 @@ class HeadProcessController:
                     self.redisHelper.getExpectedDetectors(
                         self.instrument,
                         int(_id["exposure"]) if "exposure" in _id else int(_id["visit"]),
-                        who="SFM",
+                        who="ISR",
                     )
                 )
             ]

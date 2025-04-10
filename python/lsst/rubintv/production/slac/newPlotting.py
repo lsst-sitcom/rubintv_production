@@ -124,7 +124,7 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="SFM"))
+        nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="ISR"))
 
         datapath = ""
         stretch = "CCS"
