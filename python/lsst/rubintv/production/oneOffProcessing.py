@@ -504,7 +504,10 @@ class OneOffProcessor(BaseButlerChannel):
         if expRecord.instrument == "LATISS":
             self._doMountAnalysisAuxTel(expRecord)
         else:
-            self._doMountAnalysisSimonyi(expRecord)
+            if expRecord.zenith_angle is not None:  # XXX hopefully we can remove this soon
+                self._doMountAnalysisSimonyi(expRecord)
+            else:
+                self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
             previous = self.getPreviousExpRecord(expRecord)
             if previous is not None:
                 self.makeExposureTimingPlot(previous, expRecord)
