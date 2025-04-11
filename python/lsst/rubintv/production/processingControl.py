@@ -590,7 +590,9 @@ class HeadProcessController:
         if _ccConfig is not None:
             ccConfig = _ccConfig.decode()
             if self.focalPlaneControl is not None:
+                self.log.info(f"Applying new chip selection config: {ccConfig}")
                 self.focalPlaneControl.applyNamedPattern(ccConfig)
+                self.log.info(f"{self.focalPlaneControl.getEnabledDetIds()} now enabled")
 
     def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -1087,6 +1089,7 @@ class HeadProcessController:
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
+            self.updateConfigsFromRubinTV()
             self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
 
             expRecord = self.getNewExposureAndDefineVisit()
