@@ -668,9 +668,11 @@ class HeadProcessController:
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, who)
 
+        namedPattern = self.focalPlaneControl.currentNamedPattern if self.focalPlaneControl else None
         self.log.info(
             f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
-            f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'}."
+            f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'} "
+            f"{' with named pattern ' + namedPattern if namedPattern else ''}"
         )
 
         payloads: dict[int, Payload] = {}
@@ -1304,6 +1306,8 @@ class CameraControlConfig:
         self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
         self.VERTICAL = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
 
+        self.currentNamedPattern = ""
+
     def setDiagonalOn(self, other: bool = False) -> None:
         """Set the diagonal pattern on the focal plane.
 
@@ -1362,6 +1366,8 @@ class CameraControlConfig:
                 self.setDiagonalOn(other=True)
             case _:
                 self.log.error(f"Tried and failed to apply pattern {pattern} - not a valid pattern")
+                return  # don't hold the named pattern on fail
+        self.currentNamedPattern = pattern
 
     @staticmethod
     def isWavefront(detector: Detector) -> bool:
