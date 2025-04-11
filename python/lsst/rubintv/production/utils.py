@@ -916,7 +916,7 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Azimuth"] = expRecord.azimuth
     md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
-    md["Can see the sky?"] = expRecord.can_see_sky
+    md["Can see the sky?"] = f"{expRecord.can_see_sky}"
 
     if expRecord.instrument == "LATISS":
         filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
