@@ -473,6 +473,7 @@ class HeadProcessController:
         self.doRaise = doRaise
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
+        self.aosPipelineOverride = ""
 
         if self.focalPlaneControl is not None:
             if self.locationConfig.location == "bts":
@@ -567,6 +568,29 @@ class HeadProcessController:
         if packages.difference(oldPackages):  # checks if any of the versions are different
             return True
         return False
+
+    def updateConfigsFromRubinTV(self) -> None:
+        if self.instrument != "LSSTCam":
+            # TODO: Only the LSSTCam head node should consume these, and this
+            # is a solution, but it's not a very good one. Need frontend
+            # changes to do better though
+            return
+
+        _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
+        if _aosPipeline is not None:
+            self.aosPipelineOverride = _aosPipeline.decode()
+            self.log.warning(f"Received new AOS pipeline {self.aosPipelineOverride} but not implemented yet")
+
+        _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
+        if _processingMode is not None:
+            processingMode = _processingMode.decode()
+            self.log.warning(f"Received new visit processing mode: {processingMode} but not implemented yet")
+
+        _ccConfig = self.redisHelper.redis.getdel("RUBINTV_CONTROL_CHIP_SELECTION")
+        if _ccConfig is not None:
+            ccConfig = _ccConfig.decode()
+            if self.focalPlaneControl is not None:
+                self.focalPlaneControl.applyNamedPattern(ccConfig)
 
     def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -1261,6 +1285,7 @@ class CameraControlConfig:
 
     # TODO: Make this camera agnostic if necessary.
     def __init__(self) -> None:
+        self.log = logging.getLogger("lsst.rubintv.production.processControl.CameraControlConfig")
         self.camera = LsstCam.getCamera()
         self._detectorStates = {det: False for det in self.camera}
         self._detectors = [det for det in self.camera]
@@ -1274,6 +1299,69 @@ class CameraControlConfig:
         self._focalPlanePlot.plotMax = 1
         self.GUIDER_NUMS = tuple(det.getId() for det in self._guiders)
         self.CWFS_NUMS = tuple(det.getId() for det in self._wavefronts)
+        self.DIAGONAL = (90, 94, 98, 144, 148, 152, 36, 40, 44)
+        self.DIAGONAL2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
+        self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
+        self.VERTICAL = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
+
+    def setDiagonalOn(self, other: bool = False) -> None:
+        """Set the diagonal pattern on the focal plane.
+
+        Parameters
+        ----------
+        other : `bool`, optional
+            If True, set the diagonal2 pattern instead of the default diagonal.
+            Default is False.
+
+        """
+        dets = self.DIAGONAL if not other else self.DIAGONAL2
+        for det in dets:
+            self.setDetectorOn(det)
+
+    def setCardinalsOn(self, horizontal: bool = False) -> None:
+        """Set the cardinal pattern on the focal plane.
+
+        Parameters
+        ----------
+        other : `bool`, optional
+            If True, set the cardinal2 pattern instead of the default cardinal.
+            Default is False.
+
+        """
+        dets = self.HORIZONTAL if horizontal else self.VERTICAL
+        for det in dets:
+            self.setDetectorOn(det)
+
+    def applyNamedPattern(self, pattern: str) -> None:
+        """Apply a named pattern to the focal plane."""
+        # strings from RubinTV frontend
+        pattern = pattern.lower()
+        match pattern:
+            case "raft_checkerboard":
+                self.setRaftCheckerboard()
+            case "ccd_checkerboard":
+                self.setFullCheckerboard()
+            case "all":
+                self.setAllImagingOn()
+            case "5-on-a-die":
+                self.setAllImagingOff()
+                self.setRaftOn("R22")
+                self.setRaftOn("R33")
+                self.setRaftOn("R11")
+                self.setRaftOn("R13")
+                self.setRaftOn("R31")
+            case "minimal":
+                self.setAllImagingOff()
+                self.setDiagonalOn()
+                self.setDiagonalOn(other=True)
+                self.setCardinalsOn()
+                self.setCardinalsOn(horizontal=True)
+            case "ultra-minimal":
+                self.setAllImagingOff()
+                self.setDiagonalOn()
+                self.setDiagonalOn(other=True)
+            case _:
+                self.log.error(f"Tried and failed to apply pattern {pattern} - not a valid pattern")
 
     @staticmethod
     def isWavefront(detector: Detector) -> bool:
