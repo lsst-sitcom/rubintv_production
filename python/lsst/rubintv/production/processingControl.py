@@ -304,6 +304,71 @@ def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
         raise ValueError(f"Unsure how to trigger nightly rollup when {pipelineFile=}")
 
 
+def buildPipelines(
+    instrument: str, locationConfig: LocationConfig, butler: Butler
+) -> tuple[list[PipelineGraph], dict[str, PipelineComponents]]:
+    """Build the pipeline graphs from the pipeline file.
+
+    This is a separate method so that it can be called after the
+    RemoteController has been set up, which is needed for the AOS pipeline.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The name of the instrument.
+    locationConfig : `LocationConfig`
+        The location config object.
+    butler : `lsst.daf.butler.Butler`
+        The butler object.
+
+    Returns
+    -------
+
+    """
+    pipelines: dict[str, PipelineComponents] = {}
+    sfmPipelineFile = locationConfig.getSfmPipelineFile(instrument)
+    aosPipelineFile = locationConfig.getAosPipelineFile(instrument)
+
+    cpVerifyDir = getPackageDir("cp_verify")
+    biasFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyBias.yaml").as_posix()
+    darkFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyDark.yaml").as_posix()
+    flatFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyFlat.yaml").as_posix()
+    pipelines["BIAS"] = PipelineComponents(
+        butler.registry,
+        biasFile,
+        ["verifyBiasIsr"],
+        overrides=[("verifyBiasIsr", "connections.outputExposure", "postISRCCD")],
+    )
+    pipelines["DARK"] = PipelineComponents(
+        butler.registry,
+        darkFile,
+        ["verifyDarkIsr"],
+        overrides=[("verifyDarkIsr", "connections.outputExposure", "postISRCCD")],
+    )
+    pipelines["FLAT"] = PipelineComponents(
+        butler.registry,
+        flatFile,
+        ["verifyFlatIsr"],
+        overrides=[("verifyFlatIsr", "connections.outputExposure", "postISRCCD")],
+    )
+
+    pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
+    if instrument == "LATISS":
+        pipelines["SFM"] = PipelineComponents(butler.registry, sfmPipelineFile, ["step1"])
+    else:
+        pipelines["SFM"] = PipelineComponents(
+            butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
+        )
+        # TODO: see if this will matter that this component doesn't exist
+        pipelines["AOS"] = PipelineComponents(butler.registry, aosPipelineFile, ["step1", "step2a"])
+
+    allGraphs: list[PipelineGraph] = []
+    for pipeline in pipelines.values():
+        allGraphs.extend(pipeline.graphs.values())
+
+    return allGraphs, pipelines
+
+
 @dataclass
 class PipelineComponents:
     """Details about a pipeline graph.
@@ -422,8 +487,13 @@ class HeadProcessController:
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
-        self.pipelines: dict[str, PipelineComponents] = {}
-        self.buildPipelines()
+        allGraphs, pipelines = buildPipelines(
+            instrument=instrument,
+            locationConfig=locationConfig,
+            butler=butler,
+        )
+        self.allGraphs = allGraphs
+        self.pipelines = pipelines
 
         if outputChain is None:
             # allows it to be user specified, or use the default from the site
@@ -438,54 +508,6 @@ class HeadProcessController:
             f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
             f"Data will be writen data to {self.outputRun}"
         )
-
-    def buildPipelines(self) -> None:
-        """Build the pipeline graphs from the pipeline file.
-
-        This is a separate method so that it can be called after the
-        RemoteController has been set up, which is needed for the AOS pipeline.
-        """
-        sfmPipelineFile = self.locationConfig.getSfmPipelineFile(self.instrument)
-        aosPipelineFile = self.locationConfig.getAosPipelineFile(self.instrument)
-
-        cpVerifyDir = getPackageDir("cp_verify")
-        biasFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyBias.yaml").as_posix()
-        darkFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyDark.yaml").as_posix()
-        flatFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyFlat.yaml").as_posix()
-        self.pipelines["BIAS"] = PipelineComponents(
-            self.butler.registry,
-            biasFile,
-            ["verifyBiasIsr"],
-            overrides=[("verifyBiasIsr", "connections.outputExposure", "postISRCCD")],
-        )
-        self.pipelines["DARK"] = PipelineComponents(
-            self.butler.registry,
-            darkFile,
-            ["verifyDarkIsr"],
-            overrides=[("verifyDarkIsr", "connections.outputExposure", "postISRCCD")],
-        )
-        self.pipelines["FLAT"] = PipelineComponents(
-            self.butler.registry,
-            flatFile,
-            ["verifyFlatIsr"],
-            overrides=[("verifyFlatIsr", "connections.outputExposure", "postISRCCD")],
-        )
-
-        self.pipelines["ISR"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["isr"])
-        if self.instrument == "LATISS":
-            self.pipelines["SFM"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["step1"])
-        else:
-            self.pipelines["SFM"] = PipelineComponents(
-                self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
-            )
-            # TODO: see if this will matter that this component doesn't exist
-            self.pipelines["AOS"] = PipelineComponents(
-                self.butler.registry, aosPipelineFile, ["step1", "step2a"]
-            )
-
-        self.allGraphs: list[PipelineGraph] = []
-        for pipeline in self.pipelines.values():
-            self.allGraphs.extend(pipeline.graphs.values())
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
