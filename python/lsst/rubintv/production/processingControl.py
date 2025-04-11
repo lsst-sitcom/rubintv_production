@@ -523,6 +523,9 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R11")
                 self.focalPlaneControl.setRaftOn("R13")
                 self.focalPlaneControl.setRaftOn("R31")
+                self.focalPlaneControl.setDetectorOff(60)
+                self.focalPlaneControl.setDetectorOff(61)
+                self.focalPlaneControl.setDetectorOff(62)
             else:
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
