@@ -840,13 +840,13 @@ def main():
         extra_outputs = set(outputs.keys()) - set(expected)
         msg = "Not all test scripts have had their results collected somehow - this is drastically wrong!\n"
         if missing_exit_codes:
-            msg += f"Missing exit codes for: {missing_exit_codes}\n"
+            msg += "Missing exit codes for:\n" + "\n".join(str(m) for m in missing_exit_codes) + "\n"
         if missing_outputs:
-            msg += f"Missing outputs for: {missing_outputs}\n"
+            msg += "Missing outputs for:\n" + "\n".join(str(m) for m in missing_outputs) + "\n"
         if extra_exit_codes:
-            msg += f"Unexpected exit codes for: {extra_exit_codes}\n"
+            msg += "Unexpected exit codes for:\n" + "\n".join(str(m) for m in extra_exit_codes) + "\n"
         if extra_outputs:
-            msg += f"Unexpected outputs for: {extra_outputs}\n"
+            msg += "Unexpected outputs for:\n" + "\n".join(str(m) for m in extra_outputs) + "\n"
         raise RuntimeError(msg)
 
     print("\nTest Results:")
