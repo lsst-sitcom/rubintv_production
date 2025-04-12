@@ -54,7 +54,7 @@ REDIS_HOST = "127.0.0.1"
 REDIS_PORT = "6111"
 REDIS_PASSWORD = "redis_password"
 META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 300  # How long to leave test suites to run for
+TEST_DURATION = 250  # How long to leave test suites to run for
 REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
 CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
 TODAY = 20240101
@@ -636,13 +636,13 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
             p.terminate()  # Send SIGTERM signal
 
     print("Post SIGTERM sleep")
-    time.sleep(10)  # leave time to die
+    time.sleep(12)  # leave time to die
 
     # Ensure all processes have terminated
     for p in list(processes.keys()):
         if DEBUG:
             print(f"Joining terminated process {p.pid}.")
-        p.join(timeout=6)
+        p.join(timeout=12)
 
     if DEBUG:
         print("Finished terminating running processes, collecting outputs...")
