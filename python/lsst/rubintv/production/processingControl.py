@@ -333,8 +333,8 @@ def buildPipelines(
     """
     pipelines: dict[str, PipelineComponents] = {}
     sfmPipelineFile = locationConfig.getSfmPipelineFile(instrument)
-    aosFileDanish = locationConfig.aosPipelineFileDanish
-    aosFileTIE = locationConfig.aosPipelineFileTIE
+    aosFileDanish = locationConfig.aosLSSTCamPipelineFileDanish
+    aosFileTIE = locationConfig.aosLSSTCamPipelineFileTie
     # TODO: DM-50103 we build this regardless while we're still running tests
     # on ComCam but once we have LSSTCam data at USDF the CI will be rewritten
     # to run that instead and we can drop all ComCam support from RA

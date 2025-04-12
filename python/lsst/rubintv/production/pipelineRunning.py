@@ -22,20 +22,22 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import time
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
-from lsst.pipe.base import Pipeline, QuantumGraph
+from lsst.pipe.base import PipelineGraph, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
-from .payloads import pipelineGraphFromBytes, pipelineGraphToBytes
+from .payloads import pipelineGraphFromBytes
+from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
@@ -68,6 +70,23 @@ TASK_ENDPOINTS_TO_TRACK = (
 )
 
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera"}
+
+
+def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
+    cachedOnGet = set()
+    cachedOnPut = set()
+    for pipelineGraph in pipelineGraphs:
+        for name in pipelineGraph.dataset_types.keys():
+            if pipelineGraph.consumers_of(name):
+                if pipelineGraph.producer_of(name) is not None:
+                    cachedOnPut.add(name)
+                else:
+                    cachedOnGet.add(name)
+
+    noCopyOnCache = NO_COPY_ON_CACHE
+    log = logging.getLogger("lsst.rubintv.production.pipelineRunning.makeCachingLimitedButler")
+    log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
+    return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):
@@ -131,33 +150,25 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.instrument = instrument
         self.butler = butler
         self.step = step
-        self.pipeline = f"{pipeline}#{step}"
-        self.pipelineGraph = Pipeline.fromFile(self.pipeline).to_graph(registry=self.butler.registry)
-        self.pipelineGraphBytes = pipelineGraphToBytes(self.pipelineGraph)
+
+        allGraphs, pipelines = buildPipelines(
+            instrument=instrument,
+            locationConfig=locationConfig,
+            butler=butler,
+        )
+        self.allGraphs = allGraphs
+        self.pipelines = pipelines
+
         self.podDetails = podDetails
 
         self.runCollection: str | None = None
-        self.cachingButler = self.makeCachingLimitedButler(butler)
+        self.cachingButler = makeCachingLimitedButler(butler, self.allGraphs)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
-
-    def makeCachingLimitedButler(self, butler: Butler) -> CachingLimitedButler:
-        cachedOnGet = set()
-        cachedOnPut = set()
-        for name in self.pipelineGraph.dataset_types.keys():
-            if self.pipelineGraph.consumers_of(name):
-                if self.pipelineGraph.producer_of(name) is not None:
-                    cachedOnPut.add(name)
-                else:
-                    cachedOnGet.add(name)
-
-        noCopyOnCache = NO_COPY_ON_CACHE
-        self.log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
-        return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
     def doProcessImage(self, dataId: DataCoordinate) -> bool:
         """Determine if we should skip this image.
@@ -206,12 +217,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.log.debug(f"{self.step=} {self.dataProduct=}")
 
         try:
-            if pipelineGraphBytes is not None and pipelineGraphBytes != self.pipelineGraphBytes:
-                self.log.warning("Pipeline graph has changed, updating")
-                self.pipelineGraphBytes = pipelineGraphBytes
-                self.pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
-                # need to remake the caching butler if the pipeline changes
-                self.cachingButler = self.makeCachingLimitedButler(self.butler)
+            # NOTE: if someone sends a pipelineGraphBytes that's so different
+            # from the pipelines built by buildPipelines that it consumes
+            # different data products, things won't be cached, but assuming
+            # that's not the case this should be OK. Otherwise, remake the
+            # CachingLimitedButler with the new pipelineGraph here.
+            pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
 
             # chain all the dataId components together with AND, and an OR
             # between each dataId. Make sure to bind the dataId components
@@ -230,7 +241,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.log.debug(f"{where=}\n{bind=}")
 
             builder = AllDimensionsQuantumGraphBuilder(
-                self.pipelineGraph,
+                pipelineGraph,
                 self.butler,
                 where=where,
                 bind=bind,

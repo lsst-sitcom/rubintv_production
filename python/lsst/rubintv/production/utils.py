@@ -618,11 +618,11 @@ class LocationConfig:
 
     @cached_property
     def aosLSSTCamPipelineFileDanish(self) -> str:
-        return self._config["aosPipelineFileDanish"]
+        return self._config["aosLSSTCamPipelineFileDanish"]
 
     @cached_property
     def aosLSSTCamPipelineFileTie(self) -> str:
-        return self._config["aosPipelineFileTIE"]
+        return self._config["aosLSSTCamPipelineFileTie"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:
