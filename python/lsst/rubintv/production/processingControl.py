@@ -305,7 +305,7 @@ def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
 
 
 def buildPipelines(
-    instrument: str, locationConfig: LocationConfig, butler: Butler
+    instrument: str, locationConfig: LocationConfig, butler: Butler, aosType: str = ""
 ) -> tuple[list[PipelineGraph], dict[str, PipelineComponents]]:
     """Build the pipeline graphs from the pipeline file.
 
@@ -320,14 +320,23 @@ def buildPipelines(
         The location config object.
     butler : `lsst.daf.butler.Butler`
         The butler object.
+    aosType : `str`, optional
+        The type of AOS pipeline to use. Can be "danish" or "tie".
 
     Returns
     -------
-
+    pipelineGraphs : `list` [`lsst.pipe.base.PipelineGraph`]
+        The `PipelineGraph`s, as a list.
+    pipelines : `dict` [`str`, `PipelineComponents`]
+        The `PipelineComponent`s as a dict, keyed by the overall pipeline names
+        e.g. "SFM", "ISR", "AOS" etc.
     """
+    if aosType:
+        assert aosType in ["danish", "tie"], f"Unknown aosType {aosType=}"
+
     pipelines: dict[str, PipelineComponents] = {}
     sfmPipelineFile = locationConfig.getSfmPipelineFile(instrument)
-    aosPipelineFile = locationConfig.getAosPipelineFile(instrument)
+    aosPipelineFile = locationConfig.getAosPipelineFile(instrument, aosType)
 
     cpVerifyDir = getPackageDir("cp_verify")
     biasFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyBias.yaml").as_posix()
@@ -473,7 +482,7 @@ class HeadProcessController:
         self.doRaise = doRaise
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
-        self.aosPipelineOverride = ""
+        self.currentAosPipeline = "danish"
 
         if self.focalPlaneControl is not None:
             if self.locationConfig.location == "bts":
@@ -492,6 +501,7 @@ class HeadProcessController:
             instrument=instrument,
             locationConfig=locationConfig,
             butler=butler,
+            aosType=self.currentAosPipeline,
         )
         self.allGraphs = allGraphs
         self.pipelines = pipelines
@@ -578,8 +588,23 @@ class HeadProcessController:
 
         _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
         if _aosPipeline is not None:
-            self.aosPipelineOverride = _aosPipeline.decode()
-            self.log.warning(f"Received new AOS pipeline {self.aosPipelineOverride} but not implemented yet")
+            aosOverride = _aosPipeline.decode()
+            if aosOverride != self.currentAosPipeline:  # this is slow, so make sure it's necessary first
+                t0 = time.time()
+                self.log.info(
+                    f"Rebuilding pipelines with AOS pipeline={aosOverride} (prev={self.currentAosPipeline:})"
+                )
+                allGraphs, pipelines = buildPipelines(
+                    instrument=self.instrument,
+                    locationConfig=self.locationConfig,
+                    butler=self.butler,
+                    aosType=self.currentAosPipeline,
+                )
+                self.allGraphs = allGraphs
+                self.pipelines = pipelines
+                self.currentAosPipeline = aosOverride
+                t1 = time.time()
+                self.log.info(f"Now running AOS: {self.currentAosPipeline} (rebuild took {(t1 - t0):.2f}s)")
 
         _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
         if _processingMode is not None:
