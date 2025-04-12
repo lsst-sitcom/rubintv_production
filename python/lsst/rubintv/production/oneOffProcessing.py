@@ -517,6 +517,9 @@ class OneOffProcessor(BaseButlerChannel):
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         fig = plotExposureTiming(self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0)
+        if fig is None:
+            self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
+            return
         try:
             ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
