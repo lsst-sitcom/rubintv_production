@@ -511,6 +511,8 @@ class OneOffProcessor(BaseButlerChannel):
                     self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
             except KeyError as e:
                 self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            except Exception as e:  # but all others are a raiseIf
+                raiseIf(self.doRaise, e, self.log)
 
             previous = self.getPreviousExpRecord(expRecord)
             if previous is not None:
@@ -520,25 +522,33 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Creating exposure timing plot for {expRecord.id}")
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-        fig = plotExposureTiming(self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0)
-        if fig is None:
-            self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
-            return
+
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                fig.savefig(tempFile)
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument=getRubinTvInstrumentName(expRecord.instrument),
-                    plotName="event_timeline",
-                    dayObs=dayObs,
-                    seqNum=seqNum,
-                    filename=tempFile,
-                )
-                self.log.info("Event timeline upload complete")
-        except Exception as e:
+            fig = plotExposureTiming(
+                self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0
+            )
+            if fig is None:
+                self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
+                return
+        except KeyError as e:  # this often fails due to missing mount data, so this is just a warn
+            self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            return
+        except Exception as e:  # but all others are a raiseIf
             raiseIf(self.doRaise, e, self.log)
+            return
+
+        ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+            fig.savefig(tempFile)
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(expRecord.instrument),
+                plotName="event_timeline",
+                dayObs=dayObs,
+                seqNum=seqNum,
+                filename=tempFile,
+            )
+            self.log.info("Event timeline upload complete")
 
     def _doMountAnalysisAuxTel(self, expRecord: DimensionRecord) -> None:
         dayObs = expRecord.day_obs
