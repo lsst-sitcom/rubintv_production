@@ -274,6 +274,7 @@ class PerformanceBrowser:
             instrument=instrument,
             locationConfig=locationConfig,
             butler=butler,
+            aosType="danish",  # TODO: don't supply this here, find a way to make this consistent
         )
         self.pipelines = pipelines
         self.data: dict[tuple[int, int], dict[str, TaskResult]] = {}
