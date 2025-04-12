@@ -715,7 +715,7 @@ class HeadProcessController:
 
         self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
-    def doStep1FanoutAos(self, expRecords: list[DimensionRecord]) -> None:
+    def doDonutPairFanout(self) -> None:
         """Send the expRecord out for processing based on current selection.
 
         Parameters
@@ -723,6 +723,25 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
+        donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
+        if donutPair is None:
+            return
+
+        self.log.info(f"Found a donut pair trigger for {donutPair}")
+        (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
+        (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
+        aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
+        writeExpRecordMetadataShard(record1, aosShardPath)
+        writeExpRecordMetadataShard(record2, aosShardPath)
+
+        expRecords = [record1, record2]
+
+        # define visits here for the edge case that the donut pair
+        # signal arrives before the getNewExposureAndDefineVisit
+        # call in the main loop
+        defineVisit(self.butler, record1)
+        defineVisit(self.butler, record2)
+
         # just some basic sanity checking
         instruments = list(set([expRecord.instrument for expRecord in expRecords]))
         assert len(instruments) == 1, f"Expected all expRecords to have same instrument, got {instruments=}"
@@ -1126,21 +1145,7 @@ class HeadProcessController:
                     self.doDetectorFanout(expRecord)
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
-            if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
-                donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
-                if donutPair is not None:
-                    self.log.info(f"Found a donut pair trigger for {donutPair}")
-                    (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
-                    (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
-                    aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
-                    writeExpRecordMetadataShard(record1, aosShardPath)
-                    writeExpRecordMetadataShard(record2, aosShardPath)
-                    # define visits here for the edge case that the donut pair
-                    # signal arrives before the getNewExposureAndDefineVisit
-                    # call in the main loop
-                    defineVisit(self.butler, record1)
-                    defineVisit(self.butler, record2)
-                    self.doStep1FanoutAos([record1, record2])
+            self.doDonutPairFanout()  # checks for pair signal and dispatches
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things
