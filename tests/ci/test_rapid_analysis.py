@@ -598,6 +598,7 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
     start_time = time.time()
     processes = {}
     output_queue = multiprocessing.Queue()
+    reported_outputs = set()  # Keep track of scripts that have reported outputs
 
     # allow_debug is so we don't increase timeout on the meta tests
     doing_debug = not is_meta_tests and any(s.do_debug for s in scripts)
@@ -618,41 +619,103 @@ def run_test_scripts(scripts, timeout, is_meta_tests=False):
         print(f"Launched {script} with pid={p.pid}...")
 
     last_secs = None
-    while (time_remaining := (timeout - (time.time() - start_time))) > 0:
-        # Check running time
-        mins, secs = divmod(time_remaining, 60)
-        if int(secs) != last_secs:  # only update when the seconds change
-            last_secs = int(secs)
-            timer = f"{int(mins):02d}:{int(secs):02d} remaining" if time_remaining > 0 else "time's up"
-            end = "\r" if time_remaining > 0 else "\n"  # overwrite until the end, then leave it showing
-            n_alive = sum([p.is_alive() for p in processes])
-            print(f"{timer} with {n_alive} processes running", end=end)
-        time.sleep(1)
+    try:
+        # Main monitoring loop
+        while (time_remaining := (timeout - (time.time() - start_time))) > 0:
+            # Periodically collect outputs from the queue
+            collect_outputs_from_queue(output_queue, reported_outputs)
 
-    for p in list(processes.keys()):
-        if p.is_alive():
-            if DEBUG:
-                print(f"Terminating running process {processes[p]} at timeout.")
-            p.terminate()  # Send SIGTERM signal
+            # Check running time
+            mins, secs = divmod(time_remaining, 60)
+            if int(secs) != last_secs:  # only update when the seconds change
+                last_secs = int(secs)
+                timer = f"{int(mins):02d}:{int(secs):02d} remaining" if time_remaining > 0 else "time's up"
+                end = "\r" if time_remaining > 0 else "\n"  # overwrite until the end, then leave it showing
+                n_alive = sum([p.is_alive() for p in processes])
+                print(f"{timer} with {n_alive} processes running", end=end)
+            time.sleep(0.1)  # Short sleep to avoid CPU spinning, but check queue more frequently
+    except KeyboardInterrupt:
+        print("Interrupted by user, terminating processes...")
 
-    print("Post SIGTERM sleep")
-    time.sleep(12)  # leave time to die
+    print("\nTime's up or interrupted. Collecting remaining outputs before termination...")
+    # Give processes a chance to finish naturally and report outputs
+    collect_outputs_from_queue(output_queue, reported_outputs, timeout=2)
 
-    # Ensure all processes have terminated
-    for p in list(processes.keys()):
-        if DEBUG:
-            print(f"Joining terminated process {p.pid}.")
-        p.join(timeout=12)
+    # Start terminating processes that haven't finished
+    remaining_processes = [p for p in processes.keys() if p.is_alive()]
+    if remaining_processes:
+        print(f"Sending SIGTERM to {len(remaining_processes)} remaining processes...")
+        for p in remaining_processes:
+            script = processes[p]
+            if script not in reported_outputs:
+                print(f"Terminating {script} (PID {p.pid})...")
+                p.terminate()  # Send SIGTERM
 
-    if DEBUG:
-        print("Finished terminating running processes, collecting outputs...")
+    # Collect any outputs that might have come in during termination
+    collect_outputs_from_queue(output_queue, reported_outputs, timeout=2)
 
-    while not output_queue.empty():
-        script, exit_code, stdout, stderr, log_output = output_queue.get()
-        exit_codes[script] = exit_code
-        outputs[script] = (stdout, stderr, log_output)
-        if DEBUG:
-            print(f"Collected output for {script}")
+    # Wait for processes to terminate
+    remaining_processes = [p for p in processes.keys() if p.is_alive()]
+    if remaining_processes:
+        print(f"Waiting for {len(remaining_processes)} processes to terminate...")
+        for i in range(5):  # Try multiple times with adaptive waiting
+            if not any(p.is_alive() for p in processes):
+                break
+            remaining = sum(1 for p in processes if p.is_alive())
+            if remaining > 0:
+                print(f"{remaining} processes still alive, waiting {i + 1}s more...")
+                time.sleep(i + 1)  # Adaptive waiting
+
+            # Collect outputs between waits
+            collect_outputs_from_queue(output_queue, reported_outputs)
+
+    # Final forceful termination if needed
+    for p in [p for p in processes if p.is_alive()]:
+        print(f"Forcefully terminating {processes[p]} (PID: {p.pid})")
+        os.kill(p.pid, signal.SIGKILL)  # Force kill as last resort
+
+    # Join all processes with a short timeout
+    for p in processes:
+        p.join(timeout=1)
+
+    # Final collection of any remaining outputs
+    collect_outputs_from_queue(output_queue, reported_outputs, timeout=5)
+
+    # Check for missing outputs and report
+    missing_scripts = set(scripts) - reported_outputs
+    if missing_scripts:
+        print(f"WARNING: Failed to collect outputs for {len(missing_scripts)} scripts:")
+        for script in missing_scripts:
+            print(f"  - {script}")
+            # Set default values for missing outputs
+            exit_codes[script] = "missing"
+            outputs[script] = ("", f"ERROR: Failed to collect output for {script}", "")
+
+
+def collect_outputs_from_queue(queue, reported_outputs, timeout=0):
+    """
+    Collect outputs from the queue without blocking indefinitely.
+    Updates the global exit_codes and outputs dictionaries.
+    Returns the number of items collected.
+    """
+    collected = 0
+    try:
+        while True:
+            try:
+                # Use a small timeout to avoid blocking forever
+                script, exit_code, stdout, stderr, log_output = queue.get(timeout=timeout)
+                exit_codes[script] = exit_code
+                outputs[script] = (stdout, stderr, log_output)
+                reported_outputs.add(script)
+                collected += 1
+                if DEBUG:
+                    print(f"Collected output for {script}")
+            except multiprocessing.queues.Empty:
+                break
+    except Exception as e:
+        print(f"Error collecting from queue: {e}")
+
+    return collected
 
 
 def check_log_capture():
