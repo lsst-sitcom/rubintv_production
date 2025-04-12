@@ -305,7 +305,9 @@ def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
 
 
 def buildPipelines(
-    instrument: str, locationConfig: LocationConfig, butler: Butler, aosType: str = ""
+    instrument: str,
+    locationConfig: LocationConfig,
+    butler: Butler,
 ) -> tuple[list[PipelineGraph], dict[str, PipelineComponents]]:
     """Build the pipeline graphs from the pipeline file.
 
@@ -320,8 +322,6 @@ def buildPipelines(
         The location config object.
     butler : `lsst.daf.butler.Butler`
         The butler object.
-    aosType : `str`, optional
-        The type of AOS pipeline to use. Can be "danish" or "tie".
 
     Returns
     -------
@@ -331,12 +331,14 @@ def buildPipelines(
         The `PipelineComponent`s as a dict, keyed by the overall pipeline names
         e.g. "SFM", "ISR", "AOS" etc.
     """
-    if aosType:
-        assert aosType in ["danish", "tie"], f"Unknown aosType {aosType=}"
-
     pipelines: dict[str, PipelineComponents] = {}
     sfmPipelineFile = locationConfig.getSfmPipelineFile(instrument)
-    aosPipelineFile = locationConfig.getAosPipelineFile(instrument, aosType)
+    aosFileDanish = locationConfig.aosPipelineFileDanish
+    aosFileTIE = locationConfig.aosPipelineFileTIE
+    # TODO: DM-50103 we build this regardless while we're still running tests
+    # on ComCam but once we have LSSTCam data at USDF the CI will be rewritten
+    # to run that instead and we can drop all ComCam support from RA
+    aosFileComCam = locationConfig.getAosPipelineFile("LSSTComCam")
 
     cpVerifyDir = getPackageDir("cp_verify")
     biasFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyBias.yaml").as_posix()
@@ -363,13 +365,18 @@ def buildPipelines(
 
     pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
     if instrument == "LATISS":
+        # TODO: unify SFM for LATISS and LSSTCam once LATISS has step2a working
         pipelines["SFM"] = PipelineComponents(butler.registry, sfmPipelineFile, ["step1"])
     else:
+        # TODO: remove nightlyrollup
         pipelines["SFM"] = PipelineComponents(
             butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
         )
-        # TODO: see if this will matter that this component doesn't exist
-        pipelines["AOS"] = PipelineComponents(butler.registry, aosPipelineFile, ["step1", "step2a"])
+        # NOTE: there is no dict entry for LATISS for AOS as AOS runs
+        # differently there. It might change in the future, but not soon.
+        pipelines["AOS_DANISH"] = PipelineComponents(butler.registry, aosFileDanish, ["step1", "step2a"])
+        pipelines["AOS_TIE"] = PipelineComponents(butler.registry, aosFileTIE, ["step1", "step2a"])
+        pipelines["AOS_COMCAM"] = PipelineComponents(butler.registry, aosFileComCam, ["step1", "step2a"])
 
     allGraphs: list[PipelineGraph] = []
     for pipeline in pipelines.values():
@@ -482,7 +489,11 @@ class HeadProcessController:
         self.doRaise = doRaise
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
-        self.currentAosPipeline = "danish"
+        self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
+
+        # TODO: DM-50103 remove this:
+        if self.instrument == "LSSTComCam":
+            self.currentAosPipeline = "AOS_COMCAM"
 
         if self.focalPlaneControl is not None:
             if self.locationConfig.location == "bts":
@@ -501,7 +512,6 @@ class HeadProcessController:
             instrument=instrument,
             locationConfig=locationConfig,
             butler=butler,
-            aosType=self.currentAosPipeline,
         )
         self.allGraphs = allGraphs
         self.pipelines = pipelines
@@ -589,22 +599,13 @@ class HeadProcessController:
         _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
         if _aosPipeline is not None:
             aosOverride = _aosPipeline.decode()
-            if aosOverride != self.currentAosPipeline:  # this is slow, so make sure it's necessary first
-                t0 = time.time()
-                self.log.info(
-                    f"Rebuilding pipelines with AOS pipeline={aosOverride} (prev={self.currentAosPipeline:})"
-                )
-                allGraphs, pipelines = buildPipelines(
-                    instrument=self.instrument,
-                    locationConfig=self.locationConfig,
-                    butler=self.butler,
-                    aosType=self.currentAosPipeline,
-                )
-                self.allGraphs = allGraphs
-                self.pipelines = pipelines
+            if aosOverride != self.currentAosPipeline:
+                # comes as 'tie' or 'danish'
+                aosOverride = f"AOS_{aosOverride.upper()}"
                 self.currentAosPipeline = aosOverride
-                t1 = time.time()
-                self.log.info(f"Now running AOS: {self.currentAosPipeline} (rebuild took {(t1 - t0):.2f}s)")
+                self.log.info(f"Now running AOS: {self.currentAosPipeline}")
+            else:
+                self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
 
         _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
         if _processingMode is not None:
@@ -706,7 +707,7 @@ class HeadProcessController:
             return
         assert self.focalPlaneControl is not None  # just for mypy
 
-        targetPipelineBytes = self.pipelines["AOS"].graphBytes["step1"]
+        targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1"]
         who = "AOS"
         detectorIds = self.focalPlaneControl.CWFS_NUMS
 

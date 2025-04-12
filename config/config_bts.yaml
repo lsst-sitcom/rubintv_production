@@ -56,6 +56,9 @@ tmaMetadataShardPath: /project/rubintv/tma/sidecar_metadata/shards
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
 
+aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamPipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+
 sfmPipelineFile:
   LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
@@ -66,15 +69,12 @@ aosPipelineFile:
   LATISS: ''
   LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
   LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
-  LSSTCam_danish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
-  LSSTCam_tie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
   LATISS: LATISS/runs/quickLook
   LSSTComCam: LSSTComCam/runs/quickLook
   LSSTComCamSim: LSSTComCamSim/runs/quickLook
   LSSTCam: LSSTCam/runs/quickLook
-
 
 ### not applicable on the TTS but here explicitly to keep keys the same:
 # they also need to exist for the LocationConfig to init correctly as it checks

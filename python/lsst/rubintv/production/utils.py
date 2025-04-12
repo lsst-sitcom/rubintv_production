@@ -613,14 +613,16 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument: str, aosType: str = "") -> str:
-        if instrument == "LSSTCam":  # LSSTCam_danish or or LSSTCam_tie
-            # TODO: find a better way of mapping these. There's already
-            # tons of tech debt in LocationConfig, so this can be cleared
-            # up in the rewrite.
-            assert aosType in ["danish", "tie"], f"Unknown type {aosType} for LSSTCam"
-            instrument = f"{instrument}_{aosType}"
+    def getAosPipelineFile(self, instrument) -> str:
         return self._config["aosPipelineFile"][instrument]
+
+    @cached_property
+    def aosLSSTCamPipelineFileDanish(self) -> str:
+        return self._config["aosPipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamPipelineFileTie(self) -> str:
+        return self._config["aosPipelineFileTIE"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:
