@@ -639,19 +639,27 @@ class HeadProcessController:
             raiseIf(self.doRaise, e, self.log)
             return None
 
-    def doDetectorFanout(self, expRecord: DimensionRecord) -> None:
-        """Send the expRecord out for processing based on current selection.
+    def getPipelineConfig(self, expRecord: DimensionRecord) -> tuple[bytes, PipelineGraph, str]:
+        """Get the pipeline config for the given expRecord.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
-            The expRecord to process.
+            The exposure record to process.
+
+        Returns
+        -------
+        targetPipelineBytes : `bytes`
+            The pipeline graph as bytes.
+        targetPipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+        who : `str`
+            Who this processing is for, either "ISR" or "SFM", "AOS"
         """
+
         # run isr only for calibs, otherwise run the appropriate step1
         targetPipelineBytes: bytes = b""
-
         imageType = expRecord.observation_type.lower()
-        shardPath = getShardPath(self.locationConfig, expRecord)
 
         # TODO: DM-50003 Make this data-driven dispatch config instead of code
         match imageType:
@@ -681,12 +689,70 @@ class HeadProcessController:
                 targetPipelineGraph = self.pipelines["SFM"].graphs["step1"]
                 who = "SFM"
 
-        writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
+        return targetPipelineBytes, targetPipelineGraph, who
+
+    def doAosFanout(self, expRecord: DimensionRecord) -> None:
+        """Send the CWFS sensors out for AOS processing.
+
+        Hard-codes always sending this to all 8 CWFS detectors (191, 192, 195,
+        196, 199, 200, 203, 204).
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process.
+        """
+        if expRecord.instrument == "LATISS":
+            return
+        assert self.focalPlaneControl is not None  # just for mypy
+
+        targetPipelineBytes = self.pipelines["AOS"].graphBytes["step1"]
+        who = "AOS"
+        detectorIds = self.focalPlaneControl.CWFS_NUMS
+
+        payloads: dict[int, Payload] = {}
+        for detectorId in detectorIds:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+            payload = Payload(
+                dataIds=[dataId],
+                pipelineGraphBytes=targetPipelineBytes,
+                run=self.outputRun,
+                who=who,
+            )
+            payloads[detectorId] = payload
+
+        # NOTE: probably want a segregated pool for AOS processing when we go
+        # to dynamic allocation - SFM shouldn't be able to bog down the AOS
+        # pool
+        self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+
+        # TODO: Consider whether this should move to the expRecord getting
+        # function, or the event loop, or if this is OK. If this really does
+        # fire for every image this is probably fine.
+        aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+        writeExpRecordMetadataShard(expRecord, aosShardPath)
+
+    def doDetectorFanout(self, expRecord: DimensionRecord) -> None:
+        """Send the expRecord out for processing based on current selection.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The expRecord to process.
+        """
+        # AOS first
+        self.doAosFanout(expRecord)
+
+        # data driven section
+        targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
+        shardPath = getShardPath(self.locationConfig, expRecord)
+        writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)  # all pipelines contain an ISR step
 
         detectorIds: list[int] = []
         nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
-            detectorIds = self.focalPlaneControl.getEnabledDetIds()
+            # excludeCwfs=True because we already sent them to the AOS pipeline
+            detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
             nEnabled = len(detectorIds)
         else:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
@@ -1644,7 +1710,7 @@ class CameraControlConfig:
         """
         return sum(self._detectorStates.values())
 
-    def getEnabledDetIds(self) -> list[int]:
+    def getEnabledDetIds(self, excludeCwfs=False) -> list[int]:
         """Get the detectorIds of the enabled sensors.
 
         Returns
@@ -1652,7 +1718,10 @@ class CameraControlConfig:
         enabled : `list` of `int`
             The detectorIds of the enabled CCDs.
         """
-        return sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
+        enabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
+        if excludeCwfs:
+            enabled = [det for det in enabled if det not in self.CWFS_NUMS]
+        return enabled
 
     def asPlotData(self) -> dict[str, list[int] | list[None] | NDArray]:
         """Get the data in a form for rendering as a ``FocalPlaneGeometryPlot``
