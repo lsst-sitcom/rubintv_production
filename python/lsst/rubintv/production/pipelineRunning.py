@@ -257,7 +257,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             for dataId in dataIds:
                 self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
                 dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
-                if dataProduct is None:
+
+                # self.dataProduct is the data product we are waiting for, so
+                # if that's none the rest doesn't apply here, i.e. that's
+                # success
+                if self.dataProduct is not None and dataProduct is None:
                     # _waitForDataProduct logs a warning so no need to warn
                     record = None
                     if "exposure" in dataId.dimensions:
