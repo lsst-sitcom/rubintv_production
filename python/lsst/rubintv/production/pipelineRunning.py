@@ -249,13 +249,32 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             self.log.info(f"Running pipeline for {dataIds}")
 
-            # _waitForDataProduct waits for the raw to land in the repo and
-            # caches it on the butler, so don't bother to catch the return.
-            # Then check for empty qg and raise if that is the case.
+            # _waitForDataProduct waits for the item to land in the repo and
+            # caches it on the butler, so we don't use the return, other than
+            # to test that it arrived, so a) we can log and b) send the fail
+            # to RubinTV. If it doesn't arrive the qg will be empty
             t0 = time.time()
             for dataId in dataIds:
                 self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
-                self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
+                dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
+                if dataProduct is None:
+                    # _waitForDataProduct logs a warning so no need to warn
+                    expRecord = dataId.records["exposure"]
+                    if expRecord is None:
+                        self.log.warning(f"{dataId} has no expRecord so can't log missing data product")
+                        continue
+                    failRecord = {
+                        # it would look nicer to have this dict the other way
+                        # around but we're merging dicts, so that would
+                        # overwrite if there were _e.g. multiple raws missing
+                        f"{dataId}-timeout": f"{self.dataProduct}",  # dict-items these merge cleanly now
+                        "DISPLAY_VALUE": "💩",  # just keep overwriting this, doesn't matter
+                    }
+                    columnName = "Retrieval fails"
+                    shardPath = getShardPath(self.locationConfig, expRecord)
+                    writeMetadataShard(
+                        shardPath, expRecord.day_obs, {expRecord.seq_num: {columnName: failRecord}}
+                    )
             self.log.info(
                 f"Spent {(time.time() - t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
                 " (should be ~1s per id)"
