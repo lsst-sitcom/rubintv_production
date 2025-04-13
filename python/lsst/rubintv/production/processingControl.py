@@ -1414,12 +1414,24 @@ class CameraControlConfig:
         self._focalPlanePlot.plotMax = 1
         self.GUIDER_NUMS = tuple(int(det.getId()) for det in self._guiders)
         self.CWFS_NUMS = tuple(int(det.getId()) for det in self._wavefronts)
+        self.INTRA_FOCAL_NUMS = set([192, 196, 200, 204])
+        self.EXTRA_FOCAL_NUMS = set([191, 195, 199, 203])
         self.DIAGONAL = (90, 94, 98, 144, 148, 152, 36, 40, 44)
         self.DIAGONAL2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
         self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
         self.VERTICAL = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
 
         self.currentNamedPattern = ""
+
+    def getIntraExtraFocalPairs(self) -> list[tuple[int, int]]:
+        """Get the intra-focal and extra-focal pairs.
+
+        Returns
+        -------
+        pairs : `list` of `tuple`
+            List of tuples of the form (intra, extra) for each pair.
+        """
+        return [(x, y) for (x, y) in zip(self.INTRA_FOCAL_NUMS, self.EXTRA_FOCAL_NUMS)]
 
     def setDiagonalOn(self, other: bool = False) -> None:
         """Set the diagonal pattern on the focal plane.
