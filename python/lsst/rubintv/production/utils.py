@@ -113,6 +113,49 @@ SHARDED_DATA_TEMPLATE = os.path.join(
     "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
 )
 
+AOS_WORKER_MAPPING = {
+    0: (0, 191),
+    1: (0, 192),
+    2: (0, 195),
+    3: (0, 196),
+    4: (0, 199),
+    5: (0, 200),
+    6: (0, 203),
+    7: (0, 204),
+    8: (1, 191),
+    9: (1, 192),
+    10: (1, 195),
+    11: (1, 196),
+    12: (1, 199),
+    13: (1, 200),
+    14: (1, 203),
+    15: (1, 204),
+    16: (2, 191),
+    17: (2, 192),
+    18: (2, 195),
+    19: (2, 196),
+    20: (2, 199),
+    21: (2, 200),
+    22: (2, 203),
+    23: (2, 204),
+    24: (3, 191),
+    25: (3, 192),
+    26: (3, 195),
+    27: (3, 196),
+    28: (3, 199),
+    29: (3, 200),
+    30: (3, 203),
+    31: (3, 204),
+    32: (4, 191),
+    33: (4, 192),
+    34: (4, 195),
+    35: (4, 196),
+    36: (4, 199),
+    37: (4, 200),
+    38: (4, 203),
+    39: (4, 204),
+}
+
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
 # only.
@@ -1422,6 +1465,24 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     """
     noDetector = {k: v for k, v in dataCoord.required.items() if k != "detector"}
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
+
+
+def mapAosWorkerNumber(workerNum: int) -> tuple[int, int]:
+    """Map the worker number to the AOS worker number.
+
+    Parameters
+    ----------
+    workerNum : `int`
+        The worker number.
+
+    Returns
+    -------
+    depth : `int`
+        The depth of the worker.
+    detectorNum : `int`
+        The detector number of the worker.
+    """
+    return AOS_WORKER_MAPPING[workerNum]
 
 
 def getFilterColorName(physicalFilter: str) -> str | None:
