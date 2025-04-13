@@ -722,6 +722,8 @@ class HeadProcessController:
             )
             payloads[detectorId] = payload
 
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
+
         # NOTE: probably want a segregated pool for AOS processing when we go
         # to dynamic allocation - SFM shouldn't be able to bog down the AOS
         # pool
@@ -1399,8 +1401,8 @@ class CameraControlConfig:
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
-        self.GUIDER_NUMS = tuple(det.getId() for det in self._guiders)
-        self.CWFS_NUMS = tuple(det.getId() for det in self._wavefronts)
+        self.GUIDER_NUMS = tuple(int(det.getId()) for det in self._guiders)
+        self.CWFS_NUMS = tuple(int(det.getId()) for det in self._wavefronts)
         self.DIAGONAL = (90, 94, 98, 144, 148, 152, 36, 40, 44)
         self.DIAGONAL2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
         self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
