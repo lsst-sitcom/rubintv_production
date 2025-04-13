@@ -197,6 +197,7 @@ class RedisHelper:
         self.redis = self._makeRedis()
         self._testRedisConnection()
         self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
+        self._loggedAbout: set[str] = set()
 
     def _makeRedis(self) -> redis.Redis:
         """Create a redis connection.
@@ -856,7 +857,9 @@ class RedisHelper:
         key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
         value = self.redis.get(key)
         if value is None:
-            self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
+            if key not in self._loggedAbout:
+                self._loggedAbout.add(key)
+                self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
             return []
         return [int(det) for det in value.decode("utf-8").split(",")]
 
