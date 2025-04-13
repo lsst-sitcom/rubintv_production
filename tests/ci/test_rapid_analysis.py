@@ -88,6 +88,7 @@ class TestConfig:
                 "scripts/LATISS/runSfmRunner.py",
                 ["usdf_testing", "0"],
                 display_on_pass=True,
+                tee_output=True,
             ),
             TestScript(
                 "scripts/LATISS/runOneOffExpRecord.py",
@@ -251,11 +252,27 @@ class RedisManager:
         self.config = config
         self.redis_process = None
 
+    def is_redis_running(self) -> bool:
+        """Check if redis-server is already running."""
+        try:
+            # Run pgrep to find redis-server processes
+            result = subprocess.run(["pgrep", "-f", "redis-server"], capture_output=True, text=True)
+            # Get process IDs if any
+            redis_pids = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            return bool(redis_pids and redis_pids[0])
+        except Exception as e:
+            print(f"Error checking Redis process: {e}")
+            return False
+
     def start(self) -> None:
         """Start the Redis server."""
         host = self.config.redis_host
         port = self.config.redis_port
         password = self.config.redis_password
+
+        # Check if Redis is already running
+        if self.is_redis_running():
+            raise RuntimeError("Redis server is already running. Cannot start another instance.")
 
         # Set environment variables
         os.environ["REDIS_HOST"] = host

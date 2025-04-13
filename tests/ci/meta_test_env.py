@@ -43,6 +43,10 @@ def start_test_redis():
     port = config.redis_port
     password = config.redis_password
 
+    # Check if Redis is already running
+    if check_redis_process(expect_running=True):
+        raise RuntimeError("Redis server is already running. Cannot start another instance.")
+
     # Set environment variables
     os.environ["REDIS_HOST"] = host
     os.environ["REDIS_PORT"] = port
@@ -126,6 +130,19 @@ def main():
         all_tests_passed = False
     else:
         print("Redis connection successful")
+
+    # 5b. Test trying to start Redis again (should fail)
+    print("Testing attempt to start Redis when already running...")
+    try:
+        start_test_redis()
+        print("ERROR: Was able to start Redis again when it should have failed")
+        all_tests_passed = False
+    except RuntimeError as e:
+        if "Redis server is already running" in str(e):
+            print("✅ Correctly failed to start Redis when already running")
+        else:
+            print(f"ERROR: Got unexpected error when starting Redis again: {e}")
+            all_tests_passed = False
 
     # 6. Stop Redis
     print("Stopping Redis server...")
