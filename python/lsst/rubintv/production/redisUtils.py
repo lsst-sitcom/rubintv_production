@@ -860,6 +860,49 @@ class RedisHelper:
             return []
         return [int(det) for det in value.decode("utf-8").split(",")]
 
+    def recordAosPipelineConfig(self, instrument: str, expId: int, pipelineName: str) -> None:
+        """Record the pipeline configuration used for a given exposure ID.
+
+        e.g. AOS_TIE or AOS_DANISH
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        expId : `int`
+            The exposure ID.
+        pipelineName : `str`
+            The name of the pipeline configuration used.
+        """
+        key = f"{instrument}-AOS_PIPELINE_CONFIG-{expId}"
+        self.redis.set(key, pipelineName)
+        self.redis.expire(key, 86400 * 2)
+
+    def getAosPipelineConfig(self, instrument: str, expId: int) -> str | None:
+        """Get the pipeline configuration used for a given exposure ID.
+
+        e.g. AOS_TIE or AOS_DANISH
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        expId : `int`
+            The exposure ID.
+
+        Returns
+        -------
+        pipelineName : `str` or `None`
+            The name of the pipeline configuration used, or ``None`` if not
+            found.
+        """
+        key = f"{instrument}-AOS_PIPELINE_CONFIG-{expId}"
+        value = self.redis.get(key)
+        if value is None:
+            self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
+            return None
+        return value.decode("utf-8")
+
     def displayRedisContents(self, instrument: str | None = None) -> None:
         """Get the next unit of work from a specific worker queue.
 

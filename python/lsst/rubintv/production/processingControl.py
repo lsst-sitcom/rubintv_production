@@ -723,6 +723,7 @@ class HeadProcessController:
             payloads[detectorId] = payload
 
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
+        self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
         # NOTE: probably want a segregated pool for AOS processing when we go
         # to dynamic allocation - SFM shouldn't be able to bog down the AOS
@@ -1034,9 +1035,19 @@ class HeadProcessController:
                 for intId in intIds
             ]
 
+            if who == "AOS":  # get the full AOS_XXX name for this exposure
+                # TODO: will this break the paired-processing? maybe not
+                # if we always record the config via the first id
+                whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, intIds[0])
+                if whoToUse is None:
+                    self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
+                    continue
+            else:
+                whoToUse = who
+
             payload = Payload(
                 dataIds=dataCoords,
-                pipelineGraphBytes=self.pipelines[who].graphBytes["step2a"],
+                pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step2a"],
                 run=self.outputRun,
                 who=who,
             )
