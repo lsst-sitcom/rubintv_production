@@ -259,9 +259,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
                 if dataProduct is None:
                     # _waitForDataProduct logs a warning so no need to warn
-                    expRecord = dataId.records["exposure"]
-                    if expRecord is None:
-                        self.log.warning(f"{dataId} has no expRecord so can't log missing data product")
+                    record = None
+                    if "exposure" in dataId.dimensions:
+                        record = dataId.records["exposure"]
+                    elif "visit" in dataId.dimensions:
+                        record = dataId.records["visit"]
+
+                    if record is None:  # not an else block because mypy
+                        self.log.warning(f"{dataId} has no visit/expRecord so can't log missing data product")
                         continue
                     failRecord = {
                         # it would look nicer to have this dict the other way
@@ -271,10 +276,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         "DISPLAY_VALUE": "💩",  # just keep overwriting this, doesn't matter
                     }
                     columnName = "Retrieval fails"
-                    shardPath = getShardPath(self.locationConfig, expRecord)
-                    writeMetadataShard(
-                        shardPath, expRecord.day_obs, {expRecord.seq_num: {columnName: failRecord}}
-                    )
+                    shardPath = getShardPath(self.locationConfig, record)
+                    writeMetadataShard(shardPath, record.day_obs, {record.seq_num: {columnName: failRecord}})
             self.log.info(
                 f"Spent {(time.time() - t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
                 " (should be ~1s per id)"
