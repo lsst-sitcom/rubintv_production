@@ -693,7 +693,7 @@ class HeadProcessController:
         return targetPipelineBytes, targetPipelineGraph, who
 
     def doAosFanout(self, expRecord: DimensionRecord) -> None:
-        """Send the CWFS sensors out for AOS processing.
+        """Send the CWFS sensors out for AOS processing. LSSTCam only.
 
         Hard-codes always sending this to all 8 CWFS detectors (191, 192, 195,
         196, 199, 200, 203, 204).
@@ -703,7 +703,7 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record to process.
         """
-        if expRecord.instrument == "LATISS":
+        if expRecord.instrument in ["LATISS", "LSSTComCam"]:
             return
         assert self.focalPlaneControl is not None  # just for mypy
 
@@ -816,8 +816,8 @@ class HeadProcessController:
         assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
 
         self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
-        targetPipelineBytes = self.pipelines["AOS"].graphBytes["step1"]
-        targetPipelineGraph = self.pipelines["AOS"].graphs["step1"]
+        targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1"]
+        targetPipelineGraph = self.pipelines[self.currentAosPipeline].graphs["step1"]
 
         # deliberately do NOT set isAos=True here because we want this written
         # to the main table, not the AOS page on RubinTV
