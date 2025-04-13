@@ -258,8 +258,8 @@ class IUploader(ABC):
 
 
 class MultiUploader(IUploader):
-    def __init__(self):
-        # TODO: thread the remote upload
+    def __init__(self, allowNoRemote: bool = False) -> None:
+
         self.localUploader = createLocalS3UploaderForSite()
         localOk = self.localUploader.checkAccess()
         if not localOk:
@@ -270,8 +270,8 @@ class MultiUploader(IUploader):
         except Exception:
             self.remoteUploader = None
 
-        remoteRequired = getSite() in ["summit", "tucson", "base"]
-        if remoteRequired and not self.hasRemote:
+        remoteRequired = getSite() == "summit"
+        if (remoteRequired and not self.hasRemote) and not allowNoRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
         elif remoteRequired and self.hasRemote:
             remoteOk = self.remoteUploader.checkAccess()
