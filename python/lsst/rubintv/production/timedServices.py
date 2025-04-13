@@ -31,7 +31,7 @@ from functools import partial
 from glob import glob
 from pathlib import Path
 from time import sleep
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
@@ -57,25 +57,26 @@ from lsst.summit.utils.tmaUtils import (
 from lsst.summit.utils.utils import getCurrentDayObs_int
 
 if TYPE_CHECKING:
-    from lsst.rubintv.production.utils import LocationConfig
     from lsst.summit.utils.tmaUtils import TMAEvent
+
+    from .utils import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 
 
-def deep_update(toUpdate: dict, newValues: dict) -> dict:
+def deep_update(toUpdate: dict[str, Any], newValues: dict[str, Any]) -> dict[str, Any]:
     """Recursively update a dictionary.
 
     Parameters
     ----------
-    d : `dict`
+    toUpdate : `dict`
         The dictionary to update.
-    u : `dict`
+    newValues : `dict`
         The dictionary with updates.
 
     Returns
     -------
-    d : `dict`
+    dict : `dict`
         The updated dictionary.
     """
     for k, v in newValues.items():
@@ -126,7 +127,7 @@ class TimedMetadataServer:
         shardsDirectory: str,
         channelName: str,
         doRaise: bool = False,
-    ):
+    ) -> None:
         self.locationConfig = locationConfig
         self.metadataDirectory = metadataDirectory
         self.shardsDirectory = shardsDirectory
@@ -147,13 +148,13 @@ class TimedMetadataServer:
         main json file for the corresponding dayObs, and for each file updated,
         upload it.
         """
-        filesTouched = set()
+        filesTouched: set[str] = set()
         shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
         if shardFiles:
             self.log.debug(f"Found {len(shardFiles)} shardFiles")
             sleep(0.1)  # just in case a shard is in the process of being written
 
-        updating = set()
+        updating: set[tuple[int, int]] = set()
 
         for shardFile in shardFiles:
             # filenames look like
@@ -163,14 +164,14 @@ class TimedMetadataServer:
             mainFile = self.getSidecarFilename(dayObs)
             filesTouched.add(mainFile)
 
-            data = {}
+            data: dict[int, dict[str, Any]] = {}
             # json.load() doesn't like empty files so check size is non-zero
             if os.path.isfile(mainFile) and os.path.getsize(mainFile) > 0:
                 with open(mainFile) as f:
                     data = json.load(f)
 
             with open(shardFile) as f:
-                shard = json.load(f)
+                shard: dict[int, dict[str, Any]] = json.load(f)
             if shard:  # each is a dict of dicts, keyed by seqNum
                 for seqNum, seqNumData in shard.items():
                     seqNumData = sanitizeNans(seqNumData)  # remove NaNs
