@@ -709,20 +709,30 @@ class HeadProcessController:
 
         targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1"]
         who = "AOS"
-        detectorIds = self.focalPlaneControl.CWFS_NUMS
+        detectorPairs = self.focalPlaneControl.getIntraExtraFocalPairs()
 
         payloads: dict[int, Payload] = {}
-        for detectorId in detectorIds:
-            dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+        for det1, det2 in detectorPairs:
+            dataId1 = DataCoordinate.standardize(expRecord.dataId, detector=det1)
+            dataId2 = DataCoordinate.standardize(expRecord.dataId, detector=det2)
             payload = Payload(
-                dataIds=[dataId],
+                dataIds=[dataId1, dataId2],
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
             )
-            payloads[detectorId] = payload
+            # TODO: indexing payloads by only det1 wastes half the worker pool
+            # the way it's currently done. If this stays the way we do things,
+            # fix this.
+            payloads[det1] = payload
 
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
+        # TODO: Again just key on the first of the pair for downstream - the
+        # count needs to be the number of processings which will finish so
+        # that's 4 not 8 and there's no need to compoundify them as they're
+        # only counted in dispatchGatherSteps
+        self.redisHelper.writeDetectorsToExpect(
+            self.instrument, expRecord.id, list(d[0] for d in detectorPairs), "AOS"
+        )
         self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
         # NOTE: probably want a segregated pool for AOS processing when we go
