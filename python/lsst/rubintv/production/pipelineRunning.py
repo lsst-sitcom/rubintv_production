@@ -204,11 +204,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         compoundId = ""
         sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
         if "exposure" in sampleDataId:
-            compoundId = "+".join([f"{dataId['exposure']}" for dataId in dataIds])
+            # the sorted(set()) is to make sure that, when we have a repeated
+            # dataId, we don't end up with a compoundId of exposure+exposure
+            # and downstream can treat this as a regular visit-level dispatch.
+            # this is the case for regular corner CWFS images, and NOT the case
+            # for when the pair is coming from a full-focal plane pistoning,
+            # where the two ids will be different, and need to be passed to
+            # step2a together.
+            compoundId = "+".join(sorted(set(f"{dataId['exposure']}" for dataId in dataIds)))
         elif "visit" in sampleDataId:
-            compoundId = "+".join([f"{dataId['visit']}" for dataId in dataIds])
+            compoundId = "+".join(sorted(set(f"{dataId['visit']}" for dataId in dataIds)))
         else:  # for day_obs or instrument level dataIds.
-            compoundId = "+".join([f"{dataId}" for dataId in dataIds])
+            compoundId = "+".join(sorted(set(f"{dataId}" for dataId in dataIds)))
 
         self.log.debug(f"Processing {compoundId=}")
         self.log.debug(f"{self.step=} {self.dataProduct=}")
