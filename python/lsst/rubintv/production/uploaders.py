@@ -270,7 +270,7 @@ class MultiUploader(IUploader):
         except Exception:
             self.remoteUploader = None
 
-        remoteRequired = getSite() in ["summit", "tucson", "base"]
+        remoteRequired = getSite() in ["summit"]  # , "tucson", "base"]
         if remoteRequired and not self.hasRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
         elif remoteRequired and self.hasRemote:
