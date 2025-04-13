@@ -715,6 +715,9 @@ class HeadProcessController:
         for det1, det2 in detectorPairs:
             dataId1 = DataCoordinate.standardize(expRecord.dataId, detector=det1)
             dataId2 = DataCoordinate.standardize(expRecord.dataId, detector=det2)
+            self.log.debug("AOS paired dispatch:")
+            self.log.debug(f"{dataId1=}")
+            self.log.debug(f"{dataId2=}")
             payload = Payload(
                 dataIds=[dataId1, dataId2],
                 pipelineGraphBytes=targetPipelineBytes,
@@ -1424,8 +1427,8 @@ class CameraControlConfig:
         self._focalPlanePlot.plotMax = 1
         self.GUIDER_NUMS = tuple(int(det.getId()) for det in self._guiders)
         self.CWFS_NUMS = tuple(int(det.getId()) for det in self._wavefronts)
-        self.INTRA_FOCAL_NUMS = set([192, 196, 200, 204])
-        self.EXTRA_FOCAL_NUMS = set([191, 195, 199, 203])
+        self.INTRA_FOCAL_NUMS = (192, 196, 200, 204)
+        self.EXTRA_FOCAL_NUMS = (191, 195, 199, 203)
         self.DIAGONAL = (90, 94, 98, 144, 148, 152, 36, 40, 44)
         self.DIAGONAL2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
         self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
