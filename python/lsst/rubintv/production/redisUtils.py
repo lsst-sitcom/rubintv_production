@@ -1011,7 +1011,7 @@ class RedisHelper:
             else:
                 print(f"Unsupported type for key: {key}")
 
-    def clearRedis(self, force: bool = False) -> None:
+    def clearRedis(self, force: bool = False, keepButlerWatcherHistory: bool = True) -> None:
         """Clear all keys in the Redis database.
 
         Parameters
@@ -1019,6 +1019,9 @@ class RedisHelper:
         force : `bool`, optional
             Whether to clear the Redis database without user confirmation.
             Default is ``False``.
+        keepButlerWatcherHistory : `bool`, optional
+            Whether to keep keys matching "*fromButlerWacher*". Default is
+            ``True``.
         """
         if not force:
             print("Are you sure you want to clear the Redis database? This action cannot be undone.")
@@ -1027,7 +1030,18 @@ class RedisHelper:
             if response != "yes":
                 print("Clearing aborted.")
                 return
-        self.redis.flushdb()
+
+        if not keepButlerWatcherHistory:
+            self.redis.flushdb()
+            print("Redis database cleared.")
+        else:
+            # Get all keys and delete them selectively
+            all_keys = self.redis.keys("*")
+            for key in all_keys:
+                key_str = key.decode("utf-8")
+                if "fromButlerWacher" not in key_str:
+                    self.redis.delete(key)
+            print("Redis database cleared, but ButlerWatcher history retained.")
 
     def clearWorkerQueues(self, force: bool = False) -> None:
         """Clear all keys in the Redis database.
