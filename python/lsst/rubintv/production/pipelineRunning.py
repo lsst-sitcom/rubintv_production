@@ -102,8 +102,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         The butler to use.
     instrument : `str`
         The instrument name.
-    pipeline : `str`
-        The path to the pipeline yaml file.
     step : `str`
         The step of the pipeline to run with this worker.
     awaitsDataProduct : `str`
@@ -122,7 +120,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         locationConfig: LocationConfig,
         butler: Butler,
         instrument: str,
-        pipeline: str,  # not pulled from the locationConfig to allow notebook/debug usage
         step: str,
         awaitsDataProduct: str | None,
         podDetails: PodDetails,

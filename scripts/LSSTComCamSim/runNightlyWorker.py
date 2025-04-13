@@ -52,7 +52,6 @@ rollupRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
     step="nightlyRollup",
     awaitsDataProduct=None,
     podDetails=podDetails,

@@ -54,7 +54,6 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getAosPipelineFile(instrument),
     step="step1",
     awaitsDataProduct="raw",
     podDetails=podDetails,
