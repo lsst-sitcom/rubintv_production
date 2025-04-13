@@ -63,6 +63,29 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__name__)
 
 
+def deep_update(toUpdate: dict, newValues: dict) -> dict:
+    """Recursively update a dictionary.
+
+    Parameters
+    ----------
+    d : `dict`
+        The dictionary to update.
+    u : `dict`
+        The dictionary with updates.
+
+    Returns
+    -------
+    d : `dict`
+        The updated dictionary.
+    """
+    for k, v in newValues.items():
+        if isinstance(v, dict) and k in toUpdate and isinstance(toUpdate[k], dict):
+            toUpdate[k] = deep_update(toUpdate[k], v)
+        else:
+            toUpdate[k] = v
+    return toUpdate
+
+
 class TimedMetadataServer:
     """Class for serving metadata to RubinTV.
 
@@ -153,7 +176,8 @@ class TimedMetadataServer:
                     seqNumData = sanitizeNans(seqNumData)  # remove NaNs
                     if seqNum not in data.keys():
                         data[seqNum] = {}
-                    data[seqNum].update(seqNumData)
+                    # Use deep_update instead of the regular update method
+                    data[seqNum] = deep_update(data[seqNum], seqNumData)
                     updating.add((dayObs, seqNum))
             os.remove(shardFile)
 
