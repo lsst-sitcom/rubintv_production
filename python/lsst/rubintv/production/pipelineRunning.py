@@ -263,7 +263,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             t0 = time.time()
             for dataId in dataIds:
                 self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
-                dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler)
+                if self.locationConfig.location == "bts":
+                    # TODO : Find something better when we're not about to go
+                    # on sky.
+                    t = 60  # ideally this would be in config not code
+                else:
+                    t = 20  # ideally this wouldn't reassert the upsteam default but it makes this smaller
+                dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler, timeout=t)
 
                 # self.dataProduct is the data product we are waiting for, so
                 # if that's none the rest doesn't apply here, i.e. that's
