@@ -940,10 +940,7 @@ class HeadProcessController:
                     self.redisHelper.enqueuePayload(payload, worker)
                     continue
                 else:
-                    # Consider changing this to a log.exception for production,
-                    # but this should be a raise while we're configuring things
-                    # for LSSTCam
-                    raise RuntimeError(
+                    self.log.error(
                         f"No workers (not even busy ones) available for {detectorId=},",
                         f" cannot dispatch process for {payload.who}",
                     )
