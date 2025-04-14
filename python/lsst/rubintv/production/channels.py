@@ -63,6 +63,7 @@ KNOWN_INSTRUMENTS = (
     "fake_auxtel",
     "tma",
     "lsstcam",
+    "lsstcam_aos",
 )
 
 
