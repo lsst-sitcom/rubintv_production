@@ -1,0 +1,62 @@
+
+<html>
+    <head>
+        <title>Rapid-analysis Monitoring</title>
+        <style>
+        .green {
+            background-color: green;
+            padding: 4px;
+            width: 1.2em;
+            height: 1em;
+            text-align: center;
+            margin: 4px;
+            border: 2px solid transparent;
+            flex: none;
+        }
+        .yellow {
+            background-color: green;
+            padding: 4px;
+            width: 1.2em;
+            height: 1em;
+            text-align: center;
+            margin: 4px;
+            flex: none;
+            border: 2px solid orange;
+        }
+        .red {
+            background-color: red;
+            padding: 4px;
+            width: 1.2em;
+            height: 1em;
+            text-align: center;
+            margin: 4px;
+            border: 2px solid transparent;
+            flex: none;
+        }
+        </style>
+        <meta http-equiv="refresh" content="15">
+    </head>
+    <body style="background: #252525; color: white;">
+
+        <H1>Rapid-analysis Monitoring</H1>
+        {% for depth in range(max_depth + 1) %}
+            <h3>Depth {{ depth }}</h3>
+            {% for row in range(12) %}
+                <div style="display: flex; flex-direction: row;">
+                {% for n in range(row*18,(row + 1)*18) %}
+                    {% if per_depth_status[depth][n] == "free" %}
+                        <div class="green" >{{ n }} </div>
+                    {% endif %}
+                    {% if per_depth_status[depth][n] == "busy" %}
+                        <div class="yellow">{{ n }}</div>
+                    {% endif %}
+                    {% if per_depth_status[depth][n] == "missing" %}
+                        <div class="red">{{ n }}</div>
+                    {% endif %}
+                {% endfor %}
+                </div>
+            {% endfor %}
+            <br/>
+        {% endfor %}
+    </body>
+</html>
