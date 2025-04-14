@@ -1146,7 +1146,7 @@ class HeadProcessController:
                 nExpected = len(
                     self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR")
                 )
-                if nFinished == nExpected:
+                if nFinished >= nExpected:
                     completeIds.append(_id)
                 if nFinished > nExpected:
                     msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"
