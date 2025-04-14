@@ -906,7 +906,7 @@ class RedisHelper:
             return None
         return value.decode("utf-8")
 
-    def displayRedisContents(self, instrument: str | None = None) -> None:
+    def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -945,11 +945,17 @@ class RedisHelper:
             expRecordStr = f"{loaded['record']['instrument']}, {loaded['record']['id']}"
             return expRecordStr
 
+        def isPod(key: str) -> bool:
+            return key.endswith("+EXISTS") or key.endswith("+IS_BUSY")
+
         r = self.redis
 
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
         keys = sorted(r.keys("*"))
+
+        if ignorePods:
+            keys = [key for key in keys if not isPod(key.decode("utf-8"))]
 
         if not keys:
             print("Nothing in the Redis database.")
