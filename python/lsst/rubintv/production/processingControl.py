@@ -1139,18 +1139,19 @@ class HeadProcessController:
 
         for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
             allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
-            completeIds = [
-                _id
-                for _id in allDataIds
-                if self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
-                >= len(
-                    self.redisHelper.getExpectedDetectors(
-                        self.instrument,
-                        int(_id["exposure"]) if "exposure" in _id else int(_id["visit"]),
-                        who="ISR",
-                    )
+            completeIds = []
+            for _id in allDataIds:
+                nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
+                expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
+                nExpected = len(
+                    self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR")
                 )
-            ]
+                if nFinished == nExpected:
+                    completeIds.append(_id)
+                if nFinished > nExpected:
+                    msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"
+                    self.log.warning(msg)
+
             if not completeIds:
                 continue
 
