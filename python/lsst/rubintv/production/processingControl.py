@@ -383,7 +383,7 @@ def buildPipelines(
     else:
         # TODO: remove nightlyrollup
         pipelines["SFM"] = PipelineComponents(
-            butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
+            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits" ]
         )
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
@@ -710,8 +710,8 @@ class HeadProcessController:
                 who = "ISR"
             case _:  # all non-calib, properly headered images
                 self.log.info(f"Sending {expRecord.id} {imageType=} for full step1 SFM")
-                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
-                targetPipelineGraph = self.pipelines["SFM"].graphs["step1"]
+                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a-single-visit-detectors"]
+                targetPipelineGraph = self.pipelines["SFM"].graphs["step1a-single-visit-detectors"]
                 who = "SFM"
 
         return targetPipelineBytes, targetPipelineGraph, who
