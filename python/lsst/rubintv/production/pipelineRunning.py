@@ -429,8 +429,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return
 
     def postProcessIsr(self, quantum: Quantum) -> None:
+        if "post_isr_image" in quantum.outputs:
+            output_dataset_name = "post_isr_image"
+        else:
+            output_dataset_name = "postISRCCD"
+
         try:
-            dRef = quantum.outputs["postISRCCD"][0]
+            dRef = quantum.outputs[output_dataset_name][0]
             exp = self.cachingButler.get(dRef)
         except Exception:
             self.log.warning(
@@ -439,13 +444,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             return
 
+
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
             outputPath=self.locationConfig.calculatedDataPath,
             binSize=self.locationConfig.binning,
         )
-        self.log.info(f"Wrote binned postISRCCD for {dRef.dataId}")
+        self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
         self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
 
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
@@ -472,8 +478,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
     def postProcessCalibrate(self, quantum: Quantum) -> None:
         # Currently both calibrateImageTask and calibrateTask write a calexp
         # so unless they diverge the function can be the same for both tasks.
+        if "preliminary_visit_image" in quantum.outputs:
+            output_dataset_name = "preliminary_visit_image"
+        else:
+            output_dataset_name = "calexp"
+
         try:
-            dRef = quantum.outputs["calexp"][0]
+            dRef = quantum.outputs[output_dataset_name][0]
             exp = self.cachingButler.get(dRef)
         except Exception:
             self.log.warning(
@@ -496,7 +507,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # mechanism too, and anything else which forks off the main processing
         # trunk.
         self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
-        self.log.info(f"Wrote binned calexp for {dRef.dataId}")
+        self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
 
         try:
             # TODO: DM-45438 either have NV write to a different table or have
@@ -516,8 +527,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
     def postProcessVisitSummary(self, quantum: Quantum) -> None:
+        if "preliminary_visit_summary" in quantum.outputs:
+            output_dataset_name = "preliminary_visit_summary"
+        else:
+            output_dataset_name = "visitSummary"
+
         try:
-            dRef = quantum.outputs["visitSummary"][0]
+            dRef = quantum.outputs[output_dataset_name][0]
             vs = self.cachingButler.get(dRef)
         except Exception:
             self.log.warning(
