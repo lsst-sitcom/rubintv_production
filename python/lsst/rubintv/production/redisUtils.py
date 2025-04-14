@@ -818,7 +818,7 @@ class RedisHelper:
             self.redis.delete(key)
 
     def writeDetectorsToExpect(
-        self, instrument: str, indentifier: int | str, detectors: list[int], who: str
+        self, instrument: str, indentifier: int | str, detectors: list[int], who: str, append: bool = True
     ) -> None:
         """Write the detectors we are processing for a given exposureId.
 
@@ -832,12 +832,24 @@ class RedisHelper:
             The list of detectors to expect.
         who : `str`
             Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        append : `bool`, optional
+            If True, append to the existing list of detectors instead of
+            replacing it. Default is False.
         """
+        if append:
+            # Get existing detectors using the existing method, suppressing
+            # warning if key doesn't exist
+            existingDetectors = self.getExpectedDetectors(instrument, indentifier, who, noWarn=True)
+            # Combine and remove duplicates
+            detectors = sorted(set(existingDetectors + detectors))
+
         key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
         self.redis.set(key, ",".join(str(det) for det in detectors))
         self.redis.expire(key, 86400 * 2)  # expire in 2 days
 
-    def getExpectedDetectors(self, instrument: str, indentifier: int | str, who: str) -> list[int]:
+    def getExpectedDetectors(
+        self, instrument: str, indentifier: int | str, who: str, noWarn: bool = False
+    ) -> list[int]:
         """Get the expected detectors for a given exposure or visit ID.
 
         Parameters
@@ -848,6 +860,9 @@ class RedisHelper:
             The exposure or visit ID(s).
         who : `str`
             Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        noWarn : `bool`, optional
+            If True, suppress the warning when the key is not found. Default is
+            ``False``.
 
         Returns
         -------
@@ -857,7 +872,7 @@ class RedisHelper:
         key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
         value = self.redis.get(key)
         if value is None:
-            if key not in self._loggedAbout:
+            if not noWarn and key not in self._loggedAbout:
                 self._loggedAbout.add(key)
                 self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
             return []

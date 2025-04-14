@@ -736,6 +736,10 @@ class HeadProcessController:
         self.redisHelper.writeDetectorsToExpect(
             self.instrument, expRecord.id, list(d[0] for d in detectorPairs), "AOS"
         )
+        # AOS is running ISR (for now, at least) so we need to write the
+        # detectors to expect for that too.
+        cwfsDets = list(self.focalPlaneControl.CWFS_NUMS)
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, cwfsDets, "ISR")
         self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
         # NOTE: probably want a segregated pool for AOS processing when we go
@@ -1139,7 +1143,7 @@ class HeadProcessController:
                 _id
                 for _id in allDataIds
                 if self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
-                == len(
+                >= len(
                     self.redisHelper.getExpectedDetectors(
                         self.instrument,
                         int(_id["exposure"]) if "exposure" in _id else int(_id["visit"]),
