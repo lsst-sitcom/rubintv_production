@@ -449,6 +449,9 @@ class PipelineComponents:
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
             pipeline = Pipeline.fromFile(self.uris[step])
+
+            # TODO: Temporary workaround for DM-50107, remove when that is deployed.
+            pipeline._pipelineIR.steps = []
             if overrides:
                 for override in overrides:
                     if override[0] in pipeline.task_labels:
