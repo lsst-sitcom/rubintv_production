@@ -1240,7 +1240,10 @@ class HeadProcessController:
                 if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
                     self.doDetectorFanout(expRecord)
 
-            self.doDonutPairFanout()  # checks for pair signal and dispatches
+            try:
+                self.doDonutPairFanout()  # checks for pair signal and dispatches
+            except Exception as e:
+                self.log.warning(f"Failed during of donut PAIR fanout: {e}")
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things
@@ -1250,13 +1253,25 @@ class HeadProcessController:
             # with tracking that and dispatching only if the number has gone up
             # *and* there are 2+ free workers, because it's not worth
             # re-dispatching for every single new CCD exposure which finishes.
-            self.dispatchGatherSteps(who="SFM")
+            try:
+                self.dispatchGatherSteps(who="SFM")
+            except Exception as e:
+                self.log.warning(f"Failed during dispatch of gather steps for SFM: {e}")
 
-            self.dispatchGatherSteps(who="AOS")
+            try:
+                self.dispatchGatherSteps(who="AOS")
+            except Exception as e:
+                self.log.warning(f"Failed during dispatch of gather steps for AOS: {e}")
 
-            self.dispatchFocalPlaneMosaics()
+            try:
+                self.dispatchFocalPlaneMosaics()
+            except Exception as e:
+                self.log.warning(f"Failed during dispatch of focal plane mosaics: {e}")
 
-            self.dispatchRollupIfNecessary()
+            try:
+                self.dispatchRollupIfNecessary()
+            except Exception as e:
+                self.log.warning(f"Failed during dispatch nightly rollup: {e}")
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
