@@ -328,6 +328,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
                 taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
                 self.log.info(f"Starting to process {taskName}")
+
+                quantum = None  # reset inside the loop so it can't be stale inside except block
                 try:
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
@@ -347,6 +349,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
                     self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
+                    if quantum is not None:
+                        self.postProcessQuantum(quantum)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
             self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
@@ -418,8 +422,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return
 
     def postProcessIsr(self, quantum: Quantum) -> None:
-        dRef = quantum.outputs["postISRCCD"][0]
-        exp = self.cachingButler.get(dRef)
+        try:
+            dRef = quantum.outputs["postISRCCD"][0]
+            exp = self.cachingButler.get(dRef)
+        except Exception:
+            self.log.warning(
+                f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
+                " but still merits a warning due to the failing quantum."
+            )
+            return
 
         writeBinnedImage(
             exp=exp,
@@ -454,8 +465,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
     def postProcessCalibrate(self, quantum: Quantum) -> None:
         # Currently both calibrateImageTask and calibrateTask write a calexp
         # so unless they diverge the function can be the same for both tasks.
-        dRef = quantum.outputs["calexp"][0]
-        exp = self.cachingButler.get(dRef)
+        try:
+            dRef = quantum.outputs["calexp"][0]
+            exp = self.cachingButler.get(dRef)
+        except Exception:
+            self.log.warning(
+                f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
+                " but still merits a warning due to the failing quantum."
+            )
+            return
 
         writeBinnedImage(
             exp=exp,
@@ -491,8 +509,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
 
     def postProcessVisitSummary(self, quantum: Quantum) -> None:
-        dRef = quantum.outputs["visitSummary"][0]
-        vs = self.cachingButler.get(dRef)
+        try:
+            dRef = quantum.outputs["visitSummary"][0]
+            vs = self.cachingButler.get(dRef)
+        except Exception:
+            self.log.warning(
+                f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
+                " but still merits a warning due to the failing quantum."
+            )
+            return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
         nominalPlateScale = 0.199225  # XXX remove the hard-coding for ComCam
@@ -549,8 +574,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # needs T&S software.
         from lsst.ts.wep.utils import convertZernikesToPsfWidth  # type: ignore
 
-        dRef = quantum.outputs["aggregateZernikesAvg"][0]
-        zernikes = self.cachingButler.get(dRef)
+        try:
+            dRef = quantum.outputs["aggregateZernikesAvg"][0]
+            zernikes = self.cachingButler.get(dRef)
+        except Exception:
+            self.log.warning(
+                f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
+                " but still merits a warning due to the failing quantum."
+            )
+            return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
         rowSums = []
