@@ -673,7 +673,7 @@ class S3Uploader(IUploader):
         """
         try:
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
-        except ClientError as e:
+        except Exception as e:
             log = logging.getLogger(__name__)
             log.exception(f"Failed uploading file {sourceFilename} as Key: {destinationFilename} \n {e}")
         return destinationFilename
