@@ -1135,10 +1135,9 @@ class HeadProcessController:
             # happens in a one-off-processor instead for all round ease.
             return
 
-        triggeringTasks = ("lsst.ip.isr.isrTaskLSST.IsrTaskLSST", "binnedCalexpCreation")
-        dataProducts = ("postISRCCD", "calexp")
+        taskProductList = [("binnedIsrCreation", "postISRCCD"), ("binnedCalexpCreation", "calexp")]
 
-        for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
+        for triggeringTask, dataProduct in taskProductList:
             allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
             completeIds = []
             for _id in allDataIds:
