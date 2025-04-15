@@ -118,7 +118,7 @@ class Plotter:
         Returns
         -------
         filename : `str`
-            The filename the plot was saved to.
+            The filename the plot was saved to, or "" if the plot failed.
         """
         expId = expRecord.id
         dayObs = expRecord.day_obs
@@ -149,7 +149,7 @@ class Plotter:
         plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
         saveFile = (path / plotName).as_posix()
 
-        plotFocalPlaneMosaic(
+        image = plotFocalPlaneMosaic(
             butler=self.butler,
             figureOrDisplay=displayToUse,
             expId=expId,
@@ -162,8 +162,12 @@ class Plotter:
             logger=self.log,
             stretch=stretch,
         )
-        self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
-        return saveFile
+        if image is not None:
+            self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
+            return saveFile
+        else:
+            self.log.warning(f"Failed to make plot for {expRecord.dataId}")
+            return ""
 
     @staticmethod
     def getInstrumentChannelName(instrument: str) -> str:
