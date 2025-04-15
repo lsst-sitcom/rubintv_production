@@ -868,7 +868,7 @@ class HeadProcessController:
         instrument = instruments[0]
         assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
 
-        self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
+        self.log.info(f"Sending {[r.id for r in expRecords]} to {self.currentAosFamPipeline} pipeline")
         targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1"]
         targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1"]
         # record pipeline config via the first id for interoperability with
