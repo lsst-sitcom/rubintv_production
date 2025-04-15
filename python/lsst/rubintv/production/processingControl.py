@@ -336,6 +336,9 @@ def buildPipelines(
     sfmPipelineFile = locationConfig.getSfmPipelineFile(instrument)
     aosFileDanish = locationConfig.aosLSSTCamPipelineFileDanish
     aosFileTIE = locationConfig.aosLSSTCamPipelineFileTie
+    aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
+    aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
+
     # TODO: DM-50103 we build this regardless while we're still running tests
     # on ComCam but once we have LSSTCam data at USDF the CI will be rewritten
     # to run that instead and we can drop all ComCam support from RA
@@ -387,6 +390,11 @@ def buildPipelines(
         pipelines["AOS_DANISH"] = PipelineComponents(butler.registry, aosFileDanish, ["step1", "step2a"])
         pipelines["AOS_TIE"] = PipelineComponents(butler.registry, aosFileTIE, ["step1", "step2a"])
         pipelines["AOS_COMCAM"] = PipelineComponents(butler.registry, aosFileComCam, ["step1", "step2a"])
+
+        pipelines["AOS_FAM_TIE"] = PipelineComponents(butler.registry, aosFileTIEFam, ["step1", "step2a"])
+        pipelines["AOS_FAM_DANISH"] = PipelineComponents(
+            butler.registry, aosFileDanishFam, ["step1", "step2a"]
+        )
 
     allGraphs: list[PipelineGraph] = []
     for pipeline in pipelines.values():
@@ -500,6 +508,7 @@ class HeadProcessController:
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
         self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
+        self.currentAosFamPipeline = "AOS_FAM_DANISH"  # ignored for ComCam
 
         # TODO: DM-50103 remove this:
         if self.instrument == "LSSTComCam":
@@ -612,7 +621,11 @@ class HeadProcessController:
             if aosOverride != self.currentAosPipeline:
                 # comes as 'tie' or 'danish'
                 aosOverride = f"AOS_{aosOverride.upper()}"
+                aosFamOverride = f"AOS_FAM_{aosOverride.upper()}"
+                # Note: always keep currentAosPipeline and
+                # currentAosFamPipeline as the same flavour
                 self.currentAosPipeline = aosOverride
+                self.currentAosFamPipeline = aosFamOverride
                 self.log.info(f"Now running AOS: {self.currentAosPipeline}")
             else:
                 self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
@@ -855,12 +868,12 @@ class HeadProcessController:
         assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
 
         self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
-        targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1"]
-        targetPipelineGraph = self.pipelines[self.currentAosPipeline].graphs["step1"]
+        targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1"]
+        targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1"]
         # record pipeline config via the first id for interoperability with
         # CWFS processing. This is just so the step2 dispatch knows what the
         # active pipeline was
-        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosPipeline)
+        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosFamPipeline)
 
         # deliberately do NOT set isAos=True here because we want this written
         # to the main table, not the AOS page on RubinTV
@@ -1103,9 +1116,11 @@ class HeadProcessController:
             ]
 
             if who == "AOS":  # get the full AOS_XXX name for this exposure
-                # TODO: will this break the paired-processing? maybe not
-                # if we always record the config via the first id
+                # Note: does not break the paired-processing because we always
+                # record the config via the first id. Therefore always retrieve
+                # the config for the first id.
                 whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, intIds[0])
+                # whoToUse takes values like "AOS_DANISH" or "AOS_FAM_TIE"
                 if whoToUse is None:
                     self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
                     continue
