@@ -236,6 +236,10 @@ class Plotter:
                 plotName = "focal_plane_mosaic"
             case "calexp":
                 plotName = "calexp_mosaic"
+            case "preliminary_visit_image":
+                plotName = "calexp_mosaic"
+            case "post_isr_image":
+                plotName = "focal_plane_mosaic"
 
         focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
         if focalPlaneFile:  # only upload on plot success
