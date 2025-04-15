@@ -59,6 +59,7 @@ from .timing import BoxCarTimer
 from .utils import (
     LocationConfig,
     getShardPath,
+    isCalibration,
     isWepImage,
     raiseIf,
     writeExpRecordMetadataShard,
@@ -762,7 +763,10 @@ class HeadProcessController:
             The expRecord to process.
         """
         # AOS first
-        self.doAosFanout(expRecord)
+        addCornerChips = True
+        if not isCalibration(expRecord):
+            self.doAosFanout(expRecord)
+            addCornerChips = False
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -772,8 +776,8 @@ class HeadProcessController:
         detectorIds: list[int] = []
         nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
-            # excludeCwfs=True because we already sent them to the AOS pipeline
-            detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
+            # excludeCwfs=True if we sent them to AOS
+            detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=not addCornerChips)
             nEnabled = len(detectorIds)
         else:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
