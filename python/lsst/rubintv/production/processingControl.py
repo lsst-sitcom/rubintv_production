@@ -1006,6 +1006,30 @@ class HeadProcessController:
             case _:
                 raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
+    def dispatchCalexpMosaic(self, visitId: int) -> None:
+        """Dispatch a calexp mosaic for the given visitId.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The visit ID to dispatch the calexp mosaic for.
+        """
+        dataProduct = "calexp"  # v2 cleanup here
+        self.log.info(f"Dispatching complete {dataProduct} mosaic for {visitId}")
+
+        dataCoord = DataCoordinate.standardize(
+            instrument=self.instrument, visit=visitId, universe=self.butler.dimensions
+        )
+
+        # TODO: this abuse of Payload really needs improving
+        payload = Payload([dataCoord], b"", dataProduct, who="SFM")
+        worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+        if worker is None:
+            self.log.warning(f"No workers AT ALL for {dataProduct} mosaic - should be impossible, check k8s")
+            return
+        self.redisHelper.enqueuePayload(payload, worker)
+        return
+
     def dispatchGatherSteps(self, who: str) -> bool:
         """Dispatch any gather steps as needed.
 
@@ -1026,13 +1050,17 @@ class HeadProcessController:
         if not processedIds:
             return False
 
-        completeIds = []
+        completeIds: list[str] = []
         for idStr in processedIds:
             # idStr is "<int>" or "<int>+<int"> for AOS pairs
             nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1", who, idStr)
             nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, idStr, who))
-            if nFinished == nExpected:
+            if nFinished >= nExpected:
                 completeIds.append(idStr)
+            if nFinished > nExpected:
+                self.log.warning(
+                    f"Found {nFinished} step1s finished for {idStr=}, but expected {nExpected} for {who=}"
+                )
 
         if not completeIds:
             return False
@@ -1086,6 +1114,7 @@ class HeadProcessController:
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
+                self.dispatchCalexpMosaic(expRecord.id)  # TODO: this should be visitId but that's OK for now
             if who == "AOS":
                 for dataCoord in dataCoords:
                     (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
