@@ -452,7 +452,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             binSize=self.locationConfig.binning,
         )
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
-        self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+        if "post_isr_image" in quantum.outputs:
+            self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation_v2", dRef.dataId)
+        else:
+            self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
 
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
             try:
@@ -506,7 +509,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
+        if "preliminary_visit_image" in quantum.outputs:
+            self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation_v2", dRef.dataId)
+        else:
+            self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
+
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
 
         try:
