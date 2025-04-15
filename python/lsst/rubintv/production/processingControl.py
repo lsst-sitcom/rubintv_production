@@ -349,19 +349,28 @@ def buildPipelines(
         butler.registry,
         biasFile,
         ["verifyBiasIsr"],
-        overrides=[("verifyBiasIsr", "connections.outputExposure", "postISRCCD")],
+        overrides=[
+            ("verifyBiasIsr", "connections.outputExposure", "postISRCCD"),
+            ("verifyBiasIsr", "doInterpolate", True),
+        ],
     )
     pipelines["DARK"] = PipelineComponents(
         butler.registry,
         darkFile,
         ["verifyDarkIsr"],
-        overrides=[("verifyDarkIsr", "connections.outputExposure", "postISRCCD")],
+        overrides=[
+            ("verifyDarkIsr", "connections.outputExposure", "postISRCCD"),
+            ("verifyDarkIsr", "doInterpolate", True),
+        ],
     )
     pipelines["FLAT"] = PipelineComponents(
         butler.registry,
         flatFile,
         ["verifyFlatIsr"],
-        overrides=[("verifyFlatIsr", "connections.outputExposure", "postISRCCD")],
+        overrides=[
+            ("verifyFlatIsr", "connections.outputExposure", "postISRCCD"),
+            ("verifyFlatIsr", "doInterpolate", True),
+        ],
     )
 
     pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
@@ -416,7 +425,7 @@ class PipelineComponents:
         registry: Registry,
         pipelineFile: str,
         steps: list[str],
-        overrides: list[tuple[str, str, str]] | None = None,
+        overrides: list[tuple[str, str, object]] | None = None,
     ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
