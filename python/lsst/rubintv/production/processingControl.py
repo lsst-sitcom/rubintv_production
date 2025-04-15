@@ -945,7 +945,7 @@ class HeadProcessController:
                     continue
                 else:
                     self.log.error(
-                        f"No workers (not even busy ones) available for {detectorId=},",
+                        f"No workers (not even busy ones) available for {detectorId=},"
                         f" cannot dispatch process for {payload.who}",
                     )
 
