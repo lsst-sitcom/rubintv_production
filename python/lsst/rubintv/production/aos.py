@@ -299,10 +299,10 @@ class PsfAzElPlotter:
         """
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
         detectorIds = getDetectorIds(self.instrument)
-        icSrcDict = {}
+        srcDict = {}
         for detectorId in detectorIds:
             try:
-                icSrcDict[detectorId] = self.butler.get("icSrc", visit=visitId, detector=detectorId)
+                srcDict[detectorId] = self.butler.get("src", visit=visitId, detector=detectorId)
             except DatasetNotFoundError:
                 pass
 
@@ -317,7 +317,7 @@ class PsfAzElPlotter:
             self.log.error(f"Could not find visitInfo for visitId {visitId}")
             return
 
-        table = makeTableFromSourceCatalogs(icSrcDict, visitInfo)
+        table = makeTableFromSourceCatalogs(srcDict, visitInfo)
 
         # TODO: DM-45437 Use a context manager here and everywhere
         tempFilename = tempfile.mktemp(suffix=".png")
