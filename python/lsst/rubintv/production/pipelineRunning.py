@@ -318,6 +318,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 taskFactory=TaskFactory(),
                 limited_butler_factory=lambda _: self.cachingButler,
                 clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
+                raise_on_partial_outputs=False,
             )
 
             for node in qg:
