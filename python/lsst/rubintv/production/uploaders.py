@@ -148,9 +148,11 @@ class BucketInformation:
 
 class EndPoint(Enum):
     USDF = {
-        "end_point": "https://s3dfrgw.slac.stanford.edu",
+        "end_point": "https://sdfembs3.sdf.slac.stanford.edu/",
         "buckets_available": {
-            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
+            Bucket.SUMMIT: BucketInformation(
+                "rubin-rubintv-data-summit-embargo", "rubin-rubintv-data-summit"
+            ),
             Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
             Bucket.BTS: BucketInformation("rubin-rubintv-data-bts", "rubin-rubintv-data-bts"),
             Bucket.TTS: BucketInformation("rubin-rubintv-data-tts", "rubin-rubintv-data-tts"),
