@@ -152,8 +152,12 @@ class OneOffProcessor(BaseButlerChannel):
         self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
-    def writeVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
+    def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
+        header = exp.metadata.toDict()
+
+        md: dict[int, dict[str, str]] = {}
+
         focus = vi.focusZ
         if focus is not None and not np.isnan(focus):
             focus = float(focus)
@@ -165,6 +169,10 @@ class OneOffProcessor(BaseButlerChannel):
         if airmass is not None and not np.isnan(airmass):
             airmass = float(airmass)
             md[seqNum].update({"Airmass": f"{airmass:.3f}"})
+
+        controller = header.get("CONTRLLR", None)
+        if controller is not None and controller != "":
+            md[seqNum].update({"Controller": f"{controller}"})
 
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
@@ -244,7 +252,7 @@ class OneOffProcessor(BaseButlerChannel):
             self.runAuxTelProcessing(postISR, expRecord)
 
         self.log.info(f"Writing focus Z for {dataId}")
-        self.writeVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeHeaderOrVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
         self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
