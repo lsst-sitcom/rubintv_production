@@ -421,6 +421,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         dRef = quantum.outputs["postISRCCD"][0]
         exp = self.cachingButler.get(dRef)
 
+        # hardcode this taske name here because cpVerify has a different
+        # taskname, but is running the same task. Not an ideal solution, but
+        # required for first-photon. It's tricky because the AOS chips still
+        # get set to regular isr, and we increment a counter to expect them
+        # so need to sum those counts and these to find out when it's finised
+        self.redisHelper.reportTaskFinished(
+            self.instrument, "lsst.ip.isr.isrTaskLSST.IsrTaskLSST", dRef.dataId
+        )
+
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
