@@ -1311,7 +1311,7 @@ class HeadProcessController:
             try:
                 self.doDonutPairFanout()  # checks for pair signal and dispatches
             except Exception as e:
-                self.log.warning(f"Failed during of donut PAIR fanout: {e}")
+                self.log.exception(f"Failed during of donut PAIR fanout: {e}")
 
             # for now, only dispatch to step2a once things are complete because
             # there is some subtlety in the dispatching incomplete things
@@ -1324,7 +1324,7 @@ class HeadProcessController:
             try:
                 self.dispatchGatherSteps(who="SFM")
             except Exception as e:
-                self.log.warning(f"Failed during dispatch of gather steps for SFM: {e}")
+                self.log.exception(f"Failed during dispatch of gather steps for SFM: {e}")
 
             try:
                 self.dispatchGatherSteps(who="AOS")
@@ -1334,12 +1334,12 @@ class HeadProcessController:
             try:
                 self.dispatchPostIsrMosaic()
             except Exception as e:
-                self.log.warning(f"Failed during dispatch of focal plane mosaics: {e}")
+                self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
 
             try:
                 self.dispatchRollupIfNecessary()
             except Exception as e:
-                self.log.warning(f"Failed during dispatch nightly rollup: {e}")
+                self.log.exception(f"Failed during dispatch nightly rollup: {e}")
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
