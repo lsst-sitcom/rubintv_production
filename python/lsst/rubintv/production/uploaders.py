@@ -674,8 +674,8 @@ class S3Uploader(IUploader):
         try:
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
         except ClientError as e:
-            logging.error(e)
-            raise UploadError(f"Failed uploading file {sourceFilename} as Key: {destinationFilename}")
+            log = logging.getLogger(__name__)
+            log.exception(f"Failed uploading file {sourceFilename} as Key: {destinationFilename} \n {e}")
         return destinationFilename
 
     def uploadMovie(
