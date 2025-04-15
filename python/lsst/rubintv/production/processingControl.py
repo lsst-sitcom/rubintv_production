@@ -818,6 +818,12 @@ class HeadProcessController:
     def doDonutPairFanout(self) -> None:
         """Send the expRecord out for processing based on current selection.
 
+        This is ONLY for full-focal-plane intra-focal, extra-focal pairs where
+        the processing is triggered by OCS (vis OCPS sending a redis signal).
+
+        It appropriates the entire cluster for the processing of these pairs,
+        so uses the SFM worker pool, and the AOS pipeline graph.
+
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
@@ -851,6 +857,10 @@ class HeadProcessController:
         self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
         targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1"]
         targetPipelineGraph = self.pipelines[self.currentAosPipeline].graphs["step1"]
+        # record pipeline config via the first id for interoperability with
+        # CWFS processing. This is just so the step2 dispatch knows what the
+        # active pipeline was
+        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosPipeline)
 
         # deliberately do NOT set isAos=True here because we want this written
         # to the main table, not the AOS page on RubinTV
@@ -896,7 +906,9 @@ class HeadProcessController:
             f" {len(detectorIds)} detectors"
         )
 
-        self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+        # SFM_WORKER set here deliberately as we're appropriating the entire
+        # cluster for this processing.
+        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
     def _dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
         """Distribute payloads to available workers based on detector IDs.
