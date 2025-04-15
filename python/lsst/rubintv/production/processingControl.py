@@ -1127,7 +1127,7 @@ class HeadProcessController:
             return True
         return False
 
-    def dispatchFocalPlaneMosaics(self) -> None:
+    def dispatchPostIsrMosaic(self) -> None:
         """Dispatch the focal plane mosaic task.
 
         This will be dispatched to a worker which will then gather the
@@ -1139,7 +1139,8 @@ class HeadProcessController:
             # happens in a one-off-processor instead for all round ease.
             return
 
-        taskProductList = [("binnedIsrCreation", "postISRCCD"), ("binnedCalexpCreation", "calexp")]
+        # TODO: if we don't add more, remove this loop
+        taskProductList = [("binnedIsrCreation", "postISRCCD")]
 
         for triggeringTask, dataProduct in taskProductList:
             allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
@@ -1266,7 +1267,7 @@ class HeadProcessController:
                 self.log.warning(f"Failed during dispatch of gather steps for AOS: {e}")
 
             try:
-                self.dispatchFocalPlaneMosaics()
+                self.dispatchPostIsrMosaic()
             except Exception as e:
                 self.log.warning(f"Failed during dispatch of focal plane mosaics: {e}")
 
