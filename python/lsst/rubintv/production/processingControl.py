@@ -1185,9 +1185,13 @@ class HeadProcessController:
         self.loopTimer.lap()  # times the actual loop
         self.workTimer.lap()  # times the actual work done in the loop
 
-        # XXX there is a minor bug here in what the logs say but it's not
-        # serious enough for me to fix right now. I don't think it's affecting
-        # things.
+        # Get timing values once and reuse them
+        lastLap = self.loopTimer.lastLapTime()
+        lastWork = self.workTimer.lastLapTime()
+        assert lastLap is not None, "Expected lastLap to be set"
+        assert lastWork is not None, "Expected lastWork to be set"
+
+        # Log statistics periodically
         if self.loopTimer.totalLaps % 100 == 0:
             loopSpeed = self.loopTimer.median(frequency=True)
             maxLoopTime = self.loopTimer.max(frequency=False)
@@ -1203,20 +1207,15 @@ class HeadProcessController:
                 f" workload of {maxWorkTime:.2f}s in the last {len(self.workTimer._buffer)} loops"
             )
 
-        lastLap = self.loopTimer.lastLapTime()
-        assert lastLap is not None, "Expected lastLap to be set"
         sleepPeriod = self.targetLoopDuration - lastLap
         if sleepPeriod > 0:
             self.workTimer.pause()  # don't count the sleeping towards the loop time on work timer
             sleep(sleepPeriod)
             self.workTimer.resume()
-        else:
-            if sleepPeriod < -0.05:  # allow some noise
-                lastLap = self.loopTimer.lastLapTime()
-                lastWork = self.workTimer.lastLapTime()
-                self.log.warning(
-                    f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
-                )
+        elif sleepPeriod < -0.3:  # allow some noise and only warn when we're severely slow
+            self.log.warning(
+                f"Event loop running slow, last loop took {lastLap:.2f}s with {lastWork:.2f}s of work"
+            )
 
     @property
     def timeAlive(self) -> float:
