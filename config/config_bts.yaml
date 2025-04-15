@@ -59,6 +59,9 @@ consDBURL: "http://consdb-pq.consdb:8080/consdb"
 aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
 aosLSSTCamPipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
+aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
+
 sfmPipelineFile:
   LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
