@@ -786,7 +786,7 @@ class HeadProcessController:
             The expRecord to process.
         """
         # AOS first
-        addCornerChips = True
+        addCornerChips = True  # XXX this ends up sending corner chips out to SFM - fix this!
         if not isCalibration(expRecord):
             self.doAosFanout(expRecord)
             addCornerChips = False
