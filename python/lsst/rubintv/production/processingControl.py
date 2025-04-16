@@ -379,7 +379,7 @@ def buildPipelines(
     pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
     if instrument == "LATISS":
         # TODO: unify SFM for LATISS and LSSTCam once LATISS has step2a working
-        pipelines["SFM"] = PipelineComponents(butler.registry, sfmPipelineFile, ["step1"])
+        pipelines["SFM"] = PipelineComponents(butler.registry, sfmPipelineFile, ["step1", "step2a"])
     else:
         # TODO: remove nightlyrollup
         pipelines["SFM"] = PipelineComponents(
@@ -1076,9 +1076,6 @@ class HeadProcessController:
         dispatchedWork : `bool`
             Was anything sent out?
         """
-        if self.instrument == "LATISS":  # no gather type steps for single chip cameras
-            return False
-
         assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
         processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1", who=who)
 
