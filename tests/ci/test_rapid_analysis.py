@@ -91,6 +91,11 @@ class TestConfig:
                 tee_output=True,
             ),
             TestScript(
+                "scripts/LATISS/runStep2Runner.py",
+                ["usdf_testing", "0"],
+                tee_output=False,
+            ),
+            TestScript(
                 "scripts/LATISS/runOneOffExpRecord.py",
                 ["usdf_testing"],
                 display_on_pass=True,
