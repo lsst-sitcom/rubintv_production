@@ -162,6 +162,7 @@ class Plotter:
             savePlotAs=saveFile,
             nExpected=nExpected,
             timeout=timeout,
+            deleteIfComplete=True,
             logger=self.log,
             stretch=stretch,
         )
