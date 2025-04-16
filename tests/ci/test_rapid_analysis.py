@@ -82,13 +82,13 @@ class TestConfig:
                 "scripts/LATISS/runHeadNode.py",
                 ["usdf_testing"],
                 display_on_pass=True,
-                tee_output=True,
+                tee_output=False,
             ),
             TestScript(
                 "scripts/LATISS/runSfmRunner.py",
                 ["usdf_testing", "0"],
                 display_on_pass=True,
-                tee_output=True,
+                tee_output=False,
             ),
             TestScript(
                 "scripts/LATISS/runStep2Runner.py",
@@ -98,12 +98,12 @@ class TestConfig:
             TestScript(
                 "scripts/LATISS/runOneOffExpRecord.py",
                 ["usdf_testing"],
-                display_on_pass=True,
+                display_on_pass=False,
             ),
             TestScript(
                 "scripts/LATISS/runOneOffPostIsr.py",
                 ["usdf_testing"],
-                display_on_pass=True,
+                display_on_pass=False,
             ),
         ]
 
@@ -141,7 +141,7 @@ class TestConfig:
             TestScript(
                 "scripts/LSSTComCam/runAosWorker.py",
                 ["usdf_testing", "0"],
-                display_on_pass=False,
+                display_on_pass=True,
                 tee_output=True,
             )
         ]
@@ -154,13 +154,13 @@ class TestConfig:
             TestScript(
                 "scripts/LSSTComCam/runStep2aAosWorker.py",
                 ["usdf_testing", "0"],
-                display_on_pass=False,
+                display_on_pass=True,
             ),
             TestScript(
                 "scripts/LSSTComCam/runOneOffExpRecord.py",
                 ["usdf_testing"],
                 tee_output=False,
-                display_on_pass=False,
+                display_on_pass=True,
             ),
             TestScript(
                 "scripts/LSSTComCam/runOneOffPostIsr.py",
@@ -179,7 +179,7 @@ class TestConfig:
                 ["usdf_testing"],
                 delay=5,
                 tee_output=True,
-                display_on_pass=False,
+                display_on_pass=True,
             ),
             TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
         ]
