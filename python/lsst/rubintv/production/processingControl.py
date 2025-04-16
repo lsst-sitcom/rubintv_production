@@ -1146,9 +1146,12 @@ class HeadProcessController:
             # because the one-off processor will time out quickly.
             if who == "SFM":
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
-                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
-                self.dispatchCalexpMosaic(expRecord.id)  # TODO: this should be visitId but that's OK for now
+                if self.instrument != "LATISS":
+                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+                    self.dispatchCalexpMosaic(
+                        expRecord.id
+                    )  # TODO: this should be visitId but that's OK for now
             if who == "AOS":
                 for dataCoord in dataCoords:
                     (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
@@ -1202,43 +1205,39 @@ class HeadProcessController:
             # happens in a one-off-processor instead for all round ease.
             return
 
-        # TODO: if we don't add more, remove this loop
-        taskProductList = [("binnedIsrCreation", "postISRCCD")]
+        triggeringTask = "binnedIsrCreation"
+        dataProduct = "postISRCCD"
 
-        for triggeringTask, dataProduct in taskProductList:
-            allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
-            completeIds = []
-            for _id in allDataIds:
-                nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
-                expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
-                nExpected = len(
-                    self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR")
-                )
-                if nFinished >= nExpected:
-                    completeIds.append(_id)
-                if nFinished > nExpected:
-                    msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"
-                    self.log.warning(msg)
+        allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
 
-            if not completeIds:
+        completeIds = []
+        for _id in allDataIds:
+            nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
+            expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
+            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR"))
+            if nFinished >= nExpected:
+                completeIds.append(_id)
+            if nFinished > nExpected:
+                msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"
+                self.log.warning(msg)
+
+        if not completeIds:
+            return
+
+        idString = (
+            f"{len(completeIds)} images: {completeIds}" if len(completeIds) > 1 else f"expId={completeIds[0]}"
+        )
+        self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
+
+        for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
+            # TODO: this abuse of Payload really needs improving
+            payload = Payload([dataId], b"", dataProduct, who="SFM")
+            worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+            if worker is None:
+                self.log.error(f"No free workers available for {dataProduct} mosaic")
                 continue
-
-            idString = (
-                f"{len(completeIds)} images: {completeIds}"
-                if len(completeIds) > 1
-                else f"expId={completeIds[0]}"
-            )
-            self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
-
-            for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
-                # TODO: this abuse of Payload really needs improving
-                payload = Payload([dataId], b"", dataProduct, who="SFM")
-                worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
-                if worker is None:
-                    self.log.error(f"No free workers available for {dataProduct} mosaic")
-                    continue
-                self.redisHelper.enqueuePayload(payload, worker)
-                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
+            self.redisHelper.enqueuePayload(payload, worker)
+            self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
     def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
