@@ -523,7 +523,7 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R22")  # central raft
                 self.focalPlaneControl.setRaftOn("R33")  # one more for luck because of 0, 1, inf.
             else:
-                self.focalPlaneControl.setWavefrontOn()
+                #self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
         allGraphs, pipelines = buildPipelines(
@@ -795,7 +795,7 @@ class HeadProcessController:
             The expRecord to process.
         """
         # AOS first
-        self.doAosFanout(expRecord)
+        # self.doAosFanout(expRecord)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
