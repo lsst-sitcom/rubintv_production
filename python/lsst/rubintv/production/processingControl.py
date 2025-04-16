@@ -659,6 +659,10 @@ class HeadProcessController:
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         try:
+            if len(busyWorkers) == 0:
+                self.log.warning(f"No free or busy workers available for {podFlavor=}, not dispatching.")
+                return None
+
             busyWorker = busyWorkers[-1]
             self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
             return busyWorker
