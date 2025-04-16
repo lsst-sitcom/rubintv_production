@@ -893,7 +893,7 @@ class HeadProcessController:
         identifier = "+".join(str(r.id) for r in expRecords)
         self.redisHelper.writeDetectorsToExpect(self.instrument, identifier, detectorIds, "AOS")
         for expRecord in expRecords:
-            # send expect signal with who=SFM for single expIds as these are
+            # send expect signal with who=ISR for single expIds as these are
             # for the focal plane mosaicing, and send above with who=AOS as
             # + joined above, as this is the real dispatch
             self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
