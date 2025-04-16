@@ -527,7 +527,7 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R13")
                 self.focalPlaneControl.setRaftOn("R31")
             else:
-                self.focalPlaneControl.setWavefrontOn()
+                #self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
         allGraphs, pipelines = buildPipelines(
@@ -795,7 +795,7 @@ class HeadProcessController:
         # AOS first
         addCornerChips = True  # XXX this ends up sending corner chips out to SFM - fix this!
         if not isCalibration(expRecord):
-            self.doAosFanout(expRecord)
+            # self.doAosFanout(expRecord)
             addCornerChips = False
 
         # data driven section
