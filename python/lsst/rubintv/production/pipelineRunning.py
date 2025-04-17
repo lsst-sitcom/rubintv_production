@@ -335,8 +335,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # TODO: add per-quantum timing info here and return in
                     # PayloadResult
                     quantum, _ = executor.execute(node.task_node, node.quantum)
-                    self.postProcessQuantum(quantum)
-                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
+                    self.postProcessQuantum(quantum, who)
+                    self.redisHelper.reportTaskFinished(self.instrument, who, taskName, dataCoord)
 
                 except Exception as e:
                     # don't use quantum directly in this block in case it is
@@ -349,9 +349,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     # tasks, or only the points used for triggering other
                     # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
-                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
+                    self.redisHelper.reportTaskFinished(self.instrument, who, taskName, dataCoord, failed=True)
                     if quantum is not None:
-                        self.postProcessQuantum(quantum)
+                        self.postProcessQuantum(quantum, who)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
             self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
@@ -384,7 +384,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
 
-    def postProcessQuantum(self, quantum: Quantum) -> None:
+    def postProcessQuantum(self, quantum: Quantum, who: str) -> None:
         """Write shards here, make sure to keep these bits quick!
 
         compoundId is a maybe-compound id, either a single exposure or a
@@ -404,14 +404,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # need to catch the old and new isr tasks alike, and also not worry
         # about intermittent namespace stuttering
         if "isr" in taskName.lower():
-            self.postProcessIsr(quantum)
+            self.postProcessIsr(quantum, who)
         elif "calibratetask" in taskName.lower() or "calibrateimagetask" in taskName.lower():
             # TODO: think about if we could make dicts of some of the
             # per-CCD quantities like PSF size and 50 sigma source counts
             # etc. Would probably mean changes to mergeShardsAndUpload in
             # order to merge dict-like items into their corresponding
             # dicts.
-            self.postProcessCalibrate(quantum)
+            self.postProcessCalibrate(quantum, who)
         elif "postprocess.ConsolidateVisitSummaryTask".lower() in taskName.lower():
             # ConsolidateVisitSummaryTask regardless of quickLook or NV
             # pipeline, because this is the quantum that holds the
@@ -422,7 +422,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         else:
             return
 
-    def postProcessIsr(self, quantum: Quantum) -> None:
+    def postProcessIsr(self, quantum: Quantum, who: str) -> None:
         if "post_isr_image" in quantum.outputs:
             output_dataset_name = "post_isr_image"
         else:
@@ -446,10 +446,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             binSize=self.locationConfig.binning,
         )
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
-        if "post_isr_image" in quantum.outputs:
-            self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation_v2", dRef.dataId)
-        else:
-            self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+        self.redisHelper.reportTaskFinished(self.instrument, who, "binnedIsrCreation", dRef.dataId)
 
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
             try:
@@ -472,7 +469,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             except Exception:
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
-    def postProcessCalibrate(self, quantum: Quantum) -> None:
+    def postProcessCalibrate(self, quantum: Quantum, who: str) -> None:
         # Currently both calibrateImageTask and calibrateTask write a calexp
         # so unless they diverge the function can be the same for both tasks.
         if "preliminary_visit_image" in quantum.outputs:
@@ -503,10 +500,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned postISR images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        if "preliminary_visit_image" in quantum.outputs:
-            self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation_v2", dRef.dataId)
-        else:
-            self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
+        self.redisHelper.reportTaskFinished(self.instrument, who, "binnedCalexpCreation", dRef.dataId)
 
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
 

@@ -1213,7 +1213,7 @@ class HeadProcessController:
             return True
         return False
 
-    def dispatchPostIsrMosaic(self, dataProduct: str) -> None:
+    def dispatchPostIsrMosaic(self, who: str, dataProduct: str) -> None:
         """Dispatch the focal plane mosaic task.
 
         This will be dispatched to a worker which will then gather the
@@ -1227,11 +1227,11 @@ class HeadProcessController:
 
         triggeringTask = "binnedIsrCreation"
 
-        allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
+        allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, who, triggeringTask))
 
         completeIds = []
         for _id in allDataIds:
-            nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
+            nFinished = self.redisHelper.getNumTaskFinished(self.instrument, who, triggeringTask, _id)
             expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
             nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR"))
             if nFinished >= nExpected:
@@ -1256,7 +1256,7 @@ class HeadProcessController:
                 self.log.error(f"No free workers available for {dataProduct} mosaic")
                 continue
             self.redisHelper.enqueuePayload(payload, worker)
-            self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
+            self.redisHelper.removeTaskCounter(self.instrument, who, triggeringTask, dataId)
 
     def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
@@ -1348,7 +1348,8 @@ class HeadProcessController:
                 self.log.warning(f"Failed during dispatch of gather steps for AOS: {e}")
 
             try:
-                self.dispatchPostIsrMosaic(self.pipelines["SFM"].isrDataProduct)
+                for who in self.pipelines.keys():
+                    self.dispatchPostIsrMosaic(who, self.pipelines[who].isrDataProduct)
             except Exception as e:
                 self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
 

@@ -367,7 +367,7 @@ class RedisHelper:
         self.redis.lpush(f"{instrument}-fromButlerWacher", expRecordJson)
 
     def reportTaskFinished(
-        self, instrument: str, taskName: str, dataId: DataCoordinate, failed=False
+        self, instrument: str, who: str, taskName: str, dataId: DataCoordinate, failed=False
     ) -> None:
         """Report that a task has finished, be that a real DM Task or simply
         that something has happened which needs to be triggered on.
@@ -384,7 +384,7 @@ class RedisHelper:
         dataId : `DataCoordinate`
             The dataId the task has finished processing.
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = f"{instrument}-{who}-{taskName}-FINISHEDCOUNTER"
         dataIdNoDetector = removeDetector(dataId, self.butler)
         processingId = dataIdNoDetector.to_json().encode("utf-8")
         self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
@@ -393,7 +393,7 @@ class RedisHelper:
             key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
             self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
-    def getNumTaskFinished(self, instrument: str, taskName: str, dataId: DataCoordinate) -> int:
+    def getNumTaskFinished(self, instrument: str, who: str, taskName: str, dataId: DataCoordinate) -> int:
         """Get the number of items finished for a given task and id.
 
         Parameters
@@ -410,25 +410,25 @@ class RedisHelper:
         numFinished : `int`
             The number of times the task has finished.
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = f"{instrument}-{who}-{taskName}-FINISHEDCOUNTER"
         dataIdNoDetector = removeDetector(dataId, self.butler)
         processingId = dataIdNoDetector.to_json().encode("utf-8")
         value = self.redis.hget(key, processingId)
         return int(value or 0)
 
-    def getAllDataIdsForTask(self, instrument: str, taskName: str) -> list[DataCoordinate]:
+    def getAllDataIdsForTask(self, instrument: str, who: str, taskName: str) -> list[DataCoordinate]:
         """Get a list of processed ids for the specified task
 
         These are returned
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = f"{instrument}-{who}-{taskName}-FINISHEDCOUNTER"
         idList = self.redis.hgetall(key).keys()  # list of bytes
         return [
             DataCoordinate.from_json(dataCoordJson, universe=self.butler.dimensions)
             for dataCoordJson in idList
         ]
 
-    def removeTaskCounter(self, instrument: str, taskName: str, dataId: DataCoordinate) -> None:
+    def removeTaskCounter(self, instrument: str, who: str, taskName: str, dataId: DataCoordinate) -> None:
         """Once a gather step is finished with all the expected data present,
         remove the counter from the tracking dictionary to save reprocessing it
         each time.
@@ -442,7 +442,7 @@ class RedisHelper:
         dataId : `DataCoordinate`
             The dataId the task has finished processing.
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = f"{instrument}-{who}-{taskName}-FINISHEDCOUNTER"
         dataIdNoDetector = removeDetector(dataId, self.butler)
         processingId = dataIdNoDetector.to_json().encode("utf-8")
         if self.redis.hexists(key, processingId):
