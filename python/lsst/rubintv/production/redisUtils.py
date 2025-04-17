@@ -475,11 +475,11 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
+            key = key.replace("DETECTOR_FINISHED_COUNTER", "DETECTOR_FAILED_COUNTER")
             self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
     def getNumDetectorLevelFinished(self, instrument: str, step: str, who: str, processingId: str) -> int:
@@ -504,14 +504,14 @@ class RedisHelper:
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         if not self.redis.hexists(key, processingId):
             self.log.warning(f"Key {key} with processingId {processingId} does not exist")
         return int(self.redis.hget(key, processingId) or 0)
 
     def getAllIdsForDetectorLevel(self, instrument: str, step: str, who: str) -> list[str]:
         """Get a list of processed ids for the specified step."""
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         idList = self.redis.hgetall(key).keys()
         return [procId.decode("utf-8") for procId in idList]
 
@@ -519,7 +519,7 @@ class RedisHelper:
         """Remove the specified counter for the processingId from the list of
         finishing ids.
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         if self.redis.hexists(key, processingId):
             self.redis.hdel(key, processingId)
         else:
@@ -541,11 +541,11 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-VISIT_FINISIHED_COUNTER"
         self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
+            key = key.replace("VISIT_FINISIHED_COUNTER", "VISIT_FAILED_COUNTER")
             self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
     def getNumVisitLevelFinished(self, instrument: str, step: str, who: str) -> int:
@@ -565,7 +565,7 @@ class RedisHelper:
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-VISIT_FINISIHED_COUNTER"
         return int(self.redis.get(key) or 0)
 
     def reportNightLevelFinished(self, instrument: str, who: str, failed=False) -> None:
