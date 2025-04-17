@@ -23,6 +23,7 @@ from __future__ import annotations
 __all__ = [
     "DonutLauncher",
     "PsfAzElPlotter",
+    "FocalPlaneFWHMPlotter",
     "FocusSweepAnalysis",
     "RadialPlotter",
 ]
@@ -43,6 +44,7 @@ from lsst.summit.extras.plotting.focusSweep import (
     inferSweepVariable,
     plotSweepParabola,
 )
+from lsst.summit.extras.plotting.fwhmFocalPlane import getFwhmValues, makeFocalPlaneFWHMPlot
 from lsst.summit.extras.plotting.psfPlotting import (
     makeAzElPlot,
     makeFigureAndAxes,
@@ -52,6 +54,7 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import makeEfdClient
 from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
+from lsst.utils.plotting.figures import make_figure
 
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
@@ -349,6 +352,91 @@ class PsfAzElPlotter:
                 visitId = int(visitIdBytes.decode("utf-8"))
                 self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
                 self.makePlot(visitId)
+            else:
+                sleep(0.5)
+
+
+class FocalPlaneFWHMPlotter:
+    """The FocalPlaneFWHMPlotter, for automatically plotting FWHM
+    in Focal Plane.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    instrument : `str`
+        The instrument.
+    queueName : `str`
+        The name of the redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        queueName: str,
+    ) -> None:
+        self.butler = butler
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.queueName = queueName
+        self.instrument = instrument
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.FocalPlaneFWHMPlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.s3Uploader = MultiUploader()
+
+    def plotAndUpload(self, visitRecord: DimensionRecord) -> None:
+        """Make the FWHM Focal Plane plot for the given visit ID.
+
+        Makes the plot by getting the available data from the butler, saves it
+        to a temporary file, and uploads it to RubinTV.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The visit ID for which to make the plot.
+        """
+        visitSummary = None
+        try:
+            # might not be the best query here
+            visitSummary = self.butler.get("visitSummary", visit=visitRecord.id)
+        except DatasetNotFoundError:
+            pass
+
+        if visitSummary is None:
+            self.log.error(f"Could not find visitInfo for visitId {visitRecord.id}")
+            return
+
+        fwhmValues, detectorIds = getFwhmValues(visitSummary)
+
+        ciName = getCiPlotName(self.locationConfig, visitRecord, "fwhm_focal_plane")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+            fig = make_figure(figsize=(12, 9))
+            axes = fig.subplots(nrows=1, ncols=1)
+            makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, detectorIds, self.camera, saveAs=tempFile)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(self.instrument),
+                plotName="fwhm_focal_plane",
+                dayObs=visitRecord.day_obs,
+                seqNum=visitRecord.seq_num,
+                filename=tempFile,
+            )
+
+    def run(self) -> None:
+        """Start the event loop, listening for data and launching plotting."""
+        while True:
+            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
+            if expRecord is not None:
+                t0 = time()
+                self.log.info(f"Making for FWHMFocalPlane plot for visitId {expRecord.id}")
+                self.plotAndUpload(expRecord)
+                t1 = time()
+                self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {expRecord.id}")
             else:
                 sleep(0.5)
 
