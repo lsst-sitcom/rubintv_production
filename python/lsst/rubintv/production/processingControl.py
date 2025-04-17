@@ -383,7 +383,8 @@ def buildPipelines(
     else:
         # TODO: remove nightlyrollup
         pipelines["SFM"] = PipelineComponents(
-            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits" ]
+            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
+            isrDataProduct="post_isr_image", visitDataProduct="preliminary_visit_image"
         )
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
@@ -427,6 +428,8 @@ class PipelineComponents:
     uris: dict[str, str]
     steps: list[str]
     pipelineFile: str
+    visitDataProduct: str
+    isrDataProduct: str
 
     def __init__(
         self,
@@ -434,11 +437,15 @@ class PipelineComponents:
         pipelineFile: str,
         steps: list[str],
         overrides: list[tuple[str, str, object]] | None = None,
+        isrDataProduct: str = "postISRCCD",
+        visitDataProduct: str = "calexp",
     ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
         self.pipelineFile = pipelineFile
+        self.isrDataProduct = isrDataProduct
+        self.visitDataProduct = visitDataProduct
 
         for step in steps:
             self.uris[step] = pipelineFile + f"#{step}"
@@ -1052,7 +1059,7 @@ class HeadProcessController:
             case _:
                 raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
-    def dispatchCalexpMosaic(self, visitId: int) -> None:
+    def dispatchCalexpMosaic(self, visitId: int, dataProduct: str) -> None:
         """Dispatch a calexp mosaic for the given visitId.
 
         Parameters
@@ -1060,7 +1067,6 @@ class HeadProcessController:
         visitId : `int`
             The visit ID to dispatch the calexp mosaic for.
         """
-        dataProduct = "calexp"  # v2 cleanup here
         self.log.info(f"Dispatching complete {dataProduct} mosaic for {visitId}")
 
         dataCoord = DataCoordinate.standardize(
@@ -1136,19 +1142,21 @@ class HeadProcessController:
             else:
                 whoToUse = who
 
-            payload = Payload(
-                dataIds=dataCoords,
-                pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step2a"],
-                run=self.outputRun,
-                who=who,
-            )
+            if "step2a" in self.pipelines[whoToUse].graphBytes:
+                payload = Payload(
+                    dataIds=dataCoords,
+                    pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step2a"],
+                    run=self.outputRun,
+                    who=who,
+                )
 
-            worker = self.getSingleWorker(self.instrument, podFlavour)
-            if not worker:
-                self.log.warning(f"No worker available for {who} step2a")
-                return False
-            self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
-            self.redisHelper.enqueuePayload(payload, worker)
+                worker = self.getSingleWorker(self.instrument, podFlavour)
+                if not worker:
+                    self.log.warning(f"No worker available for {who} step2a")
+                    return False
+                self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
+                self.redisHelper.enqueuePayload(payload, worker)
+
             self.log.debug(f"Removing step1 finished counter for {idStr=}")
             self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1", who, idStr)
 
@@ -1161,7 +1169,8 @@ class HeadProcessController:
                 if self.instrument != "LATISS":
                     self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
                     self.dispatchCalexpMosaic(
-                        expRecord.id
+                        expRecord.id,
+                        self.pipelines["SFM"].visitDataProduct
                     )  # TODO: this should be visitId but that's OK for now
             if who == "AOS":
                 for dataCoord in dataCoords:
@@ -1204,7 +1213,7 @@ class HeadProcessController:
             return True
         return False
 
-    def dispatchPostIsrMosaic(self) -> None:
+    def dispatchPostIsrMosaic(self, dataProduct: str) -> None:
         """Dispatch the focal plane mosaic task.
 
         This will be dispatched to a worker which will then gather the
@@ -1217,7 +1226,6 @@ class HeadProcessController:
             return
 
         triggeringTask = "binnedIsrCreation"
-        dataProduct = "postISRCCD"
 
         allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
 
@@ -1340,7 +1348,7 @@ class HeadProcessController:
                 self.log.warning(f"Failed during dispatch of gather steps for AOS: {e}")
 
             try:
-                self.dispatchPostIsrMosaic()
+                self.dispatchPostIsrMosaic(self.pipelines["SFM"].isrDataProduct)
             except Exception as e:
                 self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
 
