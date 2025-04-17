@@ -523,6 +523,12 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R11")
                 self.focalPlaneControl.setRaftOn("R13")
                 self.focalPlaneControl.setRaftOn("R31")
+            if self.locationConfig.location == "usdf_testing":
+                # For the CI suite - might be good to find a better way of
+                # controlling this but this is fine for gettin it working
+                self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setRaftOn("R22")  # central raft
+                self.focalPlaneControl.setRaftOn("R33")  # one more for luck because of 0, 1, inf.
             else:
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
@@ -882,13 +888,9 @@ class HeadProcessController:
             shardPath = getShardPath(self.locationConfig, expRecord)
             writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
 
-        # this block will be different when we're observing with LSSTCam the
-        # triggering will be too, because it'll be for every image so at that
-        # point consider making this part of the normal step1 fanout
-
-        detectorIds = []
-        results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
-        detectorIds = cast(list[int], sorted([item["detector"] for item in results]))
+        assert self.focalPlaneControl is not None  # just for mypy
+        # excludeCwfs because they get normal fanout to CWFS pipelines
+        detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
 
         identifier = "+".join(str(r.id) for r in expRecords)
         self.redisHelper.writeDetectorsToExpect(self.instrument, identifier, detectorIds, "AOS")
