@@ -129,15 +129,18 @@ class Plotter:
         datapath = ""
         stretch = "CCS"
         displayToUse: Any = None
+        plotName = "unknown"
         match dataProduct:
-            case "postISRCCD":
+            case "postISRCCD" | "post_isr_image":
                 datapath = self.locationConfig.calculatedDataPath
                 stretch = "CCS"
                 displayToUse = make_figure(figsize=(12, 12))
-            case "calexp":
+                plotName = "focal_plane_mosaic"
+            case "calexp" | "preliminary_visit_image":
                 datapath = self.locationConfig.binnedCalexpPath
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
+                plotName = "calexp_mosaic"
             case _:
                 raise ValueError(f"Unknown data product: {dataProduct}")
 
@@ -146,7 +149,7 @@ class Plotter:
         # animation code.
         path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
         path.mkdir(mode=0o777, parents=True, exist_ok=True)
-        plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
+        plotName = f"{self.instrument}_{plotName}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
         saveFile = (path / plotName).as_posix()
 
         image = plotFocalPlaneMosaic(
