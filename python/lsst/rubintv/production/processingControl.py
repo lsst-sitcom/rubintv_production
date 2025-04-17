@@ -388,14 +388,14 @@ def buildPipelines(
         )
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
-        pipelines["AOS_DANISH"] = PipelineComponents(butler.registry, aosFileDanish, ["step1", "step2a"])
-        pipelines["AOS_TIE"] = PipelineComponents(butler.registry, aosFileTIE, ["step1", "step2a"])
-        pipelines["AOS_COMCAM"] = PipelineComponents(butler.registry, aosFileComCam, ["step1", "step2a"])
+        # pipelines["AOS_DANISH"] = PipelineComponents(butler.registry, aosFileDanish, ["step1", "step2a"])
+        # pipelines["AOS_TIE"] = PipelineComponents(butler.registry, aosFileTIE, ["step1", "step2a"])
+        # pipelines["AOS_COMCAM"] = PipelineComponents(butler.registry, aosFileComCam, ["step1", "step2a"])
 
-        pipelines["AOS_FAM_TIE"] = PipelineComponents(butler.registry, aosFileTIEFam, ["step1", "step2a"])
-        pipelines["AOS_FAM_DANISH"] = PipelineComponents(
-            butler.registry, aosFileDanishFam, ["step1", "step2a"]
-        )
+        # pipelines["AOS_FAM_TIE"] = PipelineComponents(butler.registry, aosFileTIEFam, ["step1", "step2a"])
+        # pipelines["AOS_FAM_DANISH"] = PipelineComponents(
+        #    butler.registry, aosFileDanishFam, ["step1", "step2a"]
+        #)
 
     allGraphs: list[PipelineGraph] = []
     for pipeline in pipelines.values():
