@@ -437,7 +437,7 @@ class RedisManager:
         visits_sfm = [2024081300632]
         n_visits_sfm = len(visits_sfm)
 
-        n_step2_sfm = redisHelper.getNumDetectorLevelFinished(inst, "step2a", "SFM", "2024081300632")
+        n_step2_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
         if n_step2_sfm != n_visits_sfm:
             checks.append(
                 Check(
