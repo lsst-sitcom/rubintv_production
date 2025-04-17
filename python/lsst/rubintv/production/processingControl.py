@@ -970,11 +970,14 @@ class HeadProcessController:
                 self._dispatchPayloads(payloads, podFlavor)
                 return
 
+        sentToBusy = 0
+        sentToFree = 0
+        notDispatched = 0
         for detectorId, payload in payloads.items():
             matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
             if matchingFreeWorkers:
                 worker = matchingFreeWorkers[0]
-                self.log.info(f"Sending {detectorId=} to free worker {worker.queueName} for {payload.who}")
+                sentToFree += 1
                 self.redisHelper.enqueuePayload(payload, worker)
                 continue
 
@@ -983,17 +986,18 @@ class HeadProcessController:
                 matchingBusyWorkers = [w for w in busyWorkers if w.detectorNumber == detectorId]
                 if matchingBusyWorkers:
                     worker = matchingBusyWorkers[0]
-                    self.log.warning(
-                        f"No free workers available for {detectorId=},"
-                        f" sending to busy worker {worker.queueName}"
-                    )
+                    sentToBusy += 1
                     self.redisHelper.enqueuePayload(payload, worker)
                     continue
                 else:
+                    notDispatched += 1
                     self.log.error(
                         f"No workers (not even busy ones) available for {detectorId=},"
                         f" cannot dispatch process for {payload.who}",
                     )
+
+        self.log.info(f"Sent {sentToFree} payloads to free workers, {sentToBusy} to busy workers, "
+                      f"and {notDispatched} were not dispatched for {payload.who}")
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
