@@ -158,7 +158,7 @@ def ensureRunCollection(
             )
             task = taskFactory.makeTask(taskNode, butler, inputRefs)
 
-            for writeEdge in taskNode.init.outputs.values():
+            for writeEdge in taskNode.init.iter_all_outputs():
                 datasetTypeName = writeEdge.dataset_type_name
                 initRefs[datasetTypeName] = butler.put(
                     getattr(task, writeEdge.connection_name),
