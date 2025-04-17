@@ -61,7 +61,7 @@ class TestConfig:
 
         # Test durations
         self.meta_test_duration = 30
-        self.test_duration = 250
+        self.test_duration = 400
 
         # Date for testing
         self.today = 20240101
@@ -107,91 +107,121 @@ class TestConfig:
             ),
         ]
 
-        # ComCam pods
-        comcam_scripts = [
+        # LSSTCam pods
+        lsstcam_scripts = [
             TestScript(
-                "scripts/LSSTComCam/runPlotter.py",
+                "scripts/LSSTCam/runPlotter.py",
                 ["usdf_testing"],
                 display_on_pass=False,
                 tee_output=False,
             ),
             TestScript(
-                "scripts/LSSTComCam/runStep2aWorker.py",
+                "scripts/LSSTCam/runStep2aWorker.py",
                 ["usdf_testing", "0"],
+                display_on_pass=True,
                 tee_output=False,
             ),
-            TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=False),
+            TestScript("scripts/LSSTCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=False),
         ]
 
-        # SFM Runners for ComCam
+        # SFM Runners for LSSTCam
+        # these do both the in-focus image and the FAM pair
+        detectorNumbers = [
+            90,
+            91,
+            92,
+            93,
+            94,
+            95,
+            96,
+            97,
+            98,
+            144,
+            145,
+            146,
+            147,
+            148,
+            149,
+            150,
+            151,
+            152,
+        ]
         sfm_runners = [
             TestScript(
-                "scripts/LSSTComCam/runSfmRunner.py",
-                ["usdf_testing", "0"],
-                display_on_pass=False,
+                "scripts/LSSTCam/runSfmRunner.py",
+                ["usdf_testing", str(detectorNumbers[0])],
+                display_on_pass=True,
                 tee_output=False,
             )
         ]
         sfm_runners.extend(
-            [TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", str(i)]) for i in range(1, 9)]
+            [
+                TestScript("scripts/LSSTCam/runSfmRunner.py", ["usdf_testing", str(i)])
+                for i in detectorNumbers[1:]
+            ]
         )
 
-        # AOS Workers for ComCam
+        # AOS Workers for LSSTCam
+        # these do the corner chips, and the run as dual dataIds on the
+        # split chips, so need only 4
+        # XXX TODO: bugfix the need to use odd numbers! fix AOS_WORKER_MAPPING
         aos_workers = [
             TestScript(
-                "scripts/LSSTComCam/runAosWorker.py",
-                ["usdf_testing", "0"],
+                "scripts/LSSTCam/runAosWorker.py",
+                ["usdf_testing", "1"],
                 display_on_pass=True,
                 tee_output=True,
             )
         ]
         aos_workers.extend(
-            [TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(1, 9)]
+            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in [3, 5, 7]]
         )
 
-        # Additional ComCam scripts
-        additional_comcam_scripts = [
+        # Additional LSSTCam scripts
+        # runStep2aAosWorker deals with the outputs from the regular CWFS and
+        # the FAM output, so make 3
+        additional_lsstcam_scripts = [
             TestScript(
-                "scripts/LSSTComCam/runStep2aAosWorker.py",
-                ["usdf_testing", "0"],
+                "scripts/LSSTCam/runStep2aAosWorker.py",
+                ["usdf_testing", "0", "1", "2"],
                 display_on_pass=True,
             ),
             TestScript(
-                "scripts/LSSTComCam/runOneOffExpRecord.py",
+                "scripts/LSSTCam/runOneOffExpRecord.py",
                 ["usdf_testing"],
                 tee_output=False,
                 display_on_pass=True,
             ),
             TestScript(
-                "scripts/LSSTComCam/runOneOffPostIsr.py",
+                "scripts/LSSTCam/runOneOffPostIsr.py",
                 ["usdf_testing"],
                 tee_output=False,
                 display_on_pass=False,
             ),
             TestScript(
-                "scripts/LSSTComCam/runOneOffCalexp.py",
+                "scripts/LSSTCam/runOneOffCalexp.py",
                 ["usdf_testing"],
                 tee_output=False,
                 display_on_pass=False,
             ),
             TestScript(
-                "scripts/LSSTComCam/runHeadNode.py",
+                "scripts/LSSTCam/runHeadNode.py",
                 ["usdf_testing"],
                 delay=5,
                 tee_output=True,
                 display_on_pass=True,
             ),
-            TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
+            TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
         ]
 
         # Combine all test scripts
         self.test_scripts_round_1 = (
-            latiss_scripts + comcam_scripts + sfm_runners + aos_workers + additional_comcam_scripts
+            latiss_scripts + lsstcam_scripts + sfm_runners + aos_workers + additional_lsstcam_scripts
         )
 
         # Scripts to run after processing pods are torn down
         self.test_scripts_round_3 = [
-            TestScript("scripts/LSSTComCam/runButlerWatcher.py", ["usdf_testing"]),
+            TestScript("scripts/LSSTCam/runButlerWatcher.py", ["usdf_testing"]),
         ]
 
         # Meta tests that are expected to fail
@@ -342,8 +372,8 @@ class RedisManager:
         redisHelper = RedisHelper(None, None)  # type: ignore[arg-type]
         redisHelper.displayRedisContents()
 
-        # Check ComCam data
-        self._check_comcam_data(redisHelper, checks)
+        # Check LSSTCam data
+        self._check_lsstcam_data(redisHelper, checks)
 
         # Check LATISS data
         self._check_latiss_data(redisHelper, checks)
@@ -351,12 +381,12 @@ class RedisManager:
         # Check for failure keys
         self._check_failure_keys(redisHelper, checks)
 
-    def _check_comcam_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
-        """Check ComCam data in Redis."""
-        inst = "LSSTComCam"
+    def _check_lsstcam_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check LSSTCam data in Redis."""
+        inst = "LSSTCam"
 
-        visits_sfm = [2024110200170]
-        visits_aos = ["2024110200171+2024110200172"]
+        visits_sfm = [2025041500088]
+        visits_aos = ["2025041500088", "20250415000086+20250415000087"]
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -407,15 +437,16 @@ class RedisManager:
         visits_sfm = [2024081300632]
         n_visits_sfm = len(visits_sfm)
 
-        n_step1_sfm = redisHelper.getNumDetectorLevelFinished(inst, "step1", "SFM", "2024081300632")
-        if n_step1_sfm != n_visits_sfm:
+        n_step2_sfm = redisHelper.getNumDetectorLevelFinished(inst, "step2a", "SFM", "2024081300632")
+        if n_step2_sfm != n_visits_sfm:
             checks.append(
                 Check(
-                    False, f"Expected {n_visits_sfm} SFM step1 for {inst} to have finished, got {n_step1_sfm}"
+                    False,
+                    f"Expected {n_visits_sfm} SFM step2a for {inst} to have finished, got {n_step2_sfm}",
                 )
             )
         else:
-            checks.append(Check(True, f"{n_step1_sfm}x {inst} SFM step1 finished"))
+            checks.append(Check(True, f"{n_step2_sfm}x {inst} SFM step2a finished"))
 
     def _check_failure_keys(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check for failure keys in Redis."""
@@ -802,20 +833,25 @@ class ResultCollector:
         locationConfig = LocationConfig("usdf_testing")
 
         expected = [  # (path, size) tuples
-            ("LSSTComCam/20241102/LSSTComCam_calexp_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000170.png", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000171.png", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000172.png", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000170.png", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000171.png", 5000),
-            ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000172.png", 5000),
-            ("20241102_171-fp_donut_gallery.png", 0),
-            ("20241102_172-fp_donut_gallery.png", 0),
-            ("20241102_172-zk_measurement_pyramid.png", 0),
-            ("20241102_172-zk_residual_pyramid.png", 0),
+            # LSSTCam plots
+            ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000086.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_postISRCCD_mosaic_dayObs_20250415_seqNum_000086.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_postISRCCD_mosaic_dayObs_20250415_seqNum_000087.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_postISRCCD_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
+            # AOS plots
+            ("20250415_86-fp_donut_gallery.png", 0),
+            ("20250415_87-fp_donut_gallery.png", 0),
+            ("20250415_87-zk_measurement_pyramid.png", 0),
+            ("20250415_87-zk_residual_pyramid.png", 0),
+            ("20250415_88-zk_measurement_pyramid.png", 0),
+            ("20250415_88-zk_residual_pyramid.png", 0),
+            # LATISS plots
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
