@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 from matplotlib.figure import Figure
 
-from lsst.daf.butler import DatasetNotFoundError
+from lsst.daf.butler import DatasetNotFoundError, EmptyQueryResultError
 from lsst.summit.extras.plotting.focusSweep import (
     collectSweepData,
     fitSweepParabola,
@@ -502,8 +502,12 @@ class RadialPlotter:
         # srcRefs = self.butler.query_datasets("single_visit_star_footprints",
         # data_id=expRecord.dataId)
         # replace with the lines above for the v2 transition
-        imgRefs = self.butler.query_datasets("calexp", data_id=expRecord.dataId)
-        srcRefs = self.butler.query_datasets("src", data_id=expRecord.dataId)
+        try:
+            imgRefs = self.butler.query_datasets("calexp", data_id=expRecord.dataId)
+            srcRefs = self.butler.query_datasets("src", data_id=expRecord.dataId)
+        except EmptyQueryResultError:
+            self.log.error(f"No data found for {expRecord.dataId}")
+            return
 
         imgDict = {
             self.camera[dr.dataId["detector"]].getName(): self.butler.get(dr)
