@@ -495,8 +495,8 @@ class RadialPlotter:
         self.s3Uploader = MultiUploader()
 
     def plotAndUpload(self, expRecord: DimensionRecord) -> None:
-        sat_col_ref = "calib_psf_used"
 
+        sat_col_ref = "calib_psf_used"
         # imgRefs = self.butler.query_datasets("preliminary_visit_image",
         # data_id=expRecord.dataId)
         # srcRefs = self.butler.query_datasets("single_visit_star_footprints",
@@ -515,9 +515,7 @@ class RadialPlotter:
             for dr in srcRefs
             if "S11" in self.camera[dr.dataId["detector"]].getName()
         }
-        srcDict = {
-            key: tab.asAstropy()[(tab[sat_col_ref] is True)].to_pandas() for key, tab in srcDict.items()
-        }
+        srcDict = {key: tab.asAstropy()[(tab[sat_col_ref])].to_pandas() for key, tab in srcDict.items()}
         fig = makePanel(imgDict, srcDict, instrument="LSSTCam", figsize=(15, 15), onlyS11=True)
 
         ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
