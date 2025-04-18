@@ -520,7 +520,7 @@ class RadialPlotter:
 
         ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig.savefig(tempFile)
+            fig.savefig(tempFile, bbox_inches="tight")
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(self.instrument),
                 plotName="imexam",
