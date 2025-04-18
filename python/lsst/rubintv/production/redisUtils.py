@@ -354,7 +354,7 @@ class RedisHelper:
                 workers.append(worker)
         return sorted(workers)
 
-    def pushToButlerWatcherList(self, instrument, expRecord) -> None:
+    def pushToButlerWatcherList(self, instrument, expRecord: DimensionRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
         time.
 
@@ -581,7 +581,7 @@ class RedisHelper:
         key = f"{instrument}-{who}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
 
-    def checkButlerWatcherList(self, instrument: str, expRecord) -> bool:
+    def checkButlerWatcherList(self, instrument: str, expRecord: DimensionRecord) -> bool:
         """Check if an exposure record has already been processed because it
         was seen by the ButlerWatcher.
 
@@ -920,6 +920,38 @@ class RedisHelper:
             self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
             return None
         return value.decode("utf-8")
+
+    def sendExpRecordToQueue(self, record: DimensionRecord, queueName: str) -> None:
+        """Send an exposure record to a specific queue.
+
+        Parameters
+        ----------
+        record : `lsst.daf.butler.dimensions.ExposureRecord`
+            The exposure record to send.
+        queueName : `str`
+            The name of the queue to send the record to.
+        """
+        recordJson = record.to_simple().json()
+        self.redis.lpush(queueName, recordJson)
+
+    def getExpRecordFromQueue(self, queueName: str) -> DimensionRecord | None:
+        """Get the next exposure record from a specific queue.
+
+        Parameters
+        ----------
+        queueName : `str`
+            The name of the queue to get the record from.
+
+        Returns
+        -------
+        record : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure record from the specified queue, or ``None`` if
+            the queue is empty.
+        """
+        recordJson = self.redis.lpop(queueName)
+        if recordJson is None:
+            return None
+        return expRecordFromJson(recordJson, self.locationConfig)
 
     def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.
