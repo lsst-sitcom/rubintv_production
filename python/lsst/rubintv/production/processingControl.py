@@ -1151,9 +1151,9 @@ class HeadProcessController:
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS":
                     self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
-                    self.dispatchCalexpMosaic(
-                        expRecord.id
-                    )  # TODO: this should be visitId but that's OK for now
+                    # TODO: this should be visitId but that's OK for now
+                    self.dispatchCalexpMosaic(expRecord.id)
+                    self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
             if who == "AOS":
                 for dataCoord in dataCoords:
                     (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
