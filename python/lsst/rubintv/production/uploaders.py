@@ -99,6 +99,7 @@ def createRemoteS3UploaderForSite():
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
+                proxyUrl="http://squid-service:3128/",
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
@@ -147,11 +148,13 @@ class BucketInformation:
 
 class EndPoint(Enum):
     USDF = {
-        "end_point": "https://s3dfrgw.slac.stanford.edu",
+        "end_point": "https://sdfembs3.sdf.slac.stanford.edu/",
         "buckets_available": {
-            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
-            Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
-            Bucket.BTS: BucketInformation("rubin-rubintv-data-base", "rubin-rubintv-data-base"),
+            Bucket.SUMMIT: BucketInformation(
+                "rubin-rubintv-data-summit-embargo", "rubin-rubintv-data-summit"
+            ),
+            Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf-embargo", "rubin-rubintv-data-usdf"),
+            Bucket.BTS: BucketInformation("rubin-rubintv-data-bts", "rubin-rubintv-data-bts"),
             Bucket.TTS: BucketInformation("rubin-rubintv-data-tts", "rubin-rubintv-data-tts"),
         },
     }
@@ -257,7 +260,8 @@ class IUploader(ABC):
 
 
 class MultiUploader(IUploader):
-    def __init__(self):
+    def __init__(self, allowNoRemote: bool = False) -> None:
+
         # TODO: thread the remote upload
         self.localUploader = createLocalS3UploaderForSite()
         localOk = self.localUploader.checkAccess()
@@ -269,12 +273,12 @@ class MultiUploader(IUploader):
         except Exception:
             self.remoteUploader = None
 
-        remoteRequired = getSite() in ["summit", "tucson", "base"]
-        if remoteRequired and not self.hasRemote:
+        remoteRequired = getSite() in ["summit"]  # , "tucson", "base"]
+        if (remoteRequired and not self.hasRemote) and not allowNoRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
         elif remoteRequired and self.hasRemote:
             remoteOk = self.remoteUploader.checkAccess()
-            if not remoteOk:
+            if not remoteOk and not allowNoRemote:
                 raise RuntimeError("Failed to connect to remote S3 bucket")
 
         self.log = _LOG.getChild("MultiUploader")
@@ -669,9 +673,9 @@ class S3Uploader(IUploader):
         """
         try:
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
-        except ClientError as e:
-            logging.error(e)
-            raise UploadError(f"Failed uploading file {sourceFilename} as Key: {destinationFilename}")
+        except Exception as e:
+            log = logging.getLogger(__name__)
+            log.exception(f"Failed uploading file {sourceFilename} as Key: {destinationFilename} \n {e}")
         return destinationFilename
 
     def uploadMovie(

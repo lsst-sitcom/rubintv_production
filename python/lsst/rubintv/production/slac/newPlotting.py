@@ -30,8 +30,9 @@ import lsst.afw.display as afwDisplay
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
+from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig, getNumExpectedItems
+from ..utils import LocationConfig
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
@@ -93,6 +94,7 @@ class Plotter:
             locationConfig=locationConfig,
             podDetails=podDetails,
         )
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.afwDisplay = afwDisplay.getDisplay(backend="matplotlib", figsize=(20, 20))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
@@ -116,13 +118,13 @@ class Plotter:
         Returns
         -------
         filename : `str`
-            The filename the plot was saved to.
+            The filename the plot was saved to, or "" if the plot failed.
         """
         expId = expRecord.id
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        nExpected = getNumExpectedItems(expRecord, self.log)
+        nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="ISR"))
 
         datapath = ""
         stretch = "CCS"
@@ -147,7 +149,7 @@ class Plotter:
         plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
         saveFile = (path / plotName).as_posix()
 
-        plotFocalPlaneMosaic(
+        image = plotFocalPlaneMosaic(
             butler=self.butler,
             figureOrDisplay=displayToUse,
             expId=expId,
@@ -160,8 +162,12 @@ class Plotter:
             logger=self.log,
             stretch=stretch,
         )
-        self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
-        return saveFile
+        if image is not None:
+            self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
+            return saveFile
+        else:
+            self.log.warning(f"Failed to make plot for {expRecord.dataId}")
+            return ""
 
     @staticmethod
     def getInstrumentChannelName(instrument: str) -> str:

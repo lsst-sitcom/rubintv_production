@@ -26,15 +26,15 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
+instrument = "LATISS"
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 205
-detectorDepth = workerNum // 205
+detectorNum = 0
+detectorDepth = workerNum
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=detectorDepth
+    instrument=instrument, podFlavor=PodFlavor.STEP2A_WORKER, detectorNumber=None, depth=detectorDepth
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -43,9 +43,10 @@ print(
 
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath,
+    locationConfig.auxtelButlerPath,
     collections=[
-        f"{instrument}/defaults",
+        # XXX needs changing to defaults and the quicklook collection creating
+        "LATISS/defaults",
         locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
@@ -55,8 +56,8 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="step1",
-    awaitsDataProduct="raw",
+    step="step2a",
+    awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )

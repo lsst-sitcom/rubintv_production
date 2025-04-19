@@ -86,6 +86,7 @@ __all__ = [
     "NumpyEncoder",
     "runningCI",
     "getCiPlotName",
+    "getCiPlotNameFromRecord",
     "managedTempFile",
 ]
 
@@ -112,6 +113,49 @@ SEQNUM_PADDING = 6
 SHARDED_DATA_TEMPLATE = os.path.join(
     "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
 )
+
+AOS_WORKER_MAPPING = {
+    0: (0, 191),
+    1: (0, 192),
+    2: (0, 195),
+    3: (0, 196),
+    4: (0, 199),
+    5: (0, 200),
+    6: (0, 203),
+    7: (0, 204),
+    8: (1, 191),
+    9: (1, 192),
+    10: (1, 195),
+    11: (1, 196),
+    12: (1, 199),
+    13: (1, 200),
+    14: (1, 203),
+    15: (1, 204),
+    16: (2, 191),
+    17: (2, 192),
+    18: (2, 195),
+    19: (2, 196),
+    20: (2, 199),
+    21: (2, 200),
+    22: (2, 203),
+    23: (2, 204),
+    24: (3, 191),
+    25: (3, 192),
+    26: (3, 195),
+    27: (3, 196),
+    28: (3, 199),
+    29: (3, 200),
+    30: (3, 203),
+    31: (3, 204),
+    32: (4, 191),
+    33: (4, 192),
+    34: (4, 195),
+    35: (4, 196),
+    36: (4, 199),
+    37: (4, 200),
+    38: (4, 203),
+    39: (4, 204),
+}
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -613,8 +657,24 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument: str) -> str:
+    def getAosPipelineFile(self, instrument) -> str:
         return self._config["aosPipelineFile"][instrument]
+
+    @cached_property
+    def aosLSSTCamPipelineFileDanish(self) -> str:
+        return self._config["aosLSSTCamPipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamPipelineFileTie(self) -> str:
+        return self._config["aosLSSTCamPipelineFileTie"]
+
+    @cached_property
+    def aosLSSTCamFullArrayModePipelineFileDanish(self) -> str:
+        return self._config["aosLSSTCamFullArrayModePipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamFullArrayModePipelineFileTie(self) -> str:
+        return self._config["aosLSSTCamFullArrayModePipelineFileTie"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:
@@ -916,7 +976,7 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Azimuth"] = expRecord.azimuth
     md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
-    md["Can see the sky?"] = expRecord.can_see_sky
+    md["Can see the sky?"] = f"{expRecord.can_see_sky}"
 
     if expRecord.instrument == "LATISS":
         filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
@@ -1416,6 +1476,24 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
 
 
+def mapAosWorkerNumber(workerNum: int) -> tuple[int, int]:
+    """Map the worker number to the AOS worker number.
+
+    Parameters
+    ----------
+    workerNum : `int`
+        The worker number.
+
+    Returns
+    -------
+    depth : `int`
+        The depth of the worker.
+    detectorNum : `int`
+        The detector number of the worker.
+    """
+    return AOS_WORKER_MAPPING[workerNum]
+
+
 def getFilterColorName(physicalFilter: str) -> str | None:
     """Get the color name for a physical filter to color cells on RubinTV.
 
@@ -1447,14 +1525,21 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
-def getCiPlotName(locationConfig: LocationConfig, expRecord: DimensionRecord, plotType: str) -> str:
-    dayObs: int = expRecord.day_obs
-    seqNum: int = expRecord.seq_num
+def getCiPlotNameFromRecord(locationConfig: LocationConfig, record: DimensionRecord, plotType: str) -> str:
+    dayObs: int = record.day_obs
+    seqNum: int = record.seq_num
+    instrument: str = record.instrument
+    return getCiPlotName(locationConfig, instrument, dayObs, seqNum, plotType)
+
+
+def getCiPlotName(
+    locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str
+) -> str:
     ciOutputName = (
         Path(locationConfig.plotPath)
-        / expRecord.instrument
+        / instrument
         / str(dayObs)
-        / f"{expRecord.instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
     )
     return ciOutputName.as_posix()
 

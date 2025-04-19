@@ -55,7 +55,7 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .utils import (
-    getCiPlotName,
+    getCiPlotNameFromRecord,
     getFilterColorName,
     getRubinTvInstrumentName,
     isCalibration,
@@ -152,8 +152,12 @@ class OneOffProcessor(BaseButlerChannel):
         self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
 
-    def writeVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
+    def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
+        header = exp.metadata.toDict()
+
+        md: dict[int, dict[str, str]] = {}
+
         focus = vi.focusZ
         if focus is not None and not np.isnan(focus):
             focus = float(focus)
@@ -165,6 +169,10 @@ class OneOffProcessor(BaseButlerChannel):
         if airmass is not None and not np.isnan(airmass):
             airmass = float(airmass)
             md[seqNum].update({"Airmass": f"{airmass:.3f}"})
+
+        controller = header.get("CONTRLLR", None)
+        if controller is not None and controller != "":
+            md[seqNum].update({"Controller": f"{controller}"})
 
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
@@ -244,7 +252,7 @@ class OneOffProcessor(BaseButlerChannel):
             self.runAuxTelProcessing(postISR, expRecord)
 
         self.log.info(f"Writing focus Z for {dataId}")
-        self.writeVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeHeaderOrVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
         self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
@@ -256,8 +264,9 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
 
-        self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
-        self.writeLogMessageShards(expRecord.day_obs)
+        if self.locationConfig.location == "summit":
+            self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
+            self.writeLogMessageShards(expRecord.day_obs)
 
         self.log.info(f"Finished one-off processing {dataId}")
 
@@ -396,7 +405,7 @@ class OneOffProcessor(BaseButlerChannel):
         # TODO: DM-45437 Use a context manager here and everywhere
         self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
 
-        ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "mount")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig = make_figure(figsize=(10, 8))
             plotMountErrors(data, errors, fig, saveFilename=tempFile)
@@ -503,7 +512,16 @@ class OneOffProcessor(BaseButlerChannel):
         if expRecord.instrument == "LATISS":
             self._doMountAnalysisAuxTel(expRecord)
         else:
-            self._doMountAnalysisSimonyi(expRecord)
+            try:  # this often fails due to missing mount data, catch so other plots can still work
+                if expRecord.zenith_angle is not None:  # XXX hopefully we can remove this soon
+                    self._doMountAnalysisSimonyi(expRecord)
+                else:
+                    self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
+            except KeyError as e:
+                self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            except Exception as e:  # but all others are a raiseIf
+                raiseIf(self.doRaise, e, self.log)
+
             previous = self.getPreviousExpRecord(expRecord)
             if previous is not None:
                 self.makeExposureTimingPlot(previous, expRecord)
@@ -512,29 +530,40 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Creating exposure timing plot for {expRecord.id}")
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-        fig = plotExposureTiming(self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0)
+
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                fig.savefig(tempFile)
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument=getRubinTvInstrumentName(expRecord.instrument),
-                    plotName="event_timeline",
-                    dayObs=dayObs,
-                    seqNum=seqNum,
-                    filename=tempFile,
-                )
-                self.log.info("Event timeline upload complete")
-        except Exception as e:
+            fig = plotExposureTiming(
+                self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0
+            )
+            if fig is None:
+                self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
+                return
+        except KeyError as e:  # this often fails due to missing mount data, so this is just a warn
+            self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            return
+        except Exception as e:  # but all others are a raiseIf
             raiseIf(self.doRaise, e, self.log)
+            return
+
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "event_timeline")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+            fig.savefig(tempFile)
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(expRecord.instrument),
+                plotName="event_timeline",
+                dayObs=dayObs,
+                seqNum=seqNum,
+                filename=tempFile,
+            )
+            self.log.info("Event timeline upload complete")
 
     def _doMountAnalysisAuxTel(self, expRecord: DimensionRecord) -> None:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "mount")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 # calculateMountErrors() calculates the errors, but also
                 # performs the plotting. It skips many image types and short
@@ -677,7 +706,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "monitor")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "monitor")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 fig = make_figure(figsize=(12, 12))
                 plotExp(exp, fig, tempFile, doSmooth=False, scalingOption="CCS")
@@ -702,7 +731,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "imexam")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 imExam = ImageExaminer(exp, savePlots=tempFile, doTweakCentroid=True)
                 imExam.plot()
@@ -732,7 +761,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
         self.log.info(f"Running specExam on {expRecord.dataId}")
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "specexam")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "specexam")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 summary = SpectrumExaminer(exp, savePlotAs=tempFile)
                 summary.run()

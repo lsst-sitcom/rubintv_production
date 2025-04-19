@@ -42,6 +42,7 @@ CHANNELS = [
     "lsstcam_focal_plane_mosaic",
     "lsstcam_calexp_mosaic",
     "lsstcam_metadata",
+    "lsstcam_aos_metadata",
 ]
 
 PREFIXES = {chan: chan.replace("_", "-") for chan in CHANNELS}
@@ -62,6 +63,7 @@ KNOWN_INSTRUMENTS = (
     "fake_auxtel",
     "tma",
     "lsstcam",
+    "lsstcam_aos",
 )
 
 
@@ -113,5 +115,6 @@ def getCameraAndPlotName(channel: str) -> tuple[str, str] | None:
         "auxtel_metadata_creator": None,
         "auxtel_isr_runner": ("auxtel", "isr_runner"),
         "lsstcam_metadata": ("lsstcam", "metadata"),
+        "lsstcam_aos_metadata": ("lsstcam_aos", "metadata"),
     }
     return channelLookup[channel]

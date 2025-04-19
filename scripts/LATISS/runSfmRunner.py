@@ -56,7 +56,6 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
     step="step1",
     awaitsDataProduct="raw",
     podDetails=podDetails,

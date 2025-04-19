@@ -53,7 +53,6 @@ step2aRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getAosPipelineFile(instrument),
     step="step2a",
     awaitsDataProduct=None,
     podDetails=podDetails,

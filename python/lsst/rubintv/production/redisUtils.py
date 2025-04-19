@@ -197,6 +197,7 @@ class RedisHelper:
         self.redis = self._makeRedis()
         self._testRedisConnection()
         self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
+        self._loggedAbout: set[str] = set()
 
     def _makeRedis(self) -> redis.Redis:
         """Create a redis connection.
@@ -353,7 +354,7 @@ class RedisHelper:
                 workers.append(worker)
         return sorted(workers)
 
-    def pushToButlerWatcherList(self, instrument, expRecord) -> None:
+    def pushToButlerWatcherList(self, instrument, expRecord: DimensionRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
         time.
 
@@ -474,11 +475,11 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
+            key = key.replace("DETECTOR_FINISHED_COUNTER", "DETECTOR_FAILED_COUNTER")
             self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
     def getNumDetectorLevelFinished(self, instrument: str, step: str, who: str, processingId: str) -> int:
@@ -503,14 +504,14 @@ class RedisHelper:
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         if not self.redis.hexists(key, processingId):
             self.log.warning(f"Key {key} with processingId {processingId} does not exist")
         return int(self.redis.hget(key, processingId) or 0)
 
     def getAllIdsForDetectorLevel(self, instrument: str, step: str, who: str) -> list[str]:
         """Get a list of processed ids for the specified step."""
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         idList = self.redis.hgetall(key).keys()
         return [procId.decode("utf-8") for procId in idList]
 
@@ -518,7 +519,7 @@ class RedisHelper:
         """Remove the specified counter for the processingId from the list of
         finishing ids.
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         if self.redis.hexists(key, processingId):
             self.redis.hdel(key, processingId)
         else:
@@ -540,11 +541,11 @@ class RedisHelper:
         failed : `bool`
             True if the processing did not fail to complete
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-VISIT_FINISIHED_COUNTER"
         self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
+            key = key.replace("VISIT_FINISIHED_COUNTER", "VISIT_FAILED_COUNTER")
             self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
     def getNumVisitLevelFinished(self, instrument: str, step: str, who: str) -> int:
@@ -564,7 +565,7 @@ class RedisHelper:
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f"{instrument}-{step}-{who}-FINISHEDCOUNTER"
+        key = f"{instrument}-{step}-{who}-VISIT_FINISIHED_COUNTER"
         return int(self.redis.get(key) or 0)
 
     def reportNightLevelFinished(self, instrument: str, who: str, failed=False) -> None:
@@ -580,7 +581,7 @@ class RedisHelper:
         key = f"{instrument}-{who}-NIGHTLYROLLUP-FINISHEDCOUNTER"
         self.redis.incr(key, 1)
 
-    def checkButlerWatcherList(self, instrument: str, expRecord) -> bool:
+    def checkButlerWatcherList(self, instrument: str, expRecord: DimensionRecord) -> bool:
         """Check if an exposure record has already been processed because it
         was seen by the ButlerWatcher.
 
@@ -816,7 +817,143 @@ class RedisHelper:
         for key in keys:
             self.redis.delete(key)
 
-    def displayRedisContents(self, instrument: str | None = None) -> None:
+    def writeDetectorsToExpect(
+        self, instrument: str, indentifier: int | str, detectors: list[int], who: str, append: bool = True
+    ) -> None:
+        """Write the detectors we are processing for a given exposureId.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        indentifier : `int` or `str`
+            The exposure or visit ID(s) the detectors are being processed for.
+        detectors : `list` of `int`
+            The list of detectors to expect.
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        append : `bool`, optional
+            If True, append to the existing list of detectors instead of
+            replacing it. Default is False.
+        """
+        if append:
+            # Get existing detectors using the existing method, suppressing
+            # warning if key doesn't exist
+            existingDetectors = self.getExpectedDetectors(instrument, indentifier, who, noWarn=True)
+            # Combine and remove duplicates
+            detectors = sorted(set(existingDetectors + detectors))
+
+        key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
+        self.redis.set(key, ",".join(str(det) for det in detectors))
+        self.redis.expire(key, 86400 * 2)  # expire in 2 days
+
+    def getExpectedDetectors(
+        self, instrument: str, indentifier: int | str, who: str, noWarn: bool = False
+    ) -> list[int]:
+        """Get the expected detectors for a given exposure or visit ID.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        indentifier : `int` or `str`
+            The exposure or visit ID(s).
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        noWarn : `bool`, optional
+            If True, suppress the warning when the key is not found. Default is
+            ``False``.
+
+        Returns
+        -------
+        detectors : `list` of `int` or `None`
+            The list of expected detectors, or ``None`` if not found.
+        """
+        key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
+        value = self.redis.get(key)
+        if value is None:
+            if not noWarn and key not in self._loggedAbout:
+                self._loggedAbout.add(key)
+                self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
+            return []
+        return [int(det) for det in value.decode("utf-8").split(",")]
+
+    def recordAosPipelineConfig(self, instrument: str, expId: int, pipelineName: str) -> None:
+        """Record the pipeline configuration used for a given exposure ID.
+
+        e.g. AOS_TIE or AOS_DANISH
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        expId : `int`
+            The exposure ID.
+        pipelineName : `str`
+            The name of the pipeline configuration used.
+        """
+        key = f"{instrument}-AOS_PIPELINE_CONFIG-{expId}"
+        self.redis.set(key, pipelineName)
+        self.redis.expire(key, 86400 * 2)
+
+    def getAosPipelineConfig(self, instrument: str, expId: int) -> str | None:
+        """Get the pipeline configuration used for a given exposure ID.
+
+        e.g. AOS_TIE or AOS_DANISH
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        expId : `int`
+            The exposure ID.
+
+        Returns
+        -------
+        pipelineName : `str` or `None`
+            The name of the pipeline configuration used, or ``None`` if not
+            found.
+        """
+        key = f"{instrument}-AOS_PIPELINE_CONFIG-{expId}"
+        value = self.redis.get(key)
+        if value is None:
+            self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
+            return None
+        return value.decode("utf-8")
+
+    def sendExpRecordToQueue(self, record: DimensionRecord, queueName: str) -> None:
+        """Send an exposure record to a specific queue.
+
+        Parameters
+        ----------
+        record : `lsst.daf.butler.dimensions.ExposureRecord`
+            The exposure record to send.
+        queueName : `str`
+            The name of the queue to send the record to.
+        """
+        recordJson = record.to_simple().json()
+        self.redis.lpush(queueName, recordJson)
+
+    def getExpRecordFromQueue(self, queueName: str) -> DimensionRecord | None:
+        """Get the next exposure record from a specific queue.
+
+        Parameters
+        ----------
+        queueName : `str`
+            The name of the queue to get the record from.
+
+        Returns
+        -------
+        record : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
+            The next exposure record from the specified queue, or ``None`` if
+            the queue is empty.
+        """
+        recordJson = self.redis.lpop(queueName)
+        if recordJson is None:
+            return None
+        return expRecordFromJson(recordJson, self.locationConfig)
+
+    def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.
 
         Returns
@@ -855,11 +992,17 @@ class RedisHelper:
             expRecordStr = f"{loaded['record']['instrument']}, {loaded['record']['id']}"
             return expRecordStr
 
+        def isPod(key: str) -> bool:
+            return key.endswith("+EXISTS") or key.endswith("+IS_BUSY")
+
         r = self.redis
 
         # Get all keys in the database
         # TODO: .keys is a blocking operation - consider using .scan instead
         keys = sorted(r.keys("*"))
+
+        if ignorePods:
+            keys = [key for key in keys if not isPod(key.decode("utf-8"))]
 
         if not keys:
             print("Nothing in the Redis database.")
@@ -924,7 +1067,7 @@ class RedisHelper:
             else:
                 print(f"Unsupported type for key: {key}")
 
-    def clearRedis(self, force: bool = False) -> None:
+    def clearRedis(self, force: bool = False, keepButlerWatcherHistory: bool = True) -> None:
         """Clear all keys in the Redis database.
 
         Parameters
@@ -932,6 +1075,9 @@ class RedisHelper:
         force : `bool`, optional
             Whether to clear the Redis database without user confirmation.
             Default is ``False``.
+        keepButlerWatcherHistory : `bool`, optional
+            Whether to keep keys matching "*fromButlerWacher*". Default is
+            ``True``.
         """
         if not force:
             print("Are you sure you want to clear the Redis database? This action cannot be undone.")
@@ -940,7 +1086,18 @@ class RedisHelper:
             if response != "yes":
                 print("Clearing aborted.")
                 return
-        self.redis.flushdb()
+
+        if not keepButlerWatcherHistory:
+            self.redis.flushdb()
+            print("Redis database cleared.")
+        else:
+            # Get all keys and delete them selectively
+            all_keys = self.redis.keys("*")
+            for key in all_keys:
+                key_str = key.decode("utf-8")
+                if "fromButlerWacher" not in key_str:
+                    self.redis.delete(key)
+            print("Redis database cleared, but ButlerWatcher history retained.")
 
     def clearWorkerQueues(self, force: bool = False) -> None:
         """Clear all keys in the Redis database.

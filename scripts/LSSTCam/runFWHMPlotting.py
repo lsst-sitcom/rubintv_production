@@ -20,44 +20,30 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.aos import FocalPlaneFWHMPlotter
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
-setupLogging()
 instrument = "LSSTCam"
 
-workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 205
-detectorDepth = workerNum // 205
-
-locationConfig = getAutomaticLocationConfig()
-podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=detectorDepth
-)
-print(
-    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
-    f"consuming from {podDetails.queueName}..."
-)
+setupLogging()
 
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
     ],
-    writeable=True,
 )
+print(f"Running FWHM plotter launcher at {locationConfig.location}")
 
-sfmRunner = SingleCorePipelineRunner(
+queueName = f"{instrument}-FWHMPLOTTER"
+radialPlotter = FocalPlaneFWHMPlotter(  # XXX needs type annotations adding and moving to podDetails
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="step1",
-    awaitsDataProduct="raw",
-    podDetails=podDetails,
-    doRaise=getDoRaise(),
+    queueName=queueName,
 )
-sfmRunner.run()
+radialPlotter.run()
