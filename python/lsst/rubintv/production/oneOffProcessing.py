@@ -55,7 +55,7 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .utils import (
-    getCiPlotName,
+    getCiPlotNameFromRecord,
     getFilterColorName,
     getRubinTvInstrumentName,
     isCalibration,
@@ -405,7 +405,7 @@ class OneOffProcessor(BaseButlerChannel):
         # TODO: DM-45437 Use a context manager here and everywhere
         self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
 
-        ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "mount")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig = make_figure(figsize=(10, 8))
             plotMountErrors(data, errors, fig, saveFilename=tempFile)
@@ -545,7 +545,7 @@ class OneOffProcessor(BaseButlerChannel):
             raiseIf(self.doRaise, e, self.log)
             return
 
-        ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "event_timeline")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig.savefig(tempFile)
             assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
@@ -563,7 +563,7 @@ class OneOffProcessor(BaseButlerChannel):
         seqNum = expRecord.seq_num
 
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "mount")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 # calculateMountErrors() calculates the errors, but also
                 # performs the plotting. It skips many image types and short
@@ -706,7 +706,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "monitor")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "monitor")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 fig = make_figure(figsize=(12, 12))
                 plotExp(exp, fig, tempFile, doSmooth=False, scalingOption="CCS")
@@ -731,7 +731,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "imexam")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 imExam = ImageExaminer(exp, savePlots=tempFile, doTweakCentroid=True)
                 imExam.plot()
@@ -761,7 +761,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
         self.log.info(f"Running specExam on {expRecord.dataId}")
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "specexam")
+            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "specexam")
             with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
                 summary = SpectrumExaminer(exp, savePlotAs=tempFile)
                 summary.run()

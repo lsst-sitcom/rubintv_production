@@ -86,6 +86,7 @@ __all__ = [
     "NumpyEncoder",
     "runningCI",
     "getCiPlotName",
+    "getCiPlotNameFromRecord",
     "managedTempFile",
 ]
 
@@ -1524,14 +1525,21 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
-def getCiPlotName(locationConfig: LocationConfig, expRecord: DimensionRecord, plotType: str) -> str:
-    dayObs: int = expRecord.day_obs
-    seqNum: int = expRecord.seq_num
+def getCiPlotNameFromRecord(locationConfig: LocationConfig, record: DimensionRecord, plotType: str) -> str:
+    dayObs: int = record.day_obs
+    seqNum: int = record.seq_num
+    instrument: str = record.instrument
+    return getCiPlotName(locationConfig, instrument, dayObs, seqNum, plotType)
+
+
+def getCiPlotName(
+    locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str
+) -> str:
     ciOutputName = (
         Path(locationConfig.plotPath)
-        / expRecord.instrument
+        / instrument
         / str(dayObs)
-        / f"{expRecord.instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
     )
     return ciOutputName.as_posix()
 
