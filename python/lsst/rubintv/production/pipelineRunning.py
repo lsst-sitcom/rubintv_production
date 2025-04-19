@@ -369,7 +369,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
                 if who == "SFM":
-                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", compoundId)
+                    visitId = int(compoundId)  # in SFM this is never compound
+                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(visitId))
+
+                    # required the visitSummary so needs to be post-step2a
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
+                    self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
+                    self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
