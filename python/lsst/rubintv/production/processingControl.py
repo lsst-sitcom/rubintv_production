@@ -1155,8 +1155,6 @@ class HeadProcessController:
                     self.dispatchCalexpMosaic(expRecord.id)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
-                    self.log.info(f"Sending {expRecord.id} for fwhm plotting")
-                    self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-FWHMPLOTTER")
             if who == "AOS":
                 for dataCoord in dataCoords:
                     (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
