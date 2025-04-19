@@ -1154,6 +1154,7 @@ class HeadProcessController:
                     # TODO: this should be visitId but that's OK for now
                     self.dispatchCalexpMosaic(expRecord.id)
                     self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
+                    self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-FWHMPLOTTER")
             if who == "AOS":
                 for dataCoord in dataCoords:
                     (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
