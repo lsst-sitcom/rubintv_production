@@ -833,7 +833,7 @@ class ResultCollector:
         locationConfig = LocationConfig("usdf_testing")
 
         expected = [  # (path, size) tuples
-            # LSSTCam plots
+            # Regular LSSTCam plots -------
             ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000087.png", 5000),
@@ -844,14 +844,19 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
-            # AOS plots
-            ("20250415_86-fp_donut_gallery.png", 0),
-            ("20250415_87-fp_donut_gallery.png", 0),
-            ("20250415_87-zk_measurement_pyramid.png", 0),
-            ("20250415_87-zk_residual_pyramid.png", 0),
-            ("20250415_88-zk_measurement_pyramid.png", 0),
-            ("20250415_88-zk_residual_pyramid.png", 0),
-            # LATISS plots
+            # AOS plots -------
+            # FAM donut galleries
+            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000086.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000087.png", 5000),
+            # Extrafocal id for FAM plot
+            ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
+            # CWFS plot
+            ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            # Extrafocal id for FAM plot
+            ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
+            # CWFS plot
+            ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
