@@ -59,7 +59,7 @@ from lsst.utils.plotting.figures import make_figure
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
 from .utils import (
-    getCiPlotName,
+    getCiPlotNameFromRecord,
     getRubinTvInstrumentName,
     managedTempFile,
     writeExpRecordMetadataShard,
@@ -414,7 +414,7 @@ class FocalPlaneFWHMPlotter:
 
         fwhmValues, detectorIds = getFwhmValues(visitSummary)
 
-        ciName = getCiPlotName(self.locationConfig, visitRecord, "fwhm_focal_plane")
+        ciName = getCiPlotNameFromRecord(self.locationConfig, visitRecord, "fwhm_focal_plane")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig = make_figure(figsize=(12, 9))
             axes = fig.subplots(nrows=1, ncols=1)
@@ -610,7 +610,7 @@ class RadialPlotter:
         srcDict = {key: tab.asAstropy()[(tab[sat_col_ref])].to_pandas() for key, tab in srcDict.items()}
         fig = makePanel(imgDict, srcDict, instrument="LSSTCam", figsize=(15, 15), onlyS11=True)
 
-        ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "imexam")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig.savefig(tempFile, bbox_inches="tight")
             self.s3Uploader.uploadPerSeqNumPlot(
