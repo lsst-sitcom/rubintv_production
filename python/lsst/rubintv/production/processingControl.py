@@ -1150,9 +1150,12 @@ class HeadProcessController:
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS":
+                    self.log.info(f"Dispatching the focal plane calexp mosaic for {expRecord.id}")
                     # TODO: this should be visitId but that's OK for now
-                    self.log.info(f"Sending {expRecord.id} for one-off calexp processing")
                     self.dispatchCalexpMosaic(expRecord.id)
+
+                    self.log.info(f"Sending {expRecord.id} for one-off calexp processing")
+                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
             if who == "AOS":
