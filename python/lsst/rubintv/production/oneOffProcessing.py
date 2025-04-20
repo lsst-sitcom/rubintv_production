@@ -34,6 +34,7 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.imageExaminer import ImageExaminer
+from lsst.summit.utils.plotting import plot
 from lsst.summit.utils.simonyi.mountAnalysis import (
     MOUNT_IMAGE_BAD_LEVEL,
     MOUNT_IMAGE_WARNING_LEVEL,
@@ -43,7 +44,7 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
     plotMountErrors,
 )
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-from lsst.summit.utils.utils import calcEclipticCoords
+from lsst.summit.utils.utils import calcEclipticCoords, getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
@@ -59,6 +60,7 @@ from .utils import (
     getFilterColorName,
     getRubinTvInstrumentName,
     isCalibration,
+    makeTitle,
     managedTempFile,
     raiseIf,
     runningCI,
@@ -151,6 +153,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.efdClient = makeEfdClient()
         self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.camera = getCameraFromInstrumentName(self.instrument)
 
     def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
@@ -335,6 +338,24 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: eclipticData}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
+    def makeWitnessImage(self, calexp: Exposure, expRecord: DimensionRecord) -> None:
+        title = makeTitle(expRecord, calexp.detector.getId(), self.camera)
+
+        fig = make_figure(figsize=(12, 12))
+        fig = plot(calexp, figure=fig, stretch="midtone", title=title)
+
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "witness_detector")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+            fig.savefig(tempFile)
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(expRecord.instrument),
+                plotName="witness_detector",
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=tempFile,
+            )
+
     def runCalexp(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for calexp for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
@@ -356,6 +377,10 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info("Calculating ecliptic coords...")
         self.publishEclipticCoords(calexp, expRecord)
         self.log.info("Finished publishing ecliptic coords")
+
+        self.log.info("Making witness detector image...")
+        self.makeWitnessImage(calexp, expRecord)
+        self.log.info("Finished making witness detector image")
         return
 
     def _doMountAnalysisSimonyi(self, expRecord: DimensionRecord) -> None:
@@ -686,7 +711,8 @@ class OneOffProcessor(BaseButlerChannel):
                 dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
                 self.runPostISRCCD(dataId)
             case "calexp":
-                dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
+                detector = self.redisHelper.getWitnessDetectorNumber(self.instrument, self.camera)
+                dataId = dafButler.DataCoordinate.standardize(dataId, detector=detector)
                 self.runCalexp(dataId)
             case _:
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
