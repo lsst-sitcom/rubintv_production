@@ -339,7 +339,9 @@ class OneOffProcessor(BaseButlerChannel):
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
     def makeWitnessImage(self, calexp: Exposure, expRecord: DimensionRecord) -> None:
-        title = makeTitle(expRecord, calexp.detector.getId(), self.camera)
+        detNum = calexp.detector.getId()
+        detName = calexp.detector.getName()
+        title = makeTitle(expRecord, detNum, self.camera)
 
         fig = make_figure(figsize=(12, 12))
         fig = plot(calexp, figure=fig, stretch="midtone", title=title)
@@ -355,6 +357,9 @@ class OneOffProcessor(BaseButlerChannel):
                 seqNum=expRecord.seq_num,
                 filename=tempFile,
             )
+
+        md = {expRecord.seq_num: {"Witness detector": f"{detName} ({detNum})"}}
+        writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
     def runCalexp(self, dataId: DataCoordinate) -> None:
         self.log.info(f"Waiting for calexp for {dataId}")
