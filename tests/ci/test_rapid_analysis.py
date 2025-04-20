@@ -116,6 +116,24 @@ class TestConfig:
                 tee_output=False,
             ),
             TestScript(
+                "scripts/LSSTCam/runFWHMPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runRadialPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runPsfPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+                tee_output=False,
+            ),
+            TestScript(
                 "scripts/LSSTCam/runStep2aWorker.py",
                 ["usdf_testing", "0"],
                 display_on_pass=True,
@@ -419,16 +437,6 @@ class RedisManager:
             checks.append(Check(False, f"Expected 1 nightly rollup finished, got {n_nightly_rollups}"))
         else:
             checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
-
-        # Check PSF plotter
-        key = f"{inst}-PSFPLOTTER"
-        expected = redisHelper.redis.lpop(key)
-        if expected is not None:
-            expected = int(expected.decode("utf-8"))
-        if expected == visits_sfm[0]:
-            checks.append(Check(True, "PSF plotter received the expected visit"))
-        else:
-            checks.append(Check(False, f"PSF plotter did not receive the expected visit, got {expected}"))
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
@@ -844,6 +852,9 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_fwhm_focal_plane_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_imexam_dayObs_20250415_seqNum_000088.png", 5000),
             # AOS plots -------
             # FAM donut galleries
             ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000086.png", 5000),
