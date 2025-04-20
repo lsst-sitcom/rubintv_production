@@ -26,14 +26,17 @@ __all__ = [
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
+import matplotlib.dates as mdates
 import numpy as np
 
 # TODO Change these back to relative imports
 from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
 from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.utils.plotting.figures import make_figure
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
@@ -102,6 +105,102 @@ def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
             raise ValueError(f"Failed to parse log line: {message}")
     else:
         raise ValueError(f"Unknown getTaskTime option {method=}")
+
+
+def plotGantt(taskResults: list[TaskResult], figsize=(10, 6), barHeight=0.6):
+    """Plot a Gantt chart of task results.
+
+    For each task, puts a vertical mark at the absolute start and end time,
+    and a horizontal bar in the middle of that region, with a width of the
+    standard deviation of the time taken by that task.
+
+    Parameters
+    ----------
+    taskResults : `list[TaskResult]`
+        The list of task results to plot.
+    figsize : `tuple`
+        The size of the figure.
+    barHeight : `float`
+        The height of the bars in the Gantt chart.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure`
+        The figure object.
+    """
+
+    fig = make_figure(figsize=figsize)
+    ax = fig.gca()
+
+    # filter to those with datetime start/end
+    valid = [
+        tr
+        for tr in taskResults
+        if isinstance(tr.startTimeOverall, datetime) and isinstance(tr.endTimeOverall, datetime)
+    ]
+
+    for i, tr in enumerate(valid):
+        startNum = mdates.date2num(tr.startTimeOverall)
+        endNum = mdates.date2num(tr.endTimeOverall)
+
+        # Plot vertical marks at start and end times
+        ax.plot(startNum, i, marker="|", c="k")
+        ax.plot(endNum, i, marker="|", c="k")
+        ax.plot([startNum, endNum], [i, i], c="k", lw=0.5)
+
+        duration = endNum - startNum
+        ax.barh(i, width=duration, left=startNum, height=barHeight)
+
+    ax.set_yticks(range(len(valid)))
+    # Align labels with the start of each bar
+    ax.set_yticklabels([tr.taskName for tr in valid], ha="right")
+
+    # Add some padding to the left of the y-axis to ensure labels don't get cut
+    # off
+    fig.subplots_adjust(left=0.2)
+
+    # Configure the primary axis for date display at the top
+    # Configure the primary axis for date display at the top
+    ax.xaxis_date()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M:%S"))
+    ax.xaxis.set_ticks_position("top")
+    ax.xaxis.set_label_position("top")
+    ax.set_xlabel("Timestamp")
+
+    # single call to align and rotate top ticks correctly
+    ax.tick_params(
+        axis="x", which="major", pad=2, rotation=30, labeltop=True, labelbottom=False, labelrotation=30
+    )
+
+    # left‑align each label to its tick, keeping the rotated anchor
+    for lbl in ax.xaxis.get_ticklabels():
+        lbl.set_horizontalalignment("left")
+        lbl.set_rotation_mode("anchor")
+
+    # Add a seconds axis at the bottom starting from zero
+    if valid:
+        overall_start = min(tr.startTimeOverall for tr in valid)
+        overall_start_num = mdates.date2num(overall_start)
+
+        # Define functions to convert between date numbers and seconds
+        def date2sec(x):
+            return (x - overall_start_num) * 24 * 60 * 60  # Convert days to seconds
+
+        def sec2date(x):
+            return overall_start_num + x / (24 * 60 * 60)  # Convert seconds to days
+
+        # Create secondary axis at the bottom
+        secax = ax.secondary_xaxis("bottom", functions=(date2sec, sec2date))
+        secax.set_xlabel("Time (seconds from start)")
+
+    # Don't use autofmt_xdate as it can misalign the labels
+    # fig.autofmt_xdate(rotation=30, ha='right')
+
+    # Apply tight_layout after all other formatting
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.85)
+
+    return fig
 
 
 @dataclass
@@ -251,6 +350,16 @@ class TaskResult:
     def numFailures(self) -> int:
         """Number of failures."""
         return len(self.failures)
+
+    @property
+    def startTimeOverall(self) -> datetime:
+        """Overall start time of the first quantum in the set of logs"""
+        return min(log[0].asctime for log in self.logs.values())
+
+    @property
+    def endTimeOverall(self) -> datetime:
+        """Overall end time of the last quantum in the set of logs"""
+        return max(log[-1].asctime for log in self.logs.values())
 
 
 class PerformanceBrowser:
