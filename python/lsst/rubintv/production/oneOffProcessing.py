@@ -362,13 +362,17 @@ class OneOffProcessor(BaseButlerChannel):
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
     def runCalexp(self, dataId: DataCoordinate) -> None:
+        # for safety, as this is now dynamically set in the previous function
+        # and is inside the dataId already
+        self.detector = None
+
         self.log.info(f"Waiting for calexp for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataId)
         assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
         assert visitRecord.instrument == self.instrument, "Logic error in work distribution!"
 
-        visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=self.detector)
+        visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=dataId["detector"])
 
         # is triggered once all CCDs have finished step1 so should be instant
         calexp = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
