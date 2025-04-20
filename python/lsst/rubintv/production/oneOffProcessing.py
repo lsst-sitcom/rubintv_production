@@ -364,7 +364,7 @@ class OneOffProcessor(BaseButlerChannel):
     def runCalexp(self, dataId: DataCoordinate) -> None:
         # for safety, as this is now dynamically set in the previous function
         # and is inside the dataId already
-        self.detector = None
+        self.detector = -999  # this will always error like None would, but keeps it an int for mypy
 
         self.log.info(f"Waiting for calexp for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
