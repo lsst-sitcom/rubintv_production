@@ -60,12 +60,14 @@ except (ImportError, NameError):
 
 
 if TYPE_CHECKING:
+    from lsst.afw.cameraGeom import Camera
     from lsst.daf.butler import Butler
 
     from .utils import LocationConfig
 
 
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2
+WITNESS_DETECTOR_KEY = "RUBINTV_CONTROL_WITNESS_DETECTOR"
 
 
 def decode_string(value: bytes) -> str:
@@ -952,6 +954,48 @@ class RedisHelper:
         if recordJson is None:
             return None
         return expRecordFromJson(recordJson, self.locationConfig)
+
+    def getWitnessDetectorNumber(self, instrument: str, camera: Camera | None = None) -> int:
+        """Get the witness detector number for a given instrument.
+
+        If a valid value is found in redis (either an int or an R22_S11 style
+        string) then return the integer value for the detector.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+
+        Returns
+        -------
+        detectorNum : `int`
+            The witness detector number.
+        """
+        # these aren't controlled by RubinTV so hard-code a return value
+        # we'll probably never use the concept there. LATISS has one chip and
+        # ComCam is dead.
+        if instrument == "LATISS":
+            return 0
+        elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
+            return 4
+
+        if instrument != "LSSTCam":
+            raise ValueError(f"Unknown instrument {instrument=}")
+        if camera is None:
+            raise ValueError("Camera must be provided LSSTCam")
+
+        valueBytes = self.redis.get(WITNESS_DETECTOR_KEY)
+        if valueBytes is not None:
+            value = valueBytes.decode("utf-8")  # could be R11_S11 or 123 as a string now
+            lookupKey: str | int = value
+            if value.isdigit():
+                lookupKey = int(value)
+            try:
+                detector = camera[lookupKey]
+                return detector.getId()
+            except Exception:
+                self.log.warning(f"Found unusable {value=} for sentinel detector in redis, defaulting to 94")
+        return 94  # central chip as the default for both lookup errors and if the key isn't set at all
 
     def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.
