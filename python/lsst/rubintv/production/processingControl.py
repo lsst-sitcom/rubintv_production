@@ -355,6 +355,8 @@ def buildPipelines(
         overrides=[
             ("verifyBiasIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyBiasIsr", "doInterpolate", True),
+            ("verifyBiasIsr", "doBrighterFatter", False),
+            ("verifyBiasIsr", "doCrosstalk", False),
         ],
     )
     pipelines["DARK"] = PipelineComponents(
@@ -364,6 +366,8 @@ def buildPipelines(
         overrides=[
             ("verifyDarkIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyDarkIsr", "doInterpolate", True),
+            ("verifyDarkIsr", "doBrighterFatter", False),
+            ("verifyDarkIsr", "doCrosstalk", False),
         ],
     )
     pipelines["FLAT"] = PipelineComponents(
@@ -373,6 +377,8 @@ def buildPipelines(
         overrides=[
             ("verifyFlatIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyFlatIsr", "doInterpolate", True),
+            ("verifyFlatIsr", "doBrighterFatter", False),
+            ("verifyFlatIsr", "doCrosstalk", False),
         ],
     )
 
