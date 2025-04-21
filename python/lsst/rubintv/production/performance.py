@@ -385,14 +385,14 @@ class PerformanceBrowser:
             butler=butler,
         )
         self.pipelines = pipelines
-        self.data: dict[tuple[int, int], dict[str, TaskResult]] = {}
+        self.data: dict[DimensionRecord, dict[str, TaskResult]] = {}
 
         self.taskDict: dict[str, TaskNode] = {}
         people = self.pipelines.keys()
         for who in people:
             self.taskDict.update(self.pipelines[who].getTasks())
 
-    def loadData(self, dayObs: int, seqNum: int, reload=False) -> None:
+    def loadData(self, expRecord: DimensionRecord, reload=False) -> None:
         """Load data for the given day and sequence number.
 
         Parameters
@@ -403,18 +403,14 @@ class PerformanceBrowser:
             The sequence number.
         """
         # have data and not reloading
-        if (dayObs, seqNum) in self.data and not reload:
+        if expRecord in self.data and not reload:
             return
 
         # don't have data, so try loading regardless
-        if (dayObs, seqNum) not in self.data:
+        if expRecord not in self.data:
             reload = True
 
-        self.data[(dayObs, seqNum)] = {}
-
-        expRecord = getExpRecord(self.butler, dayObs, seqNum)
-        if not expRecord:
-            raise ValueError(f"Failed to get expRecord records for {seqNum=} - has the image been taken yet?")
+        data: dict[str, TaskResult] = {}
         visitRecord = getVisitRecord(self.butler, expRecord)
 
         for taskName, task in self.taskDict.items():
@@ -433,17 +429,16 @@ class PerformanceBrowser:
                 record=record,
                 task=task,
             )
-            self.data[(dayObs, seqNum)][taskName] = taskResult
+            data[taskName] = taskResult
+        self.data[expRecord] = data
 
-    def getResults(self, dayObs: int, seqNum: int, taskName: str, reload: bool = False) -> TaskResult:
+    def getResults(self, expRecord: DimensionRecord, taskName: str, reload: bool = False) -> TaskResult:
         """Get the results for a specific task.
 
         Parameters
         ----------
-        dayObs : `int`
-            The day of observation.
-        seqNum : `int`
-            The sequence number.
+        expRecord : `DimensionRecord`
+            The exposure record.
         taskName : `str`
             The name of the task.
 
@@ -452,15 +447,15 @@ class PerformanceBrowser:
         TaskResult
             The results for the specified task.
         """
-        self.loadData(dayObs, seqNum, reload=reload)
+        self.loadData(expRecord, reload=reload)
         try:
-            return self.data[(dayObs, seqNum)][taskName]
+            return self.data[expRecord][taskName]
         except KeyError:
-            raise ValueError(f"No data found for {taskName} found for {dayObs=}, {seqNum=}")
+            raise ValueError(f"No data found for {taskName} found for {expRecord.id=}")
 
-    def printLogs(self, dayObs: int, seqNum: int, full=False, reload=False) -> None:
-        self.loadData(dayObs, seqNum, reload)
-        data = self.data[(dayObs, seqNum)]
+    def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
+        self.loadData(expRecord, reload)
+        data = self.data[expRecord]
 
         for taskName, taskResult in data.items():
             nItems = len(taskResult.detectors)
