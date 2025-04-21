@@ -1003,8 +1003,12 @@ class HeadProcessController:
                         f" cannot dispatch process for {payload.who}",
                     )
 
-        self.log.info(f"Sent {sentToFree} payloads to free workers, {sentToBusy} to busy workers, "
-                      f"and {notDispatched} were not dispatched for {payload.who}")
+        self.log.info(f"Sent {sentToFree} payloads to free workers and {sentToBusy} to busy workers "
+                      f"for {payload.who}")
+
+        if notDispatched > 0:
+            self.log.warning(f"{notDispatched} payloads were not dispatched for {payload.who}")
+
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
