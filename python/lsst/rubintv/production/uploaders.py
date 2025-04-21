@@ -276,10 +276,10 @@ class MultiUploader(IUploader):
         remoteRequired = getSite() == "summit"
         if (remoteRequired and not self.hasRemote) and not allowNoRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
-        elif remoteRequired and self.hasRemote:
-            remoteOk = self.remoteUploader.checkAccess()
-            if not remoteOk and not allowNoRemote:
-                raise RuntimeError("Failed to connect to remote S3 bucket")
+        # elif remoteRequired and self.hasRemote:
+        #     remoteOk = self.remoteUploader.checkAccess()
+        #     if not remoteOk and not allowNoRemote:
+        #         raise RuntimeError("Failed to connect to remote S3 bucket")
 
         self.log = _LOG.getChild("MultiUploader")
         self.log.info(
