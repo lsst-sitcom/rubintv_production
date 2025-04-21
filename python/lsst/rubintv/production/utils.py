@@ -1484,12 +1484,22 @@ def getFilterColorName(physicalFilter: str) -> str | None:
         The color name.
     """
     filterMap = {
+        # ComCam filters:
         "u_02": "u_color",
         "g_01": "g_color",
         "r_03": "r_color",
         "i_06": "i_color",
         "z_03": "z_color",
         "y_04": "y_color",
+        # LSSTCam filters:
+        "ph_5": "white_color",  # pinhole filter
+        "ef_43": "white_color",  # "empty" filter
+        "u_24": "u_color",
+        "g_6": "g_color",
+        "r_57": "r_color",
+        "i_39": "i_color",
+        "z_20": "z_color",
+        "y_10": "y_color",
     }
     return filterMap.get(physicalFilter)
 
