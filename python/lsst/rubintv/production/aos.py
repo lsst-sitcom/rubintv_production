@@ -418,7 +418,7 @@ class FocalPlaneFWHMPlotter:
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             fig = make_figure(figsize=(12, 9))
             axes = fig.subplots(nrows=1, ncols=1)
-            makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, detectorIds, self.camera, vMax=1.0, saveAs=tempFile)
+            makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, detectorIds, self.camera, saveAs=tempFile)
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(self.instrument),
                 plotName="fwhm_focal_plane",
