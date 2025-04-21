@@ -107,7 +107,7 @@ def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
         raise ValueError(f"Unknown getTaskTime option {method=}")
 
 
-def plotGantt(taskResults: list[TaskResult], figsize=(10, 6), barHeight=0.6):
+def plotGantt(expRecord: DimensionRecord, taskResults: list[TaskResult], figsize=(10, 6), barHeight=0.6):
     """Plot a Gantt chart of task results.
 
     For each task, puts a vertical mark at the absolute start and end time,
@@ -138,6 +138,8 @@ def plotGantt(taskResults: list[TaskResult], figsize=(10, 6), barHeight=0.6):
         for tr in taskResults
         if isinstance(tr.startTimeOverall, datetime) and isinstance(tr.endTimeOverall, datetime)
     ]
+    shutterClose: datetime = expRecord.timespan.end.to_datetime()
+    shutterCloseNum = mdates.date2num(shutterClose)
 
     for i, tr in enumerate(valid):
         startNum = mdates.date2num(tr.startTimeOverall)
@@ -177,21 +179,22 @@ def plotGantt(taskResults: list[TaskResult], figsize=(10, 6), barHeight=0.6):
         lbl.set_horizontalalignment("left")
         lbl.set_rotation_mode("anchor")
 
-    # Add a seconds axis at the bottom starting from zero
-    if valid:
-        overall_start = min(tr.startTimeOverall for tr in valid)
-        overall_start_num = mdates.date2num(overall_start)
+    # Add a vertical reference line at shutterClose time
+    ax.axvline(x=shutterCloseNum, color="r", linestyle="--", alpha=0.7, label="Shutter Close")
 
-        # Define functions to convert between date numbers and seconds
+    # Add a seconds axis at the bottom starting from shutterClose
+    if valid:
+        # Define functions to convert between date numbers and seconds relative
+        # to shutterClose
         def date2sec(x):
-            return (x - overall_start_num) * 24 * 60 * 60  # Convert days to seconds
+            return (x - shutterCloseNum) * 24 * 60 * 60  # Convert days to seconds
 
         def sec2date(x):
-            return overall_start_num + x / (24 * 60 * 60)  # Convert seconds to days
+            return shutterCloseNum + x / (24 * 60 * 60)  # Convert seconds to days
 
         # Create secondary axis at the bottom
         secax = ax.secondary_xaxis("bottom", functions=(date2sec, sec2date))
-        secax.set_xlabel("Time (seconds from start)")
+        secax.set_xlabel("Time (seconds from shutter close)")
 
     # Don't use autofmt_xdate as it can misalign the labels
     # fig.autofmt_xdate(rotation=30, ha='right')
@@ -352,13 +355,17 @@ class TaskResult:
         return len(self.failures)
 
     @property
-    def startTimeOverall(self) -> datetime:
+    def startTimeOverall(self) -> datetime | None:
         """Overall start time of the first quantum in the set of logs"""
+        if not self.logs:
+            return None
         return min(log[0].asctime for log in self.logs.values())
 
     @property
-    def endTimeOverall(self) -> datetime:
+    def endTimeOverall(self) -> datetime | None:
         """Overall end time of the last quantum in the set of logs"""
+        if not self.logs:
+            return None
         return max(log[-1].asctime for log in self.logs.values())
 
 
@@ -452,6 +459,17 @@ class PerformanceBrowser:
             return self.data[expRecord][taskName]
         except KeyError:
             raise ValueError(f"No data found for {taskName} found for {expRecord.id=}")
+
+    def plot(self, expRecord: DimensionRecord, reload: bool = False) -> None:
+        """Plot the results for all tasks."""
+        self.loadData(expRecord, reload=reload)
+        data = self.data[expRecord]
+        if not data:
+            raise ValueError(f"No data found for {expRecord.id=}")
+
+        taskResults = list(data.values())
+        fig = plotGantt(expRecord, taskResults)
+        return fig
 
     def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
         self.loadData(expRecord, reload)
