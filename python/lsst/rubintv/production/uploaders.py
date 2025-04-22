@@ -22,6 +22,7 @@
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -290,43 +291,84 @@ class MultiUploader(IUploader):
     def hasRemote(self):
         return self.remoteUploader is not None
 
+    def _runRemoteUpload(self, method_name: str, *args, **kwargs):
+        """Run a remote upload in a separate thread.
+
+        Parameters
+        ----------
+        method_name : `str`
+            Name of the method to call on the remote uploader.
+        *args, **kwargs
+            Arguments to pass to the method.
+        """
+        if not self.hasRemote:
+            return
+
+        try:
+            method = getattr(self.remoteUploader, method_name)
+            method(*args, **kwargs)
+            self.log.info(f"Successfully uploaded to remote using {method_name}")
+        except Exception as e:
+            self.log.warning(f"Remote upload failed in {method_name}: {str(e)}")
+
     def uploadPerSeqNumPlot(self, *args, **kwargs):
         self.localUploader.uploadPerSeqNumPlot(*args, **kwargs)
         self.log.info("uploaded to local")
 
         if self.hasRemote:
-            self.remoteUploader.uploadPerSeqNumPlot(*args, **kwargs)
-            self.log.info("uploaded to remote")
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadPerSeqNumPlot",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def uploadNightReportData(self, *args, **kwargs):
         self.localUploader.uploadNightReportData(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadNightReportData(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadNightReportData",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def upload(self, *args, **kwargs):
         self.localUploader.upload(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.upload(*args, **kwargs)
+            thread = threading.Thread(target=self._runRemoteUpload, args=("upload",) + args, kwargs=kwargs)
+            thread.daemon = True
+            thread.start()
 
     def uploadMetdata(self, *args, **kwargs):
         self.localUploader.uploadMetdata(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadMetdata(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadMetdata",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def uploadMovie(self, *args, **kwargs):
         self.localUploader.uploadMovie(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadMovie(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadMovie",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def uploadAllSkyStill(self, *args, **kwargs):
         self.localUploader.uploadAllSkyStill(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadAllSkyStill(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadAllSkyStill",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
 
 class S3Uploader(IUploader):
@@ -675,6 +717,8 @@ class S3Uploader(IUploader):
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
         except Exception as e:
             log = logging.getLogger(__name__)
+            # Log the exception but don't raise it to avoid blocking on timeout
+            # errors
             log.exception(f"Failed uploading file {sourceFilename} as Key: {destinationFilename} \n {e}")
         return destinationFilename
 
@@ -788,7 +832,7 @@ class Uploader:
         ------
         ValueError
             Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS
+            channels as specified in CHANNELS.
         RuntimeError
             Raised if the Google cloud storage is not installed/importable.
         """
