@@ -339,11 +339,6 @@ def buildPipelines(
     aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
     aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
 
-    # TODO: DM-50103 we build this regardless while we're still running tests
-    # on ComCam but once we have LSSTCam data at USDF the CI will be rewritten
-    # to run that instead and we can drop all ComCam support from RA
-    aosFileComCam = locationConfig.getAosPipelineFile("LSSTComCam")
-
     cpVerifyDir = getPackageDir("cp_verify")
     biasFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyBias.yaml").as_posix()
     darkFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyDark.yaml").as_posix()
@@ -385,21 +380,28 @@ def buildPipelines(
     pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
     if instrument == "LATISS":
         # TODO: unify SFM for LATISS and LSSTCam once LATISS has step2a working
-        pipelines["SFM"] = PipelineComponents(butler.registry, sfmPipelineFile, ["step1", "step2a"])
+        pipelines["SFM"] = PipelineComponents(
+            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits"]
+        )
     else:
         # TODO: remove nightlyrollup
         pipelines["SFM"] = PipelineComponents(
-            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits" ]
+            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits"]
         )
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
-        pipelines["AOS_DANISH"] = PipelineComponents(butler.registry, aosFileDanish, ["step1", "step2a"])
-        pipelines["AOS_TIE"] = PipelineComponents(butler.registry, aosFileTIE, ["step1", "step2a"])
-        pipelines["AOS_COMCAM"] = PipelineComponents(butler.registry, aosFileComCam, ["step1", "step2a"])
+        pipelines["AOS_DANISH"] = PipelineComponents(
+            butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"]
+        )
+        pipelines["AOS_TIE"] = PipelineComponents(
+            butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"]
+        )
 
-        pipelines["AOS_FAM_TIE"] = PipelineComponents(butler.registry, aosFileTIEFam, ["step1", "step2a"])
+        pipelines["AOS_FAM_TIE"] = PipelineComponents(
+            butler.registry, aosFileTIEFam, ["step1a-detectors", "step1b-visits"]
+        )
         pipelines["AOS_FAM_DANISH"] = PipelineComponents(
-            butler.registry, aosFileDanishFam, ["step1", "step2a"]
+            butler.registry, aosFileDanishFam, ["step1a-detectors", "step1b-visits"]
         )
 
     allGraphs: list[PipelineGraph] = []
@@ -450,7 +452,8 @@ class PipelineComponents:
             self.uris[step] = pipelineFile + f"#{step}"
             pipeline = Pipeline.fromFile(self.uris[step])
 
-            # TODO: Temporary workaround for DM-50107, remove when that is deployed.
+            # TODO: Temporary workaround for DM-50107, remove when that is
+            # deployed.
             pipeline._pipelineIR.steps = []
             if overrides:
                 for override in overrides:
@@ -518,10 +521,6 @@ class HeadProcessController:
         self.nNightlyRollups: int = 0
         self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
         self.currentAosFamPipeline = "AOS_FAM_DANISH"  # ignored for ComCam
-
-        # TODO: DM-50103 remove this:
-        if self.instrument == "LSSTComCam":
-            self.currentAosPipeline = "AOS_COMCAM"
 
         if self.focalPlaneControl is not None:
             if self.locationConfig.location == "bts":

@@ -444,7 +444,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             return
 
-
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
