@@ -149,7 +149,7 @@ class Plotter:
         # animation code.
         path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
         path.mkdir(mode=0o777, parents=True, exist_ok=True)
-        plotName = f"{self.instrument}_{plotName}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
+        plotName = f"{self.instrument}_{plotName}_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
         saveFile = (path / plotName).as_posix()
 
         image = plotFocalPlaneMosaic(
