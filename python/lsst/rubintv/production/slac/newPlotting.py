@@ -110,8 +110,8 @@ class Plotter:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         dataProduct : `str`
-            The data product to use for the plot, either `'postISRCCD'` or
-            `'calexp'`.
+            The data product to use for the plot, either `'post_isr_image'` or
+            `'preliminary_visit_image'`.
         timeout : `int`
             The timeout for waiting for the data to be complete.
 
@@ -131,12 +131,12 @@ class Plotter:
         displayToUse: Any = None
         plotName = "unknown"
         match dataProduct:
-            case "postISRCCD" | "post_isr_image":
+            case "post_isr_image":
                 datapath = self.locationConfig.calculatedDataPath
                 stretch = "CCS"
                 displayToUse = make_figure(figsize=(12, 12))
                 plotName = "focal_plane_mosaic"
-            case "calexp" | "preliminary_visit_image":
+            case "preliminary_visit_image":
                 datapath = self.locationConfig.binnedCalexpPath
                 stretch = "zscale"
                 displayToUse = self.afwDisplay

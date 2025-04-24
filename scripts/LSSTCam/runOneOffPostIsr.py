@@ -63,7 +63,7 @@ oneOffProcessor = OneOffProcessor(
     podDetails=podDetails,
     detectorNumber=94,  # this is the fallback value, the dynamic one comes from redis
     shardsDirectory=shardsDirectory,
-    processingStage="postISRCCD",
+    processingStage="post_isr_image",
     doRaise=getDoRaise(),
 )
 oneOffProcessor.run()
