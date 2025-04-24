@@ -34,7 +34,7 @@ detectorDepth = workerNum
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.STEP2A_WORKER, detectorNumber=None, depth=detectorDepth
+    instrument=instrument, podFlavor=PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=detectorDepth
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -56,7 +56,7 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="step2a",
+    step="step1b",
     awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),

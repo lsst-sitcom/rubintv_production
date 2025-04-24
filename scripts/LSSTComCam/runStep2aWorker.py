@@ -33,7 +33,7 @@ locationConfig = getAutomaticLocationConfig()
 
 workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.STEP2A_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -50,14 +50,14 @@ butler = Butler.from_config(
     writeable=True,
 )
 
-step2aRunner = SingleCorePipelineRunner(
+step1bRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="step2a",
+    step="step1b",
     awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-step2aRunner.run()
+step1bRunner.run()
 sys.exit(1)  # run is an infinite loop, so we should never get here

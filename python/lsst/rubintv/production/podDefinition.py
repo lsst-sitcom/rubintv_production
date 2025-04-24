@@ -41,8 +41,8 @@ class PodFlavor(Enum):
     AOS_WORKER = auto()
     PSF_PLOTTER = auto()
     NIGHTLYROLLUP_WORKER = auto()
-    STEP2A_WORKER = auto()
-    STEP2A_AOS_WORKER = auto()
+    STEP1B_WORKER = auto()
+    STEP1B_AOS_WORKER = auto()
     MOSAIC_WORKER = auto()
     ONE_OFF_EXPRECORD_WORKER = auto()
     ONE_OFF_POSTISR_WORKER = auto()
@@ -69,8 +69,8 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
-        PodFlavor.STEP2A_WORKER: PodType.PER_INSTRUMENT,
-        PodFlavor.STEP2A_AOS_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_AOS_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.ONE_OFF_EXPRECORD_WORKER: PodType.PER_INSTRUMENT,  # one per focal plane, det is meaningless
         PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
