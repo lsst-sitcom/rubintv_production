@@ -37,7 +37,7 @@ locationConfig = getAutomaticLocationConfig()
 # pod type, the detector number defined in the podDetails is therefore None,
 # despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_VISITIMAGE_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -63,7 +63,7 @@ oneOffProcessor = OneOffProcessor(
     podDetails=podDetails,
     detectorNumber=94,  # this is the fallback value, the dynamic one comes from redis
     shardsDirectory=shardsDirectory,
-    processingStage="calexp",
+    processingStage="preliminary_visit_image",
     doRaise=getDoRaise(),
 )
 oneOffProcessor.run()

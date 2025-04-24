@@ -275,7 +275,7 @@ class OneOffProcessor(BaseButlerChannel):
 
     def publishPointingOffsets(
         self,
-        calexp: Exposure,
+        visitImage: Exposure,
         dataId: DataCoordinate,
         expRecord: DimensionRecord,
     ) -> None:
@@ -287,8 +287,8 @@ class OneOffProcessor(BaseButlerChannel):
             "delta Rot (arcsec)": "nan",
         }
 
-        calexpWcs = calexp.wcs
-        if calexpWcs is None:
+        visitImageWcs = visitImage.wcs
+        if visitImageWcs is None:
             self.log.warning(f"Astrometic failed for {dataId} - no pointing offsets calculated")
             md = {expRecord.seq_num: offsets}
             writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
@@ -296,11 +296,11 @@ class OneOffProcessor(BaseButlerChannel):
 
         rawWcs = raw.wcs
         rawSkyCenter = raw.wcs.getSkyOrigin()
-        calExpSkyCenter = calexpWcs.pixelToSky(rawWcs.getPixelOrigin())
-        deltaRa = rawSkyCenter.getRa().asArcseconds() - calExpSkyCenter.getRa().asArcseconds()
-        deltaDec = rawSkyCenter.getDec().asArcseconds() - calExpSkyCenter.getDec().asArcseconds()
+        visitImageSkyCenter = visitImageWcs.pixelToSky(rawWcs.getPixelOrigin())
+        deltaRa = rawSkyCenter.getRa().asArcseconds() - visitImageSkyCenter.getRa().asArcseconds()
+        deltaDec = rawSkyCenter.getDec().asArcseconds() - visitImageSkyCenter.getDec().asArcseconds()
 
-        deltaRot = rawWcs.getRelativeRotationToWcs(calexpWcs)
+        deltaRot = rawWcs.getRelativeRotationToWcs(visitImageWcs)
         deltaRotDeg = deltaRot.asDegrees() % 360
         offset = min(deltaRotDeg, 360 - deltaRotDeg)
         deltaRotArcSec = offset * 3600
@@ -316,16 +316,18 @@ class OneOffProcessor(BaseButlerChannel):
 
     def publishEclipticCoords(
         self,
-        calexp: Exposure,
+        visitImage: Exposure,
         expRecord: DimensionRecord,
     ) -> None:
 
-        calexpWcs = calexp.wcs
-        if calexpWcs is None:
-            self.log.warning(f"Failed to calculate ecliptic coords from calexp for {expRecord.id}")
+        visitImageWcs = visitImage.wcs
+        if visitImageWcs is None:
+            self.log.warning(
+                "Failed to calculate ecliptic coords from preliminary_visit_image" f" for {expRecord.id}"
+            )
             return
 
-        raAngle, decAngle = calexpWcs.getSkyOrigin()
+        raAngle, decAngle = visitImageWcs.getSkyOrigin()
         raDeg = raAngle.asDegrees()
         decDeg = decAngle.asDegrees()
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
@@ -338,13 +340,13 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: eclipticData}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
-    def makeWitnessImage(self, calexp: Exposure, expRecord: DimensionRecord) -> None:
-        detNum = calexp.detector.getId()
-        detName = calexp.detector.getName()
+    def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord) -> None:
+        detNum = visitImage.detector.getId()
+        detName = visitImage.detector.getName()
         title = makeTitle(expRecord, detNum, self.camera)
 
         fig = make_figure(figsize=(12, 12))
-        fig = plot(calexp, figure=fig, stretch="midtone", title=title)
+        fig = plot(visitImage, figure=fig, stretch="midtone", title=title)
 
         ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "witness_detector")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
@@ -361,12 +363,12 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: {"Witness detector": f"{detName} ({detNum})"}}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
-    def runCalexp(self, dataId: DataCoordinate) -> None:
+    def runVisitImage(self, dataId: DataCoordinate) -> None:
         # for safety, as this is now dynamically set in the previous function
         # and is inside the dataId already
         self.detector = -999  # this will always error like None would, but keeps it an int for mypy
 
-        self.log.info(f"Waiting for calexp for {dataId}")
+        self.log.info(f"Waiting for preliminary_visit_image for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataId)
         assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
@@ -375,20 +377,20 @@ class OneOffProcessor(BaseButlerChannel):
         visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=dataId["detector"])
 
         # is triggered once all CCDs have finished step1a so should be instant
-        calexp = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
-        if calexp is None:
+        visitImage = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
+        if visitImage is None:
             self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
         self.log.info("Calculating pointing offsets...")
-        self.publishPointingOffsets(calexp, dataId, expRecord)
+        self.publishPointingOffsets(visitImage, dataId, expRecord)
         self.log.info("Finished calculating pointing offsets")
 
         self.log.info("Calculating ecliptic coords...")
-        self.publishEclipticCoords(calexp, expRecord)
+        self.publishEclipticCoords(visitImage, expRecord)
         self.log.info("Finished publishing ecliptic coords")
 
         self.log.info("Making witness detector image...")
-        self.makeWitnessImage(calexp, expRecord)
+        self.makeWitnessImage(visitImage, expRecord)
         self.log.info("Finished making witness detector image")
         return
 
@@ -719,10 +721,10 @@ class OneOffProcessor(BaseButlerChannel):
             case "post_isr_image":
                 dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
                 self.runPostIsrImage(dataId)
-            case "calexp":
+            case "preliminary_visit_image":
                 detector = self.redisHelper.getWitnessDetectorNumber(self.instrument, self.camera)
                 dataId = dafButler.DataCoordinate.standardize(dataId, detector=detector)
-                self.runCalexp(dataId)
+                self.runVisitImage(dataId)
             case _:
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
 

@@ -179,7 +179,9 @@ class ConsDBPopulator:
         detectorNum: int,
         allowUpdate: bool = False,
     ) -> None:
-        summaryStats = butler.get("calexp.summaryStats", visit=expRecord.id, detector=detectorNum)
+        summaryStats = butler.get(
+            "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
+        )
         self.populateCcdVisitRow(expRecord, detectorNum, summaryStats, allowUpdate=allowUpdate)
 
     def populateCcdVisitRow(

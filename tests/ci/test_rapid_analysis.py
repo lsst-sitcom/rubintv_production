@@ -217,7 +217,7 @@ class TestConfig:
                 display_on_pass=False,
             ),
             TestScript(
-                "scripts/LSSTCam/runOneOffCalexp.py",
+                "scripts/LSSTCam/runOneOffVisitImage.py",
                 ["usdf_testing"],
                 tee_output=False,
                 display_on_pass=False,
@@ -1012,7 +1012,7 @@ class TestRunner:
         """Delete previous output files."""
         locationConfig = LocationConfig("usdf_testing")
         deletion_locations = [
-            locationConfig.binnedCalexpPath,
+            locationConfig.binnedVisitImagePath,
             locationConfig.calculatedDataPath,
             locationConfig.plotPath,
         ]

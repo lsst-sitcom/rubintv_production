@@ -25,7 +25,8 @@ redisHelper = RedisHelper(butler, locationConfig)
 
 # 86 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
 # 87 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
-# 88 - in focus, goes to SFM, expect a calexp mosaic etc. CWFS goes to AOS pods
+# 88 - in focus, goes to SFM, expect a preliminary_visit_image mosaic etc.
+# CWFS goes to AOS pods
 
 where = (
     "exposure.day_obs=20250415 AND exposure.seq_num in (86..88)"

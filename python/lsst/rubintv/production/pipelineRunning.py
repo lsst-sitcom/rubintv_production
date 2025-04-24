@@ -470,8 +470,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
 
     def postProcessCalibrate(self, quantum: Quantum) -> None:
-        # Currently both calibrateImageTask and calibrateTask write a calexp
-        # so unless they diverge the function can be the same for both tasks.
         output_dataset_name = "preliminary_visit_image"
 
         try:
@@ -487,7 +485,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
-            outputPath=self.locationConfig.binnedCalexpPath,
+            outputPath=self.locationConfig.binnedVisitImagePath,
             binSize=self.locationConfig.binning,
         )
         # use a custom "task label" here because step1b on the summit is
@@ -497,7 +495,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # anything, the binned post_isr_images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
-        self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
+        self.redisHelper.reportTaskFinished(self.instrument, "binnedVisitImageCreation", dRef.dataId)
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
 
         try:

@@ -46,7 +46,7 @@ class PodFlavor(Enum):
     MOSAIC_WORKER = auto()
     ONE_OFF_EXPRECORD_WORKER = auto()
     ONE_OFF_POSTISR_WORKER = auto()
-    ONE_OFF_CALEXP_WORKER = auto()
+    ONE_OFF_VISITIMAGE_WORKER = auto()
 
     HEAD_NODE = auto()
 
@@ -74,7 +74,7 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.ONE_OFF_EXPRECORD_WORKER: PodType.PER_INSTRUMENT,  # one per focal plane, det is meaningless
         PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
-        PodFlavor.ONE_OFF_CALEXP_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
+        PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
     }
     return mapping[podFlavor]
 
