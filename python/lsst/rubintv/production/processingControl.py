@@ -347,6 +347,7 @@ def buildPipelines(
         butler.registry,
         biasFile,
         ["verifyBiasIsr"],
+        ["step1a"],
         overrides=[
             ("verifyBiasIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyBiasIsr", "doInterpolate", True),
@@ -358,6 +359,7 @@ def buildPipelines(
         butler.registry,
         darkFile,
         ["verifyDarkIsr"],
+        ["step1a"],
         overrides=[
             ("verifyDarkIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyDarkIsr", "doInterpolate", True),
@@ -369,6 +371,7 @@ def buildPipelines(
         butler.registry,
         flatFile,
         ["verifyFlatIsr"],
+        ["step1a"],
         overrides=[
             ("verifyFlatIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyFlatIsr", "doInterpolate", True),
@@ -377,31 +380,37 @@ def buildPipelines(
         ],
     )
 
-    pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
+    pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"], ["step1a"])
     if instrument == "LATISS":
         # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
         pipelines["SFM"] = PipelineComponents(
-            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits"]
+            butler.registry,
+            sfmPipelineFile,
+            ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
+            ["step1a", "step1b"],
         )
     else:
         # TODO: remove nightlyrollup
         pipelines["SFM"] = PipelineComponents(
-            butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits"]
+            butler.registry,
+            sfmPipelineFile,
+            ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
+            ["step1a", "step1b"],
         )
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
         pipelines["AOS_DANISH"] = PipelineComponents(
-            butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"]
+            butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_TIE"] = PipelineComponents(
-            butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"]
+            butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
 
         pipelines["AOS_FAM_TIE"] = PipelineComponents(
-            butler.registry, aosFileTIEFam, ["step1a-detectors", "step1b-visits"]
+            butler.registry, aosFileTIEFam, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_FAM_DANISH"] = PipelineComponents(
-            butler.registry, aosFileDanishFam, ["step1a-detectors", "step1b-visits"]
+            butler.registry, aosFileDanishFam, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
 
     allGraphs: list[PipelineGraph] = []
@@ -434,6 +443,7 @@ class PipelineComponents:
     graphBytes: dict[str, bytes]
     uris: dict[str, str]
     steps: list[str]
+    stepAliases: list[str]
     pipelineFile: str
 
     def __init__(
@@ -441,16 +451,23 @@ class PipelineComponents:
         registry: Registry,
         pipelineFile: str,
         steps: list[str],
+        stepAliases: list[str],
         overrides: list[tuple[str, str, object]] | None = None,
     ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
         self.pipelineFile = pipelineFile
+        self.stepAliases = stepAliases
 
-        for step in steps:
-            self.uris[step] = pipelineFile + f"#{step}"
-            pipeline = Pipeline.fromFile(self.uris[step])
+        if len(steps) != len(stepAliases):
+            raise ValueError(
+                f"Number of steps ({len(steps)}) does not match number of step names ({len(stepAliases)})"
+            )
+
+        for stepAlias, step in zip(stepAliases, steps):
+            self.uris[stepAlias] = pipelineFile + f"#{step}"
+            pipeline = Pipeline.fromFile(self.uris[stepAlias])
 
             # TODO: Temporary workaround for DM-50107, remove when that is
             # deployed.
@@ -459,8 +476,8 @@ class PipelineComponents:
                 for override in overrides:
                     if override[0] in pipeline.task_labels:
                         pipeline.addConfigOverride(*override)
-            self.graphs[step] = pipeline.to_graph(registry=registry)
-            self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            self.graphs[stepAlias] = pipeline.to_graph(registry=registry)
+            self.graphBytes[stepAlias] = pipelineGraphToBytes(self.graphs[stepAlias])
 
         self.steps = steps
 
@@ -704,28 +721,28 @@ class HeadProcessController:
         match imageType:
             case "bias":
                 self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
-                targetPipelineBytes = self.pipelines["BIAS"].graphBytes["verifyBiasIsr"]
-                targetPipelineGraph = self.pipelines["BIAS"].graphs["verifyBiasIsr"]
+                targetPipelineBytes = self.pipelines["BIAS"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["BIAS"].graphs["step1a"]
                 who = "ISR"
             case "dark":
                 self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style dark processing")
-                targetPipelineBytes = self.pipelines["DARK"].graphBytes["verifyDarkIsr"]
-                targetPipelineGraph = self.pipelines["DARK"].graphs["verifyDarkIsr"]
+                targetPipelineBytes = self.pipelines["DARK"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["DARK"].graphs["step1a"]
                 who = "ISR"
             case "flat":
                 self.log.info(f"Sending {expRecord.id} {imageType=}  to for cp_verify style flat processing")
-                targetPipelineBytes = self.pipelines["FLAT"].graphBytes["verifyFlatIsr"]
-                targetPipelineGraph = self.pipelines["FLAT"].graphs["verifyFlatIsr"]
+                targetPipelineBytes = self.pipelines["FLAT"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["FLAT"].graphs["step1a"]
                 who = "ISR"
             case "unknown":
                 self.log.info(f"Sending {expRecord.id} {imageType=} for full ISR processing")
-                targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
-                targetPipelineGraph = self.pipelines["ISR"].graphs["isr"]
+                targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["ISR"].graphs["step1a"]
                 who = "ISR"
             case _:  # all non-calib, properly headered images
                 self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
-                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a-single-visit-detectors"]
-                targetPipelineGraph = self.pipelines["SFM"].graphs["step1a-single-visit-detectors"]
+                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["SFM"].graphs["step1a"]
                 who = "SFM"
 
         return targetPipelineBytes, targetPipelineGraph, who
