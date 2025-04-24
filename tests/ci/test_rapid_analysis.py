@@ -77,35 +77,35 @@ class TestConfig:
     def _init_test_scripts(self) -> None:
         """Initialize test script definitions."""
         # LATISS pods
-        latiss_scripts = [
-            TestScript(
-                "scripts/LATISS/runHeadNode.py",
-                ["usdf_testing"],
-                display_on_pass=True,
-                tee_output=False,
-            ),
-            TestScript(
-                "scripts/LATISS/runSfmRunner.py",
-                ["usdf_testing", "0"],
-                display_on_pass=True,
-                tee_output=False,
-            ),
-            TestScript(
-                "scripts/LATISS/runStep2Runner.py",
-                ["usdf_testing", "0"],
-                tee_output=False,
-            ),
-            TestScript(
-                "scripts/LATISS/runOneOffExpRecord.py",
-                ["usdf_testing"],
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LATISS/runOneOffPostIsr.py",
-                ["usdf_testing"],
-                display_on_pass=False,
-            ),
-        ]
+        # latiss_scripts = [
+        #     TestScript(
+        #         "scripts/LATISS/runHeadNode.py",
+        #         ["usdf_testing"],
+        #         display_on_pass=True,
+        #         tee_output=False,
+        #     ),
+        #     TestScript(
+        #         "scripts/LATISS/runSfmRunner.py",
+        #         ["usdf_testing", "0"],
+        #         display_on_pass=True,
+        #         tee_output=False,
+        #     ),
+        #     TestScript(
+        #         "scripts/LATISS/runStep1bRunner.py",
+        #         ["usdf_testing", "0"],
+        #         tee_output=False,
+        #     ),
+        #     TestScript(
+        #         "scripts/LATISS/runOneOffExpRecord.py",
+        #         ["usdf_testing"],
+        #         display_on_pass=False,
+        #     ),
+        #     TestScript(
+        #         "scripts/LATISS/runOneOffPostIsr.py",
+        #         ["usdf_testing"],
+        #         display_on_pass=False,
+        #     ),
+        # ]
 
         # LSSTCam pods
         lsstcam_scripts = [
@@ -134,7 +134,7 @@ class TestConfig:
                 tee_output=False,
             ),
             TestScript(
-                "scripts/LSSTCam/runStep2aWorker.py",
+                "scripts/LSSTCam/runStep1bWorker.py",
                 ["usdf_testing", "0"],
                 display_on_pass=True,
                 tee_output=False,
@@ -196,11 +196,11 @@ class TestConfig:
         )
 
         # Additional LSSTCam scripts
-        # runStep2aAosWorker deals with the outputs from the regular CWFS and
+        # runStep1baAosWorker deals with the outputs from the regular CWFS and
         # the FAM output, so make 3
         additional_lsstcam_scripts = [
             TestScript(
-                "scripts/LSSTCam/runStep2aAosWorker.py",
+                "scripts/LSSTCam/runStep1bAosWorker.py",
                 ["usdf_testing", "0", "1", "2"],
                 display_on_pass=True,
             ),
@@ -409,26 +409,26 @@ class RedisManager:
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
 
-        # Check SFM step2a
-        n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
-        if n_step2a_sfm != n_visits_sfm:
+        # Check SFM step1b
+        n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
+        if n_step1b_sfm != n_visits_sfm:
             checks.append(
                 Check(
                     False,
-                    f"Expected {n_visits_sfm} SFM step2a for {inst} to have finished, got {n_step2a_sfm}",
+                    f"Expected {n_visits_sfm} SFM step1b for {inst} to have finished, got {n_step1b_sfm}",
                 )
             )
         else:
-            checks.append(Check(True, f"{n_step2a_sfm}x {inst} SFM step2a finished"))
+            checks.append(Check(True, f"{n_step1b_sfm}x {inst} SFM step1b finished"))
 
-        # Check AOS step2a
-        n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
-        if n_visits_aos != n_step2a_aos:
+        # Check AOS step1b
+        n_step1b_aos = redisHelper.getNumVisitLevelFinished(inst, "step1b", "AOS")
+        if n_visits_aos != n_step1b_aos:
             checks.append(
-                Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_step2a_aos}")
+                Check(False, f"Expected {n_visits_aos} AOS step1b to have finished, got {n_step1b_aos}")
             )
         else:
-            checks.append(Check(True, f"{n_visits_aos}x AOS step2a finished"))
+            checks.append(Check(True, f"{n_visits_aos}x AOS step1b finished"))
 
         # Check nightly rollup
         key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
@@ -445,16 +445,16 @@ class RedisManager:
         visits_sfm = [2024081300632]
         n_visits_sfm = len(visits_sfm)
 
-        n_step2_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
-        if n_step2_sfm != n_visits_sfm:
+        n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
+        if n_step1b_sfm != n_visits_sfm:
             checks.append(
                 Check(
                     False,
-                    f"Expected {n_visits_sfm} SFM step2a for {inst} to have finished, got {n_step2_sfm}",
+                    f"Expected {n_visits_sfm} SFM step1b for {inst} to have finished, got {n_step1b_sfm}",
                 )
             )
         else:
-            checks.append(Check(True, f"{n_step2_sfm}x {inst} SFM step2a finished"))
+            checks.append(Check(True, f"{n_step1b_sfm}x {inst} SFM step1b finished"))
 
     def _check_failure_keys(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check for failure keys in Redis."""

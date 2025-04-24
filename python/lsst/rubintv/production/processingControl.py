@@ -279,10 +279,10 @@ def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardD
 
 
 def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
-    """Get the last task that runs in step2, to know when to trigger rollup.
+    """Get the last task that runs in step1b, to know when to trigger rollup.
 
     This is the task which is run when a decetor-exposure is complete, and
-    which therefore means it's time to trigger the step2a processing if all
+    which therefore means it's time to trigger the step1b processing if all
     quanta are complete.
 
     Parameters
@@ -294,7 +294,7 @@ def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
     Returns
     -------
     taskName : `str`
-        The task which triggers step2a processing.
+        The task which triggers step1b processing.
     """
     # TODO: See if this can be removed entirely now we have finished counters
     if "nightly-validation" in pipelineFile:
@@ -379,7 +379,7 @@ def buildPipelines(
 
     pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"])
     if instrument == "LATISS":
-        # TODO: unify SFM for LATISS and LSSTCam once LATISS has step2a working
+        # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
         pipelines["SFM"] = PipelineComponents(
             butler.registry, sfmPipelineFile, ["step1a-single-visit-detectors", "step1b-single-visit-visits"]
         )
@@ -696,7 +696,7 @@ class HeadProcessController:
             Who this processing is for, either "ISR" or "SFM", "AOS"
         """
 
-        # run isr only for calibs, otherwise run the appropriate step1
+        # run isr only for calibs, otherwise run the appropriate step1a
         targetPipelineBytes: bytes = b""
         imageType = expRecord.observation_type.lower()
 
@@ -723,7 +723,7 @@ class HeadProcessController:
                 targetPipelineGraph = self.pipelines["ISR"].graphs["isr"]
                 who = "ISR"
             case _:  # all non-calib, properly headered images
-                self.log.info(f"Sending {expRecord.id} {imageType=} for full step1 SFM")
+                self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
                 targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a-single-visit-detectors"]
                 targetPipelineGraph = self.pipelines["SFM"].graphs["step1a-single-visit-detectors"]
                 who = "SFM"
@@ -745,7 +745,7 @@ class HeadProcessController:
             return
         assert self.focalPlaneControl is not None  # just for mypy
 
-        targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1"]
+        targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
         who = "AOS"
         detectorPairs = self.focalPlaneControl.getIntraExtraFocalPairs()
 
@@ -883,10 +883,10 @@ class HeadProcessController:
         assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
 
         self.log.info(f"Sending {[r.id for r in expRecords]} to {self.currentAosFamPipeline} pipeline")
-        targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1"]
-        targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1"]
+        targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
+        targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
         # record pipeline config via the first id for interoperability with
-        # CWFS processing. This is just so the step2 dispatch knows what the
+        # CWFS processing. This is just so the step1b dispatch knows what the
         # active pipeline was
         self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosFamPipeline)
 
@@ -1087,7 +1087,7 @@ class HeadProcessController:
             Was anything sent out?
         """
         assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
-        processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1", who=who)
+        processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1a", who=who)
 
         if not processedIds:
             return False
@@ -1095,21 +1095,21 @@ class HeadProcessController:
         completeIds: list[str] = []
         for idStr in processedIds:
             # idStr is "<int>" or "<int>+<int"> for AOS pairs
-            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1", who, idStr)
+            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, idStr)
             nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, idStr, who))
             if nFinished >= nExpected:
                 completeIds.append(idStr)
             if nFinished > nExpected:
                 self.log.warning(
-                    f"Found {nFinished} step1s finished for {idStr=}, but expected {nExpected} for {who=}"
+                    f"Found {nFinished} step1as finished for {idStr=}, but expected {nExpected} for {who=}"
                 )
 
         if not completeIds:
             return False
 
-        podFlavour = PodFlavor.STEP2A_AOS_WORKER if who == "AOS" else PodFlavor.STEP2A_WORKER
+        podFlavour = PodFlavor.STEP1B_AOS_WORKER if who == "AOS" else PodFlavor.STEP1B_WORKER
 
-        self.log.debug(f"For {who}: Found {completeIds=} for step1 for {who}")
+        self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
 
         for idStr in completeIds:
             # idStr is a list of visitIds as a string with a + separator if AOS
@@ -1137,19 +1137,19 @@ class HeadProcessController:
 
             payload = Payload(
                 dataIds=dataCoords,
-                pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step2a"],
+                pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
                 run=self.outputRun,
                 who=who,
             )
 
             worker = self.getSingleWorker(self.instrument, podFlavour)
             if not worker:
-                self.log.warning(f"No worker available for {who} step2a")
+                self.log.warning(f"No worker available for {who} step1b")
                 return False
-            self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
+            self.log.info(f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}")
             self.redisHelper.enqueuePayload(payload, worker)
-            self.log.debug(f"Removing step1 finished counter for {idStr=}")
-            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1", who, idStr)
+            self.log.debug(f"Removing step1a finished counter for {idStr=}")
+            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
 
             # never dispatch this incomplete because it relies on a specific
             # detector having finished. It might have failed, but that's OK
@@ -1186,10 +1186,10 @@ class HeadProcessController:
             # the night plots and dispatching it here")
             return False
 
-        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a", who="SFM")
+        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step1b", who="SFM")
         if numComplete > self.nNightlyRollups:
             self.log.info(
-                f"Found {numComplete - self.nNightlyRollups} more completed step2a's - "
+                f"Found {numComplete - self.nNightlyRollups} more completed step1b's - "
                 " dispatching them for nightly rollup"
             )
             self.nNightlyRollups = numComplete
@@ -1324,7 +1324,7 @@ class HeadProcessController:
             except Exception as e:
                 self.log.exception(f"Failed during of donut PAIR fanout: {e}")
 
-            # for now, only dispatch to step2a once things are complete because
+            # for now, only dispatch to step1b once things are complete because
             # there is some subtlety in the dispatching incomplete things
             # because they will be dispatched again and again until they are
             # complete, and that will happen not when another completes, but at

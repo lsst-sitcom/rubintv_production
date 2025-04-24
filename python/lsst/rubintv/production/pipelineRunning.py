@@ -63,10 +63,10 @@ __all__ = [
 # record when these tasks finish per-quantum so we can trigger off the counts
 TASK_ENDPOINTS_TO_TRACK = (
     "lsst.ip.isr.isrTask.IsrTask",  # for focal plane mosaics
-    "lsst.pipe.tasks.calibrate.CalibrateTask",  # end of step1 for quickLook pipeline
-    "lsst.pipe.tasks.postprocess.TransformSourceTableTask",  # end of step1 for nightly pipeline
-    "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask",  # end of step2a for quickLook pipeline
-    "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step2a for nightly
+    "lsst.pipe.tasks.calibrate.CalibrateTask",  # end of step1a for quickLook pipeline
+    "lsst.pipe.tasks.postprocess.TransformSourceTableTask",  # end of step1a for nightly pipeline
+    "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask",  # end of step1b for quickLook pipeline
+    "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step1b for nightly
 )
 
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera"}
@@ -106,7 +106,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         The step of the pipeline to run with this worker.
     awaitsDataProduct : `str`
         The data product that this runner needs in order to run. Should be set
-        to `"raw"` for step1 runners and `None` for all other ones, as their
+        to `"raw"` for step1a runners and `None` for all other ones, as their
         triggering is dealt with by the head node. TODO: See if this can be
         removed entirely, because this inconsistency is a bit weird.
     queueName : `str`
@@ -210,7 +210,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # this is the case for regular corner CWFS images, and NOT the case
             # for when the pair is coming from a full-focal plane pistoning,
             # where the two ids will be different, and need to be passed to
-            # step2a together.
+            # step1b together.
             compoundId = "+".join(sorted(set(f"{dataId['exposure']}" for dataId in dataIds)))
         elif "visit" in sampleDataId:
             compoundId = "+".join(sorted(set(f"{dataId['visit']}" for dataId in dataIds)))
@@ -357,14 +357,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
 
             # finished looping over nodes
-            if self.step == "step1":
-                self.log.debug(f"Announcing completion of step1 for {compoundId} for {who}")
+            if self.step == "step1a":
+                self.log.debug(f"Announcing completion of step1a for {compoundId} for {who}")
                 self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1", who=who, processingId=compoundId
+                    self.instrument, "step1a", who=who, processingId=compoundId
                 )
-            if self.step == "step2a":
-                self.log.debug(f"Announcing completion of step2a for {compoundId} for {who}")
-                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who)
+            if self.step == "step1b":
+                self.log.debug(f"Announcing completion of step1b for {compoundId} for {who}")
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
@@ -372,7 +372,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     visitId = int(compoundId)  # in SFM this is never compound
                     self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(visitId))
 
-                    # required the visitSummary so needs to be post-step2a
+                    # required the visitSummary so needs to be post-step1b
                     (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
                     self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
                     self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
@@ -380,12 +380,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
-            if self.step == "step1":
+            if self.step == "step1a":
                 self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1", who=who, processingId=compoundId, failed=True
+                    self.instrument, "step1a", who=who, processingId=compoundId, failed=True
                 )
-            if self.step == "step2a":
-                self.redisHelper.reportVisitLevelFinished(self.instrument, "step2a", who=who, failed=True)
+            if self.step == "step1b":
+                self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who, failed=True)
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
@@ -501,7 +501,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             outputPath=self.locationConfig.binnedCalexpPath,
             binSize=self.locationConfig.binning,
         )
-        # use a custom "task label" here because step2a on the summit is
+        # use a custom "task label" here because step1b on the summit is
         # triggered off the end of calibrate, and so needs to have that key in
         # redis remaining in order to run, and the dequeue action of the
         # creation of the focal plane mosaic removes that (as it should). If

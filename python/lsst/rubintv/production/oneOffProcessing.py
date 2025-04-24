@@ -101,8 +101,8 @@ class OneOffProcessor(BaseButlerChannel):
     processingStage : `str`
         The data product that this runner needs in order to run, e.g. if it
         should run once ISR has completed for the specified detector, use
-        "postISRCCD", and if it should run after step1 is complete use "calexp"
-        (or "pvi" once we switch).
+        "postISRCCD", and if it should run after step1a is complete use
+        "calexp" (or "preliminary_visit_image" once we switch).
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
@@ -374,7 +374,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=dataId["detector"])
 
-        # is triggered once all CCDs have finished step1 so should be instant
+        # is triggered once all CCDs have finished step1a so should be instant
         calexp = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
         if calexp is None:
             self.log.warning(f"Failed to get postISRCCD for {dataId}")
