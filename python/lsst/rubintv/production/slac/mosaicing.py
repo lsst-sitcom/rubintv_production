@@ -497,7 +497,7 @@ def plotFocalPlaneMosaic(
     where = "exposure=expId"
     # we hardcode "raw" here the per-CCD binned images are written out
     # by the isrRunners to the dataPath, so we are not looking for butler-
-    # written postISRCCDs.
+    # written post_isr_images.
     dRefs = list(butler.registry.queryDatasets("raw", where=where, bind={"expId": expId}))
 
     logger.info(f"Found {len(dRefs)} dRefs for {expId}")

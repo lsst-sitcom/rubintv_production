@@ -63,7 +63,7 @@ oneOffProcessor = OneOffProcessor(
     podDetails=podDetails,
     detectorNumber=4,  # central CCD for ComCam
     shardsDirectory=shardsDirectory,
-    processingStage="postISRCCD",
+    processingStage="post_isr_image",
     doRaise=getDoRaise(),
 )
 oneOffProcessor.run()

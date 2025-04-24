@@ -63,7 +63,7 @@ oneOffProcessor = OneOffProcessorAuxTel(
     podDetails=podDetails,
     detectorNumber=0,
     shardsDirectory=shardsDirectory,
-    processingStage="postISRCCD",
+    processingStage="post_isr_image",
     doRaise=getDoRaise(),
 )
 oneOffProcessor.run()

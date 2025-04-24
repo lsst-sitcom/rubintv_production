@@ -101,8 +101,8 @@ class OneOffProcessor(BaseButlerChannel):
     processingStage : `str`
         The data product that this runner needs in order to run, e.g. if it
         should run once ISR has completed for the specified detector, use
-        "postISRCCD", and if it should run after step1a is complete use
-        "calexp" (or "preliminary_visit_image" once we switch).
+        "post_isr_image", and if it should run after step1a is complete use
+        "preliminary_visit_image".
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
@@ -239,33 +239,33 @@ class OneOffProcessor(BaseButlerChannel):
             raiseIf(self.doRaise, e, self.log)
             return
 
-    def runPostISRCCD(self, dataId: DataCoordinate) -> None:
-        self.log.info(f"Waiting for postISRCCD for {dataId}")
+    def runPostIsrImage(self, dataId: DataCoordinate) -> None:
+        self.log.info(f"Waiting for post_isr_image for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
 
         # redis signal is sent on the dispatch of the raw, so 40s is plenty but
         # not too much
-        postISR = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=40)
-        if postISR is None:
-            self.log.warning(f"Failed to get postISRCCD for {dataId}")
+        postIsr = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=40)
+        if postIsr is None:
+            self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
 
         if isinstance(self, OneOffProcessorAuxTel):
-            self.runAuxTelProcessing(postISR, expRecord)
+            self.runAuxTelProcessing(postIsr, expRecord)
 
         self.log.info(f"Writing focus Z for {dataId}")
-        self.writeHeaderOrVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeHeaderOrVisitInfoBasedQuantities(postIsr, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
-        self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeObservationAnnotation(postIsr, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Getting physical rotation data from EFD for {dataId}")
         self.writePhysicalRotation(expRecord)
 
         if not isCalibration(expRecord) and not isinstance(self, OneOffProcessorAuxTel):
             self.log.info(f"Calculating PSF for {dataId}")
-            self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
+            self.calcPsfAndWrite(postIsr, expRecord.day_obs, expRecord.seq_num)
 
         if self.locationConfig.location == "summit":
             self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
@@ -377,7 +377,7 @@ class OneOffProcessor(BaseButlerChannel):
         # is triggered once all CCDs have finished step1a so should be instant
         calexp = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
         if calexp is None:
-            self.log.warning(f"Failed to get postISRCCD for {dataId}")
+            self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
         self.log.info("Calculating pointing offsets...")
         self.publishPointingOffsets(calexp, dataId, expRecord)
@@ -656,7 +656,7 @@ class OneOffProcessor(BaseButlerChannel):
         """
         # TODO: DM-49609 unify this code to work for Simonyi as well
         # also the call to this function to the exposure record processor
-        # from the postISR processor.
+        # from the postIsr processor.
         assert expRecord.instrument == "LATISS", "This method is only for AuxTel at present"
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
@@ -716,9 +716,9 @@ class OneOffProcessor(BaseButlerChannel):
             case "expRecord":
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
                 self.runExpRecord(expRecord)
-            case "postISRCCD":
+            case "post_isr_image":
                 dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
-                self.runPostISRCCD(dataId)
+                self.runPostIsrImage(dataId)
             case "calexp":
                 detector = self.redisHelper.getWitnessDetectorNumber(self.instrument, self.camera)
                 dataId = dafButler.DataCoordinate.standardize(dataId, detector=detector)

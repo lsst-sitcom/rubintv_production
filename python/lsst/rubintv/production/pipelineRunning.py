@@ -462,7 +462,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     values={"postisr_pixel_median": postIsrMedian},
                     allow_update=False,
                 )
-                self.log.info(f"Added postISR pixel median to ConsDB for {dRef.dataId}")
+                self.log.info(f"Added post_isr_image pixel median to ConsDB for {dRef.dataId}")
                 md = {expRecord.seq_num: {"PostISR pixel median": postIsrMedian}}
                 shardPath = getShardPath(self.locationConfig, expRecord)
                 writeMetadataShard(shardPath, expRecord.day_obs, md)
@@ -494,7 +494,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # triggered off the end of calibrate, and so needs to have that key in
         # redis remaining in order to run, and the dequeue action of the
         # creation of the focal plane mosaic removes that (as it should). If
-        # anything, the binned postISR images should probably use this
+        # anything, the binned post_isr_images should probably use this
         # mechanism too, and anything else which forks off the main processing
         # trunk.
         self.redisHelper.reportTaskFinished(self.instrument, "binnedCalexpCreation", dRef.dataId)
