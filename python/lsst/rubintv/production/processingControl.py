@@ -349,7 +349,6 @@ def buildPipelines(
         ["verifyBiasIsr"],
         ["step1a"],
         overrides=[
-            ("verifyBiasIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyBiasIsr", "doInterpolate", True),
             ("verifyBiasIsr", "doBrighterFatter", False),
             ("verifyBiasIsr", "doCrosstalk", False),
@@ -361,7 +360,6 @@ def buildPipelines(
         ["verifyDarkIsr"],
         ["step1a"],
         overrides=[
-            ("verifyDarkIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyDarkIsr", "doInterpolate", True),
             ("verifyDarkIsr", "doBrighterFatter", False),
             ("verifyDarkIsr", "doCrosstalk", False),
@@ -373,7 +371,6 @@ def buildPipelines(
         ["verifyFlatIsr"],
         ["step1a"],
         overrides=[
-            ("verifyFlatIsr", "connections.outputExposure", "postISRCCD"),
             ("verifyFlatIsr", "doInterpolate", True),
             ("verifyFlatIsr", "doBrighterFatter", False),
             ("verifyFlatIsr", "doCrosstalk", False),
