@@ -285,8 +285,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
             mdDict = {seqNum: outputDict}
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
-            self.log.info(f"Wrote metadata shard. Putting calexp for {dataId}")
-            self.clobber(calibrateRes.outputExposure, "calexp", visitDataId)
+            self.log.info(f"Wrote metadata shard. Putting preliminary_visit_image for {dataId}")
+            self.clobber(calibrateRes.outputExposure, "preliminary_visit_image", visitDataId)
             tFinal = time.time()
             self.log.info(f"Ran characterizeImage and calibrate in {tFinal - tStart:.2f} seconds")
 
@@ -386,11 +386,13 @@ class CalibrateCcdRunner(BaseButlerChannel):
         """
         dRefs = list(
             self.butler.registry.queryDatasets(
-                "calexp", dataId=visitId, collections=self.outputRunName
+                "preliminary_visit_image", dataId=visitId, collections=self.outputRunName
             ).expanded()
         )
         if len(dRefs) != 1:
-            raise RuntimeError(f"Found {len(dRefs)} calexps for {visitId} and it should have exactly 1")
+            raise RuntimeError(
+                f"Found {len(dRefs)} preliminary_visit_image for {visitId} and it should have exactly 1"
+            )
 
         ddRef = self.butler.getDeferred(dRefs[0])
         visit = ddRef.dataId.byName()["visit"]  # this is a raw int
@@ -434,9 +436,10 @@ class NightReportChannel(BaseButlerChannel):
         # updating the CcdVisitSummaryTable in the hope that the
         # CalibrateCcdRunner is producing. Because that takes longer to run,
         # this means the summary table is often a visit behind, but the only
-        # alternative is to block on waiting for calexps, which, if images
-        # fail/aren't attempted to be produced, would result in no update at
-        # all.
+        # alternative is to block on waiting for preliminary_visit_images,
+        # which, if images fail/aren't attempted to be produced, would result
+        # in no update at all.
+        #
         # This solution is fine as long as there is an end-of-night
         # finalization step to catch everything in the end, and this is
         # easily achieved as we need to reinstantiate a report as each day

@@ -1065,13 +1065,13 @@ class HeadProcessController:
             case _:
                 raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
-    def dispatchCalexpMosaic(self, visitId: int) -> None:
-        """Dispatch a calexp mosaic for the given visitId.
+    def dispatchVisitImageMosaic(self, visitId: int) -> None:
+        """Dispatch a preliminary_visit_image mosaic for the given visitId.
 
         Parameters
         ----------
         visitId : `int`
-            The visit ID to dispatch the calexp mosaic for.
+            The visit ID to dispatch the preliminary_visit_image mosaic for.
         """
         dataProduct = "preliminary_visit_image"
         self.log.info(f"Dispatching complete {dataProduct} mosaic for {visitId}")
@@ -1172,12 +1172,12 @@ class HeadProcessController:
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS":
-                    self.log.info(f"Dispatching the focal plane calexp mosaic for {expRecord.id}")
+                    self.log.info(f"Dispatching the focal plane visit_image mosaic for {expRecord.id}")
                     # TODO: this should be visitId but that's OK for now
-                    self.dispatchCalexpMosaic(expRecord.id)
+                    self.dispatchVisitImageMosaic(expRecord.id)
 
-                    self.log.info(f"Sending {expRecord.id} for one-off calexp processing")
-                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+                    self.log.info(f"Sending {expRecord.id} for one-off visit image processing")
+                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_VISITIMAGE_WORKER)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
             if who == "AOS":

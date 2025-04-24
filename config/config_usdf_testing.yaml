@@ -59,7 +59,7 @@ lsstCamButlerPath: embargo
 scratchPath: /sdf/home/m/mfl/u/rubintv
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
 calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
-binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
+binnedVisitImagePath: /sdf/home/m/mfl/u/rubintv/calculatedData/visitImages
 
 # TMA config:
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata

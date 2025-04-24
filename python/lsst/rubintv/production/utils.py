@@ -337,7 +337,7 @@ class LocationConfig:
         # exist in all the different locations, otherwise it will fail in some
         # locations and not others, so add things with caution.
         self._config
-        self.binnedCalexpPath
+        self.binnedVisitImagePath
         self.calculatedDataPath
         self.plotPath
 
@@ -467,8 +467,8 @@ class LocationConfig:
         return directory
 
     @cached_property
-    def binnedCalexpPath(self):
-        directory = self._config["binnedCalexpPath"]
+    def binnedVisitImagePath(self):
+        directory = self._config["binnedVisitImagePath"]
         self._checkDir(directory)
         return directory
 

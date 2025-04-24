@@ -47,7 +47,7 @@ lsstCamButlerPath: /repo/LSSTCam/butler.yaml
 scratchPath: '/project/rubintv/LSSTComCam'
 plotPath: '/project/rubintv/LSSTComCam/plots'
 calculatedDataPath: '/project/rubintv/calculatedData'
-binnedCalexpPath: /project/rubintv/calculatedData/calexps
+binnedVisitImagePath: /project/rubintv/calculatedData/visitImages
 
 # TMA config:
 tmaMetadataPath: '/project/rubintv/tma/sidecar_metadata'

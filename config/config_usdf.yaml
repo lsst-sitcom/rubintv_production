@@ -7,7 +7,7 @@ dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUnivers
 scratchPath: ''
 plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
 calculatedDataPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData'
-binnedCalexpPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData/calexps'
+binnedVisitImagePath: '/sdf/scratch/rubin/rapid-analysis/calculatedData/visitImages'
 
 # configuration
 binning: 8

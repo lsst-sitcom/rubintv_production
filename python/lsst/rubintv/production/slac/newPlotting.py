@@ -137,9 +137,12 @@ class Plotter:
                 displayToUse = make_figure(figsize=(12, 12))
                 plotName = "focal_plane_mosaic"
             case "preliminary_visit_image":
-                datapath = self.locationConfig.binnedCalexpPath
+                datapath = self.locationConfig.binnedVisitImagePath
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
+                # this name is used by RubinTV internally - do not change
+                # without both changing the frontend code and also renaming
+                # every item with this name in the buckets at all locations
                 plotName = "calexp_mosaic"
             case _:
                 raise ValueError(f"Unknown data product: {dataProduct}")
@@ -237,10 +240,14 @@ class Plotter:
         plotName = None
         match dataProduct:
             case "preliminary_visit_image":
+                # this name is used by RubinTV internally - do not change
+                # without both changing the frontend code and also renaming
+                # every item with this name in the buckets at all locations
                 plotName = "calexp_mosaic"
             case "post_isr_image":
                 plotName = "focal_plane_mosaic"
 
+        # TODO: Add managedTempFile here XXX
         focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
         if focalPlaneFile:  # only upload on plot success
             self.s3Uploader.uploadPerSeqNumPlot(

@@ -320,7 +320,9 @@ class PsfAzElPlotter:
         visitInfo = None
         for detectorId in detectorIds:
             try:
-                visitInfo = self.butler.get("calexp.visitInfo", visit=visitId, detector=detectorId)
+                visitInfo = self.butler.get(
+                    "preliminary_visit_image.visitInfo", visit=visitId, detector=detectorId
+                )
                 break
             except DatasetNotFoundError:
                 pass
