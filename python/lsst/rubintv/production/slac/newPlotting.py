@@ -236,10 +236,6 @@ class Plotter:
 
         plotName = None
         match dataProduct:
-            case "postISRCCD":
-                plotName = "focal_plane_mosaic"
-            case "calexp":
-                plotName = "calexp_mosaic"
             case "preliminary_visit_image":
                 plotName = "calexp_mosaic"
             case "post_isr_image":

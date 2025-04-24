@@ -585,14 +585,9 @@ class RadialPlotter:
     def plotAndUpload(self, expRecord: DimensionRecord) -> None:
 
         sat_col_ref = "calib_psf_used"
-        # imgRefs = self.butler.query_datasets("preliminary_visit_image",
-        # data_id=expRecord.dataId)
-        # srcRefs = self.butler.query_datasets("single_visit_star_footprints",
-        # data_id=expRecord.dataId)
-        # replace with the lines above for the v2 transition
         try:
-            imgRefs = self.butler.query_datasets("calexp", data_id=expRecord.dataId)
-            srcRefs = self.butler.query_datasets("src", data_id=expRecord.dataId)
+            imgRefs = self.butler.query_datasets("preliminary_visit_image", data_id=expRecord.dataId)
+            srcRefs = self.butler.query_datasets("single_visit_star_footprints", data_id=expRecord.dataId)
         except EmptyQueryResultError:
             self.log.error(f"No data found for {expRecord.dataId}")
             return

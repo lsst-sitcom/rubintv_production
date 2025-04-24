@@ -1076,7 +1076,7 @@ class HeadProcessController:
         visitId : `int`
             The visit ID to dispatch the calexp mosaic for.
         """
-        dataProduct = "calexp"  # v2 cleanup here
+        dataProduct = "preliminary_visit_image"
         self.log.info(f"Dispatching complete {dataProduct} mosaic for {visitId}")
 
         dataCoord = DataCoordinate.standardize(
@@ -1237,7 +1237,7 @@ class HeadProcessController:
             return
 
         triggeringTask = "binnedIsrCreation"
-        dataProduct = "postISRCCD"
+        dataProduct = "post_isr_image"
 
         allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
 
