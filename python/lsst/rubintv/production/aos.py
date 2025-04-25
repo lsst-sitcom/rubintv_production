@@ -313,7 +313,9 @@ class PsfAzElPlotter:
         srcDict = {}
         for detectorId in detectorIds:
             try:
-                srcDict[detectorId] = self.butler.get("src", visit=visitId, detector=detectorId)
+                srcDict[detectorId] = self.butler.get(
+                    "single_visit_star_footprints", visit=visitId, detector=detectorId
+                )
             except DatasetNotFoundError:
                 pass
 
@@ -335,7 +337,7 @@ class PsfAzElPlotter:
         # TODO: DM-45437 Use a context manager here and everywhere
         tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
-        self.axes = self.fig.subplots(nrows=2, ncols=2)
+        self.axes = self.fig.subplots(nrows=2, ncols=3)
         makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
 
         self.s3Uploader.uploadPerSeqNumPlot(
