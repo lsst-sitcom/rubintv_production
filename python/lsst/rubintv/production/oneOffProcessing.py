@@ -316,20 +316,11 @@ class OneOffProcessor(BaseButlerChannel):
 
     def publishEclipticCoords(
         self,
-        visitImage: Exposure,
         expRecord: DimensionRecord,
     ) -> None:
 
-        visitImageWcs = visitImage.wcs
-        if visitImageWcs is None:
-            self.log.warning(
-                "Failed to calculate ecliptic coords from preliminary_visit_image" f" for {expRecord.id}"
-            )
-            return
-
-        raAngle, decAngle = visitImageWcs.getSkyOrigin()
-        raDeg = raAngle.asDegrees()
-        decDeg = decAngle.asDegrees()
+        raDeg = expRecord.tracking_ra
+        decDeg = expRecord.tracking_dec
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
 
         eclipticData = {
@@ -384,10 +375,6 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info("Calculating pointing offsets...")
         self.publishPointingOffsets(visitImage, dataId, expRecord)
         self.log.info("Finished calculating pointing offsets")
-
-        self.log.info("Calculating ecliptic coords...")
-        self.publishEclipticCoords(visitImage, expRecord)
-        self.log.info("Finished publishing ecliptic coords")
 
         self.log.info("Making witness detector image...")
         self.makeWitnessImage(visitImage, expRecord)
@@ -545,6 +532,11 @@ class OneOffProcessor(BaseButlerChannel):
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
+
+        self.log.info("Calculating ecliptic coords...")
+        self.publishEclipticCoords(expRecord)
+        self.log.info("Finished publishing ecliptic coords")
+
         if expRecord.instrument == "LATISS":
             self._doMountAnalysisAuxTel(expRecord)
         else:
