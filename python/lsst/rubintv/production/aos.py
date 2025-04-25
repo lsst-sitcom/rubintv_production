@@ -411,7 +411,7 @@ class FocalPlaneFWHMPlotter:
         visitSummary = None
         try:
             # might not be the best query here
-            visitSummary = self.butler.get("visitSummary", visit=visitRecord.id)
+            visitSummary = self.butler.get("preliminary_visit_summary", visit=visitRecord.id)
         except DatasetNotFoundError:
             pass
 
