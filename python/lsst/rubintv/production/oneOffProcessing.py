@@ -333,8 +333,8 @@ class OneOffProcessor(BaseButlerChannel):
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
 
         eclipticData = {
-            "lambda (deg)": f"{lambda_:.2f}",
-            "beta (deg)": f"{beta:.2f}",
+            "Ecliptic Longitude (deg)": f"{lambda_:.2f}",
+            "Ecliptic Latitude (deg)": f"{beta:.2f}",
         }
 
         md = {expRecord.seq_num: eclipticData}
