@@ -339,45 +339,16 @@ def buildPipelines(
     aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
     aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
 
-    cpVerifyDir = getPackageDir("cp_verify")
-    biasFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyBias.yaml").as_posix()
-    darkFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyDark.yaml").as_posix()
-    flatFile = (Path(cpVerifyDir) / "pipelines" / instrument / "verifyFlat.yaml").as_posix()
-    pipelines["BIAS"] = PipelineComponents(
-        butler.registry,
-        biasFile,
-        ["verifyBiasIsr"],
-        ["step1a"],
-        overrides=[
-            ("verifyBiasIsr", "doInterpolate", True),
-            ("verifyBiasIsr", "doBrighterFatter", False),
-            ("verifyBiasIsr", "doCrosstalk", False),
-        ],
-    )
-    pipelines["DARK"] = PipelineComponents(
-        butler.registry,
-        darkFile,
-        ["verifyDarkIsr"],
-        ["step1a"],
-        overrides=[
-            ("verifyDarkIsr", "doInterpolate", True),
-            ("verifyDarkIsr", "doBrighterFatter", False),
-            ("verifyDarkIsr", "doCrosstalk", False),
-        ],
-    )
-    pipelines["FLAT"] = PipelineComponents(
-        butler.registry,
-        flatFile,
-        ["verifyFlatIsr"],
-        ["step1a"],
-        overrides=[
-            ("verifyFlatIsr", "doInterpolate", True),
-            ("verifyFlatIsr", "doBrighterFatter", False),
-            ("verifyFlatIsr", "doCrosstalk", False),
-        ],
-    )
+    drpPipeDir = getPackageDir("drp_pipe")
+    biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
+    darkFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookDark.yaml").as_posix()
+    flatFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookFlat.yaml").as_posix()
 
+    pipelines["BIAS"] = PipelineComponents(butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"])
+    pipelines["DARK"] = PipelineComponents(butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"])
+    pipelines["FLAT"] = PipelineComponents(butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"])
     pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"], ["step1a"])
+
     if instrument == "LATISS":
         # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
         pipelines["SFM"] = PipelineComponents(
