@@ -223,7 +223,7 @@ class ConsDBPopulator:
     def populateVisitRowWithButler(
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
-        visitSummary = butler.get("visitSummary", visit=expRecord.id)
+        visitSummary = butler.get("preliminary_visit_summary", visit=expRecord.id)
         instrument = expRecord.instrument
         self.populateVisitRow(visitSummary, instrument, allowUpdate=allowUpdate)
 
@@ -268,7 +268,7 @@ class ConsDBPopulator:
         nInputs = max([len(visitSummary[col]) for col in visitSummary.columns])
         minInputs = min([len(visitSummary[col]) for col in visitSummary.columns])
         if minInputs != nInputs:
-            raise RuntimeError("visitSummary is jagged - this should be impossible")
+            raise RuntimeError("preliminary_visit_summary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
