@@ -849,6 +849,7 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000086.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000087.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000311.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),

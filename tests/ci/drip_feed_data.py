@@ -27,13 +27,14 @@ redisHelper = RedisHelper(butler, locationConfig)
 # 87 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
 # 88 - in focus, goes to SFM, expect a preliminary_visit_image mosaic etc.
 # CWFS goes to AOS pods
+# 311 - a bias, to test cpVerify pipelines and mosaicing
 
 where = (
-    "exposure.day_obs=20250415 AND exposure.seq_num in (86..88)"
+    "exposure.day_obs=20250415 AND exposure.seq_num in (86..88,311)"
     f" AND instrument='{instrument}'"  # on sky!
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
-assert len(records) == 3, f"Expected 1 record, got {len(records)}"
+assert len(records) == 4, f"Expected 1 record, got {len(records)}"
 
 for record in records:
     assert isinstance(record, DimensionRecord)
