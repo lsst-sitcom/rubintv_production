@@ -254,12 +254,17 @@ class ConsDBPopulator:
             VISIT_MIN_MED_MAX_MAPPING.items(),
             VISIT_MIN_MED_MAX_TOTAL_MAPPING.items(),
         ):
-            for suffix in ["_min", "_max", "_median"]:
-                consDbKey = consDbKeyNoSuffix + suffix
-                typeFunc = changeType(consDbKey)
-                values[consDbKey] = typeFunc(np.nanmin(visitSummary[summaryKey]))
-                values[consDbKey] = typeFunc(np.nanmax(visitSummary[summaryKey]))
-                values[consDbKey] = typeFunc(np.nanmedian(visitSummary[summaryKey]))
+            consDbKey = consDbKeyNoSuffix + "_min"
+            typeFunc = changeType(consDbKey)
+            values[consDbKey] = typeFunc(np.nanmin(visitSummary[summaryKey]))
+
+            consDbKey = consDbKeyNoSuffix + "_max"
+            typeFunc = changeType(consDbKey)
+            values[consDbKey] = typeFunc(np.nanmax(visitSummary[summaryKey]))
+
+            consDbKey = consDbKeyNoSuffix + "_median"
+            typeFunc = changeType(consDbKey)
+            values[consDbKey] = typeFunc(np.nanmedian(visitSummary[summaryKey]))
 
         for summaryKey, consDbKey in VISIT_MIN_MED_MAX_TOTAL_MAPPING.items():
             typeFunc = changeType(consDbKey + "_total")
