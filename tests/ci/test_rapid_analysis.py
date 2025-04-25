@@ -49,7 +49,7 @@ class TestConfig:
         # Test execution settings
         self.do_run_meta_tests = True
         self.do_check_yaml_files = True
-        self.copy_plots_to_public_html = True
+        self.copy_plots_to_public_html = False
         self.debug = False
 
         # Redis settings

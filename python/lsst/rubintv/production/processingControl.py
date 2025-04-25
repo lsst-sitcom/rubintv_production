@@ -730,8 +730,14 @@ class HeadProcessController:
             return
         assert self.focalPlaneControl is not None  # just for mypy
 
-        targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
-        who = "AOS"
+        if not isCalibration(expRecord):
+            targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
+            who = "AOS"
+        else:
+            # send the detectors to the AOS workers for normal ISR processing
+            targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
+            who = "ISR"
+
         detectorPairs = self.focalPlaneControl.getIntraExtraFocalPairs()
 
         payloads: dict[int, Payload] = {}
@@ -785,10 +791,7 @@ class HeadProcessController:
             The expRecord to process.
         """
         # AOS first
-        addCornerChips = True  # XXX this ends up sending corner chips out to SFM - fix this!
-        if not isCalibration(expRecord):
-            self.doAosFanout(expRecord)
-            addCornerChips = False
+        self.doAosFanout(expRecord)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -799,7 +802,7 @@ class HeadProcessController:
         nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
             # excludeCwfs=True if we sent them to AOS
-            detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=not addCornerChips)
+            detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
             nEnabled = len(detectorIds)
         else:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
