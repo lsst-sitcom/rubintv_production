@@ -338,15 +338,18 @@ class PsfAzElPlotter:
         tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
         self.axes = self.fig.subplots(nrows=2, ncols=3)
-        makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
 
-        self.s3Uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(self.instrument),
-            plotName="psf_shape_azel",
-            dayObs=expRecord.day_obs,
-            seqNum=expRecord.seq_num,
-            filename=tempFilename,
-        )
+        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "psf_shape_azel")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as (tempFile, cleanupFunc):
+            makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(self.instrument),
+                plotName="psf_shape_azel",
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=tempFilename,
+                cleanupFunc=cleanupFunc,
+            )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
@@ -529,16 +532,17 @@ class FocusSweepAnalysis:
         self.fig.clf()
         axes = self.fig.subplots(nrows=3, ncols=4)
 
-        tempFilename = tempfile.mktemp(suffix=".png")
-        plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
-
-        self.s3Uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
-            plotName="focus_sweep",
-            dayObs=lastRecord.day_obs,
-            seqNum=lastRecord.seq_num,
-            filename=tempFilename,
-        )
+        ciName = getCiPlotNameFromRecord(self.locationConfig, lastRecord, "focus_sweep")
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as (tempFile, cleanupFunc):
+            plotSweepParabola(data, varName, fit, saveAs=tempFile, figAxes=(self.fig, axes))
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
+                plotName="focus_sweep",
+                dayObs=lastRecord.day_obs,
+                seqNum=lastRecord.seq_num,
+                filename=tempFile,
+                cleanupFunc=cleanupFunc,
+            )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
