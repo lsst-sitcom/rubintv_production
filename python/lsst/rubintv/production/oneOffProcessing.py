@@ -341,6 +341,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "witness_detector")
         with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+            fig.tight_layout()
             fig.savefig(tempFile)
             assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
