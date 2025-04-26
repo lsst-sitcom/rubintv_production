@@ -362,8 +362,8 @@ def buildPipelines(
         pipelines["SFM"] = PipelineComponents(
             butler.registry,
             sfmPipelineFile,
-            ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
-            ["step1a", "step1b"],
+            ["step1a-single-visit-detectors", "step1b-single-visit-visits", "step1d-single-visit-global"],
+            ["step1a", "step1b", "nightlyRollup"],
         )
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
