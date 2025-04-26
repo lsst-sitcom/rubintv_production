@@ -854,7 +854,7 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
             ("LSSTCam/20250415/LSSTCam_fwhm_focal_plane_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_imexam_dayObs_20250415_seqNum_000088.png", 5000),
             # AOS plots -------
             # FAM donut galleries
@@ -870,10 +870,11 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png", 5000),
+            ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
             ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
         ]
+        expected = [(os.path.join(locationConfig.plotPath, file), size) for (file, size) in expected]
 
         destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
         if config.copy_plots_to_public_html:

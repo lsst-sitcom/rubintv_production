@@ -28,15 +28,14 @@ import logging
 import math
 import os
 import sys
-import tempfile
 import time
 import uuid
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Generator
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import yaml
@@ -82,13 +81,11 @@ __all__ = [
     "removeDetector",
     "getFilterColorName",
     "runningCI",
-    "managedTempFile",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
     "runningCI",
-    "getCiPlotName",
-    "getCiPlotNameFromRecord",
-    "managedTempFile",
+    "makePlotFile",
+    "makePlotFileFromRecord",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -1509,79 +1506,27 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
-def getCiPlotNameFromRecord(locationConfig: LocationConfig, record: DimensionRecord, plotType: str) -> str:
+def makePlotFileFromRecord(
+    locationConfig: LocationConfig, record: DimensionRecord, plotType: str, suffix: str
+) -> str:
     dayObs: int = record.day_obs
     seqNum: int = record.seq_num
     instrument: str = record.instrument
-    return getCiPlotName(locationConfig, instrument, dayObs, seqNum, plotType)
+    return makePlotFile(locationConfig, instrument, dayObs, seqNum, plotType, suffix)
 
 
-def getCiPlotName(
-    locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str
+def makePlotFile(
+    locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str, suffix: str
 ) -> str:
-    ciOutputName = (
+    filename = (
         Path(locationConfig.plotPath)
         / instrument
         / str(dayObs)
-        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.{suffix}"
     )
-    return ciOutputName.as_posix()
-
-
-@contextmanager
-def managedTempFile(
-    suffix: str,
-    ciOutputName: str = "",
-) -> Generator[str]:
-    """Context manager for temp files with handling for CI environments.
-
-    In normal operation, this creates a temporary file that is automatically
-    deleted when the context exits. In CI mode, it creates a permanent file in
-    the specified location. This is useful for testing and debugging, as it
-    allows inspection the output files in CI mode. The file is created with
-    a specific name to allow for existence checking.
-
-    Parameters
-    ----------
-    suffix : str
-        File suffix/extension.
-    ciOutputName : str, optional
-        The full name and path to the output file. Must be specified if running
-        in CI mode.
-
-    Yields
-    ------
-    str
-        Path to the temporary file
-    """
-    ciMode = runningCI()
-    if ciMode and not ciOutputName:
-        raise ValueError("CI mode is enabled but no output filename is specified.")
-    if ciMode and os.path.exists(ciOutputName):
-        raise FileExistsError(f"Output file {ciOutputName} already exists.")
-
-    if not ciMode:
-        # Standard operation - use a true temporary file that gets cleaned up
-        # delete=False so that it stays when we yield, but is cleaned up in
-        # finally block.
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tempFile:
-            tempFilename = tempFile.name
-            try:
-                yield tempFilename
-            finally:
-                # Always clean up in normal mode
-                if os.path.exists(tempFilename):
-                    os.unlink(tempFilename)
-    else:
-        # In CI mode, we keep the file for inspection
-        dirname = os.path.dirname(ciOutputName)
-        os.makedirs(dirname, exist_ok=True)
-
-        # Create an empty file to match the behavior of NamedTemporaryFile
-        with open(ciOutputName, "w"):
-            pass
-
-        yield ciOutputName
+    filename.parent.mkdir(mode=0o777, parents=True, exist_ok=True)
+    # add a path.touch() here?
+    return filename.as_posix()
 
 
 def makeTitle(record: DimensionRecord, detector: int | str, camera: Camera) -> str:
