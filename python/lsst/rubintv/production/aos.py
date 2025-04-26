@@ -30,7 +30,6 @@ __all__ = [
 
 import logging
 import subprocess
-import tempfile
 import threading
 from time import sleep, time
 from typing import TYPE_CHECKING
@@ -334,21 +333,18 @@ class PsfAzElPlotter:
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
 
-        # TODO: DM-45437 Use a context manager here and everywhere
-        tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
         self.axes = self.fig.subplots(nrows=2, ncols=3)
 
         ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "psf_shape_azel")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as (tempFile, cleanupFunc):
-            makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
+            makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFile)
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(self.instrument),
                 plotName="psf_shape_azel",
                 dayObs=expRecord.day_obs,
                 seqNum=expRecord.seq_num,
-                filename=tempFilename,
-                cleanupFunc=cleanupFunc,
+                filename=tempFile,
             )
 
     def run(self) -> None:
@@ -533,7 +529,7 @@ class FocusSweepAnalysis:
         axes = self.fig.subplots(nrows=3, ncols=4)
 
         ciName = getCiPlotNameFromRecord(self.locationConfig, lastRecord, "focus_sweep")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as (tempFile, cleanupFunc):
+        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
             plotSweepParabola(data, varName, fit, saveAs=tempFile, figAxes=(self.fig, axes))
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
@@ -541,7 +537,6 @@ class FocusSweepAnalysis:
                 dayObs=lastRecord.day_obs,
                 seqNum=lastRecord.seq_num,
                 filename=tempFile,
-                cleanupFunc=cleanupFunc,
             )
 
     def run(self) -> None:
