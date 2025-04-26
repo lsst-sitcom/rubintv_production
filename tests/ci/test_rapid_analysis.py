@@ -77,35 +77,35 @@ class TestConfig:
     def _init_test_scripts(self) -> None:
         """Initialize test script definitions."""
         # LATISS pods
-        # latiss_scripts = [
-        #     TestScript(
-        #         "scripts/LATISS/runHeadNode.py",
-        #         ["usdf_testing"],
-        #         display_on_pass=True,
-        #         tee_output=False,
-        #     ),
-        #     TestScript(
-        #         "scripts/LATISS/runSfmRunner.py",
-        #         ["usdf_testing", "0"],
-        #         display_on_pass=True,
-        #         tee_output=False,
-        #     ),
-        #     TestScript(
-        #         "scripts/LATISS/runStep1bRunner.py",
-        #         ["usdf_testing", "0"],
-        #         tee_output=False,
-        #     ),
-        #     TestScript(
-        #         "scripts/LATISS/runOneOffExpRecord.py",
-        #         ["usdf_testing"],
-        #         display_on_pass=False,
-        #     ),
-        #     TestScript(
-        #         "scripts/LATISS/runOneOffPostIsr.py",
-        #         ["usdf_testing"],
-        #         display_on_pass=False,
-        #     ),
-        # ]
+        latiss_scripts = [
+            TestScript(
+                "scripts/LATISS/runHeadNode.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runSfmRunner.py",
+                ["usdf_testing", "0"],
+                display_on_pass=True,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runStep1bRunner.py",
+                ["usdf_testing", "0"],
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runOneOffExpRecord.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runOneOffPostIsr.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+            ),
+        ]
 
         # LSSTCam pods
         lsstcam_scripts = [
