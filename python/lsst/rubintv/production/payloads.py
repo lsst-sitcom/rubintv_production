@@ -35,7 +35,11 @@ __all__ = [
     "pipelineGraphFromBytes",
     "Payload",
     "PayloadResult",
+    "RestartPayload",
+    "RESTART_SIGNAL",
 ]
+
+RESTART_SIGNAL = "__RESTART_SIGNAL__"
 
 
 def pipelineGraphToBytes(pipelineGraph: PipelineGraph) -> bytes:
@@ -151,3 +155,25 @@ class PayloadResult:
         json_dict = asdict(self)
         json_dict["payload"] = json.loads(self.payload.to_json())
         return json.dumps(json_dict)
+
+
+class RestartPayload(Payload):
+    """The restart payload.
+
+    Enqueue this payload on a worker so that it restarts without terminating
+    any work in progress.
+
+    Note: do not check for this via `isinstance` because it will be
+    deserialised just like other payloads, and will end up as a `Payload`
+    instance. This class just exists to make instantiation clearer.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            dataIds=[],
+            # these are all unused, but set them to something to be clear if
+            # they end up elsewhere somehow. Can repurose them later if needed.
+            pipelineGraphBytes=b"{RESTART_SIGNAL}",
+            run=f"{RESTART_SIGNAL}",
+            who=f"{RESTART_SIGNAL}",
+        )
