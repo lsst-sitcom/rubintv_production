@@ -56,12 +56,11 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .utils import (
-    getCiPlotNameFromRecord,
     getFilterColorName,
     getRubinTvInstrumentName,
     isCalibration,
+    makePlotFile,
     makeTitle,
-    managedTempFile,
     raiseIf,
     runningCI,
     writeMetadataShard,
@@ -339,18 +338,20 @@ class OneOffProcessor(BaseButlerChannel):
         fig = make_figure(figsize=(12, 12))
         fig = plot(visitImage, figure=fig, stretch="midtone", title=title)
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "witness_detector")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig.tight_layout()
-            fig.savefig(tempFile)
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(expRecord.instrument),
-                plotName="witness_detector",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFile,
-            )
+        plotName = "witness_detector"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "jpg"
+        )
+        fig.tight_layout()
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
 
         md = {expRecord.seq_num: {"Witness detector": f"{detName} ({detNum})"}}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
@@ -426,22 +427,23 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Writing mount analysis shard for {dayObs}-{seqNum}")
         writeMetadataShard(self.shardsDirectory, dayObs, rowData)
 
-        # TODO: DM-45437 Use a context manager here and everywhere
         self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "mount")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig = make_figure(figsize=(10, 8))
-            plotMountErrors(data, errors, fig, saveFilename=tempFile)
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(expRecord.instrument),
-                plotName="mount",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFile,
-            )
-            del fig
+        plotName = "mount"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        fig = make_figure(figsize=(10, 8))
+        plotMountErrors(data, errors, fig, saveFilename=plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
+        del fig
 
     def writeLogMessageShards(self, dayObs: int) -> None:
         """Write a shard containing all the expLog annotations on the dayObs.
@@ -574,49 +576,49 @@ class OneOffProcessor(BaseButlerChannel):
             raiseIf(self.doRaise, e, self.log)
             return
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "event_timeline")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig.savefig(tempFile)
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(expRecord.instrument),
-                plotName="event_timeline",
-                dayObs=dayObs,
-                seqNum=seqNum,
-                filename=tempFile,
-            )
-            self.log.info("Event timeline upload complete")
+        plotName = "event_timeline"
+        plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "png")
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName=plotName,
+            dayObs=dayObs,
+            seqNum=seqNum,
+            filename=plotFile,
+        )
+        self.log.info("Event timeline upload complete")
 
     def _doMountAnalysisAuxTel(self, expRecord: DimensionRecord) -> None:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
         try:
-            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "mount")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                # calculateMountErrors() calculates the errors, but also
-                # performs the plotting. It skips many image types and short
-                # exps and returns False in these cases, otherwise it returns
-                # errors and will have made the plot
-                fig = make_figure(figsize=(16, 16))
-                errors = _calculateMountErrors_oldVersion(
-                    expRecord, self.butler, self.efdClient, fig, tempFile, self.log
-                )
-                if errors is False:
-                    self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
-                    return
+            plotName = "mount"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "png")
+            # calculateMountErrors() calculates the errors, but also, "jpg"
+            # performs the plotting. It skips many image types and short
+            # exps and returns False in these cases, otherwise it returns
+            # errors and will have made the plot
+            fig = make_figure(figsize=(16, 16))
+            errors = _calculateMountErrors_oldVersion(
+                expRecord, self.butler, self.efdClient, fig, plotFile, self.log
+            )
+            if errors is False:
+                self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
+                return
 
-                self.log.info("Uploading mount torque plot to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="mount",
-                    dayObs=dayObs,
-                    seqNum=seqNum,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
-                del fig
+            self.log.info("Uploading mount torque plot to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=dayObs,
+                seqNum=seqNum,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
+            del fig
 
             # write the mount error shard, including the cell coloring flag
             assert errors is not True and errors is not False  # it's either False or the right type
@@ -736,21 +738,23 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
-            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "monitor")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                fig = make_figure(figsize=(12, 12))
-                plotExp(exp, fig, tempFile, doSmooth=False, scalingOption="CCS")
-                self.log.info("Uploading imExam to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="monitor",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
-                del fig
+            plotName = "monitor"
+            plotFile = makePlotFile(
+                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "jpg"
+            )
+            fig = make_figure(figsize=(12, 12))
+            plotExp(exp, fig, plotFile, doSmooth=False, scalingOption="CCS")
+            self.log.info("Uploading imExam to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
+            del fig
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -761,21 +765,23 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
-            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "imexam")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                imExam = ImageExaminer(exp, savePlots=tempFile, doTweakCentroid=True)
-                imExam.plot()
-                self.log.info("Uploading imExam to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="imexam",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
-                del imExam
+            plotName = "imexam"
+            plotFile = makePlotFile(
+                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+            )
+            imExam = ImageExaminer(exp, savePlots=plotFile, doTweakCentroid=True)
+            imExam.plot()
+            self.log.info("Uploading imExam to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
+            del imExam
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -791,19 +797,21 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
         self.log.info(f"Running specExam on {expRecord.dataId}")
         try:
-            ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "specexam")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                summary = SpectrumExaminer(exp, savePlotAs=tempFile)
-                summary.run()
-                self.log.info("Uploading specExam to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="specexam",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
+            plotName = "specexam"
+            plotFile = makePlotFile(
+                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+            )
+            summary = SpectrumExaminer(exp, savePlotAs=plotFile)
+            summary.run()
+            self.log.info("Uploading specExam to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)

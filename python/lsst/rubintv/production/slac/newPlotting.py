@@ -23,7 +23,6 @@ from __future__ import annotations
 __all__ = ["Plotter"]
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import lsst.afw.display as afwDisplay
@@ -32,7 +31,7 @@ from lsst.utils.plotting.figures import make_figure
 
 from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig
+from ..utils import LocationConfig, makePlotFile
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
@@ -147,13 +146,7 @@ class Plotter:
             case _:
                 raise ValueError(f"Unknown data product: {dataProduct}")
 
-        # TODO: DM-49948 this template should go somewhere reusable as it's
-        # relied upon elsewhere so this is fragile at present. Linked in
-        # animation code.
-        path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
-        path.mkdir(mode=0o777, parents=True, exist_ok=True)
-        plotName = f"{self.instrument}_{plotName}_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
-        saveFile = (path / plotName).as_posix()
+        saveFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
 
         image = plotFocalPlaneMosaic(
             butler=self.butler,
@@ -247,7 +240,6 @@ class Plotter:
             case "post_isr_image":
                 plotName = "focal_plane_mosaic"
 
-        # TODO: Add managedTempFile here XXX
         focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
         if focalPlaneFile:  # only upload on plot success
             self.s3Uploader.uploadPerSeqNumPlot(

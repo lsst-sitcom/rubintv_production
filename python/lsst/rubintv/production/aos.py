@@ -57,13 +57,7 @@ from lsst.utils.plotting.figures import make_figure
 
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
-from .utils import (
-    getCiPlotNameFromRecord,
-    getRubinTvInstrumentName,
-    managedTempFile,
-    writeExpRecordMetadataShard,
-    writeMetadataShard,
-)
+from .utils import getRubinTvInstrumentName, makePlotFile, writeExpRecordMetadataShard, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord
@@ -336,16 +330,18 @@ class PsfAzElPlotter:
         self.fig.clf()
         self.axes = self.fig.subplots(nrows=2, ncols=3)
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "psf_shape_azel")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFile)
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(self.instrument),
-                plotName="psf_shape_azel",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFile,
-            )
+        plotName = "psf_shape_azel"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=plotFile)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
@@ -417,18 +413,20 @@ class FocalPlaneFWHMPlotter:
 
         fwhmValues, detectorIds = getFwhmValues(visitSummary)
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, visitRecord, "fwhm_focal_plane")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig = make_figure(figsize=(12, 9))
-            axes = fig.subplots(nrows=1, ncols=1)
-            makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, detectorIds, self.camera, saveAs=tempFile)
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(self.instrument),
-                plotName="fwhm_focal_plane",
-                dayObs=visitRecord.day_obs,
-                seqNum=visitRecord.seq_num,
-                filename=tempFile,
-            )
+        plotName = "fwhm_focal_plane"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, visitRecord.day_obs, visitRecord.seq_num, plotName, "png"
+        )
+        fig = make_figure(figsize=(12, 9))
+        axes = fig.subplots(nrows=1, ncols=1)
+        makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, detectorIds, self.camera, saveAs=plotFile)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=visitRecord.day_obs,
+            seqNum=visitRecord.seq_num,
+            filename=plotFile,
+        )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
@@ -528,16 +526,18 @@ class FocusSweepAnalysis:
         self.fig.clf()
         axes = self.fig.subplots(nrows=3, ncols=4)
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, lastRecord, "focus_sweep")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            plotSweepParabola(data, varName, fit, saveAs=tempFile, figAxes=(self.fig, axes))
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
-                plotName="focus_sweep",
-                dayObs=lastRecord.day_obs,
-                seqNum=lastRecord.seq_num,
-                filename=tempFile,
-            )
+        plotName = "focus_sweep"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, lastRecord.day_obs, lastRecord.seq_num, plotName, "png"
+        )
+        plotSweepParabola(data, varName, fit, saveAs=plotFile, figAxes=(self.fig, axes))
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
+            plotName=plotName,
+            dayObs=lastRecord.day_obs,
+            seqNum=lastRecord.seq_num,
+            filename=plotFile,
+        )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
@@ -608,16 +608,18 @@ class RadialPlotter:
         srcDict = {key: tab.asAstropy()[(tab[sat_col_ref])].to_pandas() for key, tab in srcDict.items()}
         fig = makePanel(imgDict, srcDict, instrument="LSSTCam", figsize=(15, 15), onlyS11=True)
 
-        ciName = getCiPlotNameFromRecord(self.locationConfig, expRecord, "imexam")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig.savefig(tempFile, bbox_inches="tight")
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(self.instrument),
-                plotName="imexam",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFile,
-            )
+        plotName = "imexam"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        fig.savefig(plotFile, bbox_inches="tight")
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
