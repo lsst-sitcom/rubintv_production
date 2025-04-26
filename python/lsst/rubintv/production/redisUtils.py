@@ -679,14 +679,19 @@ class RedisHelper:
         obsId : `int`
             The obsId that was used in the consDbClient.insert() call.
         """
-        # The call to .lower() is because consDB is all lower case, and we
-        # don't want to be sensitive to table capitalization or regular butler
-        # instrument name capitalization.
-        key = f"consdb-{instrument}-{table}-{obsId}".lower()
+        # Use a top-level key per dayObs for all consdb announcements
+        # if it's not per-dayObs then it will never expire
+        dayObs = obsId // 100_000  # hacky but fine for here and keeps the API the same as the previous
+        announcementKey = f"consdb-announcements-{dayObs}"
 
-        if not self.redis.exists(key):
-            self.redis.lpush(key, 1)
-        self.redis.expire(key, CONSDB_ANNOUNCE_EXPIRY_TIME)
+        # Create a unique hash field for the actual announcement
+        field = f"{instrument}-{table}-{obsId}".lower()
+
+        # Set in hash if not already present
+        self.redis.hsetnx(announcementKey, field, 1)
+        # Expire the entire announcementKey after 2 days if if nothing has
+        # landed in that time
+        self.redis.expire(announcementKey, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
     def waitForResultInConsdDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
         """Wait for an item to be available in consDB.
@@ -694,14 +699,6 @@ class RedisHelper:
         NB: this function is only appropriate for items less than 2 days old,
         anything older than that should be assumed to be there, or not, but not
         waited for.
-
-        This function blocks execution and waits for the data to land. It does
-        not retrieve the item, but simply provides the necessary wait for the
-        item to be available. The default timeout of ``None`` is an indefinite
-        wait.
-
-        If the result landed, ``True`` is returned, otherwise, if the timeout
-        elapsed, ``False`` is returned.
 
         Parameters
         ----------
@@ -715,25 +712,25 @@ class RedisHelper:
             The maximum time to wait for the item to appear, in seconds. The
             default of ``None`` is to wait indefinitely.
 
-        Return
-        ------
+        Returns
+        -------
         found : `bool`
-            Was the item found, or did we return because of a timeout?
+            Was the item found before timeout?
         """
-        # this key needs to match the key used in announceResultInConsDb -
-        # maybe add a private method for that (and all the other keys that are
-        # tied together)
-        key = f"consdb-{instrument}-{table}-{obsId}".lower()
+        dayObs = obsId // 100_000  # hacky but fine for here and keeps the API the same as the previous
+        announcementKey = f"consdb-announcements-{dayObs}"
 
-        if timeout is None:
-            timeout = 0
+        field = f"{instrument}-{table}-{obsId}".lower()
 
-        # Wait for an item to appear and put it straight back for others to use
-        item = self.redis.blmove(key, key, timeout, "LEFT", "RIGHT")
-        if item:
-            return True
-        else:
-            return False
+        start_time = time.time()
+        while True:
+            if self.redis.hexists(announcementKey, field):
+                return True
+
+            if timeout is not None and (time.time() - start_time) > timeout:
+                return False
+
+            time.sleep(0.1)  # Small sleep to prevent tight loop
 
     def getExposureForFanout(self, instrument: str) -> DimensionRecord | None:
         """Get the next exposure to process for the specified instrument.
