@@ -894,7 +894,13 @@ class ResultCollector:
                     shutil.copy(full_path, destination)
                 file_size = os.path.getsize(full_path)
                 if file_size >= expected_size:
-                    self.checks.append(Check(True, f"Found expected plot {file} with size {file_size} bytes"))
+                    self.checks.append(
+                        Check(
+                            True,
+                            f"Found expected plot {file.removeprefix(locationConfig.plotPath)}"
+                            f" with size {file_size} bytes",
+                        )
+                    )
                 else:
                     self.checks.append(
                         Check(False, f"Plot {file} exists but is too small: {file_size} bytes")
