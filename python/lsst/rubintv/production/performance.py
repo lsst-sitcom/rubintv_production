@@ -154,7 +154,8 @@ def plotGantt(
     isrStartTime = None
     if "isr" in resultsDict:
         isrResult = resultsDict["isr"]
-        isrStartTime = isrResult.startTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
+        if isrResult.startTimeOverall is not None:
+            isrStartTime = isrResult.startTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
 
     for i, tr in enumerate(valid):
         startNum = mdates.date2num(tr.startTimeOverall)
@@ -193,7 +194,6 @@ def plotGantt(
 
     # legend & stats boxes
     ax.legend(loc="upper right", fontsize="small")  # moved to top-right
-
     if isrStartTime is not None:  # separate stats box
         dt = isrStartTime - shutterClose
         ax.text(
