@@ -86,6 +86,7 @@ __all__ = [
     "runningCI",
     "makePlotFile",
     "makePlotFileFromRecord",
+    "makeWitnessDetectorTitle",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -1529,7 +1530,7 @@ def makePlotFile(
     return filename.as_posix()
 
 
-def makeTitle(record: DimensionRecord, detector: int | str, camera: Camera) -> str:
+def makeWitnessDetectorTitle(record: DimensionRecord, detector: int | str, camera: Camera) -> str:
     """Make a title for a plot based on the exp/visit record and detector.
 
     Parameters

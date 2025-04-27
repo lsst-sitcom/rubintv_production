@@ -60,7 +60,7 @@ from .utils import (
     getRubinTvInstrumentName,
     isCalibration,
     makePlotFile,
-    makeTitle,
+    makeWitnessDetectorTitle,
     raiseIf,
     runningCI,
     writeMetadataShard,
@@ -333,7 +333,7 @@ class OneOffProcessor(BaseButlerChannel):
     def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord) -> None:
         detNum = visitImage.detector.getId()
         detName = visitImage.detector.getName()
-        title = makeTitle(expRecord, detNum, self.camera)
+        title = makeWitnessDetectorTitle(expRecord, detNum, self.camera)
 
         fig = make_figure(figsize=(12, 12))
         fig = plot(visitImage, figure=fig, stretch="midtone", title=title)
