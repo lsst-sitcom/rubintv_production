@@ -24,6 +24,7 @@ __all__ = [
     "PerformanceBrowser",
 ]
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -135,7 +136,8 @@ def makeTitle(record: DimensionRecord) -> str:
 def plotGantt(
     expRecord: DimensionRecord,
     taskResults: list[TaskResult],
-    ignore: list[str] | None = None,
+    ignoreTasks: list[str] | None = None,
+    timings: list[str] | None = None,
     figsize=(10, 6),
     barHeight=0.6,
 ):
@@ -147,8 +149,15 @@ def plotGantt(
 
     Parameters
     ----------
+    expRecord : `DimensionRecord`
+        The exposure or visit record.
     taskResults : `list[TaskResult]`
         The list of task results to plot.
+    ignoreTasks : `list[str]`, optional
+        A list of task names to exclude from the plot.
+    timings : `list[(datetime, str)]`, optional
+        A list of tuples containing a datetime and a string to plot as
+        vertical lines on the Gantt chart and text in the textbox.
     figsize : `tuple`
         The size of the figure.
     barHeight : `float`
@@ -162,30 +171,21 @@ def plotGantt(
     fig = make_figure(figsize=figsize)
     ax = fig.gca()
 
-    if ignore is None:
-        ignore = []
+    if ignoreTasks is None:
+        ignoreTasks = []
+
+    if timings is None:
+        timings = []
 
     valid = [
         tr
         for tr in taskResults
         if isinstance(tr.startTimeOverall, datetime)
         and isinstance(tr.endTimeOverall, datetime)
-        and tr.taskName not in ignore
+        and tr.taskName not in ignoreTasks
     ]
     shutterClose: datetime = expRecord.timespan.end.utc.to_datetime()
     shutterCloseNum = mdates.date2num(shutterClose)
-
-    resultsDict = {tr.taskName: tr for tr in taskResults}
-    isrStartTime = None
-    zernikeEndTime = None
-    if "isr" in resultsDict:
-        isrResult = resultsDict["isr"]
-        if isrResult.startTimeOverall is not None:
-            isrStartTime = isrResult.startTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
-    if "calcZernikesTask" in resultsDict:
-        zernikeResult = resultsDict["calcZernikesTask"]
-        if zernikeResult.endTimeOverall is not None:
-            zernikeEndTime = zernikeResult.endTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
 
     for i, tr in enumerate(valid):
         startNum = mdates.date2num(tr.startTimeOverall)
@@ -223,13 +223,8 @@ def plotGantt(
 
     # legend & stats boxes
     ax.legend(loc="upper right", fontsize="small")  # moved to top-right
-    textBoxText = ""
-    if isrStartTime is not None:  # separate stats box
-        dt = isrStartTime - shutterClose
-        textBoxText += f"Shutter close to isr start: {dt.seconds:.1f} s"
-    if zernikeEndTime is not None:  # add to stats box
-        dt = zernikeEndTime - shutterClose
-        textBoxText += f"\nShutter close to zernike end: {dt.seconds:.1f} s"
+
+    textBoxText = "\n".join(timings)
     if textBoxText:
         ax.text(
             0.98,
@@ -276,6 +271,43 @@ def plotGantt(
     fig.text(0.02, 0.98, title, ha="left", va="top", fontsize="medium")
 
     return fig
+
+
+def calcTimeSinceShutterClose(
+    expRecord: DimensionRecord,
+    taskResult: TaskResult,
+    startOrEnd: str = "start",
+) -> float:
+    """Calculate the time since shutter close for a task result.
+
+    Parameters
+    ----------
+    expRecord : `DimensionRecord`
+        The exposure record.
+    taskResult : `TaskResult`
+        The task result.
+
+    Returns
+    -------
+    timeSinceShutterClose : `float` or `None`
+        The time since shutter close in seconds, or None if not applicable.
+    """
+    if startOrEnd not in ["start", "end"]:
+        raise ValueError(f"Invalid option {startOrEnd=}")
+
+    if taskResult.startTimeOverall is None:  # if it has a start it has an end, and vice versa
+        log = logging.getLogger("lsst.rubintv.production.performance.calcTimeSinceShutterClose")
+        log.warning(f"Task {taskResult.taskName} has no {startOrEnd} time")
+        return float("nan")
+
+    shutterClose: datetime = expRecord.timespan.end.utc.to_datetime()
+    if startOrEnd == "start":
+        taskTime = taskResult.startTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
+    else:  # naked else for mypy, start/end checked on function entry
+        assert taskResult.endTimeOverall is not None, "endTimeOverall should not be None if start is not None"
+        taskTime = taskResult.endTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
+
+    return (taskTime - shutterClose).seconds
 
 
 @dataclass
@@ -532,7 +564,9 @@ class PerformanceBrowser:
         except KeyError:
             raise ValueError(f"No data found for {taskName} found for {expRecord.id=}")
 
-    def plot(self, expRecord: DimensionRecord, reload: bool = False, ignore: list[str] | None = None) -> None:
+    def plot(
+        self, expRecord: DimensionRecord, reload: bool = False, ignoreTasks: list[str] | None = None
+    ) -> None:
         """Plot the results for all tasks."""
         self.loadData(expRecord, reload=reload)
         data = self.data[expRecord]
@@ -540,7 +574,17 @@ class PerformanceBrowser:
             raise ValueError(f"No data found for {expRecord.id=}")
 
         taskResults = list(data.values())
-        fig = plotGantt(expRecord, taskResults, ignore=ignore)
+
+        resultsDict = {tr.taskName: tr for tr in taskResults}
+        textItems = []
+
+        isrDt = calcTimeSinceShutterClose(expRecord, resultsDict["isr"], startOrEnd="start")
+        textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
+
+        zernikeDt = calcTimeSinceShutterClose(expRecord, resultsDict["calcZernikesTask"], startOrEnd="end")
+        textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
+
+        fig = plotGantt(expRecord, taskResults, ignoreTasks=ignoreTasks, timings=textItems)
         return fig
 
     def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
