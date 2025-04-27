@@ -26,7 +26,7 @@ __all__ = [
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import matplotlib.dates as mdates
@@ -107,7 +107,13 @@ def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
         raise ValueError(f"Unknown getTaskTime option {method=}")
 
 
-def plotGantt(expRecord: DimensionRecord, taskResults: list[TaskResult], figsize=(10, 6), barHeight=0.6):
+def plotGantt(
+    expRecord: DimensionRecord,
+    taskResults: list[TaskResult],
+    ignore: list[str] | None = None,
+    figsize=(10, 6),
+    barHeight=0.6,
+):
     """Plot a Gantt chart of task results.
 
     For each task, puts a vertical mark at the absolute start and end time,
@@ -128,18 +134,27 @@ def plotGantt(expRecord: DimensionRecord, taskResults: list[TaskResult], figsize
     fig : `matplotlib.figure.Figure`
         The figure object.
     """
-
     fig = make_figure(figsize=figsize)
     ax = fig.gca()
 
-    # filter to those with datetime start/end
+    if ignore is None:
+        ignore = []
+
     valid = [
         tr
         for tr in taskResults
-        if isinstance(tr.startTimeOverall, datetime) and isinstance(tr.endTimeOverall, datetime)
+        if isinstance(tr.startTimeOverall, datetime)
+        and isinstance(tr.endTimeOverall, datetime)
+        and tr.taskName not in ignore
     ]
-    shutterClose: datetime = expRecord.timespan.end.to_datetime()
+    shutterClose: datetime = expRecord.timespan.end.utc.to_datetime()
     shutterCloseNum = mdates.date2num(shutterClose)
+
+    resultsDict = {tr.taskName: tr for tr in taskResults}
+    isrStartTime = None
+    if "isr" in resultsDict:
+        isrResult = resultsDict["isr"]
+        isrStartTime = isrResult.startTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
 
     for i, tr in enumerate(valid):
         startNum = mdates.date2num(tr.startTimeOverall)
@@ -156,52 +171,64 @@ def plotGantt(expRecord: DimensionRecord, taskResults: list[TaskResult], figsize
     ax.set_yticks(range(len(valid)))
     # Align labels with the start of each bar
     ax.set_yticklabels([tr.taskName for tr in valid], ha="right")
-
-    # Add some padding to the left of the y-axis to ensure labels don't get cut
-    # off
     fig.subplots_adjust(left=0.2)
 
-    # Configure the primary axis for date display at the top
     # Configure the primary axis for date display at the top
     ax.xaxis_date()
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M:%S"))
     ax.xaxis.set_ticks_position("top")
     ax.xaxis.set_label_position("top")
     ax.set_xlabel("Timestamp")
-
-    # single call to align and rotate top ticks correctly
+    # align and rotate top ticks correctly
     ax.tick_params(
         axis="x", which="major", pad=2, rotation=30, labeltop=True, labelbottom=False, labelrotation=30
     )
-
     # left‑align each label to its tick, keeping the rotated anchor
     for lbl in ax.xaxis.get_ticklabels():
         lbl.set_horizontalalignment("left")
         lbl.set_rotation_mode("anchor")
 
-    # Add a vertical reference line at shutterClose time
+    # Shutter-close reference line
     ax.axvline(x=shutterCloseNum, color="r", linestyle="--", alpha=0.7, label="Shutter Close")
 
-    # Add a seconds axis at the bottom starting from shutterClose
+    # legend & stats boxes
+    ax.legend(loc="upper right", fontsize="small")  # moved to top-right
+
+    if isrStartTime is not None:  # separate stats box
+        dt = isrStartTime - shutterClose
+        ax.text(
+            0.98,
+            0.90,
+            f"Shutter close to isr start: {dt.seconds:.1f} s",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            bbox=dict(boxstyle="round", facecolor="w", alpha=0.8),
+        )
+
+    # Semi-transparent grid every 30 s after shutterClose
     if valid:
-        # Define functions to convert between date numbers and seconds relative
-        # to shutterClose
+        lastEndNum = max(mdates.date2num(tr.endTimeOverall) for tr in valid)
+        stepDays = 30 / (24 * 60 * 60)  # 30 s in Matplotlib date units
+        t = shutterCloseNum + stepDays
+        while t <= lastEndNum:
+            ax.axvline(x=t, color="gray", linestyle=":", alpha=0.4, lw=0.5)
+            t += stepDays
+
         def date2sec(x):
-            return (x - shutterCloseNum) * 24 * 60 * 60  # Convert days to seconds
+            return (x - shutterCloseNum) * 24 * 60 * 60
 
         def sec2date(x):
-            return shutterCloseNum + x / (24 * 60 * 60)  # Convert seconds to days
+            return shutterCloseNum + x / (24 * 60 * 60)
 
-        # Create secondary axis at the bottom
         secax = ax.secondary_xaxis("bottom", functions=(date2sec, sec2date))
         secax.set_xlabel("Time (seconds from shutter close)")
 
-    # Don't use autofmt_xdate as it can misalign the labels
-    # fig.autofmt_xdate(rotation=30, ha='right')
-
-    # Apply tight_layout after all other formatting
     fig.tight_layout()
     fig.subplots_adjust(top=0.85)
+
+    # Legend for shutter close
+    ax.legend(loc="upper right", fontsize="small")
 
     return fig
 
@@ -460,7 +487,7 @@ class PerformanceBrowser:
         except KeyError:
             raise ValueError(f"No data found for {taskName} found for {expRecord.id=}")
 
-    def plot(self, expRecord: DimensionRecord, reload: bool = False) -> None:
+    def plot(self, expRecord: DimensionRecord, reload: bool = False, ignore: list[str] | None = None) -> None:
         """Plot the results for all tasks."""
         self.loadData(expRecord, reload=reload)
         data = self.data[expRecord]
@@ -468,7 +495,7 @@ class PerformanceBrowser:
             raise ValueError(f"No data found for {expRecord.id=}")
 
         taskResults = list(data.values())
-        fig = plotGantt(expRecord, taskResults)
+        fig = plotGantt(expRecord, taskResults, ignore=ignore)
         return fig
 
     def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
