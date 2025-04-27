@@ -107,6 +107,31 @@ def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
         raise ValueError(f"Unknown getTaskTime option {method=}")
 
 
+def makeTitle(record: DimensionRecord) -> str:
+    """Make a title for a plot based on the exp/visit record and detector.
+
+    Parameters
+    ----------
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure or visit record.
+    detector : `int` or `str`
+        The detector number or name.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera object.
+
+    Returns
+    -------
+    title : `str`
+        The title for the plot.
+    """
+    r = record
+    title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
+    title += (
+        f"{r.exposure_time:.1f}s {r.observation_type} ({r.physical_filter}) image, {r.observation_reason}"
+    )
+    return title
+
+
 def plotGantt(
     expRecord: DimensionRecord,
     taskResults: list[TaskResult],
@@ -152,10 +177,15 @@ def plotGantt(
 
     resultsDict = {tr.taskName: tr for tr in taskResults}
     isrStartTime = None
+    zernikeEndTime = None
     if "isr" in resultsDict:
         isrResult = resultsDict["isr"]
         if isrResult.startTimeOverall is not None:
             isrStartTime = isrResult.startTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
+    if "calcZernikesTask" in resultsDict:
+        zernikeResult = resultsDict["calcZernikesTask"]
+        if zernikeResult.endTimeOverall is not None:
+            zernikeEndTime = zernikeResult.endTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
 
     for i, tr in enumerate(valid):
         startNum = mdates.date2num(tr.startTimeOverall)
@@ -179,7 +209,6 @@ def plotGantt(
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M:%S"))
     ax.xaxis.set_ticks_position("top")
     ax.xaxis.set_label_position("top")
-    ax.set_xlabel("Timestamp")
     # align and rotate top ticks correctly
     ax.tick_params(
         axis="x", which="major", pad=2, rotation=30, labeltop=True, labelbottom=False, labelrotation=30
@@ -194,16 +223,22 @@ def plotGantt(
 
     # legend & stats boxes
     ax.legend(loc="upper right", fontsize="small")  # moved to top-right
+    textBoxText = ""
     if isrStartTime is not None:  # separate stats box
         dt = isrStartTime - shutterClose
+        textBoxText += f"Shutter close to isr start: {dt.seconds:.1f} s"
+    if zernikeEndTime is not None:  # add to stats box
+        dt = zernikeEndTime - shutterClose
+        textBoxText += f"\nShutter close to zernike end: {dt.seconds:.1f} s"
+    if textBoxText:
         ax.text(
             0.98,
-            0.90,
-            f"Shutter close to isr start: {dt.seconds:.1f} s",
+            0.85,
+            textBoxText,
             transform=ax.transAxes,
             ha="right",
             va="top",
-            bbox=dict(boxstyle="round", facecolor="w", alpha=0.8),
+            bbox=dict(facecolor="w", alpha=0.8),
         )
 
     # Semi-transparent grid every 30 s after shutterClose
@@ -225,10 +260,20 @@ def plotGantt(
         secax.set_xlabel("Time (seconds from shutter close)")
 
     fig.tight_layout()
-    fig.subplots_adjust(top=0.85)
+    # Legend for shutter close and grid lines
+    from matplotlib.lines import Line2D
 
-    # Legend for shutter close
-    ax.legend(loc="upper right", fontsize="small")
+    legend_elements = [
+        Line2D([0], [0], color="r", linestyle="--", alpha=0.9, label="Shutter Close"),
+        Line2D([0], [0], color="gray", linestyle=":", alpha=0.7, lw=0.5, label="30s intervals"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right", fontsize="small")
+
+    # Create a separate title outside the plot area
+    title = makeTitle(expRecord)
+    # Position title in the top-left corner outside the main axes
+    # Using figure coordinates (0,0 is bottom-left of figure)
+    fig.text(0.02, 0.98, title, ha="left", va="top", fontsize="medium")
 
     return fig
 
