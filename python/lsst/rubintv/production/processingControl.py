@@ -1169,6 +1169,7 @@ class HeadProcessController:
         doRollup : `bool`
             Did we do another rollup?
         """
+        return False  # stop running rollups until we have some plots attached etc
         if self.instrument == "LATISS":
             # self.log.info("Consider making a one-off processor for
             # the night plots and dispatching it here")
