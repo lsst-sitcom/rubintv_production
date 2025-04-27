@@ -458,8 +458,8 @@ class PipelineComponents:
             The tasks in the pipeline graph.
         """
         tasks: dict[str, TaskNode] = {}
-        for step in self.steps:
-            tasks.update(self.graphs[step].tasks)
+        for stepAlias in self.stepAliases:
+            tasks.update(self.graphs[stepAlias].tasks)
         return tasks
 
 
