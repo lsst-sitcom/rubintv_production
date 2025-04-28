@@ -47,6 +47,7 @@ class PodFlavor(Enum):
     ONE_OFF_EXPRECORD_WORKER = auto()
     ONE_OFF_POSTISR_WORKER = auto()
     ONE_OFF_VISITIMAGE_WORKER = auto()
+    PERFORMANCE_MONITOR = auto()
 
     HEAD_NODE = auto()
 
@@ -75,6 +76,7 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.ONE_OFF_EXPRECORD_WORKER: PodType.PER_INSTRUMENT,  # one per focal plane, det is meaningless
         PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
         PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
+        PodFlavor.PERFORMANCE_MONITOR: PodType.PER_INSTRUMENT_SINGLETON,  # only one of these I think, for now
     }
     return mapping[podFlavor]
 

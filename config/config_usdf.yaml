@@ -18,6 +18,9 @@ comCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
+raPerformanceDirectory: /sdf/scratch/rubin/rapid-analysis/raPerformance/sidecar_metadata
+raPerformanceShardsDirectory: /sdf/scratch/rubin/rapid-analysis/raPerformance/sidecar_metadata/shards
+
 # LSSTCam config:
 lsstCamAosMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata
 lsstCamAosMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata/shards

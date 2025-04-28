@@ -49,6 +49,9 @@ comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sideca
 comCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata
 comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata/shards
 
+raPerformanceDirectory: /sdf/home/m/mfl/u/rubintv/raPerformance/sidecar_metadata
+raPerformanceShardsDirectory: /sdf/home/m/mfl/u/rubintv/raPerformance/sidecar_metadata/shards
+
 lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards

@@ -22,10 +22,13 @@ from __future__ import annotations
 
 __all__ = [
     "PerformanceBrowser",
+    "PerformanceMonitor",
 ]
 
 import logging
 import re
+import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -33,15 +36,22 @@ from typing import TYPE_CHECKING
 import matplotlib.dates as mdates
 import numpy as np
 
+from lsst.rubintv.production.baseChannels import BaseButlerChannel
+
 # TODO Change these back to relative imports
 from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
-from lsst.rubintv.production.utils import LocationConfig
+from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
+
+from .payloads import RESTART_SIGNAL
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
+
+    from .payloads import Payload
+    from .podDefinition import PodDetails
 
 
 def isVisitType(task: TaskNode) -> bool:
@@ -611,3 +621,101 @@ class PerformanceBrowser:
                 print(f"  {taskResult.numFailures} failures")
                 for detector, failMessage in taskResult.failures.items():
                     print(f"    {detector}: {failMessage}")
+
+
+class PerformanceMonitor(BaseButlerChannel):
+    def __init__(
+        self,
+        locationConfig: LocationConfig,
+        butler: Butler,
+        instrument: str,
+        podDetails: PodDetails,
+        *,
+        doRaise=False,
+    ) -> None:
+        super().__init__(
+            locationConfig=locationConfig,
+            instrument=instrument,
+            butler=butler,
+            watcherType="redis",
+            # TODO: DM-43764 this shouldn't be necessary on the
+            # base class after this ticket, I think.
+            detectors=None,  # unused
+            dataProduct=None,  # unused
+            # TODO: DM-43764 should also be able to fix needing
+            # channelName when tidying up the base class. Needed
+            # in some contexts but not all. Maybe default it to
+            # ''?
+            channelName="",  # unused
+            podDetails=podDetails,
+            doRaise=doRaise,
+            addUploader=True,
+        )
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
+        self.log.info(f"Performance monitor running, consuming from {self.podDetails.queueName}")
+        self.perf = PerformanceBrowser(butler, instrument, locationConfig)
+        self.shardsDirectory = locationConfig.raPerformanceShardsDirectory
+        self.instrument = instrument  # why isn't this being set in the base class?!
+
+    def callback(self, payload: Payload) -> None:
+        """Callback function to be called when a new exposure is available."""
+        if payload.run == RESTART_SIGNAL:
+            self.log.warning("Received RESTART_SIGNAL, exiting")
+            sys.exit(0)
+
+        dataId = payload.dataIds[0]
+        record = None
+        if "exposure" in dataId.dimensions:
+            record = dataId.records["exposure"]
+        elif "visit" in dataId.dimensions:
+            record = dataId.records["visit"]
+
+        if record is None:
+            raise RuntimeError(f"Failed to find exposure or visit record in {dataId=}")
+
+        t0 = time.time()
+        self.perf.loadData(record)
+        loadTime = time.time() - t0
+        self.log.info(f"Loaded data for {record.id} in {loadTime:.2f}s")
+
+        data = self.perf.data[record]
+        if not data:
+            raise ValueError(f"No data found for {record.id=}")
+
+        taskResults = list(data.values())
+        resultsDict = {tr.taskName: tr for tr in taskResults}
+
+        textItems = []
+        rubinTVtableItems: dict[str, str] = {}
+        isrDt = calcTimeSinceShutterClose(record, resultsDict["isr"], startOrEnd="start")
+        textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
+        rubinTVtableItems["isr start time"] = f"{isrDt:.1f} s"
+        zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
+        textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
+        rubinTVtableItems["zernike delivery time"] = f"{zernikeDt:.1f} s"
+
+        fig = plotGantt(record, taskResults, timings=textItems)
+
+        plotName = "timimg_diagram"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, record.day_obs, record.seq_num, plotName, "jpg"
+        )
+        fig.tight_layout()
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument="ra_performance",
+            plotName=plotName,
+            dayObs=record.day_obs,
+            seqNum=record.seq_num,
+            filename=plotFile,
+        )
+
+        # TODO: add something for failures here
+        # for taskName, taskResult in taskResults.items():
+        #     print(f"Task {taskName} completed with {taskResult.numFailures}
+        # failures.")
+
+        md = {record.seq_num: rubinTVtableItems}
+        writeMetadataShard(self.shardsDirectory, record.day_obs, md)
