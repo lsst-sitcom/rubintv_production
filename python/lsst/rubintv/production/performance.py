@@ -688,13 +688,13 @@ class PerformanceMonitor(BaseButlerChannel):
         resultsDict = {tr.taskName: tr for tr in taskResults}
 
         textItems = []
-        rubinTVtableItems: dict[str, str] = {}
+        rubinTVtableItems: dict[str, str | dict[str, str]] = {}
         isrDt = calcTimeSinceShutterClose(record, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
-        rubinTVtableItems["isr start time"] = f"{isrDt:.2f}"
+        rubinTVtableItems["ISR start time (shutter)"] = f"{isrDt:.2f}"
         zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
         textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
-        rubinTVtableItems["zernike delivery time"] = f"{zernikeDt:.2f}"
+        rubinTVtableItems["Zernike delivery time (shutter)"] = f"{zernikeDt:.2f}"
 
         fig = plotGantt(record, taskResults, timings=textItems)
 
@@ -713,10 +713,29 @@ class PerformanceMonitor(BaseButlerChannel):
             filename=plotFile,
         )
 
-        # TODO: add something for failures here
-        # for taskName, taskResult in taskResults.items():
-        #     print(f"Task {taskName} completed with {taskResult.numFailures}
-        # failures.")
+        for taskName, taskResult in data.items():
+            nItems = len(taskResult.detectors)
+            if nItems == 0:
+                continue
+            rubinTVtableItems[taskName] = f"{nItems} datasets"
+            rubinTVtableItems[f"{taskName} min runtime"] = f"{taskResult.minTime:.2f}"
+            rubinTVtableItems[f"{taskName} mean runtime"] = f"{taskResult.meanTime:.2f}"
+            rubinTVtableItems[f"{taskName} max runtime"] = f"{taskResult.maxTime:.2f}"
+            rubinTVtableItems[f"{taskName} std dev"] = f"{taskResult.stdDevTime:.2f}"
+            rubinTVtableItems[f"{taskName} fail count"] = f"{taskResult.numFailures}"
+
+            timingDict = {}
+            timingDict["DISPLAY_VALUE"] = "⏱"
+            for detector, timing in sorted(taskResult.detectorTimings.items()):
+                success = "✅" if detector not in taskResult.failures else "❌"
+                timingDict[f"{detector}"] = f"{success} in {timing:.1f}"
+
+            if taskResult.numFailures > 0:
+                failDict = {}
+                failDict["DISPLAY_VALUE"] = "📖"
+                for detector, failMessage in taskResult.failures.items():
+                    failDict[f"{detector}"] = failMessage
+                rubinTVtableItems[f"{taskName} failures"] = failDict
 
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
