@@ -118,6 +118,6 @@ def getCameraAndPlotName(channel: str) -> tuple[str, str] | None:
         "auxtel_isr_runner": ("auxtel", "isr_runner"),
         "lsstcam_metadata": ("lsstcam", "metadata"),
         "lsstcam_aos_metadata": ("lsstcam_aos", "metadata"),
-        "ra_performance_metadata": ("ra_performance", "metadata"),
+        "ra_performance": ("ra_performance", "metadata"),
     }
     return channelLookup[channel]
