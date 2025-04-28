@@ -1,5 +1,4 @@
 # Required items:
-dataIdScanPath: /project/rubintv/dataIds
 bucketName: rubintv_data_bts
 dimensionUniverseFile: /project/rubintv/butlerDimensionUniverse.json
 

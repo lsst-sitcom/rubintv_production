@@ -35,7 +35,6 @@ butlerWatcher = ButlerWatcher(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    dataProducts="raw",
     doRaise=getDoRaise(),
 )
 butlerWatcher.run()

@@ -57,7 +57,6 @@ if TYPE_CHECKING:
 __all__ = [
     "writeDimensionUniverseFile",
     "getDimensionUniverse",
-    "getGlobPatternForDataProduct",
     "expRecordToUploadFilename",
     "checkRubinTvExternalPackages",
     "raiseIf",
@@ -96,8 +95,6 @@ GOOGLE_CLOUD_MISSING_MSG = (
     "ImportError: Google cloud storage not found. Please install with:\n"
     "    pip install google-cloud-storage"
 )
-
-DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.json")
 
 # ALLOWED_DATASET_TYPES is the types of data that can be written as sharded
 # data. In principle, there is no reason this can't be or shouldn't be totally
@@ -173,24 +170,6 @@ def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
 def getDimensionUniverse(locationConfig: LocationConfig) -> DimensionUniverse:
     duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
     return DimensionUniverse(DimensionConfig(duJson))
-
-
-def getGlobPatternForDataProduct(dataIdPath: str, dataProduct: str, instrument: str) -> str:
-    """Get a glob-style pattern for finding dataId files for a dataProduct.
-
-    These are the dataId files used to signal that a given dataId or
-    dataProduct is ready for use.
-
-    Parameters
-    ----------
-    dataIdPath : `str`
-        The path find the dataIds in.
-    dataProduct : `str`
-        The data product to find the dataIds for.
-    instrument : `str`
-        The instrument.
-    """
-    return DATA_ID_TEMPLATE.format(path=dataIdPath, instrument=instrument, dataProduct=dataProduct, expId="*")
 
 
 def getGlobPatternForShardedData(
@@ -382,12 +361,6 @@ class LocationConfig:
         file = self._config["botButlerPath"]
         self._checkFile(file)
         return file
-
-    @cached_property
-    def dataIdScanPath(self):
-        directory = self._config["dataIdScanPath"]
-        self._checkDir(directory)
-        return directory
 
     @cached_property
     def metadataPath(self):
