@@ -692,9 +692,20 @@ class PerformanceMonitor(BaseButlerChannel):
 
         textItems = []
         rubinTVtableItems: dict[str, str | dict[str, str]] = {}
-        isrDt = calcTimeSinceShutterClose(record, resultsDict["isr"], startOrEnd="start")
-        textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
-        rubinTVtableItems["ISR start time (shutter)"] = f"{isrDt:.2f}"
+
+        isrTaskNames = [k for k in resultsDict.keys() if "isr" in k.lower()]
+        # isr runs on the AOS chips, cpVerifyIsr runs on the imaging chips for
+        # calib type images, so pick deal with the keys and pick the quickest
+        # one to start
+        if len(isrTaskNames) != 0:
+            minTime = 9999999.0
+            for isrTaskName in isrTaskNames:
+                isrDt = calcTimeSinceShutterClose(record, resultsDict[isrTaskName], startOrEnd="start")
+                if isrDt < minTime:
+                    minTime = isrDt
+            textItems.append(f"Shutter close to isr start: {minTime:.1f} s")
+            rubinTVtableItems["ISR start time (shutter)"] = f"{minTime:.2f}"
+
         if "calcZernikesTask" in resultsDict:
             zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
             textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
