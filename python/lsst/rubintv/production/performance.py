@@ -737,6 +737,7 @@ class PerformanceMonitor(BaseButlerChannel):
             for detector, timing in sorted(taskResult.detectorTimings.items()):
                 success = "✅" if detector not in taskResult.failures else "❌"
                 timingDict[f"{detector}"] = f"{success} in {timing:.1f}"
+            rubinTVtableItems[f"{taskName} timings"] = timingDict
 
             if taskResult.numFailures > 0:
                 failDict = {}
