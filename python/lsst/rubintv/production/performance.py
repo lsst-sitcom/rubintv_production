@@ -591,8 +591,11 @@ class PerformanceBrowser:
         isrDt = calcTimeSinceShutterClose(expRecord, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
 
-        zernikeDt = calcTimeSinceShutterClose(expRecord, resultsDict["calcZernikesTask"], startOrEnd="end")
-        textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
+        if "calcZernikesTask" in resultsDict:
+            zernikeDt = calcTimeSinceShutterClose(
+                expRecord, resultsDict["calcZernikesTask"], startOrEnd="end"
+            )
+            textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
 
         fig = plotGantt(expRecord, taskResults, ignoreTasks=ignoreTasks, timings=textItems)
         return fig
@@ -692,9 +695,10 @@ class PerformanceMonitor(BaseButlerChannel):
         isrDt = calcTimeSinceShutterClose(record, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
         rubinTVtableItems["ISR start time (shutter)"] = f"{isrDt:.2f}"
-        zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
-        textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
-        rubinTVtableItems["Zernike delivery time (shutter)"] = f"{zernikeDt:.2f}"
+        if "calcZernikesTask" in resultsDict:
+            zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
+            textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
+            rubinTVtableItems["Zernike delivery time (shutter)"] = f"{zernikeDt:.2f}"
 
         rubinTVtableItems["Exposure time"] = record.exposure_time
         rubinTVtableItems["Image type"] = record.observation_type
