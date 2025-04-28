@@ -609,6 +609,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def raPerformanceDirectory(self) -> str:
+        directory = self._config["raPerformanceDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def raPerformanceShardsDirectory(self) -> str:
+        directory = self._config["raPerformanceShardsDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
