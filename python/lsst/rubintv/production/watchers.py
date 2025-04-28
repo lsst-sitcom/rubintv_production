@@ -40,7 +40,6 @@ from .utils import (
     getGlobPatternForShardedData,
     raiseIf,
     safeJsonOpen,
-    writeDataIdFile,
 )
 
 if TYPE_CHECKING:
@@ -348,7 +347,6 @@ class ButlerWatcher:
                                     f"Skipping dispatching {expRecord.instrument}-{expRecord.id} as"
                                     " it was dispatched by a ButlerWatcher in a previous life"
                                 )
-                        writeDataIdFile(self.locationConfig.dataIdScanPath, product, expRecord, log=self.log)
                         lastWrittenIds[product] = expRecord.id
 
             except Exception as e:

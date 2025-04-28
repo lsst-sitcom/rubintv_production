@@ -57,7 +57,6 @@ if TYPE_CHECKING:
 __all__ = [
     "writeDimensionUniverseFile",
     "getDimensionUniverse",
-    "writeDataIdFile",
     "getGlobPatternForDataProduct",
     "expRecordToUploadFilename",
     "checkRubinTvExternalPackages",
@@ -174,38 +173,6 @@ def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
 def getDimensionUniverse(locationConfig: LocationConfig) -> DimensionUniverse:
     duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
     return DimensionUniverse(DimensionConfig(duJson))
-
-
-def writeDataIdFile(
-    dataIdPath: str, dataProduct: str, expRecord: DimensionRecord, log: Logger | None = None
-) -> None:
-    """Write a dataId file for a dataProduct to be consumed by a FileWatcher.
-
-    Note that the dataProduct can be any string, it need not be restricted to
-    dafButler dataProducts.
-
-    Parameters
-    ----------
-    dataIdPath : `str`
-        The path to write the dataId file to.
-    dataProduct : `str`
-        The data product to write the dataId file for.
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record to write the dataId file for.
-    log : `logging.Logger`, optional
-        The logger to use. If provided, and info-level message is logged about
-        where what file was written.
-    """
-    expId = expRecord.id
-    dayObs = expRecord.day_obs
-    seqNum = expRecord.seq_num
-    outFile = DATA_ID_TEMPLATE.format(
-        path=dataIdPath, instrument=expRecord.instrument, dataProduct=dataProduct, expId=expId
-    )
-    with open(outFile, "w") as f:
-        f.write(json.dumps(expRecord.to_simple().json()))
-    if log:
-        log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
 
 
 def getGlobPatternForDataProduct(dataIdPath: str, dataProduct: str, instrument: str) -> str:

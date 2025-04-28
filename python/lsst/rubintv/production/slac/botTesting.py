@@ -47,7 +47,7 @@ from ..utils import (
     writeDataShard,
     writeMetadataShard,
 )
-from ..watchers import FileWatcher, writeDataIdFile
+from ..watchers import FileWatcher
 from .mosaicing import getBinnedImageExpIds, getBinnedImageFiles, plotFocalPlaneMosaic, writeBinnedImage
 from .utils import (
     fullAmpDictToPerCcdDicts,
@@ -564,7 +564,11 @@ class RawProcesser:
             )
             self.log.info(f"Wrote rawNoises data shard for detector {detNum}")
             # then signal we're done for downstream
-            writeDataIdFile(self.locationConfig.dataIdScanPath, "rawNoises", expRecord, self.log)
+            # TODO: note that the removal of writeDataIdFile here will mean
+            # that downstream code will no longer file. This whole file can
+            # probably be remove now though, so just noting here that it's no
+            # longer functional. It could be replaced with a redis trigger if
+            # needed though.
 
             postIsr = self.runIsr(raw)
 
@@ -574,7 +578,11 @@ class RawProcesser:
                 outputPath=self.locationConfig.calculatedDataPath,
                 binSize=self.locationConfig.binning,
             )
-            writeDataIdFile(self.locationConfig.dataIdScanPath, "binnedImage", expRecord, self.log)
+            # TODO: note that the removal of writeDataIdFile here will mean
+            # that downstream code will no longer file. This whole file can
+            # probably be remove now though, so just noting here that it's no
+            # longer functional. It could be replaced with a redis trigger if
+            # needed though.
             self.log.info(f"Wrote binned image for detector {detNum}")
 
             del raw
