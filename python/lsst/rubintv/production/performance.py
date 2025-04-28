@@ -674,6 +674,7 @@ class PerformanceMonitor(BaseButlerChannel):
         if record is None:
             raise RuntimeError(f"Failed to find exposure or visit record in {dataId=}")
 
+        self.log.info(f"Analyzing timing info for {record.id}...")
         t0 = time.time()
         self.perf.loadData(record)
         loadTime = time.time() - t0
@@ -690,10 +691,10 @@ class PerformanceMonitor(BaseButlerChannel):
         rubinTVtableItems: dict[str, str] = {}
         isrDt = calcTimeSinceShutterClose(record, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
-        rubinTVtableItems["isr start time"] = f"{isrDt:.1f} s"
+        rubinTVtableItems["isr start time"] = f"{isrDt:.2f}"
         zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
         textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
-        rubinTVtableItems["zernike delivery time"] = f"{zernikeDt:.1f} s"
+        rubinTVtableItems["zernike delivery time"] = f"{zernikeDt:.2f}"
 
         fig = plotGantt(record, taskResults, timings=textItems)
 
