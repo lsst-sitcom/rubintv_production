@@ -696,6 +696,10 @@ class PerformanceMonitor(BaseButlerChannel):
         textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
         rubinTVtableItems["Zernike delivery time (shutter)"] = f"{zernikeDt:.2f}"
 
+        rubinTVtableItems["Exposure time"] = record.exposure_time
+        rubinTVtableItems["Image type"] = record.observation_type
+        rubinTVtableItems["Target"] = record.target_name
+
         fig = plotGantt(record, taskResults, timings=textItems)
 
         plotName = "timimg_diagram"
