@@ -1,7 +1,6 @@
 bucketName: rubintv_data
 
 # Required items:
-dataIdScanPath: /sdf/home/m/mfl/u/rubintv/dataIds
 dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
 
 # Summit items:

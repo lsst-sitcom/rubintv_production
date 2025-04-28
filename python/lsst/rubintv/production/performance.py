@@ -638,9 +638,7 @@ class PerformanceMonitor(BaseButlerChannel):
     ) -> None:
         super().__init__(
             locationConfig=locationConfig,
-            instrument=instrument,
             butler=butler,
-            watcherType="redis",
             # TODO: DM-43764 this shouldn't be necessary on the
             # base class after this ticket, I think.
             detectors=None,  # unused

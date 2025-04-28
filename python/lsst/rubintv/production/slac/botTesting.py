@@ -39,6 +39,7 @@ from lsst.summit.utils.butlerUtils import getExpRecord
 from lsst.summit.utils.utils import getExpRecordAge
 from lsst.utils.iteration import ensure_iterable
 
+from ..podDefinition import PodDetails, PodFlavor
 from ..uploaders import MultiUploader, Uploader
 from ..utils import (
     getGlobPatternForShardedData,
@@ -47,7 +48,7 @@ from ..utils import (
     writeDataShard,
     writeMetadataShard,
 )
-from ..watchers import FileWatcher
+from ..watchers import RedisWatcher
 from .mosaicing import getBinnedImageExpIds, getBinnedImageFiles, plotFocalPlaneMosaic, writeBinnedImage
 from .utils import (
     fullAmpDictToPerCcdDicts,
@@ -265,8 +266,13 @@ class RawProcesser:
         self.detectors = list(ensure_iterable(detectors))
         name = f'rawProcesser_{instrument}_{",".join([str(d) for d in self.detectors])}'
         self.log = _LOG.getChild(name)
-        self.watcher = FileWatcher(
-            locationConfig=locationConfig, instrument=self.instrument, dataProduct="raw", doRaise=doRaise
+        # XXX this is NOT the way to add this watcher, jus hacking this in to
+        # make mypy pass while we think about whether to remove this entire
+        # file
+        self.watcher = RedisWatcher(
+            butler=butler,
+            locationConfig=locationConfig,
+            podDetails=PodDetails("LSSTCam", PodFlavor.SFM_WORKER, 0, 0),
         )
 
         self.isrTask = self.makeIsrTask()
@@ -630,12 +636,16 @@ class Plotter:
         self.s3Uploader = MultiUploader()
         self.log = _LOG.getChild(f"plotter_{self.instrument}")
         # currently watching for binnedImage as this is made last
-        self.watcher = FileWatcher(
+
+        # XXX this is NOT the way to add this watcher, jus hacking this in to
+        # make mypy pass while we think about whether to remove this entire
+        # file
+        self.watcher = RedisWatcher(
+            butler=butler,
             locationConfig=locationConfig,
-            instrument=self.instrument,
-            dataProduct="binnedImage",
-            doRaise=doRaise,
+            podDetails=PodDetails("LSSTCam", PodFlavor.MOSAIC_WORKER, 0, 0),
         )
+
         self.fig = plt.figure(figsize=(12, 12))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
