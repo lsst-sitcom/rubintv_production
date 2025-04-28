@@ -317,7 +317,7 @@ def calcTimeSinceShutterClose(
         assert taskResult.endTimeOverall is not None, "endTimeOverall should not be None if start is not None"
         taskTime = taskResult.endTimeOverall.astimezone(timezone.utc).replace(tzinfo=None)
 
-    return (taskTime - shutterClose).seconds
+    return (taskTime - shutterClose).total_seconds()
 
 
 @dataclass
