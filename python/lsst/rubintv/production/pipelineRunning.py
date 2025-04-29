@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import sys
 import time
 from typing import TYPE_CHECKING
@@ -30,7 +31,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
-from lsst.pipe.base import PipelineGraph, QuantumGraph
+from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
@@ -316,12 +317,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             if not qg:
                 raise RuntimeError(f"No work found for {dataIds}")
 
+            nCpus = int(os.getenv("LIMITS_CPU", 1))
+            self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
+
             executor = SingleQuantumExecutor(
                 None,
                 taskFactory=TaskFactory(),
                 limited_butler_factory=lambda _: self.cachingButler,
                 clobberOutputs=True,  # check with Jim if this is how we should handle clobbering
                 raise_on_partial_outputs=False,
+                resources=ExecutionResources(num_cores=nCpus),
             )
 
             for node in qg:
