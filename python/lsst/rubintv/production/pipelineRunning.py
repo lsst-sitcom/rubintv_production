@@ -604,8 +604,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
 
         average_result = np.nanmean(rowSums)
+        residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
 
-        outputDict = {"Residual AOS FWHM": f"{average_result:.2f}"}
+        outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
         labels = {"_" + k: "measured" for k in outputDict.keys()}
         outputDict.update(labels)
         dayObs = expRecord.day_obs
