@@ -22,8 +22,8 @@
 import logging
 import time
 
-import lsst.daf.butler as dafButler
-from lsst.daf.butler import DataCoordinate
+from lsst.daf.butler import Butler, DataCoordinate
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -33,11 +33,12 @@ log = logging.getLogger(__name__)
 log.info("Starting butlerCanary")
 print("Wrote a log message")
 
-b = dafButler.Butler("embargo", collections="LSSTCam/defaults")
+locationConfig = getAutomaticLocationConfig()
+butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/defaults"])
 
 while True:
 
-    query = b.registry.queryDimensionRecords("exposure", datasets=["raw"])
+    query = butler.registry.queryDimensionRecords("exposure", datasets=["raw"])
     records = list(query.order_by("-exposure.timespan.end").limit(1))
     exposure_dataId = records[0].dataId
     log.info(f"Using exposure {exposure_dataId}")
@@ -46,7 +47,7 @@ while True:
     for detector in range(189):
         dataId = DataCoordinate.standardize(exposure_dataId, detector=detector)
         start = time.time()
-        raw = b.get("raw", dataId=dataId)
+        raw = butler.get("raw", dataId=dataId)
         end = time.time()
         duration = end - start
         log.info(f"Butler get duration: {duration}")
