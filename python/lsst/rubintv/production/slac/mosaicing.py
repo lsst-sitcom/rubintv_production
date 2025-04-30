@@ -39,7 +39,6 @@ from lsst.afw.fits import FitsError
 from lsst.afw.image import Exposure, Image, ImageF
 from lsst.pipe.base import Struct
 from lsst.summit.utils import getQuantiles
-from lsst.utils.iteration import ensure_iterable
 
 from ..utils import isFileWorldWritable
 
@@ -112,28 +111,6 @@ def getBinnedImageExpIds(path: str, instrument: str) -> list[int]:
     binnedImages = getBinnedImageFiles(path, instrument)
     expIds = sorted(set([int(os.path.basename(f).split("_")[0]) for f in binnedImages]))
     return expIds
-
-
-def writeBinnedImageFromDeferredRefs(
-    deferredDatasetRefs: list[DeferredDatasetHandle], outputPath: str, binSize: int
-) -> None:
-    """Write a binned image out for a single or list of deferredDatasetRefs.
-
-    Parameters
-    ----------
-    deferredDatasetRefs : `lsst.daf.butler.DeferredDatasetRef` or
-                          `list` [`lsst.daf.butler.DeferredDatasetRef`]
-        The dataRef(s).
-    outputPath : `str`
-        The path on disk to write the binned images to.
-    binSize : `int`
-        The binning factor.
-    """
-    deferredDatasetRefs = list(ensure_iterable(deferredDatasetRefs))
-    for dRef in deferredDatasetRefs:
-        exp = dRef.get()
-        instrument = cast(str, dRef.dataId["instrument"])
-        writeBinnedImage(exp, instrument=instrument, outputPath=outputPath, binSize=binSize)
 
 
 def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: int) -> None:
