@@ -56,11 +56,6 @@ class Plotter:
     readouts), deletes the input data, both to tidy up after itself, and to
     signal that this was completely processed and nothing is left to do.
 
-    The Replotter class, which inherits from this one, will replot anything
-    that it finds to be complete later on, motivating this to leave any
-    incomplete data, so that other processes can make complete plots once their
-    input processing has finished.
-
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
