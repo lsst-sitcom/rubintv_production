@@ -93,26 +93,6 @@ def getBinnedImageFiles(path: str, instrument: str, expId: int | None = None) ->
     return binnedImages
 
 
-def getBinnedImageExpIds(path: str, instrument: str) -> list[int]:
-    """Get a list of the exposure IDs for which binned images exist.
-
-    Parameters
-    ----------
-    path : `str`
-        The path to search for binned images.
-    instrument : `str`
-        The instrument name, e.g. 'LSSTCam'.
-
-    Returns
-    -------
-    expIds : `list` [`int`]
-        The list of exposure IDs.
-    """
-    binnedImages = getBinnedImageFiles(path, instrument)
-    expIds = sorted(set([int(os.path.basename(f).split("_")[0]) for f in binnedImages]))
-    return expIds
-
-
 def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: int) -> None:
     """Bin an image and write it to disk.
 
