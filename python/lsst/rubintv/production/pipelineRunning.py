@@ -448,18 +448,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             return
 
+        expRecord = dRef.dataId.records["exposure"]
+        assert expRecord is not None, "expRecord is None, this shouldn't be possible"
+
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
             outputPath=self.locationConfig.calculatedDataPath,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
             binSize=self.locationConfig.binning,
         )
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
         self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
             try:
-                expRecord = dRef.dataId.records["exposure"]
-                assert expRecord is not None, "expRecord is None, this shouldn't be possible"
                 detectorNum = exp.getDetector().getId()
                 postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
                 ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
@@ -490,10 +493,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             return
 
+        visitRecord = dRef.dataId.records["visit"]
+        assert visitRecord is not None, "visitRecord is None, this shouldn't be possible"
+
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
             outputPath=self.locationConfig.binnedVisitImagePath,
+            dayObs=visitRecord.day_obs,
+            seqNum=visitRecord.seq_num,
             binSize=self.locationConfig.binning,
         )
         # use a custom "task label" here because step1b on the summit is

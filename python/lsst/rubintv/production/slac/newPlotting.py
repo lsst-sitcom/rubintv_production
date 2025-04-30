@@ -114,7 +114,6 @@ class Plotter:
         filename : `str`
             The filename the plot was saved to, or "" if the plot failed.
         """
-        expId = expRecord.id
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
@@ -146,7 +145,8 @@ class Plotter:
         image = plotFocalPlaneMosaic(
             butler=self.butler,
             figureOrDisplay=displayToUse,
-            expId=expId,
+            dayObs=dayObs,
+            seqNum=seqNum,
             camera=self.camera,
             binSize=self.locationConfig.binning,
             dataPath=datapath,

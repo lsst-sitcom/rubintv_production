@@ -20,10 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-import glob
 import logging
 import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib.colors as colors
@@ -37,6 +37,7 @@ from lsst.afw.cameraGeom import utils as cgu
 from lsst.afw.display import Display
 from lsst.afw.fits import FitsError
 from lsst.afw.image import Exposure, Image, ImageF
+from lsst.daf.butler import DimensionRecord
 from lsst.pipe.base import Struct
 from lsst.summit.utils import getQuantiles
 
@@ -51,49 +52,34 @@ if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DeferredDatasetHandle
 
 
-def getBinnedFilename(expId: int, instrument: str, detectorName: str, dataPath: str, binSize: int) -> str:
+def getBinnedFilename(
+    instrument: str, dayObs: int, seqNum: int, detectorName: str, dataPath: str, binSize: int
+) -> str:
     """Get the full path and filename for a binned image.
 
     Parameters
     ----------
-    expId : `int`
-        The exposure id.
     instrument : `str`
         The instrument name, e.g. 'LSSTCam'.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The sequence number.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
     dataPath : `str`
-        The path on disk to write to or find the pre-binned images.
+        The root data path on disk to write to or find the pre-binned images,
+        not including dayObs part.
     binSize : `int`
         The binning factor.
     """
-    return os.path.join(dataPath, f"{expId}_{instrument}_{detectorName}_binned_{binSize}.fits")
+    path = os.path.join(dataPath, str(dayObs))
+    return os.path.join(path, f"{dayObs}_{seqNum}_{instrument}_{detectorName}_binned_{binSize}.fits")
 
 
-def getBinnedImageFiles(path: str, instrument: str, expId: int | None = None) -> list[str]:
-    """Get a list of the binned image files for a given instrument.
-
-    Optionally filters to only return the matching expId if expId is
-    supplied. If expId is not supplied, all binned images are returned.
-
-    Parameters
-    ----------
-    path : `str`
-        The path to search for binned images.
-    instrument : `str`
-        The instrument name, e.g. 'LSSTCam'.
-    expId : `int`, optional
-        The exposure ID to filter on.
-    """
-    expIdToUse = f"{expId}"
-    if expId is None:
-        expIdToUse = ""
-    pattern = os.path.join(path, f"{expIdToUse}*{instrument}*binned*")
-    binnedImages = glob.glob(pattern)
-    return binnedImages
-
-
-def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: int) -> None:
+def writeBinnedImage(
+    exp: Exposure, instrument: str, outputPath: str, dayObs: int, seqNum: int, binSize: int
+) -> None:
     """Bin an image and write it to disk.
 
     The image is binned by ``binSize`` and written to ``outputPath`` according
@@ -106,7 +92,12 @@ def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: i
     instrument : `str`
         The instrument name, e.g. 'LSSTCam'.
     outputPath : `str`
-        The path on disk to write the binned image to.
+        The root path on disk to write the binned image to, excluding the
+        dayObs.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The sequence number.
     binSize : `int`
         The binning factor.
 
@@ -119,9 +110,10 @@ def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: i
         raise ValueError(f"exp must be an Exposure, got {type(exp)}")
     binnedImage = afwMath.binImage(exp.image, binSize)  # turns the exp into an Image
 
-    expId = exp.visitInfo.id  # note this is *not* exp.info.id, as that has the detNum on the end!
     detName = exp.detector.getName()
-    outFilename = getBinnedFilename(expId, instrument, detName, outputPath, binSize)
+    outFilename = getBinnedFilename(instrument, dayObs, seqNum, detName, outputPath, binSize)
+    path = Path(outFilename)
+    path.parent.mkdir(parents=True, exist_ok=True)
     binnedImage.writeFits(outFilename)
 
     if not isFileWorldWritable(outFilename):
@@ -129,8 +121,9 @@ def writeBinnedImage(exp: Exposure, instrument: str, outputPath: str, binSize: i
 
 
 def readBinnedImage(
-    expId: int,
     instrument: str,
+    dayObs: int,
+    seqNum: int,
     detectorName: str,
     dataPath: str,
     binSize: int,
@@ -141,10 +134,12 @@ def readBinnedImage(
 
     Parameters
     ----------
-    expId : `int`
-        The exposure id.
     instrument : `str`
         The instrument name, e.g. 'LSSTCam'.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The sequence number.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
     dataPath : `str`
@@ -161,7 +156,7 @@ def readBinnedImage(
     image : `lsst.afw.image.ImageF`
         The binned image.
     """
-    filename = getBinnedFilename(expId, instrument, detectorName, dataPath, binSize)
+    filename = getBinnedFilename(instrument, dayObs, seqNum, detectorName, dataPath, binSize)
     image = ImageF(filename)
     if deleteAfterReading:
         try:
@@ -195,9 +190,10 @@ class PreBinnedImageSource:
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
     def __init__(
-        self, expId: int, instrument: str, dataPath: str, binSize: int, deleteAfterReading: bool
+        self, instrument: str, dayObs: int, seqNum: int, dataPath: str, binSize: int, deleteAfterReading: bool
     ) -> None:
-        self.expId = expId
+        self.dayObs = dayObs
+        self.seqNum = seqNum
         self.instrument = instrument
         self.dataPath = dataPath
         self.binSize = binSize
@@ -212,8 +208,9 @@ class PreBinnedImageSource:
         assert binSize == self.binSize
         detName = det.getName()
         binnedImage = readBinnedImage(
-            expId=self.expId,
             instrument=self.instrument,
+            dayObs=self.dayObs,
+            seqNum=self.seqNum,
             detectorName=detName,
             dataPath=self.dataPath,
             binSize=binSize,
@@ -284,23 +281,34 @@ def makeMosaic(
     instrument = camera.getName()
 
     detectorNameList = []
-    expIds: set[int] = set()
+    days: set[int] = set()
+    seqNums: set[int] = set()
 
     for dRef in deferredDatasetRefs:
         detNum = dRef.dataId["detector"]
-        _expId = cast(int, dRef.dataId["exposure"])
-        expIds.add(_expId)  # to check they all match
+        # the deferredDatasetHandles always come from a query on the raw and so
+        # always carry their exposure record, not a visit record. (we just
+        # switch the datapath to the visitImage dir when looking for the binned
+        # preliminary_visit_images)
+        expRecord = cast(DimensionRecord, dRef.dataId.records["exposure"])
+        _dayObs = cast(int, expRecord.day_obs)
+        _seqNum = cast(int, expRecord.seq_num)
+        days.add(_dayObs)  # to check they all match
+        seqNums.add(_seqNum)  # to check they all match
         detName = camera[detNum].getName()
         detectorNameList.append(detName)
 
-    if len(expIds) != 1:
-        raise ValueError(f"Expected only one exposure, got {expIds}!")
-    expId = expIds.pop()
+    if len(days) != 1 or len(seqNums) != 1:
+        raise ValueError(f"Expected only one exposure, got {days=} and {seqNums=}!")
+    dayObs = days.pop()
+    seqNum = seqNums.pop()
 
     # initially, deleteAfterReading *MUST* be False, because unless all the
     # files are there immediately, we will end up chewing holes in the mosaic
     # just by waiting for them in a loop!
-    imageSource = PreBinnedImageSource(expId, instrument, dataPath, binSize=binSize, deleteAfterReading=False)
+    imageSource = PreBinnedImageSource(
+        instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=False
+    )
 
     success = False
     firstWarn = True
@@ -319,7 +327,7 @@ def makeMosaic(
         except (FileNotFoundError, FitsError):
             if firstWarn:
                 logger.warning(
-                    f"Failed to find one or more files for mosaic of {expId},"
+                    f"Failed to find one or more files for mosaic of {dayObs=}, {seqNum=},"
                     f" waiting a maximum of {timeout} seconds for data to arrive."
                 )
                 firstWarn = False
@@ -331,7 +339,7 @@ def makeMosaic(
         # Remaking the image just to delete the files is pretty gross, but it's
         # very fast and the only simple way of deleting all the files
         imageSource = PreBinnedImageSource(
-            expId, instrument, dataPath, binSize=binSize, deleteAfterReading=True
+            instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=True
         )
         output_mosaic = cgu.showCamera(
             camera, imageSource=imageSource, detectorNameList=detectorNameList, binSize=binSize
@@ -341,15 +349,15 @@ def makeMosaic(
         # we're *not* complete, so remake the image source with the delete
         # option only set if we're deleting regardless
         imageSource = PreBinnedImageSource(
-            expId, instrument, dataPath, binSize=binSize, deleteAfterReading=deleteRegardless
+            instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=deleteRegardless
         )
 
         # make what you can based on what actually did arrive on disk
         logger.warning(
-            f"Failed to find one or more files for mosaic of {expId},"
+            f"Failed to find one or more files for mosaic of {dayObs=}, {seqNum=},"
             f" making what is possible, based on the files found after timeout."
         )
-        detectorNameList = _getDetectorNamesWithData(expId, camera, dataPath, binSize)
+        detectorNameList = _getDetectorNamesWithData(dayObs, seqNum, camera, dataPath, binSize)
 
         if len(detectorNameList) == 0:
             logger.warning(f"Found {len(detectorNameList)} binned detector images, so no mosaic can be made.")
@@ -363,14 +371,18 @@ def makeMosaic(
     return Struct(output_mosaic=output_mosaic)
 
 
-def _getDetectorNamesWithData(expId: int, camera: Camera, dataPath: str, binSize: int) -> list[str]:
+def _getDetectorNamesWithData(
+    dayObs: int, seqNum: int, camera: Camera, dataPath: str, binSize: int
+) -> list[str]:
     """Check for existing binned image files and return the detector names
     for those with data.
 
     Parameters
     ----------
-    expId : `int`
-        The exposure id.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The sequence number.
     camera : `lsst.afw.cameraGeom.Camera`
         The camera.
     dataPath : `str`
@@ -388,7 +400,7 @@ def _getDetectorNamesWithData(expId: int, camera: Camera, dataPath: str, binSize
     existingNames = [
         detName
         for detName in detNames
-        if os.path.exists(getBinnedFilename(expId, instrument, detName, dataPath, binSize))
+        if os.path.exists(getBinnedFilename(instrument, dayObs, seqNum, detName, dataPath, binSize))
     ]
     return existingNames
 
@@ -396,7 +408,8 @@ def _getDetectorNamesWithData(expId: int, camera: Camera, dataPath: str, binSize
 def plotFocalPlaneMosaic(
     butler: Butler,
     figureOrDisplay: Figure | Display,
-    expId: int,
+    dayObs: int,
+    seqNum: int,
     camera: Camera,
     binSize: int,
     dataPath: str,
@@ -419,8 +432,10 @@ def plotFocalPlaneMosaic(
         The butler.
     figureOrDisplay : `matplotlib.figure.Figure` or `afwDisplay.Display`
         The figure to plot on, or the display to use.
-    expId : `int`
-        The exposure id.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The sequence number.
     camera : `lsst.afw.cameraGeom.Camera`
         The camera.
     binSize : `int`
@@ -451,16 +466,18 @@ def plotFocalPlaneMosaic(
     if not logger:
         logger = logging.getLogger("lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic")
 
-    where = "exposure=expId"
+    where = "day_obs=dayObs AND seq_num=seqNum"
     # we hardcode "raw" here the per-CCD binned images are written out
     # by the isrRunners to the dataPath, so we are not looking for butler-
     # written post_isr_images.
-    dRefs = list(butler.registry.queryDatasets("raw", where=where, bind={"expId": expId}))
+    dRefs = butler.query_datasets(
+        "raw", with_dimension_records=True, where=where, bind={"dayObs": dayObs, "seqNum": seqNum}
+    )
 
-    logger.info(f"Found {len(dRefs)} dRefs for {expId}")
+    logger.info(f"Found {len(dRefs)} dRefs for {dayObs=}, {seqNum=}")
     # sleazy part - if the raw exists then the binned image will get written
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
-    deferredDatasetHandles = [butler.getDeferred(d) for d in dRefs]
+    deferredDatasetHandles = [butler.getDeferred(d) for d in dRefs]  # these now have .records with seqnums in
 
     mosaic = makeMosaic(
         deferredDatasetHandles,
@@ -474,11 +491,11 @@ def plotFocalPlaneMosaic(
         logger=logger,
     ).output_mosaic
     if mosaic is None:
-        logger.warning(f"Failed to make mosaic for {expId}")
+        logger.warning(f"Failed to make mosaic for {dayObs=}, {seqNum=}")
         return None
-    logger.info(f"Made mosaic image for {expId}")
+    logger.info(f"Made mosaic image for {dayObs=}, {seqNum=}")
     _plotFpMosaic(mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, saveAs=savePlotAs)
-    logger.info(f"Saved mosaic image for {expId} to {savePlotAs}")
+    logger.info(f"Saved mosaic image for {dayObs=}, {seqNum=} to {savePlotAs}")
     return mosaic
 
 
