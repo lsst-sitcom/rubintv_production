@@ -21,17 +21,17 @@
 
 import logging
 import time
+import sys
 
 from lsst.daf.butler import Butler, DataCoordinate
 from lsst.rubintv.production.utils import getAutomaticLocationConfig
-from lsst.summit.utils.utils import setupLogging
+import logging
 
-setupLogging()
-
-log = logging.getLogger(__name__)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+                   format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger("butlerCanary")
 
 log.info("Starting butlerCanary")
-print("Wrote a log message")
 
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/defaults"])
@@ -42,7 +42,6 @@ while True:
     records = list(query.order_by("-exposure.timespan.end").limit(1))
     exposure_dataId = records[0].dataId
     log.info(f"Using exposure {exposure_dataId}")
-    print("Started loop")
 
     for detector in range(189):
         dataId = DataCoordinate.standardize(exposure_dataId, detector=detector)
