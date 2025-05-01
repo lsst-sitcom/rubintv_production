@@ -24,7 +24,6 @@ import time
 import sys
 
 from lsst.daf.butler import Butler, DataCoordinate
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
 import logging
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
@@ -33,8 +32,7 @@ log = logging.getLogger("butlerCanary")
 
 log.info("Starting butlerCanary")
 
-locationConfig = getAutomaticLocationConfig()
-butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/defaults"])
+butler = Butler.from_config("embargo", collections=["LSSTCam/defaults"])
 
 while True:
 
