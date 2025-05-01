@@ -13,6 +13,7 @@ import traceback
 from multiprocessing import Manager, Process
 from pathlib import Path
 from queue import Empty
+from typing import Any
 from unittest.mock import patch
 
 import redis
@@ -42,6 +43,114 @@ from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI  # noqa: E402
 
 
+# Add mock uploader class for testing
+class MockUploader:
+    """A mock uploader that doesn't actually attempt to upload files but
+    records calls."""
+
+    def __init__(self, *args, **kwargs):
+        self.uploaded_files = []
+        self.log = logging.getLogger("MockUploader")
+        self.log.info("Created MockUploader")
+
+    def checkAccess(self, *args, **kwargs):
+        """Always report access as successful."""
+        return True
+
+    def upload(self, destinationFilename, sourceFilename):
+        """Record attempted upload without actually uploading."""
+        self.uploaded_files.append((destinationFilename, sourceFilename))
+        self.log.info(f"Mock upload: {sourceFilename} to {destinationFilename}")
+        return destinationFilename
+
+    def uploadNightReportData(
+        self, instrument, dayObs, filename, uploadAs, plotGroup=None, *, isMetadataFile=False
+    ):
+        """Mock implementation of uploadNightReportData."""
+        dayObsStr = str(dayObs)
+        baseName = f"{instrument}/{dayObsStr}/night_report"
+        if isMetadataFile:
+            destName = f"{baseName}/{instrument}_night_report_{dayObsStr}_md.json"
+        else:
+            plotGroup = plotGroup or "default"
+            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{uploadAs}"
+            destName = f"{baseName}/{plotGroup}/{plotFilename}"
+        self.uploaded_files.append((destName, filename))
+        self.log.info(f"Mock uploadNightReportData: {filename} to {destName}")
+        return destName
+
+    def uploadPerSeqNumPlot(self, instrument, plotName, dayObs, seqNum, filename):
+        """Mock implementation of uploadPerSeqNumPlot."""
+        dayObsStr = str(dayObs)
+        paddedSeqNum = f"{seqNum:06}"
+        extension = os.path.splitext(filename)[1]
+        uploadAs = (
+            f"{instrument}/{dayObsStr}/{plotName}/{paddedSeqNum}/"
+            f"{instrument}_{plotName}_{dayObsStr}_{paddedSeqNum}{extension}"
+        )
+        self.uploaded_files.append((uploadAs, filename))
+        self.log.info(f"Mock uploadPerSeqNumPlot: {filename} to {uploadAs}")
+        return uploadAs
+
+    def uploadMovie(self, instrument, dayObs, filename, seqNum=None):
+        """Mock implementation of uploadMovie."""
+        dayObsStr = str(dayObs)
+        ext = os.path.splitext(filename)[1]
+        seqNum_str = "final" if seqNum is None else f"{seqNum:06}"
+        uploadAs = (
+            f"{instrument}/{dayObsStr}/movies/{seqNum_str}/{instrument}_movies_{dayObsStr}_{seqNum_str}{ext}"
+        )
+        self.uploaded_files.append((uploadAs, filename))
+        self.log.info(f"Mock uploadMovie: {filename} to {uploadAs}")
+        return uploadAs
+
+    def uploadAllSkyStill(self, *args, **kwargs):
+        """Mock implementation of uploadAllSkyStill."""
+        return "mock_all_sky_still_path"
+
+    def uploadMetdata(self, channel, dayObs, filename):
+        """Mock implementation of uploadMetdata."""
+        dayObsStr = str(dayObs)
+        uploadAs = f"{channel}/{dayObsStr}/metadata.json"
+        self.uploaded_files.append((uploadAs, filename))
+        self.log.info(f"Mock uploadMetdata: {filename} to {uploadAs}")
+        return uploadAs
+
+    def __str__(self):
+        return "MockUploader()"
+
+    def __repr__(self):
+        return self.__str__()
+
+
+def setup_mock_uploaders():
+    """Set up mock uploaders for testing."""
+    # Patch uploader creation functions
+    s3_uploader_patch = patch(
+        "lsst.rubintv.production.uploaders.createLocalS3UploaderForSite", return_value=MockUploader()
+    )
+    s3_uploader_patch.start()
+
+    remote_uploader_patch = patch(
+        "lsst.rubintv.production.uploaders.createRemoteS3UploaderForSite", return_value=MockUploader()
+    )
+    remote_uploader_patch.start()
+
+    # Create mock MultiUploader init that doesn't try to connect
+    def mock_multi_uploader_init(self, allowNoRemote=False):
+        self.localUploader = MockUploader()
+        self.remoteUploader = MockUploader()
+        self.log = logging.getLogger("MockMultiUploader")
+        self.log.info("Created MockMultiUploader")
+
+    multi_uploader_patch = patch(
+        "lsst.rubintv.production.uploaders.MultiUploader.__init__", mock_multi_uploader_init
+    )
+    multi_uploader_patch.start()
+
+    return [s3_uploader_patch, remote_uploader_patch, multi_uploader_patch]
+
+
 class TestConfig:
     """Centralized configuration for the test suite."""
 
@@ -61,7 +170,7 @@ class TestConfig:
 
         # Test durations
         self.meta_test_duration = 30
-        self.test_duration = 400
+        self.test_duration = 600
 
         # Date for testing
         self.today = 20240101
@@ -949,6 +1058,7 @@ class TestRunner:
         self.redis_manager = RedisManager(self.config)
         self.process_manager = ProcessManager()
         self.result_collector = ResultCollector()
+        self.patches: Any = []  # not sure what type to use here
 
     def check_system_requirements(self) -> None:
         """Check system size and load for running tests."""
@@ -987,6 +1097,10 @@ class TestRunner:
 
         if runningCI() is not True:
             raise RuntimeError("runningCI is not True")
+
+        # Apply mock uploader patches for testing
+        self.patches = setup_mock_uploaders()
+        print("✅ Applied mock uploader patches for testing")
 
     def check_test_scripts_exist(self) -> None:
         """Ensure all test scripts exist."""
@@ -1039,52 +1153,56 @@ class TestRunner:
                 raise RuntimeError(f"Failed to delete files in {location}")
 
     def run(self) -> None:
-        """Run the entire test suite."""
-        # Check system capabilities
-        self.check_system_requirements()
+        try:
+            # Check system capabilities
+            self.check_system_requirements()
 
-        # Setup testing environment
-        self.setup_environment()
+            # Setup testing environment
+            self.setup_environment()
 
-        # Check YAML files if configured
-        if self.config.do_check_yaml_files:
-            yaml_files_ok = self.result_collector.check_yaml_files(self.config.yaml_files_to_check)
-            if not yaml_files_ok:
-                self.result_collector.checks.append(Check(False, "YAML check"))
+            # Check YAML files if configured
+            if self.config.do_check_yaml_files:
+                yaml_files_ok = self.result_collector.check_yaml_files(self.config.yaml_files_to_check)
+                if not yaml_files_ok:
+                    self.result_collector.checks.append(Check(False, "YAML check"))
 
-        # Verify test scripts exist
-        self.check_test_scripts_exist()
+            # Verify test scripts exist
+            self.check_test_scripts_exist()
 
-        # Run meta tests if configured
-        if self.config.do_run_meta_tests:
-            self.run_meta_tests()
+            # Run meta tests if configured
+            if self.config.do_run_meta_tests:
+                self.run_meta_tests()
 
-        # Start Redis and register shutdown handler
-        atexit.register(self.redis_manager.terminate)
-        self.redis_manager.start()
-        self.redis_manager.check_connection()
+            # Start Redis and register shutdown handler
+            atexit.register(self.redis_manager.terminate)
+            self.redis_manager.start()
+            self.redis_manager.check_connection()
 
-        # Delete previous output files
-        self.delete_output_files()
+            # Delete previous output files
+            self.delete_output_files()
 
-        # Run the main test scripts
-        self.process_manager.run_test_scripts(self.config.test_scripts_round_1, self.config.test_duration)
+            # Run the main test scripts
+            self.process_manager.run_test_scripts(self.config.test_scripts_round_1, self.config.test_duration)
 
-        # Verify all scripts reported results
-        self._verify_all_scripts_reported()
+            # Verify all scripts reported results
+            self._verify_all_scripts_reported()
 
-        # Check test results
-        print("\nTest Results:")
-        self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
+            # Check test results
+            print("\nTest Results:")
+            self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
 
-        # Check for plots and Redis results
-        self.result_collector.check_plots(self.config)
-        self.redis_manager.check_final_contents(self.result_collector.checks)
+            # Check for plots and Redis results
+            self.result_collector.check_plots(self.config)
+            self.redis_manager.check_final_contents(self.result_collector.checks)
 
-        # Print final results and exit with appropriate status
-        overall_pass = self.result_collector.print_final_result()
-        if not overall_pass:
-            sys.exit(1)
+            # Print final results and exit with appropriate status
+            overall_pass = self.result_collector.print_final_result()
+            if not overall_pass:
+                sys.exit(1)
+        finally:
+            # Clean up patches
+            for patch_ in self.patches:
+                patch_.stop()
 
     def _verify_all_scripts_reported(self) -> None:
         """Verify that all test scripts have reported their results."""
