@@ -25,7 +25,7 @@ lsstCamAosMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metada
 lsstCamAosMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata/shards
 lsstCamMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
 lsstCamMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
-lsstCamButlerPath: 's3://embargo@rubin-summit-users/butler.yaml'
+lsstCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
 
