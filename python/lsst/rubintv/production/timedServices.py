@@ -549,9 +549,15 @@ class TmaTelemetryChannel(TimedMetadataServer):
         return {seqNum: rowData}
 
     def _getSaveFilename(self, plotName: str, dayObs: int, event: TMAEvent) -> str:
-        filename = f"{plotName}_{dayObs}_{event.seqNum:06}.png"
-        filename = os.path.join(self.locationConfig.plotPath, filename)
-        return filename
+        filename = (
+            Path(self.locationConfig.plotPath)
+            / "TMA"
+            / str(dayObs)
+            / f"{plotName}_{dayObs}_{event.seqNum:06}.png"
+        )
+        if not os.path.isdir(filename.parent):
+            filename.parent.mkdir(parents=True, exist_ok=True, mode=0o777)
+        return filename.as_posix()
 
     def run(self) -> None:
         """Run continuously, updating the plots and uploading the shards."""
