@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_17"
+ARG STACK_TAG="w_2025_18"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,10 +9,10 @@ FROM lsstsqre/centos:7-stack-lsst_distrib-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2025.17"
-ENV drp_pipe_branch="w.2025.17"
-ENV spectractor_branch="w.2025.17"
-ENV atmospec_branch="w.2025.17"
+ENV obs_lsst_branch="w.2025.18"
+ENV drp_pipe_branch="w.2025.18"
+ENV spectractor_branch="w.2025.18"
+ENV atmospec_branch="w.2025.18"
 ENV summit_utils_branch="tickets/DM-50000"
 ENV summit_extras_branch="tickets/DM-50000"
 ENV eo_pipe_branch="w_2025_12"
