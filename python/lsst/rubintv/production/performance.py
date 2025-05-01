@@ -715,7 +715,7 @@ class PerformanceMonitor(BaseButlerChannel):
 
         fig = plotGantt(record, taskResults, timings=textItems)
 
-        plotName = "timimg_diagram"
+        plotName = "timing_diagram"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, record.day_obs, record.seq_num, plotName, "jpg"
         )
