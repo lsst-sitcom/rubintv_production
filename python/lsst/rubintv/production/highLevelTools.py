@@ -22,10 +22,12 @@
 from __future__ import annotations
 
 import glob
+import io
 import logging
 import os
 import pickle
 import time
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -37,6 +39,9 @@ from .channels import CHANNELS, PREFIXES
 from .uploaders import Uploader
 from .utils import FakeExposureRecord, LocationConfig, expRecordToUploadFilename
 
+if TYPE_CHECKING:
+    from .uploaders import MultiUploader
+
 __all__ = [
     "getPlotSeqNumsForDayObs",
     "createChannelByName",
@@ -46,6 +51,7 @@ __all__ = [
     "remakeStarTrackerDay",
     "getDaysWithDataForPlotting",
     "getPlottingArgs",
+    "syncBuckets",
 ]
 
 # this file is for higher level utilities for use in notebooks, but also
@@ -520,3 +526,42 @@ def remakeStarTrackerDay(
         filename = foundFiles[seqNum]
         logger.info(f"Processing {seqNum} from {filename}")
         tvChannel.callback(filename)
+
+
+def syncBuckets(multiUploader: MultiUploader) -> None:
+    """Make sure all objects in the local bucket are also in the remote bucket.
+
+    Call this function after a bad night to (slow) send all the plots which
+    didn't make it to USDF.
+
+    Parameters
+    ----------
+    multiUploader : `MultiUploader`
+        The multiUploader to use to sync the buckets.
+    """
+    log = logging.getLogger(__name__)
+
+    t0 = time.time()
+    remoteBucket = multiUploader.remoteUploader._s3Bucket
+    remoteObjects = set(o for o in remoteBucket.objects.all())
+    log.info(f"Found {len(remoteObjects)} remote objects in {(time.time() - t0):.2f}s")
+
+    t0 = time.time()
+    localBucket = multiUploader.localUploader._s3Bucket
+    localObjects = set(o for o in localBucket.objects.all())
+    log.info(f"Found {len(localObjects)} local objects in {(time.time() - t0):.2f}s")
+
+    remoteKeys = {o.key for o in remoteObjects}
+    missing = {o for o in localObjects if o.key not in remoteKeys}
+    nMissing = len(missing)
+    log.info(f"of which {nMissing} were missing from the remote. Copying missing items...")
+
+    t0 = time.time()
+    for i, obj in enumerate(missing):
+        body = localBucket.Object(obj.key).get()["Body"].read()
+        remoteBucket.Object(obj.key).upload_fileobj(io.BytesIO(body))
+        del body
+        if i % 100 == 0:
+            print(f"Copied {i + 1} items of {len(missing)}, elapsed: {(time.time() - t0):.2f}s")
+
+    print(f"Full copying took {(time.time() - t0):.2f} seconds")
