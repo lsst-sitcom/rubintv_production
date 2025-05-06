@@ -446,6 +446,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
                 " but still merits a warning due to the failing quantum."
             )
+            self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
             return
 
         expRecord = dRef.dataId.records["exposure"]
