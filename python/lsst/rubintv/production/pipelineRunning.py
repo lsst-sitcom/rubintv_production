@@ -438,14 +438,24 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def postProcessIsr(self, quantum: Quantum) -> None:
         output_dataset_name = "post_isr_image"
+        dRef = None
         try:
             dRef = quantum.outputs[output_dataset_name][0]
             exp = self.cachingButler.get(dRef)
-        except Exception:
+        except Exception as e:
             self.log.warning(
                 f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
                 " but still merits a warning due to the failing quantum."
             )
+            if dRef is not None:
+                # it shouldn't ever be None here, but technically could be, so
+                # check here for mypy, and reraise if it was None
+                self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+            else:
+                raise RuntimeError(
+                    f"Failed to post-process *failed* isr quantum {quantum} and dRef was None. This shouldn't"
+                    " be possible."
+                ) from e
             return
 
         expRecord = dRef.dataId.records["exposure"]
