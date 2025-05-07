@@ -19,9 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.soarSeeing import SoarUploader
-from lsst.rubintv.production.utils import getDoRaise
+from lsst.rubintv.production.cleanup import TempFileCleaner
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.summit.utils.utils import setupLogging
 
-uploader = SoarUploader(doRaise=getDoRaise())
+setupLogging()
 
-uploader.run()
+locationConfig = getAutomaticLocationConfig()
+cleaner = TempFileCleaner(locationConfig)
+cleaner.run()

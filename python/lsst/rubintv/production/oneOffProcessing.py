@@ -34,6 +34,7 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.auxtel.mount import hasTimebaseErrors
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.imageExaminer import ImageExaminer
+from lsst.summit.utils.plotting import plot
 from lsst.summit.utils.simonyi.mountAnalysis import (
     MOUNT_IMAGE_BAD_LEVEL,
     MOUNT_IMAGE_WARNING_LEVEL,
@@ -43,7 +44,7 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
     plotMountErrors,
 )
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-from lsst.summit.utils.utils import calcEclipticCoords
+from lsst.summit.utils.utils import calcEclipticCoords, getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
@@ -55,11 +56,11 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .utils import (
-    getCiPlotName,
     getFilterColorName,
     getRubinTvInstrumentName,
     isCalibration,
-    managedTempFile,
+    makePlotFile,
+    makeWitnessDetectorTitle,
     raiseIf,
     runningCI,
     writeMetadataShard,
@@ -99,8 +100,8 @@ class OneOffProcessor(BaseButlerChannel):
     processingStage : `str`
         The data product that this runner needs in order to run, e.g. if it
         should run once ISR has completed for the specified detector, use
-        "postISRCCD", and if it should run after step1 is complete use "calexp"
-        (or "pvi" once we switch).
+        "post_isr_image", and if it should run after step1a is complete use
+        "preliminary_visit_image".
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
@@ -119,9 +120,7 @@ class OneOffProcessor(BaseButlerChannel):
     ) -> None:
         super().__init__(
             locationConfig=locationConfig,
-            instrument=instrument,
             butler=butler,
-            watcherType="redis",
             # TODO: DM-43764 this shouldn't be necessary on the
             # base class after this ticket, I think.
             detectors=None,
@@ -151,9 +150,14 @@ class OneOffProcessor(BaseButlerChannel):
         self.efdClient = makeEfdClient()
         self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.camera = getCameraFromInstrumentName(self.instrument)
 
-    def writeVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
+    def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
+        header = exp.metadata.toDict()
+
+        md: dict[int, dict[str, str]] = {}
+
         focus = vi.focusZ
         if focus is not None and not np.isnan(focus):
             focus = float(focus)
@@ -165,6 +169,10 @@ class OneOffProcessor(BaseButlerChannel):
         if airmass is not None and not np.isnan(airmass):
             airmass = float(airmass)
             md[seqNum].update({"Airmass": f"{airmass:.3f}"})
+
+        controller = header.get("CONTRLLR", None)
+        if controller is not None and controller != "":
+            md[seqNum].update({"Controller": f"{controller}"})
 
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
@@ -228,42 +236,43 @@ class OneOffProcessor(BaseButlerChannel):
             raiseIf(self.doRaise, e, self.log)
             return
 
-    def runPostISRCCD(self, dataId: DataCoordinate) -> None:
-        self.log.info(f"Waiting for postISRCCD for {dataId}")
+    def runPostIsrImage(self, dataId: DataCoordinate) -> None:
+        self.log.info(f"Waiting for post_isr_image for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
 
         # redis signal is sent on the dispatch of the raw, so 40s is plenty but
         # not too much
-        postISR = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=40)
-        if postISR is None:
-            self.log.warning(f"Failed to get postISRCCD for {dataId}")
+        postIsr = self._waitForDataProduct(dataId, gettingButler=self.butler, timeout=40)
+        if postIsr is None:
+            self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
 
         if isinstance(self, OneOffProcessorAuxTel):
-            self.runAuxTelProcessing(postISR, expRecord)
+            self.runAuxTelProcessing(postIsr, expRecord)
 
         self.log.info(f"Writing focus Z for {dataId}")
-        self.writeVisitInfoBasedQuantities(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeHeaderOrVisitInfoBasedQuantities(postIsr, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Pulling OBSANNOT from image header for {dataId}")
-        self.writeObservationAnnotation(postISR, expRecord.day_obs, expRecord.seq_num)
+        self.writeObservationAnnotation(postIsr, expRecord.day_obs, expRecord.seq_num)
 
         self.log.info(f"Getting physical rotation data from EFD for {dataId}")
         self.writePhysicalRotation(expRecord)
 
         if not isCalibration(expRecord) and not isinstance(self, OneOffProcessorAuxTel):
             self.log.info(f"Calculating PSF for {dataId}")
-            self.calcPsfAndWrite(postISR, expRecord.day_obs, expRecord.seq_num)
+            self.calcPsfAndWrite(postIsr, expRecord.day_obs, expRecord.seq_num)
 
-        self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
-        self.writeLogMessageShards(expRecord.day_obs)
+        if self.locationConfig.location == "summit":
+            self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
+            self.writeLogMessageShards(expRecord.day_obs)
 
         self.log.info(f"Finished one-off processing {dataId}")
 
     def publishPointingOffsets(
         self,
-        calexp: Exposure,
+        visitImage: Exposure,
         dataId: DataCoordinate,
         expRecord: DimensionRecord,
     ) -> None:
@@ -275,8 +284,8 @@ class OneOffProcessor(BaseButlerChannel):
             "delta Rot (arcsec)": "nan",
         }
 
-        calexpWcs = calexp.wcs
-        if calexpWcs is None:
+        visitImageWcs = visitImage.wcs
+        if visitImageWcs is None:
             self.log.warning(f"Astrometic failed for {dataId} - no pointing offsets calculated")
             md = {expRecord.seq_num: offsets}
             writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
@@ -284,11 +293,11 @@ class OneOffProcessor(BaseButlerChannel):
 
         rawWcs = raw.wcs
         rawSkyCenter = raw.wcs.getSkyOrigin()
-        calExpSkyCenter = calexpWcs.pixelToSky(rawWcs.getPixelOrigin())
-        deltaRa = rawSkyCenter.getRa().asArcseconds() - calExpSkyCenter.getRa().asArcseconds()
-        deltaDec = rawSkyCenter.getDec().asArcseconds() - calExpSkyCenter.getDec().asArcseconds()
+        visitImageSkyCenter = visitImageWcs.pixelToSky(rawWcs.getPixelOrigin())
+        deltaRa = rawSkyCenter.getRa().asArcseconds() - visitImageSkyCenter.getRa().asArcseconds()
+        deltaDec = rawSkyCenter.getDec().asArcseconds() - visitImageSkyCenter.getDec().asArcseconds()
 
-        deltaRot = rawWcs.getRelativeRotationToWcs(calexpWcs)
+        deltaRot = rawWcs.getRelativeRotationToWcs(visitImageWcs)
         deltaRotDeg = deltaRot.asDegrees() % 360
         offset = min(deltaRotDeg, 360 - deltaRotDeg)
         deltaRotArcSec = offset * 3600
@@ -304,49 +313,72 @@ class OneOffProcessor(BaseButlerChannel):
 
     def publishEclipticCoords(
         self,
-        calexp: Exposure,
         expRecord: DimensionRecord,
     ) -> None:
 
-        calexpWcs = calexp.wcs
-        if calexpWcs is None:
-            self.log.warning(f"Failed to calculate ecliptic coords from calexp for {expRecord.id}")
-            return
-
-        raAngle, decAngle = calexpWcs.getSkyOrigin()
-        raDeg = raAngle.asDegrees()
-        decDeg = decAngle.asDegrees()
+        raDeg = expRecord.tracking_ra
+        decDeg = expRecord.tracking_dec
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
 
         eclipticData = {
-            "lambda (deg)": f"{lambda_:.2f}",
-            "beta (deg)": f"{beta:.2f}",
+            "Ecliptic Longitude (deg)": f"{lambda_:.2f}",
+            "Ecliptic Latitude (deg)": f"{beta:.2f}",
         }
 
         md = {expRecord.seq_num: eclipticData}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
-    def runCalexp(self, dataId: DataCoordinate) -> None:
-        self.log.info(f"Waiting for calexp for {dataId}")
+    def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord) -> None:
+        detNum = visitImage.detector.getId()
+        detName = visitImage.detector.getName()
+        title = makeWitnessDetectorTitle(expRecord, detNum, self.camera)
+
+        fig = make_figure(figsize=(12, 12))
+        fig = plot(visitImage, figure=fig, stretch="midtone", title=title)
+
+        plotName = "witness_detector"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "jpg"
+        )
+        fig.tight_layout()
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
+
+        md = {expRecord.seq_num: {"Witness detector": f"{detName} ({detNum})"}}
+        writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+
+    def runVisitImage(self, dataId: DataCoordinate) -> None:
+        # for safety, as this is now dynamically set in the previous function
+        # and is inside the dataId already
+        self.detector = -999  # this will always error like None would, but keeps it an int for mypy
+
+        self.log.info(f"Waiting for preliminary_visit_image for {dataId}")
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataId)
         assert expRecord.instrument == self.instrument, "Logic error in work distribution!"
         assert visitRecord.instrument == self.instrument, "Logic error in work distribution!"
 
-        visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=self.detector)
+        visitDataId = dafButler.DataCoordinate.standardize(visitRecord.dataId, detector=dataId["detector"])
 
-        # is triggered once all CCDs have finished step1 so should be instant
-        calexp = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
-        if calexp is None:
-            self.log.warning(f"Failed to get postISRCCD for {dataId}")
+        # is triggered once all CCDs have finished step1a so should be instant
+        visitImage = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
+        if visitImage is None:
+            self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
         self.log.info("Calculating pointing offsets...")
-        self.publishPointingOffsets(calexp, dataId, expRecord)
+        self.publishPointingOffsets(visitImage, dataId, expRecord)
         self.log.info("Finished calculating pointing offsets")
 
-        self.log.info("Calculating ecliptic coords...")
-        self.publishEclipticCoords(calexp, expRecord)
-        self.log.info("Finished publishing ecliptic coords")
+        self.log.info("Making witness detector image...")
+        self.makeWitnessImage(visitImage, expRecord)
+        self.log.info("Finished making witness detector image")
         return
 
     def _doMountAnalysisSimonyi(self, expRecord: DimensionRecord) -> None:
@@ -393,22 +425,23 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Writing mount analysis shard for {dayObs}-{seqNum}")
         writeMetadataShard(self.shardsDirectory, dayObs, rowData)
 
-        # TODO: DM-45437 Use a context manager here and everywhere
         self.log.info(f"Creating mount plot for {dayObs}-{seqNum}")
 
-        ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
-        with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-            fig = make_figure(figsize=(10, 8))
-            plotMountErrors(data, errors, fig, saveFilename=tempFile)
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument=getRubinTvInstrumentName(expRecord.instrument),
-                plotName="mount",
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=tempFile,
-            )
-            del fig
+        plotName = "mount"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        fig = make_figure(figsize=(10, 8))
+        plotMountErrors(data, errors, fig, saveFilename=plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
+        del fig
 
     def writeLogMessageShards(self, dayObs: int) -> None:
         """Write a shard containing all the expLog annotations on the dayObs.
@@ -500,10 +533,24 @@ class OneOffProcessor(BaseButlerChannel):
     def runExpRecord(self, expRecord: DimensionRecord) -> None:
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
+
+        self.log.info("Calculating ecliptic coords...")
+        self.publishEclipticCoords(expRecord)
+        self.log.info("Finished publishing ecliptic coords")
+
         if expRecord.instrument == "LATISS":
             self._doMountAnalysisAuxTel(expRecord)
         else:
-            self._doMountAnalysisSimonyi(expRecord)
+            try:  # this often fails due to missing mount data, catch so other plots can still work
+                if expRecord.zenith_angle is not None:  # XXX hopefully we can remove this soon
+                    self._doMountAnalysisSimonyi(expRecord)
+                else:
+                    self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
+            except KeyError as e:
+                self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            except Exception as e:  # but all others are a raiseIf
+                raiseIf(self.doRaise, e, self.log)
+
             previous = self.getPreviousExpRecord(expRecord)
             if previous is not None:
                 self.makeExposureTimingPlot(previous, expRecord)
@@ -512,53 +559,64 @@ class OneOffProcessor(BaseButlerChannel):
         self.log.info(f"Creating exposure timing plot for {expRecord.id}")
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
-        fig = plotExposureTiming(self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0)
+
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "event_timeline")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                fig.savefig(tempFile)
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument=getRubinTvInstrumentName(expRecord.instrument),
-                    plotName="event_timeline",
-                    dayObs=dayObs,
-                    seqNum=seqNum,
-                    filename=tempFile,
-                )
-                self.log.info("Event timeline upload complete")
-        except Exception as e:
+            fig = plotExposureTiming(
+                self.efdClient, [previousExpRecord, expRecord], prePadding=0, postPadding=0
+            )
+            if fig is None:
+                self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
+                return
+        except KeyError as e:  # this often fails due to missing mount data, so this is just a warn
+            self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            return
+        except Exception as e:  # but all others are a raiseIf
             raiseIf(self.doRaise, e, self.log)
+            return
+
+        plotName = "event_timeline"
+        plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "png")
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(expRecord.instrument),
+            plotName=plotName,
+            dayObs=dayObs,
+            seqNum=seqNum,
+            filename=plotFile,
+        )
+        self.log.info("Event timeline upload complete")
 
     def _doMountAnalysisAuxTel(self, expRecord: DimensionRecord) -> None:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "mount")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                # calculateMountErrors() calculates the errors, but also
-                # performs the plotting. It skips many image types and short
-                # exps and returns False in these cases, otherwise it returns
-                # errors and will have made the plot
-                fig = make_figure(figsize=(16, 16))
-                errors = _calculateMountErrors_oldVersion(
-                    expRecord, self.butler, self.efdClient, fig, tempFile, self.log
-                )
-                if errors is False:
-                    self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
-                    return
+            plotName = "mount"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "png")
+            # calculateMountErrors() calculates the errors, but also, "jpg"
+            # performs the plotting. It skips many image types and short
+            # exps and returns False in these cases, otherwise it returns
+            # errors and will have made the plot
+            fig = make_figure(figsize=(16, 16))
+            errors = _calculateMountErrors_oldVersion(
+                expRecord, self.butler, self.efdClient, fig, plotFile, self.log
+            )
+            if errors is False:
+                self.log.info(f"Skipped making mount torque plot for {dayObs}-{seqNum}")
+                return
 
-                self.log.info("Uploading mount torque plot to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="mount",
-                    dayObs=dayObs,
-                    seqNum=seqNum,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
-                del fig
+            self.log.info("Uploading mount torque plot to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=dayObs,
+                seqNum=seqNum,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
+            del fig
 
             # write the mount error shard, including the cell coloring flag
             assert errors is not True and errors is not False  # it's either False or the right type
@@ -593,7 +651,7 @@ class OneOffProcessor(BaseButlerChannel):
         """
         # TODO: DM-49609 unify this code to work for Simonyi as well
         # also the call to this function to the exposure record processor
-        # from the postISR processor.
+        # from the postIsr processor.
         assert expRecord.instrument == "LATISS", "This method is only for AuxTel at present"
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
@@ -653,12 +711,13 @@ class OneOffProcessor(BaseButlerChannel):
             case "expRecord":
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
                 self.runExpRecord(expRecord)
-            case "postISRCCD":
+            case "post_isr_image":
                 dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
-                self.runPostISRCCD(dataId)
-            case "calexp":
-                dataId = dafButler.DataCoordinate.standardize(dataId, detector=self.detector)
-                self.runCalexp(dataId)
+                self.runPostIsrImage(dataId)
+            case "preliminary_visit_image":
+                detector = self.redisHelper.getWitnessDetectorNumber(self.instrument, self.camera)
+                dataId = dafButler.DataCoordinate.standardize(dataId, detector=detector)
+                self.runVisitImage(dataId)
             case _:
                 raise ValueError(f"Unknown processing stage {self.processingStage}")
 
@@ -677,21 +736,23 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         self.log.info(f"Making monitor image for {expRecord.dataId}")
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "monitor")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                fig = make_figure(figsize=(12, 12))
-                plotExp(exp, fig, tempFile, doSmooth=False, scalingOption="CCS")
-                self.log.info("Uploading imExam to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="monitor",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
-                del fig
+            plotName = "monitor"
+            plotFile = makePlotFile(
+                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "jpg"
+            )
+            fig = make_figure(figsize=(12, 12))
+            plotExp(exp, fig, plotFile, doSmooth=False, scalingOption="CCS")
+            self.log.info("Uploading imExam to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
+            del fig
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -702,21 +763,23 @@ class OneOffProcessorAuxTel(OneOffProcessor):
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "imexam")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                imExam = ImageExaminer(exp, savePlots=tempFile, doTweakCentroid=True)
-                imExam.plot()
-                self.log.info("Uploading imExam to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="imexam",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
-                del imExam
+            plotName = "imexam"
+            plotFile = makePlotFile(
+                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+            )
+            imExam = ImageExaminer(exp, savePlots=plotFile, doTweakCentroid=True)
+            imExam.plot()
+            self.log.info("Uploading imExam to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
+            del imExam
 
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
@@ -732,19 +795,21 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
         self.log.info(f"Running specExam on {expRecord.dataId}")
         try:
-            ciName = getCiPlotName(self.locationConfig, expRecord, "specexam")
-            with managedTempFile(suffix=".png", ciOutputName=ciName) as tempFile:
-                summary = SpectrumExaminer(exp, savePlotAs=tempFile)
-                summary.run()
-                self.log.info("Uploading specExam to storage bucket")
-                assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-                self.s3Uploader.uploadPerSeqNumPlot(
-                    instrument="auxtel",
-                    plotName="specexam",
-                    dayObs=expRecord.day_obs,
-                    seqNum=expRecord.seq_num,
-                    filename=tempFile,
-                )
-                self.log.info("Upload complete")
+            plotName = "specexam"
+            plotFile = makePlotFile(
+                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+            )
+            summary = SpectrumExaminer(exp, savePlotAs=plotFile)
+            summary.run()
+            self.log.info("Uploading specExam to storage bucket")
+            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+            self.s3Uploader.uploadPerSeqNumPlot(
+                instrument="auxtel",
+                plotName=plotName,
+                dayObs=expRecord.day_obs,
+                seqNum=expRecord.seq_num,
+                filename=plotFile,
+            )
+            self.log.info("Upload complete")
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
