@@ -19,8 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
@@ -28,34 +26,39 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTComCamSim"
-locationConfig = getAutomaticLocationConfig()
+instrument = "LATISS"
 
 workerNum = getPodWorkerNumber()
+detectorNum = 0
+detectorDepth = workerNum
+
+locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.NIGHTLYROLLUP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=detectorDepth
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
 
+locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
+    locationConfig.auxtelButlerPath,
     collections=[
-        "LSSTComCamSim/defaults",
+        # XXX needs changing to defaults and the quicklook collection creating
+        "LATISS/defaults",
+        locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
 )
 
-rollupRunner = SingleCorePipelineRunner(
+sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="nightlyRollup",
+    step="step1b",
     awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-rollupRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+sfmRunner.run()

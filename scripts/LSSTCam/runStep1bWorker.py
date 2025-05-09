@@ -19,24 +19,45 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# XXX I don't think this has been used for a while. Ressurect ASAP or delete?
+import sys
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.slac import Replotter
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-print("Running ComCamSim replotter...")
-
+instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
 
-butler = Butler.from_config(locationConfig.comCamButlerPath, collections=["LSSTComCamSim/raw/all"])
+workerNum = getPodWorkerNumber()
+podDetails = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=workerNum
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f"consuming from {podDetails.queueName}..."
+)
 
-plotter = Replotter(  # XXX needs type annotating and moving to podDetails
+butler = Butler.from_config(
+    locationConfig.lsstCamButlerPath,
+    instrument=instrument,
+    collections=[
+        f"{instrument}/defaults",
+        locationConfig.getOutputChain(instrument),
+    ],
+    writeable=True,
+)
+
+step1bRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
-    instrument="LSSTComCamSim",
+    instrument=instrument,
+    step="step1b",
+    awaitsDataProduct=None,
+    podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-plotter.run()
+step1bRunner.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here
