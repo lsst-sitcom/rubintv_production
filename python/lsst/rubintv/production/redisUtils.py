@@ -68,6 +68,9 @@ if TYPE_CHECKING:
 
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2
 WITNESS_DETECTOR_KEY = "RUBINTV_CONTROL_WITNESS_DETECTOR"
+DEQUE_TIMEOUT = 5  # keep this << than POD_EXISTENCE_TIMEOUT but > 1s
+POD_EXISTENCE_TIMEOUT = 30
+BUSY_EXPIRY = 60 * 15  # keep this longer than the longest payload execution
 
 
 def decode_string(value: bytes) -> str:
@@ -263,7 +266,7 @@ class RedisHelper:
         queueName : `str`
             The name of the queue the worker is processing.
         """
-        self.redis.set(f"{pod.queueName}+IS_BUSY", value=1)
+        self.redis.setex(f"{pod.queueName}+IS_BUSY", time=BUSY_EXPIRY, value=1)
 
     def announceFree(self, pod: PodDetails) -> None:
         """Announce that a worker is free to process a queue.
@@ -276,18 +279,21 @@ class RedisHelper:
             The name of the queue the worker is processing.
         """
         self.announceExistence(pod)
+        # delete the IS_BUSY key, regardless of its expiry, as we've finished
+        # working and are ready for new work. It's only an expiring key for
+        # safety in case workers fully die and don't come back.
         self.redis.delete(f"{pod.queueName}+IS_BUSY")
 
     def announceExistence(self, pod: PodDetails, remove: bool = False) -> None:
         """Announce that a worker is present in the pool.
 
-        Currently this is set to 30s expiry, and is reasserted with each call
-        to `announceFree`. This is to ensure that if a worker dies, the queue
-        will be freed up for another worker to take over. It shouldn't matter
-        much if this expires during processing, so this doesn't need to be
-        greater than the longest SFM pipeline execution, which would be ~200s.
-        If we were to pick that, then work could land on a dead queue and sit
-        around for quite some time.
+        This is set via `POD_EXISTENCE_TIMEOUT`, and is reasserted with each
+        call to `announceFree`. This is to ensure that if a worker dies, the
+        queue will be freed up for another worker to take over. It shouldn't
+        matter much if this expires during processing, so this doesn't need to
+        be greater than the longest SFM pipeline execution, which would be
+        ~200s. If we were to pick that, then work could land on a dead queue
+        and sit around for quite some time.
 
         Parameters
         ----------
@@ -297,7 +303,7 @@ class RedisHelper:
             Remove the worker from pool. Default is ``False``.
         """
         if not remove:
-            self.redis.setex(f"{pod.queueName}+EXISTS", timedelta(seconds=30), value=1)
+            self.redis.setex(f"{pod.queueName}+EXISTS", timedelta(seconds=POD_EXISTENCE_TIMEOUT), value=1)
         else:
             self.redis.delete(f"{pod.queueName}+EXISTS")
 
@@ -807,12 +813,13 @@ class RedisHelper:
             The next exposure to process for the specified detector, or
             ``None`` if the queue is empty.
         """
-        payLoadJson = self.redis.lpop(pod.queueName)
-        if payLoadJson is None:
+        popped = self.redis.blpop(pod.queueName, timeout=DEQUE_TIMEOUT)
+        if popped is None:
             self.redis.hset("_QUEUE-LENGTHS", f"{pod.queueName}", 0)  # assert we're at exactly zero
             return None
         else:
             self.redis.hincrby("_QUEUE-LENGTHS", f"{pod.queueName}", -1)
+        _, payLoadJson = popped  # if it's not None, it's a tuple of (queueName, payload)
         return Payload.from_json(payLoadJson, self.butler)
 
     def getQueueLength(self, pod: PodDetails) -> int:
