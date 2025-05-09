@@ -69,8 +69,7 @@ class RedisWatcher:
         """
         while True:
             self.redisHelper.announceFree(self.podDetails)
-            # TODO: think about changing dequeuePayload to use BLMOVE
-            payload = self.redisHelper.dequeuePayload(self.podDetails)
+            payload = self.redisHelper.dequeuePayload(self.podDetails)  # blocks for up to DEQUE_TIMEOUT sec
             if payload is not None:
                 try:
                     self.payload = payload  # XXX why is this being saved on the class?
@@ -82,7 +81,7 @@ class RedisWatcher:
                 finally:
                     self.redisHelper.announceFree(self.podDetails)
             else:  # only sleep when no work is found
-                sleep(self.cadence)
+                sleep(self.cadence)  # probably unnecessary now we use a blocking dequeue but it doesn't hurt
 
 
 class ButlerWatcher:
