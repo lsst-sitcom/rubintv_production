@@ -185,7 +185,7 @@ class ClusterManager:
         WorkerStatus
             Status information for the worker
         """
-        queueLength = self.redis.llen(worker.queueName)
+        queueLength = self.rh.getQueueLength(worker)
         isBusy = bool(self.redis.exists(f"{worker.queueName}+IS_BUSY"))
         queueItems = self.getQueueItems(worker.queueName) if detailed and queueLength > 0 else []
 
