@@ -793,8 +793,10 @@ class RedisHelper:
         """
         if top:
             self.redis.lpush(destinationPod.queueName, payload.to_json())
+            self.redis.hincrby("_QUEUE-LENGTHS", f"{destinationPod.queueName}", 1)
         else:
             self.redis.rpush(destinationPod.queueName, payload.to_json())
+            self.redis.hincrby("_QUEUE-LENGTHS", f"{destinationPod.queueName}", 1)
 
     def dequeuePayload(self, pod: PodDetails) -> Payload | None:
         """Get the next unit of work from a specific worker queue.
@@ -807,8 +809,28 @@ class RedisHelper:
         """
         payLoadJson = self.redis.lpop(pod.queueName)
         if payLoadJson is None:
+            self.redis.hset("_QUEUE-LENGTHS", f"{pod.queueName}", 0)  # assert we're at exactly zero
             return None
+        else:
+            self.redis.hincrby("_QUEUE-LENGTHS", f"{pod.queueName}", -1)
         return Payload.from_json(payLoadJson, self.butler)
+
+    def getQueueLength(self, pod: PodDetails) -> int:
+        """Get the length of a specific worker queue.
+
+        It's costly to get the lengths of all the queues, so they're tracked in
+        a separate hash. This is updated when items are added or removed from
+        the queue, so it should be accurate. Each time the queue is fully
+        emptied the length is set to zero, so this should add some security
+        against things diverging too much over time in case of a bug.
+
+        Parameters
+        ----------
+        pod : `lsst.rubintv.production.podDetails.PodDetails`
+            The pod to get the queue length for.
+        """
+        length = self.redis.hget("_QUEUE-LENGTHS", f"{pod.queueName}")
+        return int(length) if length else 0
 
     def clearTaskCounters(self) -> None:
         # TODO: DM-44102 check if .keys() is OK here
