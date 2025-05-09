@@ -27,12 +27,13 @@ import logging
 import os
 import pickle
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from lsst.summit.utils.butlerUtils import getExpRecordFromDataId, getSeqNumsForDayObs, makeDefaultLatissButler
-from lsst.summit.utils.utils import dayObsIntToString, setupLogging
+from lsst.summit.utils.efdUtils import calcPreviousDay
+from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int, setupLogging
 from lsst.utils import getPackageDir
 
 from .channels import CHANNELS, PREFIXES
@@ -565,3 +566,45 @@ def syncBuckets(multiUploader: MultiUploader) -> None:
             print(f"Copied {i + 1} items of {len(missing)}, elapsed: {(time.time() - t0):.2f}s")
 
     print(f"Full copying took {(time.time() - t0):.2f} seconds")
+
+
+def deleteAllSkyStills(bucket: Any) -> None:
+    log = logging.getLogger(__name__)
+
+    today = getCurrentDayObs_int()
+    yesterday = calcPreviousDay(today)
+    todayStr = dayObsIntToString(today)
+    yesterdayStr = dayObsIntToString(yesterday)
+
+    allSkyAll = [o for o in bucket.objects.filter(Prefix="allsky/")]
+    stills = [o for o in allSkyAll if "still" in o.key]
+    log.info(f"Found {len(stills)} all sky stills in total")
+    filtered = [o for o in stills if todayStr not in o.key]
+    filtered = [o for o in filtered if yesterdayStr not in o.key]
+    log.info(f" of which {len(filtered)} are from before {yesterdayStr}")
+    for i, obj in enumerate(filtered):
+        obj.delete()
+        if (i + 1) % 100 == 0:
+            log.info(f"Deleted {i + 1} of {len(filtered)} stills...")
+    log.info("Finished deleting stills")
+
+
+def deleteNonFinalAllSkyMovies(bucket: Any) -> None:
+    log = logging.getLogger(__name__)
+
+    today = getCurrentDayObs_int()
+    yesterday = calcPreviousDay(today)
+    todayStr = dayObsIntToString(today)
+    yesterdayStr = dayObsIntToString(yesterday)
+
+    allSkyAll = [o for o in bucket.objects.filter(Prefix="allsky/")]
+    movies = [o for o in allSkyAll if o.key.endswith(".mp4") and "final" not in o.key]
+    log.info(f"Found {len(movies)} non-final all sky movies in total")
+    filtered = [o for o in movies if todayStr not in o.key]
+    filtered = [o for o in filtered if yesterdayStr not in o.key]
+    log.info(f" of which {len(filtered)} are from before {yesterdayStr}")
+    for i, obj in enumerate(filtered):
+        obj.delete()
+        if (i + 1) % 100 == 0:
+            log.info(f"Deleted {i + 1} of {len(filtered)} non-final movies...")
+    log.info("Finished deleting non-final movies")
