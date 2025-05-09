@@ -54,7 +54,7 @@ class RedisWatcher:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, podDetails: PodDetails) -> None:
         self.redisHelper = RedisHelper(butler, locationConfig)
         self.podDetails = podDetails
-        self.cadence = 0.01  # seconds - this is fine, redis likes a beating
+        self.cadence = 0.2  # seconds - there's 400+ workers, don't go too high!
         self.log = _LOG.getChild("redisWatcher")
         self.payload: Payload | None = None  # XXX that is this for?
 
@@ -69,6 +69,7 @@ class RedisWatcher:
         """
         while True:
             self.redisHelper.announceFree(self.podDetails)
+            # TODO: think about changing dequeuePayload to use BLMOVE
             payload = self.redisHelper.dequeuePayload(self.podDetails)
             if payload is not None:
                 try:
