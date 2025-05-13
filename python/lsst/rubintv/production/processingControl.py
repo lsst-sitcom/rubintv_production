@@ -993,7 +993,7 @@ class HeadProcessController:
 
         allWhos = {p.who for p in payloads.values()}
         whos = ",".join(sorted(allWhos))
-        mixed = "" if len(whos) == 1 else "mixed "
+        mixed = "" if len(allWhos) == 1 else "mixed "
         self.log.info(
             f"Sent {sentToFree} {mixed}payloads to free workers, {sentToBusy} to busy workers for {whos}"
         )
