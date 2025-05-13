@@ -563,9 +563,9 @@ def syncBuckets(multiUploader: MultiUploader) -> None:
         remoteBucket.Object(obj.key).upload_fileobj(io.BytesIO(body))
         del body
         if i % 100 == 0:
-            print(f"Copied {i + 1} items of {len(missing)}, elapsed: {(time.time() - t0):.2f}s")
+            log.info(f"Copied {i + 1} items of {len(missing)}, elapsed: {(time.time() - t0):.2f}s")
 
-    print(f"Full copying took {(time.time() - t0):.2f} seconds")
+    log.info(f"Full copying took {(time.time() - t0):.2f} seconds")
 
 
 def deleteAllSkyStills(bucket: Any) -> None:
