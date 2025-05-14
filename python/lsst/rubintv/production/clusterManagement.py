@@ -46,10 +46,10 @@ step1aMap = {
     "SFM_WORKER": "CLUSTER_STATUS_SFM_SET",
     "AOS_WORKER": "CLUSTER_STATUS_AOS_SET",
 }
-step1bMap = {
+flatSetMap = {
     "STEP1B_WORKER": "CLUSTER_STATUS_SFM_STEP1B_SET_0",
     "STEP1B_AOS_WORKER": "CLUSTER_STATUS_AOS_STEP1B_SET_0",
-    # "???": "CLUSTER_STATUS_SPAREWORKERS_SET_0",
+    "BACKLOG_WORKER": "CLUSTER_STATUS_SPAREWORKERS_SET_0",
 }
 
 
@@ -372,7 +372,7 @@ class ClusterManager:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
                 self.redis.hset(key, str(det), value)
 
-        for flavor, redisKey in step1bMap.items():
+        for flavor, redisKey in flatSetMap.items():
             statuses = status.flavorStatuses[flavor]
 
             for workerStatus in statuses.workers:
