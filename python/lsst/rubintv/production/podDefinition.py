@@ -78,7 +78,9 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
         PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
         PodFlavor.PERFORMANCE_MONITOR: PodType.PER_INSTRUMENT_SINGLETON,  # only one of these I think, for now
-        PodFlavor.BACKLOG_WORKER: PodType.PER_DETECTOR,  # can run any step1 workload
+        # BACKLOG_WORKER can run any step1 workload, no detector affinity, just
+        # a depth
+        PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
     }
     return mapping[podFlavor]
 
