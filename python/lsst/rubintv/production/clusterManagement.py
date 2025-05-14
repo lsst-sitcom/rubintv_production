@@ -92,9 +92,10 @@ class ClusterStatus:
 
 
 class ClusterManager:
-    def __init__(self, locationConfig: LocationConfig, butler: Butler):
+    def __init__(self, locationConfig: LocationConfig, butler: Butler, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.butler = butler
+        self.doRaise = doRaise
         self.rh = RedisHelper(butler, locationConfig)
         self.redis = self.rh.redis
         self.log = logging.getLogger("lsst.rubintv.produciton.clusterManager")
