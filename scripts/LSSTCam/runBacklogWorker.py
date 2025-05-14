@@ -34,8 +34,8 @@ log = logging.getLogger(__name__)
 instrument = "LSSTCam"
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum  # this isn't a real detector num - these don't keep affinity in the same way
-detectorDepth = 0  # always zero - this is a flat set
+detectorNum = 0  # no detectors, this set doesn't have detector affinity
+detectorDepth = workerNum  # flat set like step1b workers, so depth is workerNum
 
 sleepDuration = float(os.getenv("BUTLER_ROLLOUT_PAUSE", 0)) * workerNum
 log.info(
@@ -46,7 +46,7 @@ log.info(f"Worker {workerNum} (det-{detectorNum}-{detectorDepth}) starting up...
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.BACKLOG_WORKER, detectorNumber=detectorNum, depth=detectorDepth
+    instrument=instrument, podFlavor=PodFlavor.BACKLOG_WORKER, detectorNumber=None, depth=detectorDepth
 )
 log.info(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
