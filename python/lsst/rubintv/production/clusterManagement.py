@@ -27,6 +27,7 @@ __all__ = "ClusterManager"
 import json
 import logging
 from dataclasses import dataclass
+from time import sleep
 from typing import TYPE_CHECKING
 
 from tabulate import tabulate
@@ -39,6 +40,17 @@ if TYPE_CHECKING:
     from lsst.daf.butler import Butler
 
     from .utils import LocationConfig
+
+
+step1aMap = {
+    "SFM_WORKER": "CLUSTER_STATUS_SFM_SET",
+    "AOS_WORKER": "CLUSTER_STATUS_AOS_SET",
+}
+step1bMap = {
+    "STEP1B_WORKER": "CLUSTER_STATUS_SFM_STEP1B_SET_0",
+    "STEP1B_AOS_WORKER": "CLUSTER_STATUS_AOS_STEP1B_SET_0",
+    # "???": "CLUSTER_STATUS_SPAREWORKERS_SET_0",
+}
 
 
 @dataclass
@@ -344,3 +356,42 @@ class ClusterManager:
         if clusterStatus.rawQueueLength > 0:
             queueIndicator = "❌" * min(clusterStatus.rawQueueLength, 10)
             print(f"\nIncoming Raw Data Queue: {clusterStatus.rawQueueLength} items {queueIndicator}")
+
+    def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
+        for flavor, redisKey in step1aMap.items():
+            statuses = status.flavorStatuses[flavor]
+
+            for workerStatus in statuses.workers:
+                w = workerStatus.worker
+                key = f"{redisKey}_{w.depth}"
+                det = w.detectorNumber if w.detectorNumber else 0
+                if workerStatus.isBusy is False:
+                    value = "free"
+                else:
+                    value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
+                self.redis.hset(key, str(det), value)
+
+        for flavor, redisKey in step1bMap.items():
+            statuses = status.flavorStatuses[flavor]
+
+            for workerStatus in statuses.workers:
+                w = workerStatus.worker
+                depth = w.depth
+                if workerStatus.isBusy is False:
+                    value = "free"
+                else:
+                    value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
+
+                self.redis.hset(redisKey, str(depth), value)
+            self.redis.hset(redisKey, "num_workers", len(statuses.workers))
+
+    def run(self):
+        """Main loop to monitor and manage the cluster."""
+        while True:
+            try:
+                status = self.getClusterStatus()
+                self.sendStatusToRubinTV(status)
+            except Exception as e:
+                self.log.exception(f"Error in cluster management: {e}")
+            finally:
+                sleep(0.5)
