@@ -264,6 +264,11 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postIsr, expRecord.day_obs, expRecord.seq_num)
 
+        if isCalibration(expRecord):  # make witness images with post-isr for all calibs and no on-sky images
+            self.log.info("Making witness detector image...")
+            self.makeWitnessImage(postIsr, expRecord)
+            self.log.info("Finished making witness detector image")
+
         if self.locationConfig.location == "summit":
             self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
             self.writeLogMessageShards(expRecord.day_obs)
@@ -376,9 +381,10 @@ class OneOffProcessor(BaseButlerChannel):
         self.publishPointingOffsets(visitImage, dataId, expRecord)
         self.log.info("Finished calculating pointing offsets")
 
-        self.log.info("Making witness detector image...")
-        self.makeWitnessImage(visitImage, expRecord)
-        self.log.info("Finished making witness detector image")
+        if not isCalibration(expRecord):  # make witness images with visitImage for all on-sky and no calibs
+            self.log.info("Making witness detector image...")
+            self.makeWitnessImage(visitImage, expRecord)
+            self.log.info("Finished making witness detector image")
         return
 
     def _doMountAnalysisSimonyi(self, expRecord: DimensionRecord) -> None:
