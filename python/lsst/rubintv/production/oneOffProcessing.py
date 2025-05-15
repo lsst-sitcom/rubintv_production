@@ -266,7 +266,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         if isCalibration(expRecord):  # make witness images with post-isr for all calibs and no on-sky images
             self.log.info("Making witness detector image...")
-            self.makeWitnessImage(postIsr, expRecord)
+            self.makeWitnessImage(postIsr, expRecord, stretch="ccs")
             self.log.info("Finished making witness detector image")
 
         if self.locationConfig.location == "summit":
@@ -333,13 +333,13 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: eclipticData}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
-    def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord) -> None:
+    def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord, stretch: str) -> None:
         detNum = visitImage.detector.getId()
         detName = visitImage.detector.getName()
         title = makeWitnessDetectorTitle(expRecord, detNum, self.camera)
 
         fig = make_figure(figsize=(12, 12))
-        fig = plot(visitImage, figure=fig, stretch="midtone", title=title)
+        fig = plot(visitImage, figure=fig, stretch=stretch, title=title)
 
         plotName = "witness_detector"
         plotFile = makePlotFile(
@@ -383,7 +383,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         if not isCalibration(expRecord):  # make witness images with visitImage for all on-sky and no calibs
             self.log.info("Making witness detector image...")
-            self.makeWitnessImage(visitImage, expRecord)
+            self.makeWitnessImage(visitImage, expRecord, stretch="midtone")
             self.log.info("Finished making witness detector image")
         return
 
