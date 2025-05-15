@@ -1346,6 +1346,9 @@ class HeadProcessController:
             self.redisHelper.enqueuePayload(payload, worker)
             self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+            self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
+
     def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
 
