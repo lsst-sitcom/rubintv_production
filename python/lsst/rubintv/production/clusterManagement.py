@@ -359,6 +359,7 @@ class ClusterManager:
             print(f"\nIncoming Raw Data Queue: {clusterStatus.rawQueueLength} items {queueIndicator}")
 
     def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
+        # send the SFM sets and AOS sets
         for flavor, redisKey in step1aMap.items():
             statuses = status.flavorStatuses[flavor]
 
@@ -372,6 +373,7 @@ class ClusterManager:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
                 self.redis.hset(key, str(det), value)
 
+        # send the step1b sets and spare workers
         for flavor, redisKey in flatSetMap.items():
             statuses = status.flavorStatuses[flavor]
 
@@ -385,6 +387,21 @@ class ClusterManager:
 
                 self.redis.hset(redisKey, str(depth), value)
             self.redis.hset(redisKey, "num_workers", len(statuses.workers))
+
+        # Do all the remaining ones that haven't been mapped
+        exclude = step1aMap.keys() | flatSetMap.keys()
+        for flavorName, flavorStatus in status.flavorStatuses.items():
+            if flavorName in exclude:
+                continue
+
+            # TODO: flavorName=PSF_PLOTTER doesn't use a real queue with
+            # payloads so doesn't currently work correctly as it doesn't have
+            # any workers even though the pod and queue exist.
+            totalQueue = sum(w.queueLength for w in flavorStatus.workers)
+            if totalQueue > 0:
+                self.redis.hset("CLUSTER_STATUS_OTHER_QUEUES", flavorName, totalQueue)
+            else:  # delete workers with no queued items
+                self.redis.hdel("CLUSTER_STATUS_OTHER_QUEUES", flavorName)
 
     def run(self):
         """Main loop to monitor and manage the cluster."""
