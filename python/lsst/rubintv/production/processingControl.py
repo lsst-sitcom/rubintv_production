@@ -48,6 +48,7 @@ from lsst.daf.butler import (
 from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: DM-XXXXX fix this import
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
+from lsst.pex.config.configurableField import ConfigurableInstance
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
@@ -70,6 +71,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from lsst.afw.cameraGeom import Detector
+    from lsst.pipe.base import PipelineTaskConfig
     from lsst.pipe.base.pipeline_graph import TaskNode
 
 
@@ -266,6 +268,34 @@ def getIsrConfigDict(graph: PipelineGraph) -> dict[str, str]:
     return isrDict
 
 
+def configToReadableDict(config: PipelineTaskConfig) -> dict[str, str]:
+    """Convert a config to a readable dict.
+
+    Currently just removes boring things like connections, but allows for easy
+    extension as we see how other configs serialize.
+
+    Parameters
+    ----------
+    config : `lsst.pipe.base.PipelineTaskConfig`
+        The config to convert to a readable dict.
+
+    Returns
+    -------
+    readable : `dict` [`str`, `str`]
+        The config as a dict of strings.
+    """
+    SKIP = ["connections"]
+    readable = {}
+    for k, v in config.items():
+        if k in SKIP:
+            continue
+        if isinstance(v, ConfigurableInstance):
+            readable[k] = repr(v.value)
+        else:
+            readable[k] = repr(v)
+    return readable
+
+
 def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardDir: str) -> None:
     """Write the ISR config to a shard.
 
@@ -276,6 +306,65 @@ def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardD
     isrDict = getIsrConfigDict(graph)
     isrDict["DISPLAY_VALUE"] = "📖"
     writeMetadataShard(shardDir, expRecord.day_obs, {expRecord.seq_num: {"ISR config": isrDict}})
+
+
+def writeAosConfigShards(
+    expRecord: DimensionRecord, pipelineComponents: PipelineComponents, shardDir: str
+) -> None:
+    """Write all the requested the AOS tasks configs out the AOS page.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to process.
+    pipelineComponents : `PipelineComponents`
+        The pipeline components to use.
+    shardDir : `str`
+        The directory to write the shards to.
+    """
+    graph = pipelineComponents.graphs["step1a"]
+
+    czTasks = [task for name, task in graph.tasks.items() if "zern" in name.lower()]
+    if czTasks:
+        czTask = czTasks[0]
+        readableConfig = configToReadableDict(czTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir, expRecord.day_obs, {expRecord.seq_num: {"CalcZernikes config": readableConfig}}
+        )
+
+    generateDonutTasks = [task for name, task in graph.tasks.items() if "generatedonut" in name.lower()]
+    if generateDonutTasks:
+        generateDonutTask = generateDonutTasks[0]
+        readableConfig = configToReadableDict(generateDonutTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir,
+            expRecord.day_obs,
+            {expRecord.seq_num: {"GenerateDonutDirectDetectTask config": readableConfig}},
+        )
+
+    cutoutDonutTasks = [task for name, task in graph.tasks.items() if "cutoutdonutscwfs" in name.lower()]
+    if cutoutDonutTasks:
+        cutoutDonutTask = cutoutDonutTasks[0]
+        readableConfig = configToReadableDict(cutoutDonutTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir, expRecord.day_obs, {expRecord.seq_num: {"CutOutDonutsCwfsPair config": readableConfig}}
+        )
+
+    cutoutDonutScienceSensorTasks = [
+        task for name, task in graph.tasks.items() if "cutoutdonutssciencesensorgroup" in name.lower()
+    ]
+    if cutoutDonutScienceSensorTasks:
+        cutoutDonutScienceSensorTask = cutoutDonutScienceSensorTasks[0]
+        readableConfig = configToReadableDict(cutoutDonutScienceSensorTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir,
+            expRecord.day_obs,
+            {expRecord.seq_num: {"CutOutDonutsScienceSensorGroup config": readableConfig}},
+        )
 
 
 def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
@@ -734,8 +823,10 @@ class HeadProcessController:
             return
         assert self.focalPlaneControl is not None  # just for mypy
 
+        aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
         if not isCalibration(expRecord):
             targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
+            writeAosConfigShards(expRecord, self.pipelines[self.currentAosPipeline], aosShardPath)
             who = "AOS"
         else:
             # send the detectors to the AOS workers for normal ISR processing
@@ -783,7 +874,6 @@ class HeadProcessController:
         # TODO: Consider whether this should move to the expRecord getting
         # function, or the event loop, or if this is OK. If this really does
         # fire for every image this is probably fine.
-        aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
         writeExpRecordMetadataShard(expRecord, aosShardPath)
 
     def doDetectorFanout(self, expRecord: DimensionRecord) -> None:
