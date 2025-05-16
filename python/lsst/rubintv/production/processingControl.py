@@ -24,6 +24,7 @@ from __future__ import annotations
 import enum
 import json
 import logging
+import sys
 import time
 from ast import literal_eval
 from dataclasses import dataclass
@@ -702,6 +703,11 @@ class HeadProcessController:
             # is a solution, but it's not a very good one. Need frontend
             # changes to do better though
             return
+
+        # do this first so that any other commands take effect upon restart
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_HEAD_NODE"):
+            self.log.warning("Received reset command from RubinTV, restarting the head node...")
+            sys.exit(0)
 
         _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
         if _aosPipeline is not None:
