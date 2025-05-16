@@ -1506,3 +1506,22 @@ def makeWitnessDetectorTitle(record: DimensionRecord, detector: int | str, camer
     title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
     title += f"{detName}(#{detId}) {r.observation_type} image @ {r.exposure_time:.1f}s"
     return title
+
+
+def makeFocalPlaneTitle(record: DimensionRecord) -> str:
+    """Make a title for a plot based on the exp/visit record.
+
+    Parameters
+    ----------
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure or visit record.
+
+    Returns
+    -------
+    title : `str`
+        The title for the plot.
+    """
+    r = record
+    title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
+    title += f"{r.observation_type} image @ {r.exposure_time:.1f}s in filter {r.physical_filter}"
+    return title
