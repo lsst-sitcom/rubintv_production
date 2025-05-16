@@ -705,7 +705,7 @@ class HeadProcessController:
             return
 
         # do this first so that any other commands take effect upon restart
-        if self.redis.getdel("RUBINTV_CONTROL_RESET_HEAD_NODE"):
+        if self.redisHelper.redis.getdel("RUBINTV_CONTROL_RESET_HEAD_NODE"):
             self.log.warning("Received reset command from RubinTV, restarting the head node...")
             sys.exit(0)
 
