@@ -417,6 +417,7 @@ def plotFocalPlaneMosaic(
     nExpected: int,
     stretch: str,
     timeout: float,
+    title: str = "",
     deleteIfComplete: bool = True,
     deleteRegardless: bool = False,
     logger: Logger | None = None,
@@ -450,6 +451,8 @@ def plotFocalPlaneMosaic(
         The scaling option for the plot.
     timeout : `float`
         The maximum time to wait for the images to land.
+    title : `str`
+        The title for the plot.
     deleteIfComplete : `bool`, optional
         If True, delete the binned image files if the number of expected files
         is the number which was found.
@@ -494,13 +497,19 @@ def plotFocalPlaneMosaic(
         logger.warning(f"Failed to make mosaic for {dayObs=}, {seqNum=}")
         return None
     logger.info(f"Made mosaic image for {dayObs=}, {seqNum=}")
-    _plotFpMosaic(mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, saveAs=savePlotAs)
+    _plotFpMosaic(
+        mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, title=title, saveAs=savePlotAs
+    )
     logger.info(f"Saved mosaic image for {dayObs=}, {seqNum=} to {savePlotAs}")
     return mosaic
 
 
 def _plotFpMosaic(
-    im: Image, figureOrDisplay: Figure | Display, scalingOption: str = "CCS", saveAs: str = ""
+    im: Image,
+    figureOrDisplay: Figure | Display,
+    scalingOption: str = "CCS",
+    title: str = "",
+    saveAs: str = "",
 ) -> Figure | Display:
     """Plot the focal plane mosaic, optionally saving as a png.
 
@@ -550,7 +559,8 @@ def _plotFpMosaic(
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         figureOrDisplay.colorbar(im, cax=cax)
-
+        if title:
+            figureOrDisplay.suptitle(title)
         figureOrDisplay.tight_layout()
         if saveAs:
             figureOrDisplay.savefig(saveAs)
@@ -562,6 +572,8 @@ def _plotFpMosaic(
             )
         figureOrDisplay.scale("asinh", "zscale")
         figureOrDisplay.image(im)
+        if title:
+            figureOrDisplay._impl._figure.suptitle(title)
         figureOrDisplay._impl._figure.tight_layout()
         # see if there is something better than this for titles
         # display._impl._figure.axes[0].set_title('title')

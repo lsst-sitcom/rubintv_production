@@ -31,7 +31,7 @@ from lsst.utils.plotting.figures import make_figure
 
 from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig, makePlotFile
+from ..utils import LocationConfig, makeFocalPlaneTitle, makePlotFile
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
@@ -141,6 +141,7 @@ class Plotter:
                 raise ValueError(f"Unknown data product: {dataProduct}")
 
         saveFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+        title = makeFocalPlaneTitle(expRecord)
 
         image = plotFocalPlaneMosaic(
             butler=self.butler,
@@ -152,6 +153,7 @@ class Plotter:
             dataPath=datapath,
             savePlotAs=saveFile,
             nExpected=nExpected,
+            title=title,
             timeout=timeout,
             deleteIfComplete=True,
             logger=self.log,
