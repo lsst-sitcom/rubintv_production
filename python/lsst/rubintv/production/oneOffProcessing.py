@@ -174,6 +174,10 @@ class OneOffProcessor(BaseButlerChannel):
         if controller is not None and controller != "":
             md[seqNum].update({"Controller": f"{controller}"})
 
+        dimmSeeing = header.get("SEEING", None)
+        if dimmSeeing is not None and dimmSeeing != "":
+            md[seqNum].update({"DIMM Seeing": f"{dimmSeeing:.3f}"})
+
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
     def writePhysicalRotation(self, expRecord: DimensionRecord) -> None:
