@@ -32,9 +32,10 @@ from typing import TYPE_CHECKING
 
 from tabulate import tabulate
 
-from .payloads import Payload
+from .payloads import Payload, RestartPayload
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
+from .utils import mapAosWorkerNumber
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler
@@ -279,17 +280,23 @@ class ClusterManager:
             instrument=instrument, flavorStatuses=flavorStatuses, rawQueueLength=rawQueueLength
         )
 
-    def printClusterStatus(self, detailed: bool = False, ignoreFree: bool = True) -> None:
+    def printClusterStatus(
+        self, status: ClusterStatus | None = None, detailed: bool = False, ignoreFree: bool = True
+    ) -> None:
         """Print status information for the cluster.
+
+        Print status provided, if provided, otherwise fetch the status and
+        print it.
 
         Parameters
         ----------
-        detailed : bool, default=False
+        detailed : bool, optional
             Whether to print detailed queue information
-        ignoreFree : bool, default=True
+        ignoreFree : bool, optional
             Whether to ignore free workers with empty queues
         """
-        clusterStatus = self.getClusterStatus(detailed=detailed)
+        if status is None:
+            clusterStatus = self.getClusterStatus(detailed=detailed)
 
         allTables = []
         summaryTable = []
@@ -358,6 +365,81 @@ class ClusterManager:
             queueIndicator = "❌" * min(clusterStatus.rawQueueLength, 10)
             print(f"\nIncoming Raw Data Queue: {clusterStatus.rawQueueLength} items {queueIndicator}")
 
+    def executeRubinTvCommands(self) -> None:
+        """Dispatch RestartPayloads to pods based on commands from RubinTV.
+
+        This method checks for specific Redis keys and sends RestartPayloads to
+        the appropriate workers based on the keys that are set.
+        """
+        inst = "LSSTCam"
+        restartPayload = RestartPayload()
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_SET_0"):
+            self.log.info("Resetting SFM Set 0 workers (Imaging Worker Set 1 on RubinTV)")
+            pods = [PodDetails(inst, PodFlavor.SFM_WORKER, detectorNumber=d, depth=0) for d in range(0, 189)]
+            for pod in pods:
+                self.rd.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_SET_1"):
+            self.log.info("Resetting SFM Set 1 workers (Imaging Worker Set 2 on RubinTV)")
+            pods = [PodDetails(inst, PodFlavor.SFM_WORKER, detectorNumber=d, depth=1) for d in range(0, 189)]
+            for pod in pods:
+                self.rd.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_STEP1B_SET_0"):
+            status = self.getClusterStatus()
+            nStep1b = len(status.flavorStatuses["STEP1B_WORKER"].workers)
+            self.log.info(f"Resetting {nStep1b} SFM Step1b workers")
+            pods = [
+                PodDetails(inst, PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=d)
+                for d in range(nStep1b)
+            ]
+            for pod in pods:
+                self.rd.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_0"):
+            self.log.info("Resetting AOS Set 0 workers (CWFS worker set 1 on RubinTV)")
+            workerNums = range(0, 8)
+            for workerNum in workerNums:
+                depth, detNum = mapAosWorkerNumber(workerNum)
+                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+                self.rh.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_1"):
+            self.log.info("Resetting AOS Set 1 workers (CWFS worker set 2 on RubinTV)")
+            workerNums = range(8, 16)
+            for workerNum in workerNums:
+                depth, detNum = mapAosWorkerNumber(workerNum)
+                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+                self.rh.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_2"):
+            self.log.info("Resetting AOS Set 2 workers (CWFS worker set 3 on RubinTV)")
+            workerNums = range(16, 24)
+            for workerNum in workerNums:
+                depth, detNum = mapAosWorkerNumber(workerNum)
+                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+                self.rh.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_3"):
+            self.log.info("Resetting AOS Set 3 workers (CWFS worker set 4 on RubinTV)")
+            workerNums = range(24, 32)
+            for workerNum in workerNums:
+                depth, detNum = mapAosWorkerNumber(workerNum)
+                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+                self.rh.enqueuePayload(restartPayload, pod)
+
+        if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_STEP1B_SET_0"):
+            status = self.getClusterStatus()
+            nStep1b = len(status.flavorStatuses["STEP1B_AOS_WORKER"].workers)
+            self.log.info(f"Resetting {nStep1b} AOS Step1b workers")
+            pods = [
+                PodDetails(inst, PodFlavor.STEP1B_AOS_WORKER, detectorNumber=None, depth=d)
+                for d in range(nStep1b)
+            ]
+            for pod in pods:
+                self.rd.enqueuePayload(restartPayload, pod)
+
     def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
         # send the SFM sets and AOS sets
         for flavor, redisKey in step1aMap.items():
@@ -407,6 +489,7 @@ class ClusterManager:
         """Main loop to monitor and manage the cluster."""
         while True:
             try:
+                self.executeRubinTvCommands()
                 status = self.getClusterStatus()
                 self.sendStatusToRubinTV(status)
             except Exception as e:
