@@ -281,7 +281,7 @@ class ClusterManager:
         )
 
     def printClusterStatus(
-        self, status: ClusterStatus | None = None, detailed: bool = False, ignoreFree: bool = True
+        self, clusterStatus: ClusterStatus | None = None, detailed: bool = False, ignoreFree: bool = True
     ) -> None:
         """Print status information for the cluster.
 
@@ -295,8 +295,9 @@ class ClusterManager:
         ignoreFree : bool, optional
             Whether to ignore free workers with empty queues
         """
-        if status is None:
+        if clusterStatus is None:
             clusterStatus = self.getClusterStatus(detailed=detailed)
+        assert clusterStatus is not None
 
         allTables = []
         summaryTable = []
@@ -378,13 +379,13 @@ class ClusterManager:
             self.log.info("Resetting SFM Set 0 workers (Imaging Worker Set 1 on RubinTV)")
             pods = [PodDetails(inst, PodFlavor.SFM_WORKER, detectorNumber=d, depth=0) for d in range(0, 189)]
             for pod in pods:
-                self.rd.enqueuePayload(restartPayload, pod)
+                self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_SET_1"):
             self.log.info("Resetting SFM Set 1 workers (Imaging Worker Set 2 on RubinTV)")
             pods = [PodDetails(inst, PodFlavor.SFM_WORKER, detectorNumber=d, depth=1) for d in range(0, 189)]
             for pod in pods:
-                self.rd.enqueuePayload(restartPayload, pod)
+                self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_STEP1B_SET_0"):
             status = self.getClusterStatus()
@@ -395,7 +396,7 @@ class ClusterManager:
                 for d in range(nStep1b)
             ]
             for pod in pods:
-                self.rd.enqueuePayload(restartPayload, pod)
+                self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_0"):
             self.log.info("Resetting AOS Set 0 workers (CWFS worker set 1 on RubinTV)")
@@ -438,7 +439,7 @@ class ClusterManager:
                 for d in range(nStep1b)
             ]
             for pod in pods:
-                self.rd.enqueuePayload(restartPayload, pod)
+                self.rh.enqueuePayload(restartPayload, pod)
 
     def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
         # send the SFM sets and AOS sets
@@ -485,6 +486,53 @@ class ClusterManager:
             else:  # delete workers with no queued items
                 self.redis.hdel("CLUSTER_STATUS_OTHER_QUEUES", flavorName)
 
+    def rebalanceSfmWorkers(self, status: ClusterStatus) -> None:
+        nBacklogFree = status.flavorStatuses["BACKLOG_WORKER"].freeWorkers
+        if nBacklogFree == 0:
+            return
+
+        freeBacklogWorkers = [
+            ws.worker for ws in status.flavorStatuses["BACKLOG_WORKER"].workers if ws.isBusy is False
+        ]
+        assert len(freeBacklogWorkers) == nBacklogFree
+
+        sfmStatuses = status.flavorStatuses["SFM_WORKER"]
+        # make an ordered dict of queue lengths so we always rebalance the
+        # worst backlogs first
+        queueLengths = dict(
+            sorted(
+                {ws.worker.queueName: ws.queueLength for ws in sfmStatuses.workers}.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+        )
+
+        i = 0
+        for queueName, length in queueLengths.items():
+            if length == 0:
+                return
+
+            if i == nBacklogFree:  # check this *before* dequeueing!
+                self.log.info("Finished rebalancing to all the available backlog workers")
+                return
+
+            # grab the destination worker before dequeueing, just in case
+            backlogWorker = freeBacklogWorkers[i]
+            pod = PodDetails.fromQueueName(queueName)
+            payload = self.rh.dequeuePayload(pod)
+            if payload is None:  # if length is 1 this might happen on occasion, above that is weirder
+                warning = f"Dequeued empty payload from {queueName} which should have had {length=}"
+                if length > 1:
+                    warning += " - this is very unexpected"
+                self.log.warning(length)
+                continue
+
+            self.log.info(f"Rebalancing payload from {queueName} with queue {length=} to {backlogWorker}")
+            self.rh.enqueuePayload(payload, backlogWorker)
+            i += 1
+
+        return
+
     def run(self):
         """Main loop to monitor and manage the cluster."""
         while True:
@@ -492,6 +540,7 @@ class ClusterManager:
                 self.executeRubinTvCommands()
                 status = self.getClusterStatus()
                 self.sendStatusToRubinTV(status)
+                self.rebalanceSfmWorkers(status)
             except Exception as e:
                 self.log.exception(f"Error in cluster management: {e}")
             finally:
