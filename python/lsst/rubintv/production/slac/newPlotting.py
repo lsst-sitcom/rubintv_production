@@ -93,7 +93,7 @@ class Plotter:
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotFocalPlane(self, expRecord: DimensionRecord, dataProduct: str, timeout: float) -> str:
+    def plotFocalPlane(self, expRecord: DimensionRecord, dataProduct: str) -> str:
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -106,8 +106,6 @@ class Plotter:
         dataProduct : `str`
             The data product to use for the plot, either `'post_isr_image'` or
             `'preliminary_visit_image'`.
-        timeout : `int`
-            The timeout for waiting for the data to be complete.
 
         Returns
         -------
@@ -154,9 +152,7 @@ class Plotter:
             savePlotAs=saveFile,
             nExpected=nExpected,
             title=title,
-            timeout=timeout,
             deleteIfComplete=True,
-            logger=self.log,
             stretch=stretch,
         )
         if image is not None:
@@ -237,7 +233,7 @@ class Plotter:
             case "post_isr_image":
                 plotName = "focal_plane_mosaic"
 
-        focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
+        focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct)
         if focalPlaneFile:  # only upload on plot success
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=instPrefix,
