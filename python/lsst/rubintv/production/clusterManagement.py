@@ -454,7 +454,14 @@ class ClusterManager:
                     value = "free"
                 else:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
-                self.redis.hset(key, str(det), value)
+                self.redis.xadd(
+                    f"stream:{key}",
+                    {
+                        "detector_id": str(det),  # worker/detector id
+                        "status": value,  # "busy", "free", "missing", or queue length as string
+                        "type": "worker_status",
+                    },
+                )
 
         # send the step1b sets and spare workers
         for flavor, redisKey in flatSetMap.items():
@@ -467,9 +474,18 @@ class ClusterManager:
                     value = "free"
                 else:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
-
-                self.redis.hset(redisKey, str(depth), value)
-            self.redis.hset(redisKey, "num_workers", len(statuses.workers))
+                self.redis.xadd(
+                    f"stream:{redisKey}",
+                    {
+                        "detector_id": str(depth),
+                        "status": value,  # "busy", "free", "missing", or queue length as string
+                        "type": "worker_status",
+                    },
+                )
+            self.redis.xadd(
+                f"stream:{redisKey}",
+                {"detector_id": "numWorkers", "status": len(statuses.workers), "type": "worker_count"},
+            )
 
         # Do all the remaining ones that haven't been mapped
         exclude = step1aMap.keys() | flatSetMap.keys()
@@ -482,9 +498,23 @@ class ClusterManager:
             # any workers even though the pod and queue exist.
             totalQueue = sum(w.queueLength for w in flavorStatus.workers)
             if totalQueue > 0:
-                self.redis.hset("CLUSTER_STATUS_OTHER_QUEUES", flavorName, totalQueue)
+                self.redis.xadd(
+                    "stream:CLUSTER_STATUS_OTHER_QUEUES",
+                    {
+                        "detector_id": flavorName,
+                        "status": totalQueue,
+                        "type": "text_status",  # Special type for text-based statuses
+                    },
+                )
             else:  # delete workers with no queued items
-                self.redis.hdel("CLUSTER_STATUS_OTHER_QUEUES", flavorName)
+                self.redis.xadd(
+                    "stream:CLUSTER_STATUS_OTHER_QUEUES",
+                    {
+                        "detector_id": flavorName,
+                        "status": "",  # empty string removes the flavorName from the list
+                        "type": "text_status",  # Special type for text-based statuses
+                    },
+                )
 
     def rebalanceSfmWorkers(self, status: ClusterStatus) -> None:
         nBacklogFree = status.flavorStatuses["BACKLOG_WORKER"].freeWorkers
