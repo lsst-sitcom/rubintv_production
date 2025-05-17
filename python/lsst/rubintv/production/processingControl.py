@@ -22,11 +22,9 @@
 from __future__ import annotations
 
 import enum
-import json
 import logging
 import sys
 import time
-from ast import literal_eval
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
@@ -402,9 +400,6 @@ def buildPipelines(
 ) -> tuple[list[PipelineGraph], dict[str, PipelineComponents]]:
     """Build the pipeline graphs from the pipeline file.
 
-    This is a separate method so that it can be called after the
-    RemoteController has been set up, which is needed for the AOS pipeline.
-
     Parameters
     ----------
     instrument : `str`
@@ -557,10 +552,6 @@ class HeadProcessController:
     """The head node, which controls which pods process which images.
 
     Decides how and when each detector-visit is farmed out.
-
-    Despite being the head node, the behaviour of this controller can be
-    remotely controlled by a RemoteController, for example to change the
-    processing strategy from a notebook or from LOVE.
     """
 
     targetLoopDuration = 0.2  # in seconds, so 5Hz
@@ -584,7 +575,6 @@ class HeadProcessController:
         )
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
-        self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
         # don't start here, the event loop starts the lap timer
         self.workTimer = BoxCarTimer(length=100)
         self.loopTimer = BoxCarTimer(length=100)
@@ -1430,7 +1420,6 @@ class HeadProcessController:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
             self.updateConfigsFromRubinTV()
-            self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
 
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
@@ -1486,149 +1475,6 @@ class HeadProcessController:
                 self.repattern()
 
             self.regulateLoopSpeed()
-
-
-class RemoteController:
-    # TODO: consider removing this completely. There has to be a simpler way
-    # and this was basically a fun plane project
-    def __init__(self, butler: Butler, locationConfig: LocationConfig) -> None:
-        self.log = logging.getLogger("lsst.rubintv.production.processControl.RemoteController")
-        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-
-    def sendCommand(self, method: str, **kwargs) -> None:
-        """Execute the specified method on the head node with the specified
-        kwargs.
-
-        Note that all kwargs must be JSON serializable.
-        """
-        payload = {method: kwargs}
-        self.redisHelper.redis.lpush("commands", json.dumps(payload))
-
-    def executeRemoteCommands(self, parentClass):
-        """Execute commands sent from a RemoteController or LOVE.
-
-        Pops all remote commands from the stack and executes them as if they
-        were calls to this class itself. Remote code can therefore do anything
-        that this class itself can do, and furthermore, nothing that it cannot.
-
-        Parameters
-        ----------
-        parentClass : `obj`
-            The class which owns this ``RemoteController``, such that commands
-            can be executed on the parent object itself, rather than only on
-            the remote controller.
-        """
-        commandList = self.redisHelper.getRemoteCommands()
-        if commandList is None:
-            return
-
-        def getBottomComponent(obj, componentList):
-            """Get the bottom-most component of an object.
-
-            Given a part of compound object, get the part which is being
-            referred to, so for example, if passed
-            `someClass.somePart.otherPart.componentToGet` then return
-            `componentToGet` as an object, such that it can be called or set to
-            things, as appropriate.
-
-            Parameters
-            ----------
-            obj : `object`
-                The object to get the component from.
-            componentList : `list` of `str`
-                The drill-down list, so from the example above, this would be
-                ['somePart', 'otherPart', 'componentToGet']. Note it does not
-                include the name of the class itself, i.e. 'self'.
-            """
-            if len(componentList) == 0:
-                return obj
-            else:
-                return getBottomComponent(getattr(obj, componentList[0]), componentList[1:])
-
-        def parseCommand(command):
-            """Given a command, return the getting parts and the setting parts,
-            if any.
-
-            For example, 'focalPlane.setFullCheckerboard' is just components to
-            call, and would therefore return `['focalPlane',
-            'setFullCheckerboard'], None` and if the command were
-            'workerMode=WorkerProcessingMode.CONSUMING' this would return
-            `['workerMode'], ['WorkerProcessingMode.CONSUMING']`
-
-            Parameters
-            ----------
-            command : `str`
-                The command to parse.
-
-            Returns
-            -------
-            getterParts : `list` of `str`
-                List of components to get from `self`, such that the last item
-                can be called.
-            setterPart : `str`
-                If a setter type command, what the component is being set to,
-                such that it can be instantiated.
-            """
-            getterParts = None
-            setterPart = None
-            if "=" in command:
-                getterPart, setterPart = command.split("=")
-                getterParts = getterPart.split(".")
-            else:
-                getterParts = command.split(".")
-            return getterParts, setterPart
-
-        def safeEval(setterPart):
-            """Ensure whatever we're being asked to instantiate is safe to.
-
-            If a primitive is passed, it's safely evaluated with literal_eval,
-            otherwise, it's only instantiated if it's already an item in the
-            global namespace, ensuring that arbitrary code execution cannot
-            occur.
-
-            Parameters
-            ----------
-            setterPart : `str`
-                Whatever item we need to instantiate.
-
-            Returns
-            -------
-            item : `obj`
-                Whatever item was asked for.
-
-            Raises
-                ValueError if the item could not be safely evaluated.
-            """
-            try:
-                # if we have a primative, get it simply and safely
-                item = literal_eval(setterPart)
-                return item
-            except (SyntaxError, ValueError):  # anything non-primative will raise like this
-                pass
-
-            if setterPart.split(".")[0] in globals():
-                # we're instantiating a known class, so it's safe
-                item = eval(setterPart)
-                return item
-            raise ValueError(f"Will not execute arbitrary code - got {setterPart=}")
-
-        # command list is a list of dict: dict with each dict only having a
-        # single key, and the value being the kwargs, if any.
-        for command in commandList:
-            try:
-                for method, kwargs in command.items():
-                    getterParts, setter = parseCommand(method)
-                    component = getBottomComponent(parentClass, getterParts[:-1])
-                    functionName = getterParts[-1]
-                    if setter is not None:
-                        setItem = safeEval(setter)
-                        component.__setattr__(functionName, setItem)
-                    else:
-                        attr = getattr(component, functionName)
-                        attr.__call__(**kwargs)
-            except Exception as e:
-                self.log.exception(f"Failed to apply command {command}: {e}")
-                return  # do not apply further commands as soon as one fails
 
 
 class CameraControlConfig:
