@@ -1253,7 +1253,14 @@ class HeadProcessController:
             # detector having finished. It might have failed, but that's OK
             # because the one-off processor will time out quickly.
             if who == "SFM":
-                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
+                # use exposure=dataCoords[0]["visit"] because we still want
+                # to dispatch one-off post-isr processing for non-on-sky
+                # images, and if you used dataId=dataCoords[0] that will fail
+                # if the visit isn't defined.
+                (expRecord,) = self.butler.registry.queryDimensionRecords(
+                    "exposure", exposure=dataCoords[0]["visit"]
+                )
+
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS":
                     self.log.info(f"Dispatching the focal plane visit_image mosaic for {expRecord.id}")
