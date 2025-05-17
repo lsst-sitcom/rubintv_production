@@ -28,15 +28,14 @@ import logging
 import math
 import os
 import sys
-import tempfile
 import time
 import uuid
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Generator
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import yaml
@@ -52,12 +51,12 @@ from .channels import PREFIXES
 if TYPE_CHECKING:
     from logging import Logger
 
+    from lsst.afw.cameraGeom import Camera
+
 
 __all__ = [
     "writeDimensionUniverseFile",
     "getDimensionUniverse",
-    "writeDataIdFile",
-    "getGlobPatternForDataProduct",
     "expRecordToUploadFilename",
     "checkRubinTvExternalPackages",
     "raiseIf",
@@ -75,18 +74,17 @@ __all__ = [
     "getShardPath",
     "getRubinTvInstrumentName",
     "getPodWorkerNumber",
-    "getWitnessDetectorNumber",
     "isCalibration",
     "isWepImage",
     "removeDetector",
     "getFilterColorName",
     "runningCI",
-    "managedTempFile",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
     "runningCI",
-    "getCiPlotName",
-    "managedTempFile",
+    "makePlotFile",
+    "makePlotFileFromRecord",
+    "makeWitnessDetectorTitle",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -97,8 +95,6 @@ GOOGLE_CLOUD_MISSING_MSG = (
     "ImportError: Google cloud storage not found. Please install with:\n"
     "    pip install google-cloud-storage"
 )
-
-DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.json")
 
 # ALLOWED_DATASET_TYPES is the types of data that can be written as sharded
 # data. In principle, there is no reason this can't be or shouldn't be totally
@@ -112,6 +108,49 @@ SEQNUM_PADDING = 6
 SHARDED_DATA_TEMPLATE = os.path.join(
     "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
 )
+
+AOS_WORKER_MAPPING = {
+    0: (0, 191),
+    1: (0, 192),
+    2: (0, 195),
+    3: (0, 196),
+    4: (0, 199),
+    5: (0, 200),
+    6: (0, 203),
+    7: (0, 204),
+    8: (1, 191),
+    9: (1, 192),
+    10: (1, 195),
+    11: (1, 196),
+    12: (1, 199),
+    13: (1, 200),
+    14: (1, 203),
+    15: (1, 204),
+    16: (2, 191),
+    17: (2, 192),
+    18: (2, 195),
+    19: (2, 196),
+    20: (2, 199),
+    21: (2, 200),
+    22: (2, 203),
+    23: (2, 204),
+    24: (3, 191),
+    25: (3, 192),
+    26: (3, 195),
+    27: (3, 196),
+    28: (3, 199),
+    29: (3, 200),
+    30: (3, 203),
+    31: (3, 204),
+    32: (4, 191),
+    33: (4, 192),
+    34: (4, 195),
+    35: (4, 196),
+    36: (4, 199),
+    37: (4, 200),
+    38: (4, 203),
+    39: (4, 204),
+}
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -131,56 +170,6 @@ def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
 def getDimensionUniverse(locationConfig: LocationConfig) -> DimensionUniverse:
     duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
     return DimensionUniverse(DimensionConfig(duJson))
-
-
-def writeDataIdFile(
-    dataIdPath: str, dataProduct: str, expRecord: DimensionRecord, log: Logger | None = None
-) -> None:
-    """Write a dataId file for a dataProduct to be consumed by a FileWatcher.
-
-    Note that the dataProduct can be any string, it need not be restricted to
-    dafButler dataProducts.
-
-    Parameters
-    ----------
-    dataIdPath : `str`
-        The path to write the dataId file to.
-    dataProduct : `str`
-        The data product to write the dataId file for.
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record to write the dataId file for.
-    log : `logging.Logger`, optional
-        The logger to use. If provided, and info-level message is logged about
-        where what file was written.
-    """
-    expId = expRecord.id
-    dayObs = expRecord.day_obs
-    seqNum = expRecord.seq_num
-    outFile = DATA_ID_TEMPLATE.format(
-        path=dataIdPath, instrument=expRecord.instrument, dataProduct=dataProduct, expId=expId
-    )
-    with open(outFile, "w") as f:
-        f.write(json.dumps(expRecord.to_simple().json()))
-    if log:
-        log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
-
-
-def getGlobPatternForDataProduct(dataIdPath: str, dataProduct: str, instrument: str) -> str:
-    """Get a glob-style pattern for finding dataId files for a dataProduct.
-
-    These are the dataId files used to signal that a given dataId or
-    dataProduct is ready for use.
-
-    Parameters
-    ----------
-    dataIdPath : `str`
-        The path find the dataIds in.
-    dataProduct : `str`
-        The data product to find the dataIds for.
-    instrument : `str`
-        The instrument.
-    """
-    return DATA_ID_TEMPLATE.format(path=dataIdPath, instrument=instrument, dataProduct=dataProduct, expId="*")
 
 
 def getGlobPatternForShardedData(
@@ -292,7 +281,7 @@ class LocationConfig:
         # exist in all the different locations, otherwise it will fail in some
         # locations and not others, so add things with caution.
         self._config
-        self.binnedCalexpPath
+        self.binnedVisitImagePath
         self.calculatedDataPath
         self.plotPath
 
@@ -374,12 +363,6 @@ class LocationConfig:
         return file
 
     @cached_property
-    def dataIdScanPath(self):
-        directory = self._config["dataIdScanPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
     def metadataPath(self):
         directory = self._config["metadataPath"]
         self._checkDir(directory)
@@ -422,8 +405,8 @@ class LocationConfig:
         return directory
 
     @cached_property
-    def binnedCalexpPath(self):
-        directory = self._config["binnedCalexpPath"]
+    def binnedVisitImagePath(self):
+        directory = self._config["binnedVisitImagePath"]
         self._checkDir(directory)
         return directory
 
@@ -566,6 +549,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def raPerformanceDirectory(self) -> str:
+        directory = self._config["raPerformanceDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def raPerformanceShardsDirectory(self) -> str:
+        directory = self._config["raPerformanceShardsDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
@@ -613,8 +608,24 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument: str) -> str:
+    def getAosPipelineFile(self, instrument) -> str:
         return self._config["aosPipelineFile"][instrument]
+
+    @cached_property
+    def aosLSSTCamPipelineFileDanish(self) -> str:
+        return self._config["aosLSSTCamPipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamPipelineFileTie(self) -> str:
+        return self._config["aosLSSTCamPipelineFileTie"]
+
+    @cached_property
+    def aosLSSTCamFullArrayModePipelineFileDanish(self) -> str:
+        return self._config["aosLSSTCamFullArrayModePipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamFullArrayModePipelineFileTie(self) -> str:
+        return self._config["aosLSSTCamFullArrayModePipelineFileTie"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:
@@ -916,7 +927,7 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Azimuth"] = expRecord.azimuth
     md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
-    md["Can see the sky?"] = expRecord.can_see_sky
+    md["Can see the sky?"] = f"{expRecord.can_see_sky}"
 
     if expRecord.instrument == "LATISS":
         filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
@@ -1330,33 +1341,6 @@ def getPodWorkerNumber() -> int:
     return workerNum
 
 
-def getWitnessDetectorNumber(instrument: str) -> int:
-    """Get the witness detector number for a given instrument.
-
-    This is a placeholder function to provide the interface for if we want to
-    make this user selectable in the future (e.g. via LOVE), or read from a
-    config file. For now, we hard-code the central detectors.
-
-    Parameters
-    ----------
-    instrument : `str`
-        The instrument name.
-
-    Returns
-    -------
-    detectorNum : `int`
-        The witness detector number.
-    """
-    if instrument == "LATISS":
-        return 0
-    elif instrument == "LSSTCam":
-        return 94
-    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
-        return 4
-    else:
-        raise ValueError(f"Unknown instrument {instrument=}")
-
-
 def isCalibration(expRecord: DimensionRecord) -> bool:
     """Check if the exposure is a calibration exposure.
 
@@ -1416,6 +1400,24 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
 
 
+def mapAosWorkerNumber(workerNum: int) -> tuple[int, int]:
+    """Map the worker number to the AOS worker number.
+
+    Parameters
+    ----------
+    workerNum : `int`
+        The worker number.
+
+    Returns
+    -------
+    depth : `int`
+        The depth of the worker.
+    detectorNum : `int`
+        The detector number of the worker.
+    """
+    return AOS_WORKER_MAPPING[workerNum]
+
+
 def getFilterColorName(physicalFilter: str) -> str | None:
     """Get the color name for a physical filter to color cells on RubinTV.
 
@@ -1432,12 +1434,22 @@ def getFilterColorName(physicalFilter: str) -> str | None:
         The color name.
     """
     filterMap = {
+        # ComCam filters:
         "u_02": "u_color",
         "g_01": "g_color",
         "r_03": "r_color",
         "i_06": "i_color",
         "z_03": "z_color",
         "y_04": "y_color",
+        # LSSTCam filters:
+        "ph_5": "white_color",  # pinhole filter
+        "ef_43": "white_color",  # "empty" filter
+        "u_24": "u_color",
+        "g_6": "g_color",
+        "r_57": "r_color",
+        "i_39": "i_color",
+        "z_20": "z_color",
+        "y_10": "y_color",
     }
     return filterMap.get(physicalFilter)
 
@@ -1447,69 +1459,69 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
-def getCiPlotName(locationConfig: LocationConfig, expRecord: DimensionRecord, plotType: str) -> str:
-    dayObs: int = expRecord.day_obs
-    seqNum: int = expRecord.seq_num
-    ciOutputName = (
+def makePlotFileFromRecord(
+    locationConfig: LocationConfig, record: DimensionRecord, plotType: str, suffix: str
+) -> str:
+    dayObs: int = record.day_obs
+    seqNum: int = record.seq_num
+    instrument: str = record.instrument
+    return makePlotFile(locationConfig, instrument, dayObs, seqNum, plotType, suffix)
+
+
+def makePlotFile(
+    locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str, suffix: str
+) -> str:
+    filename = (
         Path(locationConfig.plotPath)
-        / expRecord.instrument
+        / instrument
         / str(dayObs)
-        / f"{expRecord.instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.{suffix}"
     )
-    return ciOutputName.as_posix()
+    filename.parent.mkdir(mode=0o777, parents=True, exist_ok=True)
+    # add a path.touch() here?
+    return filename.as_posix()
 
 
-@contextmanager
-def managedTempFile(
-    suffix: str,
-    ciOutputName: str = "",
-) -> Generator[str]:
-    """Context manager for temp files with handling for CI environments.
-
-    In normal operation, this creates a temporary file that is automatically
-    deleted when the context exits. In CI mode, it creates a permanent file in
-    the specified location. This is useful for testing and debugging, as it
-    allows inspection the output files in CI mode. The file is created with
-    a specific name to allow for existence checking.
+def makeWitnessDetectorTitle(record: DimensionRecord, detector: int | str, camera: Camera) -> str:
+    """Make a title for a plot based on the exp/visit record and detector.
 
     Parameters
     ----------
-    suffix : str
-        File suffix/extension.
-    ciOutputName : str, optional
-        The full name and path to the output file. Must be specified if running
-        in CI mode.
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure or visit record.
+    detector : `int` or `str`
+        The detector number or name.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera object.
 
-    Yields
-    ------
-    str
-        Path to the temporary file
+    Returns
+    -------
+    title : `str`
+        The title for the plot.
     """
-    ciMode = runningCI()
-    if ciMode and not ciOutputName:
-        raise ValueError("CI mode is enabled but no output filename is specified.")
-    if ciMode and os.path.exists(ciOutputName):
-        raise FileExistsError(f"Output file {ciOutputName} already exists.")
+    d = camera[detector]  # gets the actual detector object. Camera supports indexing by name or numerical id
+    detName = d.getName()
+    detId = d.getId()
+    r = record
+    title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
+    title += f"{detName}(#{detId}) {r.observation_type} image @ {r.exposure_time:.1f}s"
+    return title
 
-    if not ciMode:
-        # Standard operation - use a true temporary file that gets cleaned up
-        # delete=False so that it stays when we yield, but is cleaned up in
-        # finally block.
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tempFile:
-            tempFilename = tempFile.name
-            try:
-                yield tempFilename
-            finally:
-                # Always clean up in normal mode
-                if os.path.exists(tempFilename):
-                    os.unlink(tempFilename)
-    else:
-        # In CI mode, we keep the file for inspection
-        dirname = os.path.dirname(ciOutputName)
-        os.makedirs(dirname, exist_ok=True)
 
-        # Create an empty file to match the behavior of NamedTemporaryFile
-        with open(ciOutputName, "w"):
-            pass
+def makeFocalPlaneTitle(record: DimensionRecord) -> str:
+    """Make a title for a plot based on the exp/visit record.
 
-        yield ciOutputName
+    Parameters
+    ----------
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure or visit record.
+
+    Returns
+    -------
+    title : `str`
+        The title for the plot.
+    """
+    r = record
+    title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
+    title += f"{r.observation_type} image @ {r.exposure_time:.1f}s in filter {r.physical_filter}"
+    return title
