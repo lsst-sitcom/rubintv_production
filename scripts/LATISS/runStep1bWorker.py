@@ -45,7 +45,6 @@ locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
     collections=[
-        # XXX needs changing to defaults and the quicklook collection creating
         "LATISS/defaults",
         locationConfig.getOutputChain(instrument),
     ],
