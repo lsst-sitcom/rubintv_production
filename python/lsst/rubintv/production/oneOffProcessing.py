@@ -327,6 +327,10 @@ class OneOffProcessor(BaseButlerChannel):
 
         raDeg = expRecord.tracking_ra
         decDeg = expRecord.tracking_dec
+        if raDeg is None or decDeg is None:
+            self.log.info(f"Skipping ecliptic coords for {expRecord.id} - no RA/Dec")
+            return
+
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
 
         eclipticData = {
