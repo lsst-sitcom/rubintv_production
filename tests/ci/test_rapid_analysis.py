@@ -949,7 +949,7 @@ class ResultCollector:
         """Check that expected plots were generated."""
         locationConfig = LocationConfig("usdf_testing")
 
-        expected = [  # (path, size) tuples
+        expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
             # Regular LSSTCam plots -------
             ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000086.png", 5000),
@@ -983,7 +983,6 @@ class ResultCollector:
             ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
         ]
-        expected = [(os.path.join(locationConfig.plotPath, file), size) for (file, size) in expected]
 
         destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
         if config.copy_plots_to_public_html:
@@ -1017,7 +1016,7 @@ class ResultCollector:
             else:
                 self.checks.append(Check(False, f"Did not find expected plot {file}"))
 
-    def print_final_result(self) -> bool:
+    def print_final_result(self, config: TestConfig) -> bool:
         """Print final test results and return overall pass status."""
         fails = [check for check in self.checks if not check.passed]
         passes = [check for check in self.checks if check.passed]
@@ -1046,7 +1045,8 @@ class ResultCollector:
         for test_pass in passes:
             print(test_pass)
         print(f"{padding}{text}{padding}")
-
+        if config.copy_plots_to_public_html:
+            print("⚠️  Plots copied to ~/public_html/ra_ci_automated_output/ - please check and delete ASAP.")
         return n_fails == 0
 
 
@@ -1196,7 +1196,7 @@ class TestRunner:
             self.redis_manager.check_final_contents(self.result_collector.checks)
 
             # Print final results and exit with appropriate status
-            overall_pass = self.result_collector.print_final_result()
+            overall_pass = self.result_collector.print_final_result(self.config)
             if not overall_pass:
                 sys.exit(1)
         finally:
