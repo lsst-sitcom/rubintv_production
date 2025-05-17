@@ -842,6 +842,8 @@ class RedisHelper:
     def clearTaskCounters(self) -> None:
         # TODO: DM-44102 check if .keys() is OK here
         keys = self.redis.keys("*EDCOUNTER*")  # FINISHEDCOUNTER and FAILEDCOUNTER
+        keys.extend(self.redis.keys("*EXPECTED_DETECTORS*"))
+        keys.extend(self.redis.keys("*DETECTOR_FINISHED_COUNTER*"))
         for key in keys:
             self.redis.delete(key)
 
