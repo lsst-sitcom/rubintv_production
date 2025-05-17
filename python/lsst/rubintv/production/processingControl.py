@@ -1184,7 +1184,7 @@ class HeadProcessController:
         dispatchedWork : `bool`
             Was anything sent out?
         """
-        assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
+        assert who in ("SFM", "AOS", "ISR"), f"Unknown pipeline {who=}"
         processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1a", who=who)
 
         if not processedIds:
@@ -1205,6 +1205,8 @@ class HeadProcessController:
         if not completeIds:
             return False
 
+        # let isr dispatch to the step1b workers anyway, they'll just drop
+        # everything due to a lack of quanta
         podFlavour = PodFlavor.STEP1B_AOS_WORKER if who == "AOS" else PodFlavor.STEP1B_WORKER
 
         self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
@@ -1230,6 +1232,11 @@ class HeadProcessController:
                 if whoToUse is None:
                     self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
                     continue
+            elif who == "ISR":
+                # let isr dispatch to the step1b workers anyway, they'll just
+                # drop everything due to a lack of quanta because visit won't
+                # be defined
+                whoToUse = "SFM"
             else:
                 whoToUse = who
 
@@ -1252,7 +1259,7 @@ class HeadProcessController:
             # never dispatch this incomplete because it relies on a specific
             # detector having finished. It might have failed, but that's OK
             # because the one-off processor will time out quickly.
-            if who == "SFM":
+            if who in ["SFM", "ISR"]:
                 # use exposure=dataCoords[0]["visit"] because we still want
                 # to dispatch one-off post-isr processing for non-on-sky
                 # images, and if you used dataId=dataCoords[0] that will fail
@@ -1450,6 +1457,12 @@ class HeadProcessController:
                 self.dispatchGatherSteps(who="AOS")
             except Exception as e:
                 self.log.warning(f"Failed during dispatch of gather steps for AOS: {e}")
+
+            try:  # there's no real step1b for ISR, but the one-off postISR
+                # trigger is in here, so this keeps the design more simple
+                self.dispatchGatherSteps(who="ISR")
+            except Exception as e:
+                self.log.exception(f"Failed during dispatch of gather steps for ISR: {e}")
 
             try:
                 self.dispatchPostIsrMosaic()
