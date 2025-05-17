@@ -1236,18 +1236,27 @@ class HeadProcessController:
                 whoToUse = who
 
             if who != "ISR":  # no actual step1b dispatch for ISR
-                payload = Payload(
-                    dataIds=dataCoords,
-                    pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
-                    run=self.outputRun,
-                    who=who,
-                )
-                worker = self.getSingleWorker(self.instrument, podFlavour)
-                if not worker:
-                    self.log.warning(f"No worker available for {who} step1b")
-                    return False
-                self.log.info(f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}")
-                self.redisHelper.enqueuePayload(payload, worker)
+                visitRecord = None
+                try:  # not used, but checks whether this payload is even usable downstream
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoords[0])
+                except ValueError:
+                    self.log.info(f"Skipping doomed step1b dispatch for {idStr=} due to lack of visit record")
+
+                if visitRecord is not None:
+                    payload = Payload(
+                        dataIds=dataCoords,
+                        pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
+                        run=self.outputRun,
+                        who=who,
+                    )
+                    worker = self.getSingleWorker(self.instrument, podFlavour)
+                    if not worker:
+                        self.log.warning(f"No worker available for {who} step1b")
+                        return False
+                    self.log.info(
+                        f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}"
+                    )
+                    self.redisHelper.enqueuePayload(payload, worker)
 
             self.log.debug(f"Removing step1a finished counter for {idStr=}")
             self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
