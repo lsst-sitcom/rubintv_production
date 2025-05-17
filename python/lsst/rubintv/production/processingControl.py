@@ -1232,27 +1232,23 @@ class HeadProcessController:
                 if whoToUse is None:
                     self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
                     continue
-            elif who == "ISR":
-                # let isr dispatch to the step1b workers anyway, they'll just
-                # drop everything due to a lack of quanta because visit won't
-                # be defined
-                whoToUse = "SFM"
             else:
                 whoToUse = who
 
-            payload = Payload(
-                dataIds=dataCoords,
-                pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
-                run=self.outputRun,
-                who=who,
-            )
+            if who != "ISR":  # no actual step1b dispatch for ISR
+                payload = Payload(
+                    dataIds=dataCoords,
+                    pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
+                    run=self.outputRun,
+                    who=who,
+                )
+                worker = self.getSingleWorker(self.instrument, podFlavour)
+                if not worker:
+                    self.log.warning(f"No worker available for {who} step1b")
+                    return False
+                self.log.info(f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}")
+                self.redisHelper.enqueuePayload(payload, worker)
 
-            worker = self.getSingleWorker(self.instrument, podFlavour)
-            if not worker:
-                self.log.warning(f"No worker available for {who} step1b")
-                return False
-            self.log.info(f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}")
-            self.redisHelper.enqueuePayload(payload, worker)
             self.log.debug(f"Removing step1a finished counter for {idStr=}")
             self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
 
