@@ -50,7 +50,6 @@ from lsst.utils.plotting.figures import make_figure
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
-from .monitorPlotting import plotExp
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
 from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL_AUXTEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
@@ -252,9 +251,6 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
 
-        if isinstance(self, OneOffProcessorAuxTel):
-            self.runAuxTelProcessing(postIsr, expRecord)
-
         self.log.info(f"Writing focus Z for {dataId}")
         self.writeHeaderOrVisitInfoBasedQuantities(postIsr, expRecord.day_obs, expRecord.seq_num)
 
@@ -268,7 +264,9 @@ class OneOffProcessor(BaseButlerChannel):
             self.log.info(f"Calculating PSF for {dataId}")
             self.calcPsfAndWrite(postIsr, expRecord.day_obs, expRecord.seq_num)
 
-        if isCalibration(expRecord):  # make witness images with post-isr for all calibs and no on-sky images
+        # make witness images with post-isr for all calibs and not on-sky
+        # images, and all LATISS images as they don't get calexps
+        if isCalibration(expRecord) or self.instrument == "LATISS":
             self.log.info("Making witness detector image...")
             self.makeWitnessImage(postIsr, expRecord, stretch="ccs")
             self.log.info("Finished making witness detector image")
@@ -276,6 +274,9 @@ class OneOffProcessor(BaseButlerChannel):
         if self.locationConfig.location == "summit":
             self.log.info(f"Fetching all exposure log messages for day_obs {expRecord.day_obs}")
             self.writeLogMessageShards(expRecord.day_obs)
+
+        if isinstance(self, OneOffProcessorAuxTel):
+            self.runAuxTelProcessing(postIsr, expRecord)
 
         self.log.info(f"Finished one-off processing {dataId}")
 
@@ -349,7 +350,7 @@ class OneOffProcessor(BaseButlerChannel):
         fig = make_figure(figsize=(12, 12))
         fig = plot(visitImage, figure=fig, stretch=stretch, title=title)
 
-        plotName = "witness_detector"
+        plotName = "monitor" if self.instrument == "LATISS" else "witness_detector"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "jpg"
         )
@@ -743,33 +744,8 @@ class OneOffProcessorAuxTel(OneOffProcessor):
 
     def runAuxTelProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         # TODO: consider threading and adding a CPU to the pod if this is slow
-        self.makeMonitorImage(exp, expRecord)
         self.runImexam(exp, expRecord)
         self.runSpecExam(exp, expRecord)
-
-    def makeMonitorImage(self, exp: Exposure, expRecord: DimensionRecord) -> None:
-        self.log.info(f"Making monitor image for {expRecord.dataId}")
-        try:
-            plotName = "monitor"
-            plotFile = makePlotFile(
-                self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "jpg"
-            )
-            fig = make_figure(figsize=(12, 12))
-            plotExp(exp, fig, plotFile, doSmooth=False, scalingOption="CCS")
-            self.log.info("Uploading imExam to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-            self.s3Uploader.uploadPerSeqNumPlot(
-                instrument="auxtel",
-                plotName=plotName,
-                dayObs=expRecord.day_obs,
-                seqNum=expRecord.seq_num,
-                filename=plotFile,
-            )
-            self.log.info("Upload complete")
-            del fig
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
 
     def runImexam(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         if expRecord.observation_type in ["bias", "dark", "flat"]:
