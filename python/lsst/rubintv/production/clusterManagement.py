@@ -550,11 +550,10 @@ class ClusterManager:
             backlogWorker = freeBacklogWorkers[i]
             pod = PodDetails.fromQueueName(queueName)
             payload = self.rh.dequeuePayload(pod)
-            if payload is None:  # if length is 1 this might happen on occasion, above that is weirder
-                warning = f"Dequeued empty payload from {queueName} which should have had {length=}"
+            if payload is None:  # if length is 1 this happens quite often, but above that is much weirder
                 if length > 1:
-                    warning += " - this is very unexpected"
-                self.log.warning(length)
+                    warning = f"Dequeued empty payload from {queueName} which should have had {length=}"
+                    self.log.warning(warning)
                 continue
 
             self.log.info(f"Rebalancing payload from {queueName} with queue {length=} to {backlogWorker}")
