@@ -200,7 +200,7 @@ class TestConfig:
                 tee_output=False,
             ),
             TestScript(
-                "scripts/LATISS/runStep1bRunner.py",
+                "scripts/LATISS/runStep1bWorker.py",
                 ["usdf_testing", "0"],
                 tee_output=False,
             ),
