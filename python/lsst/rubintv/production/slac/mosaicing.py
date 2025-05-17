@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -35,10 +34,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import lsst.afw.math as afwMath
 from lsst.afw.cameraGeom import utils as cgu
 from lsst.afw.display import Display
-from lsst.afw.fits import FitsError
 from lsst.afw.image import Exposure, Image, ImageF
 from lsst.daf.butler import DimensionRecord
-from lsst.pipe.base import Struct
 from lsst.summit.utils import getQuantiles
 
 from ..utils import isFileWorldWritable
@@ -224,12 +221,9 @@ def makeMosaic(
     camera: Camera,
     binSize: int,
     dataPath: str,
-    timeout: float,
     nExpected: int,
-    deleteIfComplete: bool,
-    deleteRegardless: bool,
-    logger: Logger | None = None,
-) -> Struct:
+    deleteFiles: bool,
+) -> Image:
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
     The binsize must match the binning used to write the images to disk
@@ -245,25 +239,17 @@ def makeMosaic(
         The binning factor.
     dataPath : `str`
         The path on disk to find the binned images.
-    timeout : `float`
-        The maximum time to wait for the images to land.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
-    deleteIfComplete : `bool`, optional
-        If True, delete the binned image files if the number of expected files
-        is the number which was found.
-    deleteRegardless : `bool`, optional
-        If True, delete the binned images regardless of how many are found.
-    logger : `logging.Logger`, optional
-        The logger, created if not provided.
-    deleteAfterReading : `bool`
-        Whether to delete the binned images after reading them.
+    deleteFiles : `bool`
+        If ``True``, delete the binned image files after reading them. Files
+        are only deleted if the number found is ``nExpected``. If ``False``,
+        the files are not deleted.
 
     Returns
     -------
-    result : `lsst.pipe.base.Struct`
-        A `Struct` containing the ``output_mosaic`` as an
-        `lsst.afw.image.Image`, or `None` if the mosaic could not be made.
+    image : lsst.afw.image.Image or None
+        The mosaiced image, or None if the mosaic could not be made.
 
     Notes
     -----
@@ -275,8 +261,7 @@ def makeMosaic(
         Create an ImageSource which reads the pre-binned image straight from
         disk.
     """
-    if logger is None:
-        logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
 
     instrument = camera.getName()
 
@@ -303,75 +288,28 @@ def makeMosaic(
     dayObs = days.pop()
     seqNum = seqNums.pop()
 
-    # initially, deleteAfterReading *MUST* be False, because unless all the
-    # files are there immediately, we will end up chewing holes in the mosaic
-    # just by waiting for them in a loop!
+    detectorNameList = getDetectorNamesWithData(dayObs, seqNum, camera, dataPath, binSize)
+    if nExpected != len(detectorNameList):
+        logger.warning(
+            f"Expected {nExpected} binned images but found {len(detectorNameList)}. Will not delete files."
+        )
+        deleteFiles = False
+
     imageSource = PreBinnedImageSource(
-        instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=False
+        instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=deleteFiles
     )
 
-    success = False
-    firstWarn = True
-    waitTime = -0.000001  # start at minus 1 microsec as an easy fix for the first loop for timeouts of zero
-    startTime = time.time()
-    output_mosaic = None
-    while (not success) and (waitTime < timeout):
-        try:
-            # keep trying while we wait for data to finish landing
-            # the call to showCamera is extremely fast so no harm in keeping
-            # trying.
-            output_mosaic = cgu.showCamera(
-                camera, imageSource=imageSource, detectorNameList=detectorNameList, binSize=binSize
-            )
-            success = True
-        except (FileNotFoundError, FitsError):
-            if firstWarn:
-                logger.warning(
-                    f"Failed to find one or more files for mosaic of {dayObs=}, {seqNum=},"
-                    f" waiting a maximum of {timeout} seconds for data to arrive."
-                )
-                firstWarn = False
-            waitTime = time.time() - startTime
-            time.sleep(0.5)
-            continue
+    mosaic = cgu.showCamera(
+        camera,
+        imageSource=imageSource,
+        detectorNameList=detectorNameList,
+        binSize=binSize,
+    )
 
-    if success and deleteIfComplete and (len(detectorNameList) == nExpected):
-        # Remaking the image just to delete the files is pretty gross, but it's
-        # very fast and the only simple way of deleting all the files
-        imageSource = PreBinnedImageSource(
-            instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=True
-        )
-        output_mosaic = cgu.showCamera(
-            camera, imageSource=imageSource, detectorNameList=detectorNameList, binSize=binSize
-        )
-
-    if not success:
-        # we're *not* complete, so remake the image source with the delete
-        # option only set if we're deleting regardless
-        imageSource = PreBinnedImageSource(
-            instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=deleteRegardless
-        )
-
-        # make what you can based on what actually did arrive on disk
-        logger.warning(
-            f"Failed to find one or more files for mosaic of {dayObs=}, {seqNum=},"
-            f" making what is possible, based on the files found after timeout."
-        )
-        detectorNameList = _getDetectorNamesWithData(dayObs, seqNum, camera, dataPath, binSize)
-
-        if len(detectorNameList) == 0:
-            logger.warning(f"Found {len(detectorNameList)} binned detector images, so no mosaic can be made.")
-            return Struct(output_mosaic=None)
-
-        logger.info(f"Making mosaic with {len(detectorNameList)} detectors")
-        output_mosaic = cgu.showCamera(
-            camera, imageSource=imageSource, detectorNameList=detectorNameList, binSize=binSize
-        )
-
-    return Struct(output_mosaic=output_mosaic)
+    return mosaic
 
 
-def _getDetectorNamesWithData(
+def getDetectorNamesWithData(
     dayObs: int, seqNum: int, camera: Camera, dataPath: str, binSize: int
 ) -> list[str]:
     """Check for existing binned image files and return the detector names
@@ -416,11 +354,8 @@ def plotFocalPlaneMosaic(
     savePlotAs: str,
     nExpected: int,
     stretch: str,
-    timeout: float,
     title: str = "",
     deleteIfComplete: bool = True,
-    deleteRegardless: bool = False,
-    logger: Logger | None = None,
 ) -> Image | None:
     """Save a full focal plane binned mosaic image for a given expId.
 
@@ -456,18 +391,13 @@ def plotFocalPlaneMosaic(
     deleteIfComplete : `bool`, optional
         If True, delete the binned image files if the number of expected files
         is the number which was found.
-    deleteRegardless : `bool`, optional
-        If True, delete the binned images regardless of how many are found.
-    logger : `logging.Logger`, optional
-        The logger, created if not provided.
 
     Returns
     -------
     mosaic : `lsst.afw.image.Image`
         The mosaiced image.
     """
-    if not logger:
-        logger = logging.getLogger("lsst.rubintv.production.slac.mosaicing.plotFocalPlaneMosaic")
+    logger = logging.getLogger(__name__)
 
     where = "day_obs=dayObs AND seq_num=seqNum"
     # we hardcode "raw" here the per-CCD binned images are written out
@@ -487,24 +417,19 @@ def plotFocalPlaneMosaic(
         camera,
         binSize,
         dataPath,
-        timeout,
         nExpected=nExpected,
-        deleteIfComplete=deleteIfComplete,
-        deleteRegardless=deleteRegardless,
-        logger=logger,
-    ).output_mosaic
-    if mosaic is None:
-        logger.warning(f"Failed to make mosaic for {dayObs=}, {seqNum=}")
-        return None
+        deleteFiles=deleteIfComplete,
+    )
+
     logger.info(f"Made mosaic image for {dayObs=}, {seqNum=}")
-    _plotFpMosaic(
+    renderMosaicImage(
         mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, title=title, saveAs=savePlotAs
     )
     logger.info(f"Saved mosaic image for {dayObs=}, {seqNum=} to {savePlotAs}")
     return mosaic
 
 
-def _plotFpMosaic(
+def renderMosaicImage(
     im: Image,
     figureOrDisplay: Figure | Display,
     scalingOption: str = "CCS",
