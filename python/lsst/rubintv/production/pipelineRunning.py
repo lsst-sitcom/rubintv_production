@@ -39,9 +39,9 @@ from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .payloads import RESTART_SIGNAL, pipelineGraphFromBytes
+from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
-from .slac.mosaicing import writeBinnedImage
 from .utils import getShardPath, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
