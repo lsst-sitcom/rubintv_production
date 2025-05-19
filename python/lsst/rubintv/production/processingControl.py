@@ -1262,9 +1262,8 @@ class HeadProcessController:
                 (expRecord,) = self.butler.registry.queryDimensionRecords(
                     "exposure", exposure=dataCoords[0]["visit"]
                 )
-
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
-                if self.instrument != "LATISS":
+                if self.instrument != "LATISS" and who != "ISR":
                     self.log.info(f"Dispatching the focal plane visit_image mosaic for {expRecord.id}")
                     # TODO: this should be visitId but that's OK for now
                     self.dispatchVisitImageMosaic(expRecord.id)
