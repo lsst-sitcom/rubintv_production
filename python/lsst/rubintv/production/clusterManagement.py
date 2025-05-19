@@ -35,7 +35,7 @@ from tabulate import tabulate
 from .payloads import Payload, RestartPayload
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
-from .utils import mapAosWorkerNumber
+from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler
@@ -253,9 +253,9 @@ class ClusterManager:
 
         Parameters
         ----------
-        instrument : str, default="LSSTCam"
+        instrument : str, optional
             Instrument to get status for
-        detailed : bool, default=False
+        detailed : bool, optional
             Whether to include detailed queue information
 
         Returns
@@ -377,68 +377,54 @@ class ClusterManager:
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_SET_0"):
             self.log.info("Resetting SFM Set 0 workers (Imaging Worker Set 1 on RubinTV)")
-            pods = [PodDetails(inst, PodFlavor.SFM_WORKER, detectorNumber=d, depth=0) for d in range(0, 189)]
-            for pod in pods:
+            sfmSet0set = SfmWorkerSet.create(inst, depth=0)
+            for pod in sfmSet0set.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_SET_1"):
             self.log.info("Resetting SFM Set 1 workers (Imaging Worker Set 2 on RubinTV)")
-            pods = [PodDetails(inst, PodFlavor.SFM_WORKER, detectorNumber=d, depth=1) for d in range(0, 189)]
-            for pod in pods:
+            sfmSet1set = SfmWorkerSet.create(inst, depth=1)
+            for pod in sfmSet1set.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_STEP1B_SET_0"):
             status = self.getClusterStatus()
             nStep1b = len(status.flavorStatuses["STEP1B_WORKER"].workers)
             self.log.info(f"Resetting {nStep1b} SFM Step1b workers")
-            pods = [
-                PodDetails(inst, PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=d)
-                for d in range(nStep1b)
-            ]
-            for pod in pods:
+            sfmStep1bStep = Step1bWorkerSet.create(inst, PodFlavor.STEP1B_WORKER, nStep1b)
+            for pod in sfmStep1bStep.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_0"):
             self.log.info("Resetting AOS Set 0 workers (CWFS worker set 1 on RubinTV)")
-            workerNums = range(0, 8)
-            for workerNum in workerNums:
-                depth, detNum = mapAosWorkerNumber(workerNum)
-                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+            aosSet0set = AosWorkerSet.create(inst, range(0, 8))
+            for pod in aosSet0set.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_1"):
             self.log.info("Resetting AOS Set 1 workers (CWFS worker set 2 on RubinTV)")
-            workerNums = range(8, 16)
-            for workerNum in workerNums:
-                depth, detNum = mapAosWorkerNumber(workerNum)
-                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+            aosSet1set = AosWorkerSet.create(inst, range(8, 16))
+            for pod in aosSet1set.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_2"):
             self.log.info("Resetting AOS Set 2 workers (CWFS worker set 3 on RubinTV)")
-            workerNums = range(16, 24)
-            for workerNum in workerNums:
-                depth, detNum = mapAosWorkerNumber(workerNum)
-                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+            aosSet2set = AosWorkerSet.create(inst, range(16, 24))
+            for pod in aosSet2set.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_SET_3"):
             self.log.info("Resetting AOS Set 3 workers (CWFS worker set 4 on RubinTV)")
-            workerNums = range(24, 32)
-            for workerNum in workerNums:
-                depth, detNum = mapAosWorkerNumber(workerNum)
-                pod = PodDetails(inst, PodFlavor.AOS_WORKER, detectorNumber=detNum, depth=depth)
+            aosSet3set = AosWorkerSet.create(inst, range(24, 32))
+            for pod in aosSet3set.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_STEP1B_SET_0"):
             status = self.getClusterStatus()
             nStep1b = len(status.flavorStatuses["STEP1B_AOS_WORKER"].workers)
             self.log.info(f"Resetting {nStep1b} AOS Step1b workers")
-            pods = [
-                PodDetails(inst, PodFlavor.STEP1B_AOS_WORKER, detectorNumber=None, depth=d)
-                for d in range(nStep1b)
-            ]
-            for pod in pods:
+            aosStep1bset = Step1bWorkerSet.create(inst, PodFlavor.STEP1B_AOS_WORKER, nStep1b)
+            for pod in aosStep1bset.pods:
                 self.rh.enqueuePayload(restartPayload, pod)
 
     def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
