@@ -44,13 +44,13 @@ if TYPE_CHECKING:
 
 
 step1aMap = {
-    "SFM_WORKER": "CLUSTER_STATUS_SFM_SET",
-    "AOS_WORKER": "CLUSTER_STATUS_AOS_SET",
+    PodFlavor.SFM_WORKER: "CLUSTER_STATUS_SFM_SET",
+    PodFlavor.AOS_WORKER: "CLUSTER_STATUS_AOS_SET",
 }
 flatSetMap = {
-    "STEP1B_WORKER": "CLUSTER_STATUS_SFM_STEP1B_SET_0",
-    "STEP1B_AOS_WORKER": "CLUSTER_STATUS_AOS_STEP1B_SET_0",
-    "BACKLOG_WORKER": "CLUSTER_STATUS_SPAREWORKERS_SET_0",
+    PodFlavor.STEP1B_WORKER: "CLUSTER_STATUS_SFM_STEP1B_SET_0",
+    PodFlavor.STEP1B_AOS_WORKER: "CLUSTER_STATUS_AOS_STEP1B_SET_0",
+    PodFlavor.BACKLOG_WORKER: "CLUSTER_STATUS_SPAREWORKERS_SET_0",
 }
 
 
@@ -78,9 +78,18 @@ class FlavorStatus:
     """Status information for all workers of a specific flavor."""
 
     name: str
-    totalWorkers: int
-    freeWorkers: int
-    workers: list[WorkerStatus]
+    nFreeWorkers: int
+    workerStatuses: list[WorkerStatus]
+
+    @property
+    def workers(self) -> list[PodDetails]:
+        """Get the list of workers in this flavor."""
+        return [ws.worker for ws in self.workerStatuses]
+
+    @property
+    def totalWorkers(self) -> int:
+        """Get the total number of workers in this flavor."""
+        return len(self.workerStatuses)
 
 
 @dataclass
@@ -88,7 +97,7 @@ class ClusterStatus:
     """Overall cluster status information."""
 
     instrument: str
-    flavorStatuses: dict[str, FlavorStatus]
+    flavorStatuses: dict[PodFlavor, FlavorStatus]
     rawQueueLength: int
 
 
@@ -232,7 +241,7 @@ class ClusterManager:
         workers = self.rh.getAllWorkers(instrument=instrument, podFlavor=flavor)
 
         if not workers:
-            return FlavorStatus(name=flavor.name, totalWorkers=0, freeWorkers=0, workers=[])
+            return FlavorStatus(name=flavor.name, nFreeWorkers=0, workerStatuses=[])
 
         workerStatuses = []
         freeWorkers = 0
@@ -245,7 +254,9 @@ class ClusterManager:
                 freeWorkers += 1
 
         return FlavorStatus(
-            name=flavor.name, totalWorkers=len(workers), freeWorkers=freeWorkers, workers=workerStatuses
+            name=flavor.name,
+            nFreeWorkers=freeWorkers,
+            workerStatuses=workerStatuses,
         )
 
     def getClusterStatus(self, instrument: str = "LSSTCam", detailed: bool = False) -> ClusterStatus:
@@ -265,12 +276,12 @@ class ClusterManager:
         """
         # Check all pod flavors except HEAD_NODE
         flavors = [f for f in PodFlavor if f != PodFlavor.HEAD_NODE]
-        flavorStatuses: dict[str, FlavorStatus] = {}
+        flavorStatuses: dict[PodFlavor, FlavorStatus] = {}
 
         # Get information for each pod flavor
         for flavor in flavors:
             flavorStatus = self.getStatusForPodFlavor(flavor, instrument, detailed)
-            flavorStatuses[flavor.name] = flavorStatus
+            flavorStatuses[flavor] = flavorStatus
 
         # Check if any raw data queues exist
         rawQueue = f"INCOMING-{instrument}-raw"
@@ -303,13 +314,13 @@ class ClusterManager:
         summaryTable = []
 
         # Process each flavor's data for display
-        for flavorName, flavorStatus in clusterStatus.flavorStatuses.items():
+        for podFlavour, flavorStatus in clusterStatus.flavorStatuses.items():
             if flavorStatus.totalWorkers == 0:
                 continue
 
             tableData = []
 
-            for wStatus in flavorStatus.workers:
+            for wStatus in flavorStatus.workerStatuses:
                 # Skip free workers if requested
                 if ignoreFree and not wStatus.isBusy and wStatus.queueLength == 0:
                     continue
@@ -338,19 +349,19 @@ class ClusterManager:
                         tableData.append([f"  └─ Item {item.index}", "", f"{item.who}", f"{item.dataIdInfo}"])
 
             if tableData:
-                allTables.append((flavorName, tableData))
+                allTables.append((podFlavour.name, tableData))
 
             # Add to summary table
             summaryTable.append(
-                [flavorName, f"{flavorStatus.totalWorkers} (Free: {flavorStatus.freeWorkers})"]
+                [podFlavour.name, f"{flavorStatus.totalWorkers} (Free: {flavorStatus.nFreeWorkers})"]
             )
 
         # Print results
         print(f"\nQueue Status for {clusterStatus.instrument} Workers:")
         print("=" * 80)
 
-        for flavorName, tableData in allTables:
-            print(f"\n{flavorName} Workers:")
+        for podFlavourName, tableData in allTables:
+            print(f"\n{podFlavourName} Workers:")
             print(
                 tabulate(
                     tableData, headers=["Queue Name", "Detector", "Queue Length", "Status"], tablefmt="grid"
@@ -389,7 +400,7 @@ class ClusterManager:
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_SFM_STEP1B_SET_0"):
             status = self.getClusterStatus()
-            nStep1b = len(status.flavorStatuses["STEP1B_WORKER"].workers)
+            nStep1b = len(status.flavorStatuses[PodFlavor.STEP1B_WORKER].workerStatuses)
             self.log.info(f"Resetting {nStep1b} SFM Step1b workers")
             sfmStep1bStep = Step1bWorkerSet.create(inst, PodFlavor.STEP1B_WORKER, nStep1b)
             for pod in sfmStep1bStep.pods:
@@ -421,7 +432,7 @@ class ClusterManager:
 
         if self.redis.getdel("RUBINTV_CONTROL_RESET_AOS_STEP1B_SET_0"):
             status = self.getClusterStatus()
-            nStep1b = len(status.flavorStatuses["STEP1B_AOS_WORKER"].workers)
+            nStep1b = len(status.flavorStatuses[PodFlavor.STEP1B_AOS_WORKER].workerStatuses)
             self.log.info(f"Resetting {nStep1b} AOS Step1b workers")
             aosStep1bset = Step1bWorkerSet.create(inst, PodFlavor.STEP1B_AOS_WORKER, nStep1b)
             for pod in aosStep1bset.pods:
@@ -432,7 +443,7 @@ class ClusterManager:
         for flavor, redisKey in step1aMap.items():
             statuses = status.flavorStatuses[flavor]
 
-            for workerStatus in statuses.workers:
+            for workerStatus in statuses.workerStatuses:
                 w = workerStatus.worker
                 key = f"{redisKey}_{w.depth}"
                 det = w.detectorNumber if w.detectorNumber else 0
@@ -453,7 +464,7 @@ class ClusterManager:
         for flavor, redisKey in flatSetMap.items():
             statuses = status.flavorStatuses[flavor]
 
-            for workerStatus in statuses.workers:
+            for workerStatus in statuses.workerStatuses:
                 w = workerStatus.worker
                 depth = w.depth
                 if workerStatus.isBusy is False:
@@ -470,24 +481,24 @@ class ClusterManager:
                 )
             self.redis.xadd(
                 f"stream:{redisKey}",
-                {"detector_id": "numWorkers", "status": len(statuses.workers), "type": "worker_count"},
+                {"detector_id": "numWorkers", "status": len(statuses.workerStatuses), "type": "worker_count"},
             )
 
         # Do all the remaining ones that haven't been mapped
         exclude = step1aMap.keys() | flatSetMap.keys()
-        for flavorName, flavorStatus in status.flavorStatuses.items():
-            if flavorName in exclude:
+        for flavor, flavorStatus in status.flavorStatuses.items():
+            if flavor in exclude:
                 continue
 
-            # TODO: flavorName=PSF_PLOTTER doesn't use a real queue with
+            # TODO: flavor=PSF_PLOTTER doesn't use a real queue with
             # payloads so doesn't currently work correctly as it doesn't have
             # any workers even though the pod and queue exist.
-            totalQueue = sum(w.queueLength for w in flavorStatus.workers)
+            totalQueue = sum(w.queueLength for w in flavorStatus.workerStatuses)
             if totalQueue > 0:
                 self.redis.xadd(
                     "stream:CLUSTER_STATUS_OTHER_QUEUES",
                     {
-                        "detector_id": flavorName,
+                        "detector_id": flavor.name,
                         "status": totalQueue,
                         "type": "text_status",  # Special type for text-based statuses
                     },
@@ -496,28 +507,30 @@ class ClusterManager:
                 self.redis.xadd(
                     "stream:CLUSTER_STATUS_OTHER_QUEUES",
                     {
-                        "detector_id": flavorName,
+                        "detector_id": flavor.name,
                         "status": "",  # empty string removes the flavorName from the list
                         "type": "text_status",  # Special type for text-based statuses
                     },
                 )
 
     def rebalanceSfmWorkers(self, status: ClusterStatus) -> None:
-        nBacklogFree = status.flavorStatuses["BACKLOG_WORKER"].freeWorkers
+        nBacklogFree = status.flavorStatuses[PodFlavor.BACKLOG_WORKER].nFreeWorkers
         if nBacklogFree == 0:
             return
 
         freeBacklogWorkers = [
-            ws.worker for ws in status.flavorStatuses["BACKLOG_WORKER"].workers if ws.isBusy is False
+            ws.worker
+            for ws in status.flavorStatuses[PodFlavor.BACKLOG_WORKER].workerStatuses
+            if ws.isBusy is False
         ]
         assert len(freeBacklogWorkers) == nBacklogFree
 
-        sfmStatuses = status.flavorStatuses["SFM_WORKER"]
+        sfmStatuses = status.flavorStatuses[PodFlavor.SFM_WORKER]
         # make an ordered dict of queue lengths so we always rebalance the
         # worst backlogs first
         queueLengths = dict(
             sorted(
-                {ws.worker.queueName: ws.queueLength for ws in sfmStatuses.workers}.items(),
+                {ws.worker.queueName: ws.queueLength for ws in sfmStatuses.workerStatuses}.items(),
                 key=lambda x: x[1],
                 reverse=True,
             )
