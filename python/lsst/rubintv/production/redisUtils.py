@@ -875,7 +875,21 @@ class RedisHelper:
 
         key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
         self.redis.set(key, ",".join(str(det) for det in detectors))
-        self.redis.expire(key, 86400 * 2)  # expire in 2 days
+
+        # this key expiring has an interesting and useful side effect. It means
+        # that even is tasks have failures or their Payloads disappear somehow
+        # and they never report back, when this is removed, the visit level
+        # processing will see this as (over) finished (because it'll have
+        # non-zero items finished and zero expected detectors) so all the other
+        # processing will suddenly then spawn. For this reason, we set it to a
+        # half-day value, so that when that happens, it won't be during the
+        # night, thus making sure we don't increase processing load for the
+        # current night's observing.
+
+        # Note that this does *not* result in double-processing, because when
+        # those dispatches do actually happen, they remove their task counters
+        # and thus no longer check for the expected detectors.
+        self.redis.expire(key, int(86400 * 2.5))  # expire in 2.5 days
 
     def getExpectedDetectors(
         self, instrument: str, indentifier: int | str, who: str, noWarn: bool = False
