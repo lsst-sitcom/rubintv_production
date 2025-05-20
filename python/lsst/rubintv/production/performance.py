@@ -482,6 +482,45 @@ class TaskResult:
             return None
         return max(log[-1].asctime for log in self.logs.values())
 
+    def printLog(self, detector: int | None, differentialMode: bool = True) -> None:
+        """Print the per-line log times for a task.
+
+        Prints the log for a given detector (if it's a detector level) task,
+        with the associated time for each line. This is useful for debugging
+        and understanding the time taken by each step.
+        """
+        if not self.logs:
+            return
+
+        if isDetectorLevel(self.task):
+            if detector is None:
+                raise ValueError("detector must be specified for detector level tasks")
+            if detector not in self.logs:
+                raise ValueError(f"Detector {detector} not found in logs")
+            logs = self.logs[detector]
+        else:
+            if detector is not None:
+                raise ValueError("detector must be None for non-detector level tasks")
+            logs = self.logs[None]
+
+        detStr = f"for detector {detector} " if detector is not None else ""  # contains trailing space
+        if differentialMode:
+            print(f"Differential mode logs for {self.taskName} {detStr}on {self.record.id}:")
+            print("<time **since previous** log message> - log message")
+        else:
+            print(f"ISO-format logs for {self.taskName} {detStr}on {self.record.id}:")
+            print("<time of log> - log message")
+
+        firstLine = logs[0]
+        timestamp = firstLine.asctime.isoformat() if not differentialMode else "0.0"
+        print(timestamp, logs[0].message)
+        for i, line in enumerate(logs[1:], start=1):  # start=1 to match the actual index in logs
+            if differentialMode:
+                timestamp = f"{(line.asctime - logs[i - 1].asctime).total_seconds():.2f}s"
+            else:
+                timestamp = line.asctime.isoformat()
+            print(f"{timestamp} {line.message}")
+
 
 class PerformanceBrowser:
     def __init__(
