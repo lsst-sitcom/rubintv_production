@@ -47,7 +47,7 @@ except ImportError:
 
 from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
 from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
-from lsst.summit.utils.m1m3.plots.inertia_compensation_system import plot_hp_measured_data
+from lsst.summit.utils.m1m3.plots.plot_ics import plot_hp_measured_data
 from lsst.summit.utils.tmaUtils import (
     TMAEventMaker,
     getAzimuthElevationDataForEvent,
@@ -413,7 +413,6 @@ class TmaTelemetryChannel(TimedMetadataServer):
             )
         except ValueError:  # control flow error raise when the ICS is off
             return None
-
         # package all the items we want into dicts
         m1m3ICSHPMaxForces = {
             "measuredForceMax0": m1m3IcsResult.stats.measuredForceMax0,
@@ -455,8 +454,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
         commands = getCommandsDuringEvent(self.client, event, self.hardpointCommandsToPlot, doLog=False)
 
-        # TODO: fix how typing is done in the M1M3 package now that we mypy
-        plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)  # type: ignore
+        plot_hp_measured_data(m1m3IcsResult, fig=self.figure, commands=commands, log=self.log)
         self.figure.savefig(filename)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="tma",
