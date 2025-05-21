@@ -23,11 +23,13 @@ from __future__ import annotations
 __all__ = ("RedisWatcher", "ButlerWatcher")
 
 import logging
+import sys
 from time import sleep
 from typing import TYPE_CHECKING
 
 from lsst.daf.butler import Butler
 
+from .payloads import isRestartPayload
 from .redisUtils import RedisHelper
 from .utils import LocationConfig, raiseIf
 
@@ -71,6 +73,10 @@ class RedisWatcher:
             self.redisHelper.announceFree(self.podDetails)
             payload = self.redisHelper.dequeuePayload(self.podDetails)  # blocks for up to DEQUE_TIMEOUT sec
             if payload is not None:
+                if isRestartPayload(payload):
+                    # TODO: delete existence + free keys?
+                    self.log.warning("Received RESTART_SIGNAL, exiting")
+                    sys.exit(0)
                 try:
                     self.payload = payload  # XXX why is this being saved on the class?
                     self.redisHelper.announceBusy(self.podDetails)

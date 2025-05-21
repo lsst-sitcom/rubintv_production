@@ -36,7 +36,7 @@ __all__ = [
     "Payload",
     "PayloadResult",
     "RestartPayload",
-    "RESTART_SIGNAL",
+    "isRestartPayload",
 ]
 
 RESTART_SIGNAL = "__RESTART_SIGNAL__"
@@ -61,6 +61,16 @@ def pipelineGraphFromBytes(pipelineGraphBytes: bytes) -> PipelineGraph:
     """
     with io.BytesIO(pipelineGraphBytes) as f:
         return PipelineGraph._read_stream(f)  # to be public soon
+
+
+def isRestartPayload(payload: Payload) -> bool:
+    """Check if the payload is a restart signal.
+
+    Note that this function should be used, and *not* `isinstance`, because
+    the payload is deserialized as a `Payload` instance, not a `RestartPayload`
+    instance.
+    """
+    return payload.run == RESTART_SIGNAL or payload.who == RESTART_SIGNAL
 
 
 @dataclass(frozen=True)
