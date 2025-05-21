@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 
 from tabulate import tabulate
 
-from .payloads import Payload, RestartPayload
+from .payloads import Payload, RestartPayload, isRestartPayload
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
@@ -555,9 +555,12 @@ class ClusterManager:
                     self.log.warning(warning)
                 continue
 
-            self.log.info(f"Rebalancing payload from {queueName} with queue {length=} to {backlogWorker}")
-            self.rh.enqueuePayload(payload, backlogWorker)
-            i += 1
+            if isRestartPayload(payload):  # restart's must not be moved - they're targeted to a specific pod
+                self.rh.enqueuePayload(payload, pod)
+            else:
+                self.log.info(f"Rebalancing payload from {queueName} with queue {length=} to {backlogWorker}")
+                self.rh.enqueuePayload(payload, backlogWorker)
+                i += 1
 
         return
 
