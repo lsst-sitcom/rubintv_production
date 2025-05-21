@@ -24,7 +24,6 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-import sys
 import time
 from typing import TYPE_CHECKING
 
@@ -38,7 +37,7 @@ from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
-from .payloads import RESTART_SIGNAL, pipelineGraphFromBytes
+from .payloads import pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
@@ -196,10 +195,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        if payload.run == RESTART_SIGNAL:
-            self.log.warning("Received RESTART_SIGNAL, exiting")
-            sys.exit(0)
-
         dataIds: list[DataCoordinate] = payload.dataIds
         pipelineGraphBytes: bytes = payload.pipelineGraphBytes
         self.runCollection = payload.run

@@ -27,7 +27,6 @@ __all__ = [
 
 import logging
 import re
-import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -43,8 +42,6 @@ from lsst.rubintv.production.processingControl import PipelineComponents, buildP
 from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
-
-from .payloads import RESTART_SIGNAL
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
@@ -700,10 +697,6 @@ class PerformanceMonitor(BaseButlerChannel):
 
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
-        if payload.run == RESTART_SIGNAL:
-            self.log.warning("Received RESTART_SIGNAL, exiting")
-            sys.exit(0)
-
         dataId = payload.dataIds[0]
         record = None
         if "exposure" in dataId.dimensions:
