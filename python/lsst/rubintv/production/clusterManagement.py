@@ -28,7 +28,7 @@ import json
 import logging
 from dataclasses import dataclass
 from time import sleep
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from tabulate import tabulate
 
@@ -108,6 +108,7 @@ class ClusterManager:
         self.doRaise = doRaise
         self.rh = RedisHelper(butler, locationConfig)
         self.redis = self.rh.redis
+        self._lastRubinTVStates: dict[str, dict[str, Any]] = {}
         self.log = logging.getLogger("lsst.rubintv.produciton.clusterManager")
 
     def drainWorker(self, pod: PodDetails, newQueue: str | None = None, noWarn: bool = False) -> None:
@@ -439,79 +440,95 @@ class ClusterManager:
                 self.rh.enqueuePayload(restartPayload, pod)
 
     def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
-        # send the SFM sets and AOS sets
+        pipe = self.redis.pipeline()
+        totalUpdates = 0
+
+        # Process SFM sets and AOS sets
         for flavor, redisKey in step1aMap.items():
             statuses = status.flavorStatuses[flavor]
+            statesByDepth: dict[str, dict[str, Any]] = {}  # Group states by depth-specific streams
 
+            # Collect all detector states for this set
             for workerStatus in statuses.workerStatuses:
                 w = workerStatus.worker
-                key = f"{redisKey}_{w.depth}"
+                streamKey = f"stream:{redisKey}_{w.depth}"
                 det = w.detectorNumber if w.detectorNumber else 0
+
+                # Initialize state dict for this depth if not exists
+                if streamKey not in statesByDepth:
+                    statesByDepth[streamKey] = {}
+
+                # Format status
                 if workerStatus.isBusy is False:
                     value = "free"
                 else:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
-                self.redis.xadd(
-                    f"stream:{key}",
-                    {
-                        "detector_id": str(det),  # worker/detector id
-                        "status": value,  # "busy", "free", "missing", or queue length as string
-                        "type": "worker_status",
-                    },
-                )
 
-        # send the step1b sets and spare workers
+                statesByDepth[streamKey][str(det)] = {
+                    "status": value,
+                    "type": "worker_status",
+                }
+
+            # Send updates for each depth-specific stream
+            for streamKey, currentState in statesByDepth.items():
+                if currentState != self._lastRubinTVStates.get(streamKey, {}):
+                    pipe.xadd(
+                        streamKey,
+                        {"data": json.dumps(currentState)},
+                        maxlen=2,
+                        approximate=True,
+                    )
+                    self._lastRubinTVStates[streamKey] = currentState
+                    totalUpdates += 1
+
+        # Process step1b sets and spare workers
         for flavor, redisKey in flatSetMap.items():
-            statuses = status.flavorStatuses[flavor]
+            streamKey = f"stream:{redisKey}"
+            currentState = {}
 
-            for workerStatus in statuses.workerStatuses:
+            for workerStatus in status.flavorStatuses[flavor].workerStatuses:
                 w = workerStatus.worker
-                depth = w.depth
                 if workerStatus.isBusy is False:
                     value = "free"
                 else:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
-                self.redis.xadd(
-                    f"stream:{redisKey}",
-                    {
-                        "detector_id": str(depth),
-                        "status": value,  # "busy", "free", "missing", or queue length as string
-                        "type": "worker_status",
-                    },
-                )
-            self.redis.xadd(
-                f"stream:{redisKey}",
-                {"detector_id": "numWorkers", "status": len(statuses.workerStatuses), "type": "worker_count"},
-            )
 
-        # Do all the remaining ones that haven't been mapped
+                currentState[str(w.depth)] = {"status": value, "type": "worker_status"}
+
+            if currentState != self._lastRubinTVStates.get(streamKey, {}):
+                pipe.xadd(
+                    streamKey,
+                    {"data": json.dumps(currentState)},
+                    maxlen=2,
+                    approximate=True,
+                )
+                self._lastRubinTVStates[streamKey] = currentState
+                totalUpdates += 1
+
+        # Handle remaining queues
+        streamKey = "stream:CLUSTER_STATUS_OTHER_QUEUES"
+        currentState = {}
+
         exclude = step1aMap.keys() | flatSetMap.keys()
         for flavor, flavorStatus in status.flavorStatuses.items():
             if flavor in exclude:
                 continue
 
-            # TODO: flavor=PSF_PLOTTER doesn't use a real queue with
-            # payloads so doesn't currently work correctly as it doesn't have
-            # any workers even though the pod and queue exist.
             totalQueue = sum(w.queueLength for w in flavorStatus.workerStatuses)
             if totalQueue > 0:
-                self.redis.xadd(
-                    "stream:CLUSTER_STATUS_OTHER_QUEUES",
-                    {
-                        "detector_id": flavor.name,
-                        "status": totalQueue,
-                        "type": "text_status",  # Special type for text-based statuses
-                    },
-                )
-            else:  # delete workers with no queued items
-                self.redis.xadd(
-                    "stream:CLUSTER_STATUS_OTHER_QUEUES",
-                    {
-                        "detector_id": flavor.name,
-                        "status": "",  # empty string removes the flavorName from the list
-                        "type": "text_status",  # Special type for text-based statuses
-                    },
-                )
+                currentState[flavor.name] = {
+                    "status": str(totalQueue),
+                    "type": "text_status",
+                }
+
+        if currentState != self._lastRubinTVStates.get(streamKey, {}):
+            pipe.xadd(streamKey, {"data": json.dumps(currentState)}, maxlen=2, approximate=True)
+            self._lastRubinTVStates[streamKey] = currentState
+            totalUpdates += 1
+
+        # Execute all updates in a single transaction
+        if totalUpdates > 0:
+            pipe.execute()
 
     def rebalanceSfmWorkers(self, status: ClusterStatus) -> None:
         nBacklogFree = status.flavorStatuses[PodFlavor.BACKLOG_WORKER].nFreeWorkers
