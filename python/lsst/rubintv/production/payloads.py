@@ -24,7 +24,7 @@ from __future__ import annotations
 import base64
 import io
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Self
 
 from lsst.daf.butler import Butler, DataCoordinate
@@ -34,7 +34,6 @@ __all__ = [
     "pipelineGraphToBytes",
     "pipelineGraphFromBytes",
     "Payload",
-    "PayloadResult",
     "RestartPayload",
     "isRestartPayload",
 ]
@@ -118,53 +117,6 @@ class Payload:
             f"Payload(dataIds={[d for d in self.dataIds]}, run={self.run}, who={self.who},"
             " pipelineGraphBytes=<the bytes>)"
         )
-
-
-@dataclass(frozen=True)
-class PayloadResult:
-    """
-    A dataclass representing a payload result, composed of a Payload.
-    """
-
-    payload: Payload
-    startTime: float
-    endTime: float
-    splitTimings: dict
-    success: bool
-    message: str
-
-    @classmethod
-    def from_json(
-        cls,
-        json_str: str,
-        butler: Butler,
-    ) -> Self:
-        json_dict = json.loads(json_str)
-
-        # Validate JSON keys
-        allowed_keys = {"payload", "startTime", "endTime", "splitTimings", "success", "message"}
-        unexpected_keys = set(json_dict.keys()) - allowed_keys
-        if unexpected_keys:
-            raise TypeError(f"Unexpected keys in JSON: {unexpected_keys}")
-
-        # Extract the payload section for Payload.from_json
-        payload_dict = json_dict["payload"]
-        payload_json = json.dumps(payload_dict)
-        payload = Payload.from_json(payload_json, butler)
-
-        return cls(
-            payload=payload,
-            startTime=json_dict["startTime"],
-            endTime=json_dict["endTime"],
-            splitTimings=json_dict["splitTimings"],
-            success=json_dict["success"],
-            message=json_dict["message"],
-        )
-
-    def to_json(self) -> str:
-        json_dict = asdict(self)
-        json_dict["payload"] = json.loads(self.payload.to_json())
-        return json.dumps(json_dict)
 
 
 class RestartPayload(Payload):

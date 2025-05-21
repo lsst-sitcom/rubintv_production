@@ -19,14 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import unittest
 
 from utils import getSampleExpRecord  # type: ignore[import]
 
 import lsst.daf.butler as dafButler
 import lsst.utils.tests
-from lsst.rubintv.production.payloads import Payload, PayloadResult
+from lsst.rubintv.production.payloads import Payload
 from lsst.summit.utils.utils import getSite
 
 NO_BUTLER = True
@@ -117,96 +116,6 @@ class TestPayload(unittest.TestCase):
         payload = Payload.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
         self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
-
-
-class TestPayloadResult(unittest.TestCase):
-    def setUp(self) -> None:
-        self.butler = None
-        if getSite() in ["staff-rsp", "rubin-devl"]:
-            self.butler = dafButler.Butler("embargo_old", instrument="LATISS")  # type: ignore
-
-        self.expRecord = getSampleExpRecord()
-        self.expRecord2 = getSampleExpRecord()  # TODO get a different expRecord
-
-        self.samplePayload = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
-            pipelineGraphBytes="test".encode("utf-8"),
-            run="test run",
-            who="SFM",
-        )
-
-        self.payloadResult = PayloadResult(
-            payload=self.samplePayload,
-            startTime=0.0,
-            endTime=1.0,
-            splitTimings={"step1a": 0.5, "step1b": 0.3},
-            success=True,
-            message="Test message",
-        )
-        self.validJson = self.payloadResult.to_json()
-
-    def test_constructor(self) -> None:
-        payloadResult = PayloadResult(
-            payload=self.samplePayload,
-            startTime=0.0,
-            endTime=1.0,
-            splitTimings={"step1a": 0.5, "step1b": 0.3},
-            success=True,
-            message="Test message",
-        )
-        self.assertEqual(payloadResult.payload, self.samplePayload)
-        self.assertEqual(payloadResult.startTime, 0.0)
-        self.assertEqual(payloadResult.endTime, 1.0)
-        self.assertEqual(payloadResult.splitTimings, {"step1a": 0.5, "step1b": 0.3})
-        self.assertEqual(payloadResult.success, True)
-        self.assertEqual(payloadResult.message, "Test message")
-
-        with self.assertRaises(TypeError):
-            PayloadResult(
-                payload=self.samplePayload,
-                startTime=0.0,
-                endTime=1.0,
-                splitTimings={"step1a": 0.5, "step1b": 0.3},
-                success=True,
-                message="Test message",
-                illegalKwarg="test",  # type: ignore[call-arg]
-            )
-
-    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
-    def test_roundtrip(self) -> None:
-        # remove the ignore[arg-type] everywhere once there is a butler
-        payloadResult = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
-        payloadResultJson = payloadResult.to_json()
-        reconstructedPayloadResult = PayloadResult.from_json(
-            payloadResultJson, self.butler  # type: ignore[arg-type]
-        )
-        self.assertEqual(payloadResult, reconstructedPayloadResult)
-
-    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
-    def test_from_json(self) -> None:
-        # remove the ignore[arg-type] everywhere once there is a butler
-        payloadResult = PayloadResult.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
-        self.assertEqual(payloadResult.payload.pipelineGraphBytes, self.samplePayload.pipelineGraphBytes)
-        self.assertEqual(payloadResult.startTime, 0.0)
-        self.assertEqual(payloadResult.endTime, 1.0)
-        self.assertEqual(payloadResult.splitTimings, {"step1a": 0.5, "step1b": 0.3})
-        self.assertEqual(payloadResult.success, True)
-        self.assertEqual(payloadResult.message, "Test message")
-
-        invalidJson = json.dumps(
-            {
-                "payload": json.loads(self.samplePayload.to_json()),
-                "startTime": 0.0,
-                "endTime": 1.0,
-                "splitTimings": {"step1a": 0.5, "step1b": 0.3},
-                "success": True,
-                "message": "Test message",
-                "illegalItem": "test",
-            }
-        )
-
-        with self.assertRaises(TypeError):
-            PayloadResult.from_json(invalidJson, self.butler)  # type: ignore[arg-type]
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
