@@ -147,6 +147,13 @@ class PodDetails:
             f" detNum={self.detectorNumber})"
         )
 
+    def __hash__(self):
+        # self.queueName must be functionally unique as this is where pods are
+        # getting their work from. It's a combination of the podFlavor,
+        # instrument, depth and detectorNumber and so would be what we pass
+        # here anyway.
+        return hash(self.queueName)
+
     def validate(self) -> None:
         if self.podType == PodType.PER_INSTRUMENT_SINGLETON:
             if self.detectorNumber is not None or self.depth is not None:

@@ -91,6 +91,11 @@ class FlavorStatus:
         """Get the total number of workers in this flavor."""
         return len(self.workerStatuses)
 
+    @property
+    def freeWorkers(self) -> list[PodDetails]:
+        """Get the free workers in this flavor."""
+        return [ws.worker for ws in self.workerStatuses if not ws.isBusy]
+
 
 @dataclass
 class ClusterStatus:
@@ -133,7 +138,7 @@ class ClusterManager:
                 self.rh.redis.lpush(newQueue, payload.to_json())
             else:
                 if not noWarn:
-                    self.log.warn(f"Discarding payload from {pod.queueName}")
+                    self.log.warning(f"Discarding payload from {pod.queueName}")
             payload = self.rh.dequeuePayload(pod)
         self.log.info(
             f"Drained {counter} payloads from {pod.queueName} {'to ' + newQueue if newQueue else ''}"
@@ -530,17 +535,10 @@ class ClusterManager:
         if totalUpdates > 0:
             pipe.execute()
 
-    def rebalanceSfmWorkers(self, status: ClusterStatus) -> None:
-        nBacklogFree = status.flavorStatuses[PodFlavor.BACKLOG_WORKER].nFreeWorkers
-        if nBacklogFree == 0:
+    def rebalanceStep1aWorkers(self, status: ClusterStatus) -> None:
+        freeBacklogWorkers = {status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers}
+        if not freeBacklogWorkers:
             return
-
-        freeBacklogWorkers = [
-            ws.worker
-            for ws in status.flavorStatuses[PodFlavor.BACKLOG_WORKER].workerStatuses
-            if ws.isBusy is False
-        ]
-        assert len(freeBacklogWorkers) == nBacklogFree
 
         sfmStatuses = status.flavorStatuses[PodFlavor.SFM_WORKER]
         # make an ordered dict of queue lengths so we always rebalance the
@@ -553,17 +551,14 @@ class ClusterManager:
             )
         )
 
-        i = 0
         for queueName, length in queueLengths.items():
-            if length == 0:
+            if length == 0:  # it's sorted, so we've reached empty queues
                 return
 
-            if i == nBacklogFree:  # check this *before* dequeueing!
+            if not freeBacklogWorkers:  # check this *before* dequeueing!
                 self.log.info("Finished rebalancing to all the available backlog workers")
                 return
 
-            # grab the destination worker before dequeueing, just in case
-            backlogWorker = freeBacklogWorkers[i]
             pod = PodDetails.fromQueueName(queueName)
             payload = self.rh.dequeuePayload(pod)
             if payload is None:  # if length is 1 this happens quite often, but above that is much weirder
@@ -575,10 +570,9 @@ class ClusterManager:
             if isRestartPayload(payload):  # restart's must not be moved - they're targeted to a specific pod
                 self.rh.enqueuePayload(payload, pod)
             else:
+                backlogWorker = freeBacklogWorkers.pop()
                 self.log.info(f"Rebalancing payload from {queueName} with queue {length=} to {backlogWorker}")
                 self.rh.enqueuePayload(payload, backlogWorker)
-                i += 1
-
         return
 
     def run(self):
@@ -588,7 +582,7 @@ class ClusterManager:
                 self.executeRubinTvCommands()
                 status = self.getClusterStatus()
                 self.sendStatusToRubinTV(status)
-                self.rebalanceSfmWorkers(status)
+                self.rebalanceStep1aWorkers(status)
             except Exception as e:
                 self.log.exception(f"Error in cluster management: {e}")
             finally:
