@@ -1039,6 +1039,44 @@ class RedisHelper:
                 self.log.warning(f"Found unusable {value=} for sentinel detector in redis, defaulting to 94")
         return 94  # central chip as the default for both lookup errors and if the key isn't set at all
 
+    def sendZernikeCountToMTAOS(self, instrument: str, visitId: int, zernikeCount: int) -> None:
+        """Send the Zernike count to MTAOS.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        visitId : `int`
+            The visit id of the intra focal exposure.
+        zernikeCount : `int`
+            The number of Zernike butler datasets that would be available if
+            all processing was successful, i.e. the number that were processed.
+        """
+        key = f"{instrument.upper()}_WEP_PROCESSING_RESULT"
+        self.redis.hset(key, str(visitId), zernikeCount)
+
+    def getMTAOSZernikeCount(self, instrument: str, visitId: int) -> int | None:
+        """Get the number of zernikes that were announced to MTAOS.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        visitId : `int`
+            The visit id of the intra focal exposure.
+
+        Returns
+        -------
+        zernikeCount : `int` or `None`
+            The number of Zernike butler datasets that were processed, or
+            ``None`` if the processing hasn't finished yet.
+        """
+        key = f"{instrument.upper()}_WEP_PROCESSING_RESULT"
+        zernikeCount = self.redis.hget(key, str(visitId))
+        if zernikeCount is not None:
+            return int(zernikeCount)
+        return None
+
     def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.
 
