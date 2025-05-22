@@ -1230,6 +1230,9 @@ class HeadProcessController:
                 try:  # not used, but checks whether this payload is even usable downstream
                     (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoords[0])
                 except ValueError:
+                    # note: do not ``continue`` here, because there's other
+                    # bits that still need to run later on - this is why we use
+                    # a visitRecord=None sentinel instead
                     self.log.info(f"Skipping doomed step1b dispatch for {idStr=} due to lack of visit record")
 
                 if visitRecord is not None:
@@ -1247,6 +1250,14 @@ class HeadProcessController:
                         f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}"
                     )
                     self.redisHelper.enqueuePayload(payload, worker)
+                    if who == "AOS":
+                        intraId = visitRecord.id  # got from dataCoords[0] above so is intra
+                        numZernikesFinished = self.redisHelper.getNumDetectorLevelFinished(
+                            self.instrument, "step1a", who, idStr
+                        )
+                        self.redisHelper.sendZernikeCountToMTAOS(
+                            self.instrument, intraId, numZernikesFinished
+                        )
 
             self.log.debug(f"Removing step1a finished counter for {idStr=}")
             self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
