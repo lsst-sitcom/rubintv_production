@@ -547,6 +547,17 @@ class RedisManager:
         else:
             checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
 
+        # check zernike announcement for MTAOS
+        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025041500088) == 4:
+            checks.append(Check(True, "MTAOS Zernike count for non-FAM image 2025041500088 is 4"))
+        else:
+            checks.append(Check(False, "MTAOS Zernike count for non-FAM image 2025041500088 is not 4"))
+
+        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025041500086) == 18:
+            checks.append(Check(True, "MTAOS Zernike count for FAM image 2025041500086 is 18"))
+        else:
+            checks.append(Check(False, "MTAOS Zernike count for FAM image 2025041500086 is not 18"))
+
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
         inst = "LATISS"
