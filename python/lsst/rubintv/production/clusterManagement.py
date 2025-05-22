@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 from tabulate import tabulate
 
-from .payloads import Payload, RestartPayload, isRestartPayload
+from .payloads import Payload, RestartPayload, getDetectorId, isRestartPayload
 from .podDefinition import PodDetails, PodFlavor
 from .redisUtils import RedisHelper
 from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
@@ -114,6 +114,7 @@ class ClusterManager:
         self.rh = RedisHelper(butler, locationConfig)
         self.redis = self.rh.redis
         self._lastRubinTVStates: dict[str, dict[str, Any]] = {}
+        self._backlogAffinity: dict[int, PodDetails] = {}
         self.log = logging.getLogger("lsst.rubintv.produciton.clusterManager")
 
     def drainWorker(self, pod: PodDetails, newQueue: str | None = None, noWarn: bool = False) -> None:
@@ -535,8 +536,62 @@ class ClusterManager:
         if totalUpdates > 0:
             pipe.execute()
 
+    def getBacklogWorkerWithAffinity(
+        self, detectorNum: int, freeBacklogWorkers: set[PodDetails]
+    ) -> tuple[PodDetails | None, bool]:
+        """Find a backlog worker with affinity for a specific detector.
+
+        This function tries to find a backlog worker that has previously
+        handled the specified detector. If no such worker is found, it looks
+        for a free backlog worker that has not handled any other detectors. If
+        no free workers are available, it returns any free backlog worker.
+
+        Parameters
+        ----------
+        detectorNum : `int`
+            The detector number to find a worker for.
+        freeBacklogWorkers : `set[PodDetails]`
+            Set of free backlog workers to choose from.
+        Returns
+        -------
+        worker: `PodDetails` or `None`
+            The selected backlog worker or ``None`` if no suitable worker is
+            found.
+        matches : `bool`
+            Whether a worker with the same detector number was found.
+        """
+        # Try to find a worker that previously handled this detector
+        backlogWorker = None
+        for worker in freeBacklogWorkers:
+            if detectorNum in [k for k, v in self._backlogAffinity.items() if v == worker]:
+                backlogWorker = worker
+                freeBacklogWorkers.remove(worker)
+                return backlogWorker, True
+
+        # If no worker is found with same detector, try to find one without a
+        # conflicting detector (edge case, but useful for init or when set is
+        # scaled up while running)
+        for worker in freeBacklogWorkers:
+            # Check if worker has handled a different detector
+            if not any(v == worker for v in self._backlogAffinity.values()):
+                backlogWorker = worker
+                freeBacklogWorkers.remove(worker)
+                return backlogWorker, True  # None counts as a match as it's an init, not a cache-bust
+
+        # Fall back to any available worker if no better option found
+        try:
+            backlogWorker = freeBacklogWorkers.pop()
+        except KeyError:
+            # TODO: if we never see this message we can remove this, change the
+            # function sig to only return PodDetails, and remove the None check
+            # in the calling function too. Only keep this in for development
+            self.log.warning("No free backlog workers available - how did an empty set get passed here?")
+            return None, False
+
+        return backlogWorker, False
+
     def rebalanceStep1aWorkers(self, status: ClusterStatus) -> None:
-        freeBacklogWorkers = {status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers}
+        freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
         if not freeBacklogWorkers:
             return
 
@@ -570,9 +625,21 @@ class ClusterManager:
             if isRestartPayload(payload):  # restart's must not be moved - they're targeted to a specific pod
                 self.rh.enqueuePayload(payload, pod)
             else:
-                backlogWorker = freeBacklogWorkers.pop()
-                self.log.info(f"Rebalancing payload from {queueName} with queue {length=} to {backlogWorker}")
-                self.rh.enqueuePayload(payload, backlogWorker)
+                detNum = getDetectorId(payload)
+                if detNum is None:
+                    self.log.error(f"Step1a payload {payload} has no detector number - this shouldn't happen")
+                    self.rh.enqueuePayload(payload, pod)
+                    continue
+                backlogWorker, isMatch = self.getBacklogWorkerWithAffinity(detNum, freeBacklogWorkers)
+                if backlogWorker:
+                    match = "detector-matching" if isMatch else "detector-mismatched"
+                    self.log.info(f"Rebalancing payload from queue with {length=} to {match} {backlogWorker}")
+                    self.rh.enqueuePayload(payload, backlogWorker)
+                    self._backlogAffinity[detNum] = backlogWorker
+                else:
+                    # Put the payload back if we couldn't find a worker
+                    self.log.error("Rebalancing failed to find a backlog worker when it should have")
+                    self.rh.enqueuePayload(payload, pod)
         return
 
     def run(self):
