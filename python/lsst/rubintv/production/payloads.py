@@ -72,6 +72,37 @@ def isRestartPayload(payload: Payload) -> bool:
     return payload.run == RESTART_SIGNAL or payload.who == RESTART_SIGNAL
 
 
+def getDetectorId(payload: Payload) -> int | None:
+    """Get the detector ID from the payload.
+
+    Parameters
+    ----------
+    payload : `Payload`
+        The payload to get the detector ID from.
+
+    Returns
+    -------
+    detectorId : `int`
+        The detector ID, or None if there is no detector ID in the payload.
+
+    Raises
+    ------
+    ValueError
+        If there are multiple detector IDs in the payload.
+    """
+    if len(payload.dataIds) == 0:
+        return None
+    detectors = set()
+    for dataId in payload.dataIds:
+        if "detector" in dataId:
+            detectors.add(dataId["detector"])
+    if len(detectors) == 0:
+        return None
+    if len(detectors) > 1:
+        raise ValueError(f"Payload contains multiple detectors: {detectors}. ")
+    return int(detectors.pop())
+
+
 @dataclass(frozen=True)
 class Payload:
     """
