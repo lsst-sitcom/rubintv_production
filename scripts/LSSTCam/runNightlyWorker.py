@@ -42,6 +42,7 @@ print(
 
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),

@@ -36,7 +36,9 @@ print(
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
+butler = Butler.from_config(
+    locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"], instrument=instrument
+)
 plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,

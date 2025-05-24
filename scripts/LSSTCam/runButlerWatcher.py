@@ -29,7 +29,9 @@ instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
-butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
+butler = Butler.from_config(
+    locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"], instrument=instrument
+)
 writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
 butlerWatcher = ButlerWatcher(
     butler=butler,

@@ -29,7 +29,9 @@ instrument = "LATISS"
 locationConfig = getAutomaticLocationConfig()
 print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
-butler = Butler.from_config(locationConfig.auxtelButlerPath, collections=["LATISS/raw/all"])
+butler = Butler.from_config(
+    locationConfig.auxtelButlerPath, collections=["LATISS/raw/all"], instrument=instrument
+)
 writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
 butlerWatcher = ButlerWatcher(
     butler=butler,
