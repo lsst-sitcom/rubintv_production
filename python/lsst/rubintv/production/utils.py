@@ -281,8 +281,6 @@ class LocationConfig:
         # exist in all the different locations, otherwise it will fail in some
         # locations and not others, so add things with caution.
         self._config
-        self.binnedVisitImagePath
-        self.calculatedDataPath
         self.plotPath
 
     def _checkDir(self, dirName: str, createIfMissing=True) -> None:
@@ -347,6 +345,12 @@ class LocationConfig:
         return file
 
     @cached_property
+    def scratchPath(self) -> str:
+        """The scratch path for the location."""
+        getShardPath = self._config["scratchPath"]
+        return getShardPath
+
+    @cached_property
     def auxtelButlerPath(self):
         return self._config["auxtelButlerPath"]
 
@@ -395,18 +399,6 @@ class LocationConfig:
     @cached_property
     def plotPath(self):
         directory = self._config["plotPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def calculatedDataPath(self):
-        directory = self._config["calculatedDataPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def binnedVisitImagePath(self):
-        directory = self._config["binnedVisitImagePath"]
         self._checkDir(directory)
         return directory
 
@@ -1143,6 +1135,8 @@ def isFileWorldWritable(filename: str) -> bool:
     ok : `bool`
         True if the file has the correct permissions, False otherwise.
     """
+    # XXX remove this function once we've done the S3 move. Removing it will
+    # also help find other bits of file use.
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
 

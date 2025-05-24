@@ -3,10 +3,8 @@ bucketName: 'rubintv_data_slac'
 dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUniverse.json'
 
 # # data paths
-scratchPath: ''
+scratchPath : rapidAnalysisScratch
 plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
-calculatedDataPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData'
-binnedVisitImagePath: '/sdf/scratch/rubin/rapid-analysis/calculatedData/visitImages'
 
 # configuration
 binning: 8

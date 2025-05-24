@@ -38,6 +38,7 @@ CliLog.initLog = do_nothing  # type: ignore
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
+from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 
 # Only import from lsst packages after logging is configured
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI  # noqa: E402
@@ -221,7 +222,7 @@ class TestConfig:
             TestScript(
                 "scripts/LSSTCam/runPlotter.py",
                 ["usdf_testing"],
-                display_on_pass=False,
+                display_on_pass=True,
                 tee_output=False,
             ),
             TestScript(
@@ -1144,13 +1145,11 @@ class TestRunner:
     def delete_output_files(self) -> None:
         """Delete previous output files."""
         locationConfig = LocationConfig("usdf_testing")
-        deletion_locations = [
-            locationConfig.binnedVisitImagePath,
-            locationConfig.calculatedDataPath,
+        nfs_deletion_locations: list[str] = [
             locationConfig.plotPath,
         ]
 
-        for location in deletion_locations:
+        for location in nfs_deletion_locations:
             if os.path.exists(location):
                 shutil.rmtree(location)
                 print(f"✅ Deleted output directory: {location}")
@@ -1159,9 +1158,17 @@ class TestRunner:
         locationConfig = LocationConfig("usdf_testing")
 
         # Verify directories are empty
-        for location in deletion_locations:
+        for location in nfs_deletion_locations:
             if any(os.path.isfile(os.path.join(location, f)) for f in os.listdir(location)):
                 raise RuntimeError(f"Failed to delete files in {location}")
+
+        # delete S3 scratch area completely
+        path = getBasePath(locationConfig)
+        rmtree(path, raiseOnError=True)
+        remainingContents = listDir(path)
+        if remainingContents:
+            raise RuntimeError(f"Failed to delete files in {location}, {remainingContents=}")
+        print(f"✅ Deleted S3 scratch area at {path}")
 
     def run(self) -> None:
         try:

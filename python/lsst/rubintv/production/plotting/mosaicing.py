@@ -21,12 +21,11 @@
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib.colors as colors
 import numpy as np
+from astropy.io import fits
 from matplotlib import cm
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -36,9 +35,10 @@ from lsst.afw.cameraGeom import utils as cgu
 from lsst.afw.display import Display
 from lsst.afw.image import Exposure, Image, ImageF
 from lsst.daf.butler import DimensionRecord
+from lsst.resources import ResourcePath
 from lsst.summit.utils import getQuantiles
 
-from ..utils import isFileWorldWritable
+from ..resources import getBasePath
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -47,11 +47,18 @@ if TYPE_CHECKING:
 
     from lsst.afw.cameraGeom import Camera, Detector
     from lsst.daf.butler import Butler, DeferredDatasetHandle
+    from lsst.rubintv.production.utils import LocationConfig
 
 
-def getBinnedFilename(
-    instrument: str, dayObs: int, seqNum: int, detectorName: str, dataPath: str, binSize: int
-) -> str:
+def getBinnedResourcePath(
+    instrument: str,
+    dayObs: int,
+    seqNum: int,
+    detectorName: str,
+    binSize: int,
+    dataProduct: str,
+    locationConfig: LocationConfig,
+) -> ResourcePath:
     """Get the full path and filename for a binned image.
 
     Parameters
@@ -64,18 +71,24 @@ def getBinnedFilename(
         The sequence number.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
-    dataPath : `str`
-        The root data path on disk to write to or find the pre-binned images,
-        not including dayObs part.
     binSize : `int`
         The binning factor.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
     """
-    path = os.path.join(dataPath, str(dayObs))
-    return os.path.join(path, f"{dayObs}_{seqNum}_{instrument}_{detectorName}_binned_{binSize}.fits")
+    basePath = getBasePath(locationConfig)
+    basePath = basePath.join(f"binnedImages/{dayObs}")
+    return basePath.join(f"{dayObs}_{seqNum}_{instrument}_{dataProduct}_{detectorName}_binned_{binSize}.fits")
 
 
 def writeBinnedImage(
-    exp: Exposure, instrument: str, outputPath: str, dayObs: int, seqNum: int, binSize: int
+    exp: Exposure,
+    instrument: str,
+    dayObs: int,
+    seqNum: int,
+    binSize: int,
+    dataProduct: str,
+    locationConfig: LocationConfig,
 ) -> None:
     """Bin an image and write it to disk.
 
@@ -97,6 +110,10 @@ def writeBinnedImage(
         The sequence number.
     binSize : `int`
         The binning factor.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration, used to get the base path.
 
     Notes
     -----
@@ -108,13 +125,13 @@ def writeBinnedImage(
     binnedImage = afwMath.binImage(exp.image, binSize)  # turns the exp into an Image
 
     detName = exp.detector.getName()
-    outFilename = getBinnedFilename(instrument, dayObs, seqNum, detName, outputPath, binSize)
-    path = Path(outFilename)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    binnedImage.writeFits(outFilename)
+    outPath = getBinnedResourcePath(instrument, dayObs, seqNum, detName, binSize, dataProduct, locationConfig)
+    hdu = fits.PrimaryHDU(data=binnedImage.array)
+    hduList = fits.HDUList([hdu])
 
-    if not isFileWorldWritable(outFilename):
-        os.chmod(outFilename, 0o777)
+    fs, fspath = outPath.to_fsspec()
+    with fs.open(fspath, "wb") as fd:
+        hduList.writeto(fd)
 
 
 def readBinnedImage(
@@ -122,8 +139,9 @@ def readBinnedImage(
     dayObs: int,
     seqNum: int,
     detectorName: str,
-    dataPath: str,
     binSize: int,
+    dataProduct: str,
+    locationConfig: LocationConfig,
     deleteAfterReading: bool,
     logger: Logger | None = None,
 ) -> Image:
@@ -139,12 +157,14 @@ def readBinnedImage(
         The sequence number.
     detectorName : `str`
         The detector name, e.g. 'R22_S11'.
-    dataPath : `str`
-        The path on disk to find the pre-binned images.
     binSize : `int`
         The binning factor.
     deleteAfterReading : `bool`
         Whether to delete the file after reading it.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration, used to get the base path.
     logger : `logging.Logger`, optional
         The logger to use.
 
@@ -153,15 +173,24 @@ def readBinnedImage(
     image : `lsst.afw.image.ImageF`
         The binned image.
     """
-    filename = getBinnedFilename(instrument, dayObs, seqNum, detectorName, dataPath, binSize)
-    image = ImageF(filename)
+    resource = getBinnedResourcePath(
+        instrument, dayObs, seqNum, detectorName, binSize, dataProduct, locationConfig
+    )
+
+    fs, fspath = resource.to_fsspec()
+    with fs.open(fspath, "rb") as fd:
+        opened = fits.open(fd)
+        data = opened[0].data
+        data = np.asarray(data, dtype=np.float32)
+        image = ImageF(data)
+
     if deleteAfterReading:
         try:
-            os.remove(filename)
+            resource.remove()
         except Exception:
             if logger is None:
                 logger = logging.getLogger(__name__)
-            logger.exception(f"Could not delete {filename}")
+            logger.exception(f"Could not delete {resource}")
     return image
 
 
@@ -177,8 +206,8 @@ class PreBinnedImageSource:
         The exposure id.
     instrument : `str`
         The instrument name, e.g. 'LSSTCam'.
-    dataPath : `str`
-        The path to the written files on disk.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
     binSize : `int`
         The bin size.
     """
@@ -187,13 +216,21 @@ class PreBinnedImageSource:
     background = np.nan  # required attribute camGeom.utils.showCamera(imageSource)
 
     def __init__(
-        self, instrument: str, dayObs: int, seqNum: int, dataPath: str, binSize: int, deleteAfterReading: bool
+        self,
+        instrument: str,
+        dayObs: int,
+        seqNum: int,
+        dataProduct: str,
+        binSize: int,
+        locationConfig: LocationConfig,
+        deleteAfterReading: bool,
     ) -> None:
         self.dayObs = dayObs
         self.seqNum = seqNum
         self.instrument = instrument
-        self.dataPath = dataPath
+        self.dataProduct = dataProduct
         self.binSize = binSize
+        self.locationConfig = locationConfig
         self.deleteAfterReading = deleteAfterReading
 
     def getCcdImage(
@@ -209,8 +246,9 @@ class PreBinnedImageSource:
             dayObs=self.dayObs,
             seqNum=self.seqNum,
             detectorName=detName,
-            dataPath=self.dataPath,
             binSize=binSize,
+            dataProduct=self.dataProduct,
+            locationConfig=self.locationConfig,
             deleteAfterReading=self.deleteAfterReading,
         )
         return afwMath.rotateImageBy90(binnedImage, det.getOrientation().getNQuarter()), det
@@ -220,8 +258,9 @@ def makeMosaic(
     deferredDatasetRefs: list[DeferredDatasetHandle],
     camera: Camera,
     binSize: int,
-    dataPath: str,
+    dataProduct: str,
     nExpected: int,
+    locationConfig: LocationConfig,
     deleteFiles: bool,
 ) -> Image:
     """Make a binned mosaic image from a list of deferredDatasetRefs.
@@ -237,10 +276,13 @@ def makeMosaic(
         The camera model, used for quick lookup of the detectors.
     binSize : `int`
         The binning factor.
-    dataPath : `str`
-        The path on disk to find the binned images.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration, used to get the base path for the binned
+        images.
     deleteFiles : `bool`
         If ``True``, delete the binned image files after reading them. Files
         are only deleted if the number found is ``nExpected``. If ``False``,
@@ -288,7 +330,7 @@ def makeMosaic(
     dayObs = days.pop()
     seqNum = seqNums.pop()
 
-    detectorNameList = getDetectorNamesWithData(dayObs, seqNum, camera, dataPath, binSize)
+    detectorNameList = getDetectorNamesWithData(dayObs, seqNum, camera, binSize, dataProduct, locationConfig)
     if nExpected != len(detectorNameList):
         logger.warning(
             f"Expected {nExpected} binned images but found {len(detectorNameList)}. Will not delete files."
@@ -296,7 +338,13 @@ def makeMosaic(
         deleteFiles = False
 
     imageSource = PreBinnedImageSource(
-        instrument, dayObs, seqNum, dataPath, binSize=binSize, deleteAfterReading=deleteFiles
+        instrument,
+        dayObs,
+        seqNum,
+        dataProduct,
+        binSize=binSize,
+        locationConfig=locationConfig,
+        deleteAfterReading=deleteFiles,
     )
 
     mosaic = cgu.showCamera(
@@ -310,7 +358,7 @@ def makeMosaic(
 
 
 def getDetectorNamesWithData(
-    dayObs: int, seqNum: int, camera: Camera, dataPath: str, binSize: int
+    dayObs: int, seqNum: int, camera: Camera, binSize: int, dataProduct: str, locationConfig: LocationConfig
 ) -> list[str]:
     """Check for existing binned image files and return the detector names
     for those with data.
@@ -323,10 +371,13 @@ def getDetectorNamesWithData(
         The sequence number.
     camera : `lsst.afw.cameraGeom.Camera`
         The camera.
-    dataPath : `str`
-        The path to the binned images.
     binSize : `int`
         The binning factor.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration, used to get the base path for the binned
+        images.
 
     Returns
     -------
@@ -335,10 +386,17 @@ def getDetectorNamesWithData(
     """
     instrument = camera.getName()
     detNames = [det.getName() for det in camera]
+
+    # XXX not clear if this will be slow, and whether using
+    # .resources.listDir() and checking whether the predicted resource names
+    # are in that list will be quicker. Possible that both are negligible
+    # though, so may not matter.
     existingNames = [
         detName
         for detName in detNames
-        if os.path.exists(getBinnedFilename(instrument, dayObs, seqNum, detName, dataPath, binSize))
+        if getBinnedResourcePath(
+            instrument, dayObs, seqNum, detName, binSize, dataProduct, locationConfig
+        ).exists()
     ]
     return existingNames
 
@@ -350,10 +408,11 @@ def plotFocalPlaneMosaic(
     seqNum: int,
     camera: Camera,
     binSize: int,
-    dataPath: str,
+    dataProduct: str,
     savePlotAs: str,
     nExpected: int,
     stretch: str,
+    locationConfig: LocationConfig,
     title: str = "",
     deleteIfComplete: bool = True,
 ) -> Image | None:
@@ -376,14 +435,17 @@ def plotFocalPlaneMosaic(
         The camera.
     binSize : `int`
         The binning factor.
-    dataPath : `str`
-        The path to the binned images.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
     savePlotAs : `str`
         The filename to save the plot as.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
     stretch : `str`
         The scaling option for the plot.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration, used to get the base path for the binned
+        images.
     timeout : `float`
         The maximum time to wait for the images to land.
     title : `str`
@@ -416,8 +478,9 @@ def plotFocalPlaneMosaic(
         deferredDatasetHandles,
         camera,
         binSize,
-        dataPath,
+        dataProduct,
         nExpected=nExpected,
+        locationConfig=locationConfig,
         deleteFiles=deleteIfComplete,
     )
 
