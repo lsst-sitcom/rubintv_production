@@ -207,10 +207,13 @@ WORKDIR /repos/rubintv_production
 
 COPY . /repos/rubintv_production
 
+
 USER root
 RUN chown -R ${UID}:${GID} /repos/rubintv_production
 
 USER saluser
+
+RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
@@ -244,7 +247,8 @@ RUN chown saluser:saluser /repos/.startup.sh && \
     chmod -R a+w /repos && \
     chmod a+rx /home/saluser && \
     rm -rf /home/saluser/.eups/_caches_ && \
-    chmod a+w /home/saluser/.eups
+    chmod a+w /home/saluser/.eups && \
+    chmod a+rwx /tmp
 
 RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/drp_pipe && \
@@ -262,6 +266,7 @@ USER saluser
 ENV USER=saluser
 ENV SHELL=/bin/bash
 ENV EUPS_USERDATA=/home/saluser/.eups
+ENV MPLCONFIGDIR=/tmp
 
 
 WORKDIR /repos/rubintv_production/scripts
