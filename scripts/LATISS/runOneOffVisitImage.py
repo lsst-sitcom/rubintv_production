@@ -46,6 +46,7 @@ print(
 
 butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),

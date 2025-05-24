@@ -44,6 +44,7 @@ print(
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
+    instrument=instrument,
     collections=[
         "LATISS/defaults",
         locationConfig.getOutputChain(instrument),
