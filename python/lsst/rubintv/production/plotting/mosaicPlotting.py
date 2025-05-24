@@ -117,18 +117,15 @@ class Plotter:
 
         nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="ISR"))
 
-        datapath = ""
         stretch = "CCS"
         displayToUse: Any = None
         plotName = "unknown"
         match dataProduct:
             case "post_isr_image":
-                datapath = self.locationConfig.calculatedDataPath
                 stretch = "CCS"
                 displayToUse = make_figure(figsize=(12, 12))
                 plotName = "focal_plane_mosaic"
             case "preliminary_visit_image":
-                datapath = self.locationConfig.binnedVisitImagePath
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
                 # this name is used by RubinTV internally - do not change
@@ -148,12 +145,13 @@ class Plotter:
             seqNum=seqNum,
             camera=self.camera,
             binSize=self.locationConfig.binning,
-            dataPath=datapath,
+            dataProduct=dataProduct,
             savePlotAs=saveFile,
             nExpected=nExpected,
             title=title,
             deleteIfComplete=True,
             stretch=stretch,
+            locationConfig=self.locationConfig,
         )
         if image is not None:
             self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")

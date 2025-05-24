@@ -58,10 +58,8 @@ lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metada
 lsstCamButlerPath: embargo
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
-scratchPath: /sdf/home/m/mfl/u/rubintv
+scratchPath : rapidAnalysisScratchCi
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
-calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
-binnedVisitImagePath: /sdf/home/m/mfl/u/rubintv/calculatedData/visitImages
 
 # TMA config:
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata

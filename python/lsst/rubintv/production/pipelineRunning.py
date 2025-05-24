@@ -459,10 +459,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
-            outputPath=self.locationConfig.calculatedDataPath,
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
             binSize=self.locationConfig.binning,
+            dataProduct="post_isr_image",
+            locationConfig=self.locationConfig,
         )
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
         self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
@@ -504,10 +505,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         writeBinnedImage(
             exp=exp,
             instrument=self.instrument,
-            outputPath=self.locationConfig.binnedVisitImagePath,
             dayObs=visitRecord.day_obs,
             seqNum=visitRecord.seq_num,
             binSize=self.locationConfig.binning,
+            dataProduct="preliminary_visit_image",
+            locationConfig=self.locationConfig,
         )
         # use a custom "task label" here because step1b on the summit is
         # triggered off the end of calibrate, and so needs to have that key in
