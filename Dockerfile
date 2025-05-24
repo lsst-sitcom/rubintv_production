@@ -4,7 +4,7 @@ ARG STACK_TAG="w_2025_18"
 # For summit, UID=GID=73006?
 
 
-FROM lsstsqre/centos:7-stack-lsst_distrib-${STACK_TAG}
+FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 
 ENV UID=73006
 ENV GID=73006
