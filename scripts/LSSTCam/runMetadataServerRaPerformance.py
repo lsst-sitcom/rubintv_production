@@ -19,4 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .mosaicing import *
+from lsst.rubintv.production.timedServices import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
+from lsst.summit.utils.utils import setupLogging
+
+setupLogging()
+checkRubinTvExternalPackages()
+
+locationConfig = getAutomaticLocationConfig()
+print(f"Running RA performance metadata server at {locationConfig.location}...")
+
+metadataDirectory = locationConfig.raPerformanceDirectory
+shardsDirectory = locationConfig.raPerformanceShardsDirectory
+channelName = "ra_performance"
+
+metadataServer = TimedMetadataServer(
+    locationConfig=locationConfig,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
+    doRaise=getDoRaise(),
+)
+metadataServer.run()

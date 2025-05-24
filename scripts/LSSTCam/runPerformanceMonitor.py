@@ -19,25 +19,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
+
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
+from lsst.rubintv.production.performance import PerformanceMonitor
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTComCam"
-
-workerNum = 0
-
+instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
 
-# The detectorNumber to be processed is defined in the init of the
-# OneOffProcessor class below. However, because this is a one-per-instrument
-# pod type, the detector number defined in the podDetails is therefore None,
-# despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -45,25 +40,19 @@ print(
 )
 
 butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
+    locationConfig.lsstCamButlerPath,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
     ],
-    writeable=True,
 )
 
-metadataDirectory = locationConfig.comCamMetadataPath
-shardsDirectory = locationConfig.comCamMetadataShardPath
-
-oneOffProcessor = OneOffProcessor(
+perfMonitor = PerformanceMonitor(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
     podDetails=podDetails,
-    detectorNumber=4,  # central CCD for ComCam
-    shardsDirectory=shardsDirectory,
-    processingStage="calexp",
     doRaise=getDoRaise(),
 )
-oneOffProcessor.run()
+perfMonitor.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here
