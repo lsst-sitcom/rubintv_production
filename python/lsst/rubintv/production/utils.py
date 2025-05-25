@@ -30,12 +30,13 @@ import os
 import sys
 import time
 import uuid
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import cached_property
+from functools import cached_property, wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import numpy as np
 import yaml
@@ -52,7 +53,6 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.afw.cameraGeom import Camera
-
 
 __all__ = [
     "writeDimensionUniverseFile",
@@ -85,6 +85,9 @@ __all__ = [
     "makePlotFile",
     "makePlotFileFromRecord",
     "makeWitnessDetectorTitle",
+    "makeFocalPlaneTitle",
+    "logDuration",
+    "timeFunction",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -1519,3 +1522,59 @@ def makeFocalPlaneTitle(record: DimensionRecord) -> str:
     title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
     title += f"{r.observation_type} image @ {r.exposure_time:.1f}s in filter {r.physical_filter}"
     return title
+
+
+@contextmanager
+def logDuration(logger: Logger, label: str) -> Iterator[None]:
+    """Context manager to log the duration of a block of code.
+
+    Example usage:
+
+    with logDuration(log, "this block of code"):
+        doSomething()
+    This will log the time taken to execute the block of code with the label
+    message "<loggerName>.info this block of code took 1.23s".
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration.
+    label : `str`
+        A label for the block of code being timed, used in the log message.
+    """
+    start = perf_counter()
+    try:
+        yield
+    finally:
+        logger.info("%s took %.3fs", label, (perf_counter() - start))
+
+
+def timeFunction(logger: Logger) -> Callable:
+    """Decorator to log the duration of a function call.
+
+    Example usage:
+    @timeFunc(logger)
+    def my_function():
+        doSomething()
+
+    This will log the time taken to execute the function with the label
+    message "<loggerName>.info my_function took 1.23s".
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration of the function call.
+    """
+
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = perf_counter()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                logger.info("%s took %.3fs", func.__qualname__, (perf_counter() - start))
+
+        return wrapper
+
+    return decorate

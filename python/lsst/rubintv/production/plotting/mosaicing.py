@@ -39,6 +39,7 @@ from lsst.resources import ResourcePath
 from lsst.summit.utils import getQuantiles
 
 from ..resources import getBasePath
+from ..utils import logDuration, timeFunction
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -48,6 +49,8 @@ if TYPE_CHECKING:
     from lsst.afw.cameraGeom import Camera, Detector
     from lsst.daf.butler import Butler, DeferredDatasetHandle
     from lsst.rubintv.production.utils import LocationConfig
+
+_LOG = logging.getLogger(__name__)
 
 
 def getBinnedResourcePath(
@@ -81,6 +84,7 @@ def getBinnedResourcePath(
     return basePath.join(f"{dayObs}_{seqNum}_{instrument}_{dataProduct}_{detectorName}_binned_{binSize}.fits")
 
 
+@timeFunction(_LOG)
 def writeBinnedImage(
     exp: Exposure,
     instrument: str,
@@ -134,6 +138,7 @@ def writeBinnedImage(
         hduList.writeto(fd)
 
 
+@timeFunction(_LOG)
 def readBinnedImage(
     instrument: str,
     dayObs: int,
@@ -303,7 +308,7 @@ def makeMosaic(
         Create an ImageSource which reads the pre-binned image straight from
         disk.
     """
-    logger = logging.getLogger(__name__)
+    log = logging.getLogger(__name__)
 
     instrument = camera.getName()
 
@@ -330,9 +335,13 @@ def makeMosaic(
     dayObs = days.pop()
     seqNum = seqNums.pop()
 
-    detectorNameList = getDetectorNamesWithData(dayObs, seqNum, camera, binSize, dataProduct, locationConfig)
+    with logDuration(log, "Finding files which exist in S3"):
+        detectorNameList = getDetectorNamesWithData(
+            dayObs, seqNum, camera, binSize, dataProduct, locationConfig
+        )
+
     if nExpected != len(detectorNameList):
-        logger.warning(
+        log.warning(
             f"Expected {nExpected} binned images but found {len(detectorNameList)}. Will not delete files."
         )
         deleteFiles = False
@@ -347,12 +356,13 @@ def makeMosaic(
         deleteAfterReading=deleteFiles,
     )
 
-    mosaic = cgu.showCamera(
-        camera,
-        imageSource=imageSource,
-        detectorNameList=detectorNameList,
-        binSize=binSize,
-    )
+    with logDuration(log, "Reading existing files from S3 and assembling"):
+        mosaic = cgu.showCamera(
+            camera,
+            imageSource=imageSource,
+            detectorNameList=detectorNameList,
+            binSize=binSize,
+        )
 
     return mosaic
 
@@ -459,7 +469,7 @@ def plotFocalPlaneMosaic(
     mosaic : `lsst.afw.image.Image`
         The mosaiced image.
     """
-    logger = logging.getLogger(__name__)
+    log = logging.getLogger(__name__)
 
     where = "day_obs=dayObs AND seq_num=seqNum"
     # we hardcode "raw" here the per-CCD binned images are written out
@@ -469,26 +479,29 @@ def plotFocalPlaneMosaic(
         "raw", with_dimension_records=True, where=where, bind={"dayObs": dayObs, "seqNum": seqNum}
     )
 
-    logger.info(f"Found {len(dRefs)} dRefs for {dayObs=}, {seqNum=}")
+    log.info(f"Found {len(dRefs)} dRefs for {dayObs=}, {seqNum=}")
     # sleazy part - if the raw exists then the binned image will get written
     # by the isrRunners. This fact is utilized by the PreBinnedImageSource.
     deferredDatasetHandles = [butler.getDeferred(d) for d in dRefs]  # these now have .records with seqnums in
 
-    mosaic = makeMosaic(
-        deferredDatasetHandles,
-        camera,
-        binSize,
-        dataProduct,
-        nExpected=nExpected,
-        locationConfig=locationConfig,
-        deleteFiles=deleteIfComplete,
-    )
+    with logDuration(log, "Assembling the mosaic image"):
+        mosaic = makeMosaic(
+            deferredDatasetHandles,
+            camera,
+            binSize,
+            dataProduct,
+            nExpected=nExpected,
+            locationConfig=locationConfig,
+            deleteFiles=deleteIfComplete,
+        )
 
-    logger.info(f"Made mosaic image for {dayObs=}, {seqNum=}")
-    renderMosaicImage(
-        mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, title=title, saveAs=savePlotAs
-    )
-    logger.info(f"Saved mosaic image for {dayObs=}, {seqNum=} to {savePlotAs}")
+    log.info(f"Made mosaic image for {dayObs=}, {seqNum=}")
+
+    with logDuration(log, "Rendering the mosaic"):
+        renderMosaicImage(
+            mosaic, scalingOption=stretch, figureOrDisplay=figureOrDisplay, title=title, saveAs=savePlotAs
+        )
+    log.info(f"Saved mosaic image for {dayObs=}, {seqNum=} to {savePlotAs}")
     return mosaic
 
 
