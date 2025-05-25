@@ -63,7 +63,7 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
         for podFlavor in [
             PodFlavor.PSF_PLOTTER,
             PodFlavor.NIGHTLYROLLUP_WORKER,
-            PodFlavor.STEP2A_WORKER,
+            PodFlavor.STEP1B_WORKER,
             PodFlavor.MOSAIC_WORKER,
         ]:
             pod = PodDetails(instrument="LSSTCam", podFlavor=podFlavor, detectorNumber=None, depth=0)

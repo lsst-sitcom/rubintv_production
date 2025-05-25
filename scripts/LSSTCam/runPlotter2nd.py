@@ -19,43 +19,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.slac.newPlotting import Plotter
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTComCamSim"
+instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
-
-workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.NIGHTLYROLLUP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.MOSAIC_WORKER, detectorNumber=None, depth=1
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
-    collections=[
-        "LSSTComCamSim/defaults",
-    ],
-    writeable=True,
-)
-
-rollupRunner = SingleCorePipelineRunner(
+butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
+plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="nightlyRollup",
-    awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-rollupRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+
+plotter.run()

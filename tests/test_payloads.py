@@ -139,7 +139,7 @@ class TestPayloadResult(unittest.TestCase):
             payload=self.samplePayload,
             startTime=0.0,
             endTime=1.0,
-            splitTimings={"step1": 0.5, "step2": 0.3},
+            splitTimings={"step1a": 0.5, "step1b": 0.3},
             success=True,
             message="Test message",
         )
@@ -150,14 +150,14 @@ class TestPayloadResult(unittest.TestCase):
             payload=self.samplePayload,
             startTime=0.0,
             endTime=1.0,
-            splitTimings={"step1": 0.5, "step2": 0.3},
+            splitTimings={"step1a": 0.5, "step1b": 0.3},
             success=True,
             message="Test message",
         )
         self.assertEqual(payloadResult.payload, self.samplePayload)
         self.assertEqual(payloadResult.startTime, 0.0)
         self.assertEqual(payloadResult.endTime, 1.0)
-        self.assertEqual(payloadResult.splitTimings, {"step1": 0.5, "step2": 0.3})
+        self.assertEqual(payloadResult.splitTimings, {"step1a": 0.5, "step1b": 0.3})
         self.assertEqual(payloadResult.success, True)
         self.assertEqual(payloadResult.message, "Test message")
 
@@ -166,7 +166,7 @@ class TestPayloadResult(unittest.TestCase):
                 payload=self.samplePayload,
                 startTime=0.0,
                 endTime=1.0,
-                splitTimings={"step1": 0.5, "step2": 0.3},
+                splitTimings={"step1a": 0.5, "step1b": 0.3},
                 success=True,
                 message="Test message",
                 illegalKwarg="test",  # type: ignore[call-arg]
@@ -189,7 +189,7 @@ class TestPayloadResult(unittest.TestCase):
         self.assertEqual(payloadResult.payload.pipelineGraphBytes, self.samplePayload.pipelineGraphBytes)
         self.assertEqual(payloadResult.startTime, 0.0)
         self.assertEqual(payloadResult.endTime, 1.0)
-        self.assertEqual(payloadResult.splitTimings, {"step1": 0.5, "step2": 0.3})
+        self.assertEqual(payloadResult.splitTimings, {"step1a": 0.5, "step1b": 0.3})
         self.assertEqual(payloadResult.success, True)
         self.assertEqual(payloadResult.message, "Test message")
 
@@ -198,7 +198,7 @@ class TestPayloadResult(unittest.TestCase):
                 "payload": json.loads(self.samplePayload.to_json()),
                 "startTime": 0.0,
                 "endTime": 1.0,
-                "splitTimings": {"step1": 0.5, "step2": 0.3},
+                "splitTimings": {"step1a": 0.5, "step1b": 0.3},
                 "success": True,
                 "message": "Test message",
                 "illegalItem": "test",
