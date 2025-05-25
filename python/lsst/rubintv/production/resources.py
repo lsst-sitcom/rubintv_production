@@ -105,6 +105,27 @@ def listDir(resourcePath: ResourcePath) -> list[ResourcePath]:
     return paths
 
 
+def getSubDirs(resourcePath: ResourcePath) -> list[str]:
+    """Get the subdirectories of a directory in the resource path.
+
+    Parameters
+    ----------
+    resourcePath : `ResourcePath`
+        The resource path to list.
+
+    Returns
+    -------
+    list[ResourcePath]
+        A list of the subdirectories in the directory.
+    """
+    if not resourcePath.isdir():
+        raise ValueError(f"{resourcePath} is not (necessarily) a directory: got {resourcePath.isdir()=}")
+
+    for dirPath, dirNames, fileNames in resourcePath.walk():
+        return dirNames  # Return just the first level of subdirectories
+    return []  # If no subdirectories, return an empty list
+
+
 def rmtree(resourcePath: ResourcePath, raiseOnError: bool = False) -> None:
     """Remove a directory and all its contents.
 
