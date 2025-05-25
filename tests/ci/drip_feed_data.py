@@ -11,37 +11,50 @@ print(f"Imports took {(time.time() - t0):.2f} seconds")
 t0 = time.time()
 
 
-instrument = "LSSTComCam"
+instrument = "LSSTCam"
 
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
+    locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
-        "LSSTComCamSim/defaults",
+        f"{instrument}/defaults",
     ],
 )
 
 redisHelper = RedisHelper(butler, locationConfig)
 
+# 86 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
+# 87 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
+# 88 - in focus, goes to SFM, expect a preliminary_visit_image mosaic etc.
+# CWFS goes to AOS pods
+# 311 - a bias, to test cpVerify pipelines and mosaicing
+
 where = (
-    "exposure.day_obs=20241102 AND exposure.seq_num in (170..172)"
+    "exposure.day_obs=20250415 AND exposure.seq_num in (86..88,311)"
     f" AND instrument='{instrument}'"  # on sky!
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
-assert len(records) == 3, f"Expected 3 record, got {len(records)}"
+assert len(records) == 4, f"Expected 1 record, got {len(records)}"
+
+for record in records:
+    assert isinstance(record, DimensionRecord)
+    redisHelper.pushNewExposureToHeadNode(record)  # let the SFM go first
+    redisHelper.pushToButlerWatcherList(instrument, record)
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
 
-for record in records:  # XXX remove the slice!
-    assert isinstance(record, DimensionRecord)
-    print(f"Pushing expId={record.id} for {record.instrument} for processing")
-    # this is what the butlerWatcher does for each new record
-    redisHelper.pushNewExposureToHeadNode(record)
-    redisHelper.pushToButlerWatcherList(instrument, record)
+# assert isinstance(toPush, DimensionRecord)
+# print(f"Pushing expId={toPush.id} for {toPush.instrument} for processing")
+# # this is what the butlerWatcher does for each new record
+# redisHelper.pushNewExposureToHeadNode(toPush)  # let the SFM go first
+# redisHelper.pushToButlerWatcherList(instrument, toPush)
+
+time.sleep(2)  # make sure the head node has done the dispatch of the SFM image
 
 print("Pushing pair announcement signal to redis (simulating OCS signal)")
-redisHelper.redis.rpush("LSSTComCam-FROM-OCS_DONUTPAIR", "2024110200171,2024110200172")
+redisHelper.redis.rpush("LSSTCam-FROM-OCS_DONUTPAIR", "2025041500086,2025041500087")
 
 # do LATISS with the same drip-feeder
 instrument = "LATISS"

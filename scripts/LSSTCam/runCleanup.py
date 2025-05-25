@@ -19,5 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .botTesting import *
-from .mosaicing import *
+from lsst.rubintv.production.cleanup import TempFileCleaner
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.summit.utils.utils import setupLogging
+
+setupLogging()
+
+locationConfig = getAutomaticLocationConfig()
+cleaner = TempFileCleaner(locationConfig)
+cleaner.run()

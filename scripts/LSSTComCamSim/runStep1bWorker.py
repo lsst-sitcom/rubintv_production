@@ -19,25 +19,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
+
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getWitnessDetectorNumber
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
-
-workerNum = 0
-
+instrument = "LSSTComCamSim"
 locationConfig = getAutomaticLocationConfig()
 
-# The detectorNumber to be processed is defined in the init of the
-# OneOffProcessor class below. However, because this is a one-per-instrument
-# pod type, the detector number defined in the podDetails is therefore None,
-# despite the fact that this will actually operate on a specific detector.
+workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -45,25 +41,22 @@ print(
 )
 
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath,
+    locationConfig.comCamButlerPath,
+    instrument=instrument,
     collections=[
-        f"{instrument}/defaults",
-        locationConfig.getOutputChain(instrument),
+        "LSSTComCamSim/defaults",
     ],
     writeable=True,
 )
 
-metadataDirectory = locationConfig.lsstCamMetadataPath
-shardsDirectory = locationConfig.lsstCamMetadataShardPath
-
-oneOffProcessor = OneOffProcessor(
+step1bRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
+    step="step1b",
+    awaitsDataProduct=None,
     podDetails=podDetails,
-    detectorNumber=getWitnessDetectorNumber(instrument),
-    shardsDirectory=shardsDirectory,
-    processingStage="calexp",
     doRaise=getDoRaise(),
 )
-oneOffProcessor.run()
+step1bRunner.run()
+sys.exit(1)  # run is an infinite loop, so we should never get here

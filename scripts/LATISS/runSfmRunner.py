@@ -44,6 +44,7 @@ print(
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
+    instrument=instrument,
     collections=[
         # XXX needs changing to defaults and the quicklook collection creating
         "LATISS/defaults",
@@ -56,8 +57,7 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step1",
+    step="step1a",
     awaitsDataProduct="raw",
     podDetails=podDetails,
     doRaise=getDoRaise(),

@@ -19,6 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
+import os
+from time import sleep
+
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
@@ -26,17 +30,25 @@ from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
+log = logging.getLogger(__name__)
 instrument = "LSSTCam"
 
 workerNum = getPodWorkerNumber()
-detectorNum = workerNum % 189
-detectorDepth = workerNum // 189
+detectorNum = workerNum % 205
+detectorDepth = workerNum // 205
+
+sleepDuration = float(os.getenv("BUTLER_ROLLOUT_PAUSE", 0)) * workerNum
+log.info(
+    f"Sleeping worker {workerNum} (det-{detectorNum}-{detectorDepth}) for {sleepDuration}s ease postgres load"
+)
+sleep(sleepDuration)
+log.info(f"Worker {workerNum} (det-{detectorNum}-{detectorDepth}) starting up...")
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=0
+    instrument=instrument, podFlavor=PodFlavor.SFM_WORKER, detectorNumber=detectorNum, depth=detectorDepth
 )
-print(
+log.info(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
@@ -44,6 +56,7 @@ print(
 locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -55,8 +68,7 @@ sfmRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step1",
+    step="step1a",
     awaitsDataProduct="raw",
     podDetails=podDetails,
     doRaise=getDoRaise(),

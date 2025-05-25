@@ -20,8 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
+from lsst.rubintv.production.plotting.mosaicPlotting import Plotter
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.slac.newPlotting import Plotter
 from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
@@ -36,7 +36,9 @@ print(
     f"consuming from {podDetails.queueName}..."
 )
 
-butler = Butler.from_config(locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"])
+butler = Butler.from_config(
+    locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"], instrument=instrument
+)
 plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,

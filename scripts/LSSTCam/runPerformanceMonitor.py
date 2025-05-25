@@ -22,18 +22,17 @@
 import sys
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.performance import PerformanceMonitor
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
 
-workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.STEP2A_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -47,18 +46,14 @@ butler = Butler.from_config(
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
     ],
-    writeable=True,
 )
 
-step2aRunner = SingleCorePipelineRunner(
+perfMonitor = PerformanceMonitor(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step2a",
-    awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-step2aRunner.run()
+perfMonitor.run()
 sys.exit(1)  # run is an infinite loop, so we should never get here
