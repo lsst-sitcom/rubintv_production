@@ -82,7 +82,7 @@ def getBinnedResourcePath(
         The data product type, e.g. 'post_isr_image'.
     """
     basePath = getBasePath(locationConfig)
-    basePath = basePath.join(f"binnedImages/{dayObs}")
+    basePath = basePath.join(f"binnedImages/{dayObs}/{seqNum}/")
     return basePath.join(f"{dayObs}_{seqNum}_{instrument}_{dataProduct}_{detectorName}_binned_{binSize}.fits")
 
 
@@ -433,7 +433,7 @@ def getDetectorNamesWithDataAndPrefetch(
     existingNames = []
     transfers: list[tuple[ResourcePath, ResourcePath]] = []
     with logDuration(_LOG, "Finding binned images in S3"):
-        path = getBasePath(locationConfig, suffix=f"binnedImages/{dayObs}")
+        path = getBasePath(locationConfig, suffix=f"binnedImages/{dayObs}/{seqNum}/")
         # listDir uses walk and is therefore very fast, so using that and then
         # checking for the existence of the files in that list is *much* faster
         # than checking each file with resource.exists().
