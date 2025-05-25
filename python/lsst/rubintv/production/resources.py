@@ -87,7 +87,7 @@ def getBasePath(locationConfig: LocationConfig, suffix: str = "") -> ResourcePat
     return ResourcePath(base)
 
 
-def listDir(resourcePath: ResourcePath) -> list[ResourcePath]:
+def listDir(resourcePath: ResourcePath, includeSubDirs: bool = False) -> list[ResourcePath]:
     """List the contents of a directory in the resource path.
 
     Parameters
@@ -107,6 +107,8 @@ def listDir(resourcePath: ResourcePath) -> list[ResourcePath]:
     for dirPath, dirNames, fileNames in resourcePath.walk():
         for fileName in fileNames:
             paths.append(dirPath.join(fileName))
+        if not includeSubDirs:
+            break
 
     return paths
 

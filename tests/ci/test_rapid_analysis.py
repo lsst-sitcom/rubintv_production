@@ -1165,7 +1165,7 @@ class TestRunner:
         # delete S3 scratch area completely
         path = getBasePath(locationConfig)
         rmtree(path, raiseOnError=True)
-        remainingContents = listDir(path)
+        remainingContents = listDir(path, includeSubDirs=True)
         if remainingContents:
             raise RuntimeError(f"Failed to delete files in {location}, {remainingContents=}")
         print(f"✅ Deleted S3 scratch area at {path}")
