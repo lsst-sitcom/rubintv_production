@@ -34,6 +34,7 @@ from tabulate import tabulate
 
 from .payloads import Payload, RestartPayload, getDetectorId, isRestartPayload
 from .podDefinition import PodDetails, PodFlavor
+from .processingControl import CameraControlConfig
 from .redisUtils import RedisHelper
 from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
 
@@ -105,6 +106,15 @@ class ClusterStatus:
     flavorStatuses: dict[PodFlavor, FlavorStatus]
     rawQueueLength: int
 
+    def isPodFree(self, pod: PodDetails) -> bool:
+        """Check if a specific pod is free."""
+        flavorStatus = self.flavorStatuses[pod.podFlavor]
+        if pod not in flavorStatus.workers:
+            # this should never happen, but therefore check that we always know
+            # about the pod in some respect before returning whether it's free
+            raise ValueError(f"Unknown busy-status for {pod.queueName} - not part of the cluster status")
+        return pod in flavorStatus.freeWorkers
+
 
 class ClusterManager:
     def __init__(self, locationConfig: LocationConfig, butler: Butler, doRaise: bool = False) -> None:
@@ -113,6 +123,7 @@ class ClusterManager:
         self.doRaise = doRaise
         self.rh = RedisHelper(butler, locationConfig)
         self.redis = self.rh.redis
+        self.focalPlaneControl = CameraControlConfig()
         self._lastRubinTVStates: dict[str, dict[str, Any]] = {}
         self._backlogAffinity: dict[int, PodDetails] = {}
         self.log = logging.getLogger("lsst.rubintv.produciton.clusterManager")
@@ -469,6 +480,12 @@ class ClusterManager:
                     value = "free"
                 else:
                     value = str(workerStatus.queueLength) if workerStatus.queueLength > 0 else "busy"
+                if secondary := self.rh.getPodSecondaryStatus(w):
+                    # "RESTARTING" and "GUEST" trump the others, and should not
+                    # have a length anyway. Once they're cleared, any remaining
+                    # lengths would show, but while they're doing a special
+                    # thing that's what the frontend should show
+                    value = secondary.lower()
 
                 statesByDepth[streamKey][str(det)] = {
                     "status": value,
@@ -590,8 +607,37 @@ class ClusterManager:
 
         return backlogWorker, False
 
+    def getRecuitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
+        """Get pods that are currently recruitable for work.
+        Recruitable pods are those that have been deselected from processing
+        work, and are therefore temporarily available for other work.
+
+        Parameters
+        ----------
+        status : `ClusterStatus`
+            The current status of the cluster.
+        onlyFreeWorkers : `bool`, optional
+            If ``True``, only return pods that are currently free. If
+            ``False``, return all recruitable pods regardless of their current
+            status.
+
+        Returns
+        -------
+        recruitablePods: `set[PodDetails]`
+            A set of pods that are currently recruitable for work.
+        """
+        pods = set(self.rh.getRecruitableWorkers())
+        if onlyFreeWorkers:
+            pods = {pod for pod in pods if status.isPodFree(pod)}
+        return pods
+
     def rebalanceStep1aWorkers(self, status: ClusterStatus) -> None:
         freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
+        inaccessibleWorkers = self.getInaccessiblePods(status)
+        recruitableWorkers = self.getRecuitableWorkers(status)
+
+        freeBacklogWorkers = freeBacklogWorkers | inaccessibleWorkers | recruitableWorkers
+
         if not freeBacklogWorkers:
             return
 
@@ -634,6 +680,11 @@ class ClusterManager:
                 if backlogWorker:
                     match = "detector-matching" if isMatch else "detector-mismatched"
                     self.log.info(f"Rebalancing payload from queue with {length=} to {match} {backlogWorker}")
+                    if backlogWorker.podFlavor != PodFlavor.BACKLOG_WORKER:
+                        # Add the special message to the payload so that it can
+                        # be identified as a guest. Payloads are frozen, so use
+                        # object.__setattr__ to modify it.
+                        object.__setattr__(payload, "specialMessage", "GUEST")
                     self.rh.enqueuePayload(payload, backlogWorker)
                     self._backlogAffinity[detNum] = backlogWorker
                 else:
@@ -641,6 +692,56 @@ class ClusterManager:
                     self.log.error("Rebalancing failed to find a backlog worker when it should have")
                     self.rh.enqueuePayload(payload, pod)
         return
+
+    def getInaccessiblePods(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
+        """Get pods that are not accessed by the head node.
+
+        These pods are not sent work by the head node at all, so are
+        permanently free, as far as it's concerned.
+
+        This is different from recruitable pods, which are pods that have been
+        deselected from from processing work, and are therefore temporarily
+        available for other work.
+
+        Note that this function needs to be kept up to date with the way things
+        are currently run, e.g. doAosFanout() only dispatching things to the
+        intra-focal detector numbers. This is deemed to be better than
+        hard-coding things into a yaml file or similar though, because that
+        would also need to be kept up to date, but also wouldn't allow for
+        things to dynamically adjust to changes in the size of deployed
+        StatefulSets, which this does automatically.
+
+        Parameters
+        ----------
+        status : `ClusterStatus`
+            The current status of the cluster.
+        onlyFreeWorkers : `bool`, optional
+            If ``True``, only return pods that are currently free. If
+            ``False``, return all inaccessible pods regardless of their current
+            status.
+
+        Returns
+        -------
+        inaccessiblePods: `set[PodDetails]`
+            A set of pods that are inaccessible to the head node, i.e. not used
+            in the current setup.
+        """
+        # the extra-focal AOS pods don't get any work while
+        # things are run in serial - work runs on the intra-focal
+        # indexed workers
+        pods = status.flavorStatuses[PodFlavor.AOS_WORKER].workers
+        inaccessible = {p for p in pods if p.detectorNumber in self.focalPlaneControl.EXTRA_FOCAL_NUMS}
+
+        # right now the SFM workers are done //205 not //189
+        # so the pods with detectorNumber between 189-205 are never used
+        # pods = status.flavorStatuses[PodFlavor.SFM_WORKER].workers
+        # inaccessible |= {p for p in pods if p.detectorNumber >= 189}
+
+        if onlyFreeWorkers:
+            # if we only want free pods, filter out the busy ones
+            inaccessible = {p for p in inaccessible if status.isPodFree(p)}
+
+        return inaccessible
 
     def run(self):
         """Main loop to monitor and manage the cluster."""
