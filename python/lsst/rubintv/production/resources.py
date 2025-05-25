@@ -143,7 +143,7 @@ def rmtree(resourcePath: ResourcePath, raiseOnError: bool = False) -> None:
         The resource path to remove.
     """
     log = logging.getLogger(__name__)
-    resources = listDir(resourcePath)
+    resources = listDir(resourcePath, includeSubDirs=True)
     result = ResourcePath.mremove(resources)
     for resource, mbulkResult in result.items():
         if not mbulkResult.success:
