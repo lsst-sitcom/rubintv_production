@@ -1167,7 +1167,7 @@ class TestRunner:
         rmtree(path, raiseOnError=True)
         remainingContents = listDir(path, includeSubDirs=True)
         if remainingContents:
-            raise RuntimeError(f"Failed to delete files in {location}, {remainingContents=}")
+            raise RuntimeError(f"Failed to delete files in {path}, {remainingContents=}")
         print(f"✅ Deleted S3 scratch area at {path}")
 
     def run(self) -> None:
