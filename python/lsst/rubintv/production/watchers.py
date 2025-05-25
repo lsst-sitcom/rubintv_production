@@ -76,10 +76,12 @@ class RedisWatcher:
                 if isRestartPayload(payload):
                     # TODO: delete existence + free keys?
                     self.log.warning("Received RESTART_SIGNAL, exiting")
+                    self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
                     sys.exit(0)
                 try:
                     self.payload = payload  # XXX why is this being saved on the class?
                     self.redisHelper.announceBusy(self.podDetails)
+                    self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
                     callback(payload)
                     self.payload = None
                 except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
@@ -87,6 +89,7 @@ class RedisWatcher:
                 finally:
                     self.redisHelper.announceFree(self.podDetails)
             else:  # only sleep when no work is found
+                self.redisHelper.clearPodSecondaryStatus(self.podDetails)
                 sleep(self.cadence)  # probably unnecessary now we use a blocking dequeue but it doesn't hurt
 
 

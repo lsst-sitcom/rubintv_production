@@ -627,6 +627,11 @@ class HeadProcessController:
             f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
             f"Data will be writen data to {self.outputRun}"
         )
+        # clear any previous state wrt what's recruitable, at least until
+        # redis holds enough state for us to safely resume from there. Given
+        # that init resets the head node CC state to re-select everythig, this
+        # is definitely correct for now.
+        self.redisHelper.clearRecruitableWorkers()
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()

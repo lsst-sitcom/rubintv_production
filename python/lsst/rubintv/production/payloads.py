@@ -115,6 +115,7 @@ class Payload:
     pipelineGraphBytes: bytes
     run: str
     who: str
+    specialMessage: str = ""
 
     @classmethod
     def from_json(
@@ -129,7 +130,11 @@ class Payload:
 
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
         return cls(
-            dataIds=dataIds, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"], who=json_dict["who"]
+            dataIds=dataIds,
+            pipelineGraphBytes=pipelineGraphBytes,
+            run=json_dict["run"],
+            who=json_dict["who"],
+            specialMessage=json_dict.get("specialMessage", ""),
         )
 
     def to_json(self) -> str:
@@ -137,6 +142,7 @@ class Payload:
             "pipelineGraphBytes": base64.b64encode(self.pipelineGraphBytes).decode(),
             "run": self.run,
             "who": self.who,
+            "specialMessage": self.specialMessage,
         }
         json_dict["dataIds"] = []
         for dataId in self.dataIds:
@@ -169,4 +175,5 @@ class RestartPayload(Payload):
             pipelineGraphBytes=b"{RESTART_SIGNAL}",
             run=f"{RESTART_SIGNAL}",
             who=f"{RESTART_SIGNAL}",
+            specialMessage="RESTARTING",
         )

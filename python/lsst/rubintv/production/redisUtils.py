@@ -307,6 +307,55 @@ class RedisHelper:
         else:
             self.redis.delete(f"{pod.queueName}+EXISTS")
 
+    def setPodSecondaryStatus(self, pod: PodDetails, status: str) -> None:
+        """Set the secondary status of a pod.
+
+        This is used to set the status of a pod to something other than "busy"
+        or "free", e.g. "RESTARTING" or "GUEST_PAYLOAD".
+
+        Parameters
+        ----------
+        pod : `PodDetails`
+            The pod to set the status for.
+        status : `str`
+            The status to set the pod to.
+        """
+        self.redis.set(f"{pod.queueName}+SECONDARY_STATUS", status)
+
+    def getPodSecondaryStatus(self, pod: PodDetails) -> str:
+        """Get the secondary status of a pod.
+
+        This is used to get the status of a pod, e.g. "RESTARTING" or
+        "GUEST_PAYLOAD".
+
+        Parameters
+        ----------
+        pod : `PodDetails`
+            The pod to get the status for.
+
+        Returns
+        -------
+        str | None
+            The status of the pod, or None if no status is set.
+        """
+        status = self.redis.get(f"{pod.queueName}+SECONDARY_STATUS")
+        if status is None:
+            return ""
+        return status.decode("utf-8")
+
+    def clearPodSecondaryStatus(self, pod: PodDetails) -> None:
+        """Clear the secondary status of a pod.
+
+        This is used to clear the status of a pod, e.g. after it has been
+        restarted.
+
+        Parameters
+        ----------
+        pod : `PodDetails`
+            The pod to clear the status for.
+        """
+        self.redis.delete(f"{pod.queueName}+SECONDARY_STATUS")
+
     def getAllWorkers(self, instrument: str, podFlavor: PodFlavor) -> list[PodDetails]:
         """Get the list of workers that are currently active.
 
@@ -807,6 +856,11 @@ class RedisHelper:
     def dequeuePayload(self, pod: PodDetails) -> Payload | None:
         """Get the next unit of work from a specific worker queue.
 
+        Parameters
+        ----------
+        pod : `lsst.rubintv.production.podDetails.PodDetails`
+            The pod to dequeue the payload from.
+
         Returns
         -------
         expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
@@ -1076,6 +1130,68 @@ class RedisHelper:
         if zernikeCount is not None:
             return int(zernikeCount)
         return None
+
+    def setWorkerAsRecruitable(self, pod: PodDetails) -> None:
+        """Set a worker pod as recruitable.
+
+        This means that the worker is available to process work from other
+        queues, as distributed by the ClusterManager.
+
+        Parameters
+        ----------
+        pod : `lsst.rubintv.production.podDetails.PodDetails`
+            The pod details of the worker to set as recruitable.
+        """
+        self.redis.hset("HEADNODE_RECRUITABLE_WORKERS", pod.queueName, "1")
+
+    def isWorkerRecruitable(self, pod: PodDetails) -> bool:
+        """Check if a worker pod is recruitable.
+
+        Parameters
+        ----------
+        pod : `lsst.rubintv.production.podDetails.PodDetails`
+            The pod details of the worker to check.
+
+        Returns
+        -------
+        isRecruitable : `bool`
+            Whether the worker pod is recruitable.
+        """
+        return self.redis.hexists("HEADNODE_RECRUITABLE_WORKERS", pod.queueName)
+
+    def removeWorkerFromRecruitablePool(self, pod: PodDetails) -> None:
+        """Remove a worker pod from the recruitable list.
+
+        This means that the worker is no longer available to be sent work
+        by the ClusterManager.
+
+        Parameters
+        ----------
+        pod : `lsst.rubintv.production.podDetails.PodDetails`
+            The pod details of the worker to remove from the recruitable list.
+        """
+        self.redis.hdel("HEADNODE_RECRUITABLE_WORKERS", pod.queueName)
+
+    def getRecruitableWorkers(self) -> list[PodDetails]:
+        """Get a list of all recruitable worker pods.
+
+        Returns
+        -------
+        recruitableWorkers : `list` of  `PodDetails`
+            The list of recruitable worker pods.
+        """
+        recruitableWorkers = []
+        for queueName in self.redis.hkeys("HEADNODE_RECRUITABLE_WORKERS"):
+            pod = PodDetails.fromQueueName(queueName.decode("utf-8"))
+            recruitableWorkers.append(pod)
+        return recruitableWorkers
+
+    def clearRecruitableWorkers(self) -> None:
+        """Clear the list of recruitable workers.
+
+        This removes all worker pods from the recruitable list.
+        """
+        self.redis.delete("HEADNODE_RECRUITABLE_WORKERS")
 
     def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.
