@@ -32,6 +32,7 @@ from lsst.summit.utils.efdUtils import offsetDayObs
 from lsst.summit.utils.utils import getCurrentDayObs_int
 
 from .highLevelTools import deleteAllSkyStills, deleteNonFinalAllSkyMovies, syncBuckets
+from .resources import getBasePath, getSubDirs, rmtree
 from .uploaders import MultiUploader
 from .utils import hasDayRolledOver, raiseIf
 
@@ -50,22 +51,22 @@ class TempFileCleaner:
     def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.log = _LOG.getChild("TempFileCleaner")
         self.doRaise = doRaise
+        self.locationConfig = locationConfig
 
         # TODO: probably move these to yaml when we do the LocationConfig
         # refactor
-        self.dirsToDelete = {
+        self.nfsDirsToDelete = {
             "LATISSPlots": Path(locationConfig.plotPath) / "LATISS",
             "LSSTCamPlots": Path(locationConfig.plotPath) / "LSSTCam",
-            "postIsrBinnedImages": Path(locationConfig.calculatedDataPath),
-            "visitBinnedImages": Path(locationConfig.binnedVisitImagePath),
         }
+        self.s3DirsToDelete = ("binnedImages/",)  # NB: must end in the trailing backslash
         self.keepDays = 2  # 2 means curent dayObs and the day before
 
     def deleteDirectories(self) -> None:
         currentDayObs = getCurrentDayObs_int()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
 
-        for locationName, dirPath in self.dirsToDelete.items():
+        for locationName, dirPath in self.nfsDirsToDelete.items():
             self.log.info(f"Deleting old data from subdirectories in {dirPath}:")
             subDir = None
             try:
@@ -84,6 +85,41 @@ class TempFileCleaner:
                         shutil.rmtree(subDir)
                     else:
                         self.log.info(f"Keeping {subDir} as it's not old enough yet")
+
+            except Exception as e:
+                msg = f"Error processing removing data from {subDir}: {e}"
+                raiseIf(self.doRaise, e, self.log, msg)
+
+    def deleteS3Directories(self) -> None:
+        currentDayObs = getCurrentDayObs_int()
+        deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
+
+        basePath = getBasePath(self.locationConfig)
+        for locationName in self.s3DirsToDelete:
+            fullDirName = basePath.join(locationName)
+
+            self.log.info(f"Deleting old data from subdirectories in {fullDirName}:")
+            subDir = None
+            subDirs = getSubDirs(fullDirName)
+            try:
+                for subDir in subDirs:
+                    fullSubDir = fullDirName.join(subDir)
+                    if not fullSubDir.isdir():  # don't touch regular files
+                        continue
+
+                    # only delete dayObs type dirs
+                    if not re.match(r"^2\d{7}/?$", subDir):  # Allow optional trailing slash
+                        continue  # Skip if not in YYYYMMDD format and starting with a 2
+
+                    if subDir.endswith("/"):
+                        subDir = subDir[:-1]
+
+                    day = int(subDir)
+                    if day <= deleteBefore:
+                        self.log.info(f"Deleting old data from {fullSubDir}")
+                        rmtree(fullSubDir)
+                    else:
+                        self.log.info(f"Keeping {fullSubDir} as it's not old enough yet")
 
             except Exception as e:
                 msg = f"Error processing removing data from {subDir}: {e}"
@@ -112,6 +148,7 @@ class TempFileCleaner:
 
     def runEndOfDay(self) -> None:
         self.deleteDirectories()
+        self.deleteS3Directories()
         self.cleanupBuckets()
         self.log.info("Finished daily cleanup")
 
