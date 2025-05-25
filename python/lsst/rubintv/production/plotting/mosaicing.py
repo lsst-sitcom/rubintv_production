@@ -40,7 +40,7 @@ from lsst.daf.butler import DimensionRecord
 from lsst.resources import ResourcePath
 from lsst.summit.utils import getQuantiles
 
-from ..resources import getBasePath
+from ..resources import getBasePath, listDir
 from ..utils import logDuration, timeFunction
 
 if TYPE_CHECKING:
@@ -174,7 +174,6 @@ def writeBinnedImage(
         hduList.writeto(fd)
 
 
-@timeFunction(_LOG)
 def readBinnedImage(
     tempDir: str,
     instrument: str,
@@ -431,18 +430,20 @@ def getDetectorNamesWithDataAndPrefetch(
     instrument = camera.getName()
     detNames = [det.getName() for det in camera]
 
-    # XXX not clear if this will be slow, and whether using
-    # .resources.listDir() and checking whether the predicted resource names
-    # are in that list will be quicker. Possible that both are negligible
-    # though, so may not matter.
     existingNames = []
     transfers: list[tuple[ResourcePath, ResourcePath]] = []
     with logDuration(_LOG, "Finding binned images in S3"):
+        path = getBasePath(locationConfig, suffix=f"binnedImages/{dayObs}")
+        # listDir uses walk and is therefore very fast, so using that and then
+        # checking for the existence of the files in that list is *much* faster
+        # than checking each file with resource.exists().
+        objects = listDir(path)
+
         for detName in detNames:
             resourcePath = getBinnedResourcePath(
                 instrument, dayObs, seqNum, detName, binSize, dataProduct, locationConfig
             )
-            if resourcePath.exists():
+            if resourcePath in objects:
                 existingNames.append(detName)
                 destination = ResourcePath(os.path.join(tempDir, resourcePath.basename()))
                 transfers.append((resourcePath, destination))
