@@ -34,19 +34,25 @@ if TYPE_CHECKING:
 __all__ = ["getBasePath"]
 
 ENDPOINTS = {
-    "summit": "https://s3-butler.cp.lsst.org",
+    "summit": "https://s3.rubintv.cp.lsst.org",
+    "base": "https://s3.rubintv.ls.lsst.org",
+    "tucson": "https://s3.rubintv.tu.lsst.org",
     "rubin-devl": "https://sdfembs3.sdf.slac.stanford.edu",
     "usdf-k8s": "https://sdfembs3.sdf.slac.stanford.edu",
 }
 
 PROFILE_NAMES = {
     "summit": "summit-data-summit",
+    "base": "base-data-base",
+    "tucson": "tucson-data-tucson",
     "rubin-devl": "rubin-rubintv-data-usdf-embargo",
     "usdf-k8s": "rubin-rubintv-data-usdf-embargo",
 }
 
 BUCKET_NAMES = {
     "summit": "rubintv",
+    "base": "rubintv",
+    "tucson": "rubintv",
     "rubin-devl": "rubin-rubintv-data-usdf",
     "usdf-k8s": "rubin-rubintv-data-usdf",
 }
