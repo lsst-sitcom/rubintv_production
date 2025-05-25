@@ -21,6 +21,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib.colors as colors
@@ -84,6 +86,40 @@ def getBinnedResourcePath(
     return basePath.join(f"{dayObs}_{seqNum}_{instrument}_{dataProduct}_{detectorName}_binned_{binSize}.fits")
 
 
+def getBinnedImageFilename(
+    tempDir: str, instrument: str, dayObs: int, seqNum: int, detectorName: str, binSize: int, dataProduct: str
+) -> str:
+    """Get the filename for a binned image in a temporary directory.
+
+    Parameters
+    ----------
+    tempDir : `str`
+        The temporary directory where the binned images have been transferred
+        to.
+     instrument : `str`
+        The instrument name, e.g. 'LSSTCam'.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The sequence number.
+    detectorName : `str`
+        The detector name, e.g. 'R22_S11'.
+    binSize : `int`
+        The binning factor.
+    dataProduct : `str`
+        The data product type, e.g. 'post_isr_image'.
+
+    Returns
+    -------
+    filename : `str`
+        The full path to the binned image file.
+    """
+    return os.path.join(
+        tempDir,
+        f"{dayObs}_{seqNum}_{instrument}_{dataProduct}_{detectorName}_binned_{binSize}.fits",
+    )
+
+
 @timeFunction(_LOG)
 def writeBinnedImage(
     exp: Exposure,
@@ -140,14 +176,13 @@ def writeBinnedImage(
 
 @timeFunction(_LOG)
 def readBinnedImage(
+    tempDir: str,
     instrument: str,
     dayObs: int,
     seqNum: int,
     detectorName: str,
     binSize: int,
     dataProduct: str,
-    locationConfig: LocationConfig,
-    deleteAfterReading: bool,
     logger: Logger | None = None,
 ) -> Image:
     """Read a pre-binned image in from disk.
@@ -164,8 +199,6 @@ def readBinnedImage(
         The detector name, e.g. 'R22_S11'.
     binSize : `int`
         The binning factor.
-    deleteAfterReading : `bool`
-        Whether to delete the file after reading it.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
@@ -178,24 +211,22 @@ def readBinnedImage(
     image : `lsst.afw.image.ImageF`
         The binned image.
     """
-    resource = getBinnedResourcePath(
-        instrument, dayObs, seqNum, detectorName, binSize, dataProduct, locationConfig
+    filename = getBinnedImageFilename(
+        tempDir,
+        instrument,
+        dayObs,
+        seqNum,
+        detectorName,
+        binSize,
+        dataProduct,
     )
 
-    fs, fspath = resource.to_fsspec()
-    with fs.open(fspath, "rb") as fd:
-        opened = fits.open(fd)
+    with open(filename, "rb") as f:
+        opened = fits.open(f)
         data = opened[0].data
         data = np.asarray(data, dtype=np.float32)
         image = ImageF(data)
 
-    if deleteAfterReading:
-        try:
-            resource.remove()
-        except Exception:
-            if logger is None:
-                logger = logging.getLogger(__name__)
-            logger.exception(f"Could not delete {resource}")
     return image
 
 
@@ -228,7 +259,7 @@ class PreBinnedImageSource:
         dataProduct: str,
         binSize: int,
         locationConfig: LocationConfig,
-        deleteAfterReading: bool,
+        tempDir: str,
     ) -> None:
         self.dayObs = dayObs
         self.seqNum = seqNum
@@ -236,7 +267,7 @@ class PreBinnedImageSource:
         self.dataProduct = dataProduct
         self.binSize = binSize
         self.locationConfig = locationConfig
-        self.deleteAfterReading = deleteAfterReading
+        self.tempDir = tempDir
 
     def getCcdImage(
         self, det: Detector, imageFactory: Any, binSize: int, *args, **kwargs
@@ -247,14 +278,13 @@ class PreBinnedImageSource:
         assert binSize == self.binSize
         detName = det.getName()
         binnedImage = readBinnedImage(
+            tempDir=self.tempDir,
             instrument=self.instrument,
             dayObs=self.dayObs,
             seqNum=self.seqNum,
             detectorName=detName,
             binSize=binSize,
             dataProduct=self.dataProduct,
-            locationConfig=self.locationConfig,
-            deleteAfterReading=self.deleteAfterReading,
         )
         return afwMath.rotateImageBy90(binnedImage, det.getOrientation().getNQuarter()), det
 
@@ -266,7 +296,6 @@ def makeMosaic(
     dataProduct: str,
     nExpected: int,
     locationConfig: LocationConfig,
-    deleteFiles: bool,
 ) -> Image:
     """Make a binned mosaic image from a list of deferredDatasetRefs.
 
@@ -335,40 +364,43 @@ def makeMosaic(
     dayObs = days.pop()
     seqNum = seqNums.pop()
 
-    with logDuration(log, "Finding files which exist in S3"):
-        detectorNameList = getDetectorNamesWithData(
-            dayObs, seqNum, camera, binSize, dataProduct, locationConfig
+    with tempfile.TemporaryDirectory() as tempDir:
+        detectorNameList = getDetectorNamesWithDataAndPrefetch(
+            dayObs, seqNum, camera, binSize, dataProduct, locationConfig, tempDir
         )
 
-    if nExpected != len(detectorNameList):
-        log.warning(
-            f"Expected {nExpected} binned images but found {len(detectorNameList)}. Will not delete files."
-        )
-        deleteFiles = False
+        if nExpected != len(detectorNameList):
+            log.warning(f"Expected {nExpected} binned images but found {len(detectorNameList)} in S3.")
 
-    imageSource = PreBinnedImageSource(
-        instrument,
-        dayObs,
-        seqNum,
-        dataProduct,
-        binSize=binSize,
-        locationConfig=locationConfig,
-        deleteAfterReading=deleteFiles,
-    )
-
-    with logDuration(log, "Reading existing files from S3 and assembling"):
-        mosaic = cgu.showCamera(
-            camera,
-            imageSource=imageSource,
-            detectorNameList=detectorNameList,
+        imageSource = PreBinnedImageSource(
+            instrument,
+            dayObs,
+            seqNum,
+            dataProduct,
             binSize=binSize,
+            locationConfig=locationConfig,
+            tempDir=tempDir,
         )
+
+        with logDuration(log, "Reading existing files from local cache and assembling"):
+            mosaic = cgu.showCamera(
+                camera,
+                imageSource=imageSource,
+                detectorNameList=detectorNameList,
+                binSize=binSize,
+            )
 
     return mosaic
 
 
-def getDetectorNamesWithData(
-    dayObs: int, seqNum: int, camera: Camera, binSize: int, dataProduct: str, locationConfig: LocationConfig
+def getDetectorNamesWithDataAndPrefetch(
+    dayObs: int,
+    seqNum: int,
+    camera: Camera,
+    binSize: int,
+    dataProduct: str,
+    locationConfig: LocationConfig,
+    tempDir: str,
 ) -> list[str]:
     """Check for existing binned image files and return the detector names
     for those with data.
@@ -388,6 +420,8 @@ def getDetectorNamesWithData(
     locationConfig : `lsst.rubintv.production.utils.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
+    tempDir : `str`
+        The temporary directory to use for prefetching the binned images to.
 
     Returns
     -------
@@ -401,13 +435,20 @@ def getDetectorNamesWithData(
     # .resources.listDir() and checking whether the predicted resource names
     # are in that list will be quicker. Possible that both are negligible
     # though, so may not matter.
-    existingNames = [
-        detName
-        for detName in detNames
-        if getBinnedResourcePath(
-            instrument, dayObs, seqNum, detName, binSize, dataProduct, locationConfig
-        ).exists()
-    ]
+    existingNames = []
+    transfers: list[tuple[ResourcePath, ResourcePath]] = []
+    with logDuration(_LOG, "Finding binned images in S3"):
+        for detName in detNames:
+            resourcePath = getBinnedResourcePath(
+                instrument, dayObs, seqNum, detName, binSize, dataProduct, locationConfig
+            )
+            if resourcePath.exists():
+                existingNames.append(detName)
+                destination = ResourcePath(os.path.join(tempDir, resourcePath.basename()))
+                transfers.append((resourcePath, destination))
+
+    with logDuration(_LOG, "Prefetching existing binned images"):
+        ResourcePath.mtransfer("copy", transfers)
     return existingNames
 
 
@@ -424,7 +465,6 @@ def plotFocalPlaneMosaic(
     stretch: str,
     locationConfig: LocationConfig,
     title: str = "",
-    deleteIfComplete: bool = True,
 ) -> Image | None:
     """Save a full focal plane binned mosaic image for a given expId.
 
@@ -460,9 +500,6 @@ def plotFocalPlaneMosaic(
         The maximum time to wait for the images to land.
     title : `str`
         The title for the plot.
-    deleteIfComplete : `bool`, optional
-        If True, delete the binned image files if the number of expected files
-        is the number which was found.
 
     Returns
     -------
@@ -492,7 +529,6 @@ def plotFocalPlaneMosaic(
             dataProduct,
             nExpected=nExpected,
             locationConfig=locationConfig,
-            deleteFiles=deleteIfComplete,
         )
 
     log.info(f"Made mosaic image for {dayObs=}, {seqNum=}")

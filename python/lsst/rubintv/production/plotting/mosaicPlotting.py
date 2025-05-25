@@ -149,7 +149,6 @@ class Plotter:
             savePlotAs=saveFile,
             nExpected=nExpected,
             title=title,
-            deleteIfComplete=True,
             stretch=stretch,
             locationConfig=self.locationConfig,
         )
