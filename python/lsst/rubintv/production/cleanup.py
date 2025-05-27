@@ -143,7 +143,7 @@ class TempFileCleaner:
         deleteNonFinalAllSkyMovies(mu.remoteUploader._s3Bucket)
 
         self.log.info("Syncing remote bucket to local bucket's contents")
-        syncBuckets(mu)  # always do the deletion before running the sync
+        syncBuckets(mu, self.locationConfig)  # always do the deletion before running the sync
         self.log.info("Finished bucket cleanup")
 
     def runEndOfDay(self) -> None:
