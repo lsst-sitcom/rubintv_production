@@ -529,7 +529,7 @@ def remakeStarTrackerDay(
         tvChannel.callback(filename)
 
 
-def syncBuckets(multiUploader: MultiUploader) -> None:
+def syncBuckets(multiUploader: MultiUploader, locationConfig: LocationConfig) -> None:
     """Make sure all objects in the local bucket are also in the remote bucket.
 
     Call this function after a bad night to (slow) send all the plots which
@@ -552,8 +552,13 @@ def syncBuckets(multiUploader: MultiUploader) -> None:
     localObjects = set(o for o in localBucket.objects.all())
     log.info(f"Found {len(localObjects)} local objects in {(time.time() - t0):.2f}s")
 
+    # these are temp files, for local use only, and will be deleted in due
+    # course anyway, so never sync the scratch area
+    exclude = {o for o in localObjects if o.key.startswith(f"{locationConfig.scratchPath}")}
+
     remoteKeys = {o.key for o in remoteObjects}
     missing = {o for o in localObjects if o.key not in remoteKeys}
+    missing -= exclude  # remove the scratch area from the missing list
     nMissing = len(missing)
     log.info(f"of which {nMissing} were missing from the remote. Copying missing items...")
 
