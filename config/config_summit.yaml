@@ -57,7 +57,7 @@ lsstCamAosMetadataShardPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: LSSTCam
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
-scratchPath : rapidAnalysisScratchCi
+scratchPath : rapidAnalysisScratch
 plotPath: /project/rubintv/plots
 
 # TMA config:
