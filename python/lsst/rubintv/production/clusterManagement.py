@@ -115,6 +115,11 @@ class ClusterStatus:
             raise ValueError(f"Unknown busy-status for {pod.queueName} - not part of the cluster status")
         return pod in flavorStatus.freeWorkers
 
+    @property
+    def allWorkers(self) -> list[PodDetails]:
+        """Get a list of all workers in the cluster."""
+        return [worker for flavorStatus in self.flavorStatuses.values() for worker in flavorStatus.workers]
+
 
 class ClusterManager:
     def __init__(self, locationConfig: LocationConfig, butler: Butler, doRaise: bool = False) -> None:
