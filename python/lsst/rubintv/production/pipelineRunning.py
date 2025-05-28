@@ -552,7 +552,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
-        nominalPlateScale = 0.199225  # XXX remove the hard-coding for ComCam
+        nominalPlateScale = 0.2000821
         pixToArcseconds = np.nanmean(
             [
                 row.wcs.getPixelScale().asArcseconds() if row.wcs is not None else nominalPlateScale
