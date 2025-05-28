@@ -742,8 +742,8 @@ class ClusterManager:
 
         # right now the SFM workers are done //205 not //189
         # so the pods with detectorNumber between 189-205 are never used
-        # pods = status.flavorStatuses[PodFlavor.SFM_WORKER].workers
-        # inaccessible |= {p for p in pods if p.detectorNumber >= 189}
+        pods = status.flavorStatuses[PodFlavor.SFM_WORKER].workers
+        inaccessible |= {p for p in pods if p.detectorNumber is not None and p.detectorNumber >= 189}
 
         if onlyFreeWorkers:
             # if we only want free pods, filter out the busy ones
