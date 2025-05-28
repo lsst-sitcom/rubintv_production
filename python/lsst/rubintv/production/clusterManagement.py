@@ -811,9 +811,13 @@ class ClusterManager:
         while True:
             try:
                 self.executeRubinTvCommands()
+
+                # do the rebalancing first, then take a new snapshot of the
+                # cluster status and send the updated version to RubinTV
                 status = self.getClusterStatus()
-                self.sendStatusToRubinTV(status)
                 self.rebalanceStep1aWorkers(status)
+                status = self.getClusterStatus()  # update now we've moved things around
+                self.sendStatusToRubinTV(status)
             except Exception as e:
                 self.log.exception(f"Error in cluster management: {e}")
             finally:
