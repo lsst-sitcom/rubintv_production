@@ -631,10 +631,13 @@ class ClusterManager:
         recruitablePods: `set[PodDetails]`
             A set of pods that are currently recruitable for work.
         """
-        pods = set(self.rh.getRecruitableWorkers())
+
+        currentlyIgnoredDetectors = self.rh.getDetectorsIgnoredByHeadNode(status.instrument)
+        allSFMWorkers = status.flavorStatuses[PodFlavor.SFM_WORKER].workers
+        matching = {w for w in allSFMWorkers if w.detectorNumber in currentlyIgnoredDetectors}
         if onlyFreeWorkers:
-            pods = {pod for pod in pods if status.isPodFree(pod)}
-        return pods
+            matching = {w for w in matching if status.isPodFree(w)}
+        return matching
 
     def rebalanceStep1aWorkers(self, status: ClusterStatus) -> None:
         freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
