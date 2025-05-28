@@ -166,9 +166,9 @@ class ClusterManager:
 
         Parameters
         ----------
-        queueName : str
+        queueName : `str`
             Name of the queue to inspect.
-        detailed : bool
+        detailed : `bool`
             Whether to fetch detailed information about queue items.
 
         Returns
@@ -221,15 +221,15 @@ class ClusterManager:
 
         Parameters
         ----------
-        worker : PodDetails
-            Worker pod to get status for
-        detailed : bool
-            Whether to include detailed queue information
+        worker : `PodDetails`
+            Worker pod to get status for.
+        detailed : `bool`
+            Whether to include detailed queue information.
 
         Returns
         -------
-        WorkerStatus
-            Status information for the worker
+        workerStatus : `WorkerStatus`
+            Status information for the worker.
         """
         queueLength = self.rh.getQueueLength(worker)
         isBusy = bool(self.redis.exists(f"{worker.queueName}+IS_BUSY"))
@@ -249,17 +249,17 @@ class ClusterManager:
 
         Parameters
         ----------
-        flavor : PodFlavor
-            Flavor of workers to get status for
-        instrument : str
-            Instrument to filter workers by
-        detailed : bool
-            Whether to include detailed queue information
+        flavor : `PodFlavor`
+            Flavor of workers to get status for.
+        instrument : `str`
+            Instrument to filter workers by.
+        detailed : `bool`
+            Whether to include detailed queue information.
 
         Returns
         -------
-        FlavorStatus
-            Status information for all workers of the flavor
+        flavorStatus : `FlavorStatus`
+            Status information for all workers of the flavor.
         """
         workers = self.rh.getAllWorkers(instrument=instrument, podFlavor=flavor)
 
@@ -287,15 +287,15 @@ class ClusterManager:
 
         Parameters
         ----------
-        instrument : str, optional
-            Instrument to get status for
-        detailed : bool, optional
-            Whether to include detailed queue information
+        instrument : `str`, optional
+            Instrument to get status for.
+        detailed : `bool`, optional
+            Whether to include detailed queue information.
 
         Returns
         -------
-        ClusterStatus
-            Comprehensive status information for the cluster
+        status : `ClusterStatus`
+            Comprehensive status information for the cluster.
         """
         # Check all pod flavors except HEAD_NODE
         flavors = [f for f in PodFlavor if f != PodFlavor.HEAD_NODE]
@@ -324,10 +324,10 @@ class ClusterManager:
 
         Parameters
         ----------
-        detailed : bool, optional
-            Whether to print detailed queue information
-        ignoreFree : bool, optional
-            Whether to ignore free workers with empty queues
+        detailed : `bool`, optional
+            Whether to print detailed queue information.
+        ignoreFree : `bool`, optional
+            Whether to ignore free workers with empty queues.
         """
         if clusterStatus is None:
             clusterStatus = self.getClusterStatus(detailed=detailed)
@@ -462,6 +462,27 @@ class ClusterManager:
                 self.rh.enqueuePayload(restartPayload, pod)
 
     def sendStatusToRubinTV(self, status: ClusterStatus) -> None:
+        """Send cluster status updates to RubinTV via Redis streams.
+
+        Note: any changes to the data formats here need to be coordinated with
+        the RubinTV frontend code.
+
+        This method publishes worker status information to Redis streams that
+        RubinTV monitors for real-time cluster visualization. Different worker
+        types are grouped and sent to specific streams. Status updates are only
+        sent when the state has changed from the last update to minimize Redis
+        traffic.
+
+        SFM and AOS workers are grouped by depth and sent to depth-specific
+        streams. Step1b and backlog workers are sent to flat streams. Other
+        worker types with non-zero queues are sent to a general status stream
+        which is displaye in a table at the bottom of the page.
+
+        Parameters
+        ----------
+        status : `ClusterStatus`
+            The current cluster status containing worker information to send.
+        """
         pipe = self.redis.pipeline()
         totalUpdates = 0
 
@@ -640,6 +661,36 @@ class ClusterManager:
         return matching
 
     def rebalanceStep1aWorkers(self, status: ClusterStatus) -> None:
+        """Redistribute work from SFM workers with a backlog to all available
+        workers.
+
+        This method moves payloads from busy SFM workers to free backlog
+        workers, inaccessible pods, and recruitable workers. It maintains
+        detector affinity by preferring to assign work to backlog workers that
+        have previously handled the same detector number. Work is redistributed
+        starting from the most overloaded queues first.
+
+        Restart payloads are never moved as they are targeted to specific pods.
+        When moving payloads to non-backlog workers, a "GUEST" special message
+        is added to identify temporary assignments, which is then displayed on
+        RubinTV.
+
+        ``inaccessibleWorkers`` are ones which the head nodes does not
+        currently dispatch any work to, but exist for "reasons". This set could
+        shrink to none (arguably it should).
+
+        ``recruitableWorkers`` are ones that have been deselected from
+        processing work via configuration of the head node, and are therefore
+        temporarily available for other work. They could disappear at any time,
+        at which point they will stop showing up as available for work, will
+        finish processing the payload they've been given here, and will be
+        given no more.
+
+        Parameters
+        ----------
+        status : `ClusterStatus`
+            The current status of the cluster.
+        """
         freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
         inaccessibleWorkers = self.getInaccessiblePods(status)
         recruitableWorkers = self.getRecuitableWorkers(status)
@@ -752,7 +803,11 @@ class ClusterManager:
         return inaccessible
 
     def run(self):
-        """Main loop to monitor and manage the cluster."""
+        """Main loop to monitor and manage the cluster.
+
+        Takes a snapshot of the cluster status, executes RubinTV commands,
+        and rebalances workers as needed.
+        """
         while True:
             try:
                 self.executeRubinTvCommands()
