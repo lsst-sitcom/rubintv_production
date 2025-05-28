@@ -1144,54 +1144,40 @@ class RedisHelper:
         """
         self.redis.hset("HEADNODE_RECRUITABLE_WORKERS", pod.queueName, "1")
 
-    def isWorkerRecruitable(self, pod: PodDetails) -> bool:
-        """Check if a worker pod is recruitable.
+    def setDetectorsIgnoredByHeadNode(self, instrument: str, detectors: list[int]) -> None:
+        """Set the detectors that the head node is currently not processing
+        data for.
 
         Parameters
         ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
-            The pod details of the worker to check.
-
-        Returns
-        -------
-        isRecruitable : `bool`
-            Whether the worker pod is recruitable.
+        instrument : `str`
+            The name of the instrument.
+        detectors : `list` of `int`
+            The list of detector numbers to ignore.
         """
-        return self.redis.hexists("HEADNODE_RECRUITABLE_WORKERS", pod.queueName)
+        key = f"{instrument}-HEADNODE-IGNORED_DETECTORS"
+        self.redis.set(key, ",".join(str(det) for det in detectors))
 
-    def removeWorkerFromRecruitablePool(self, pod: PodDetails) -> None:
-        """Remove a worker pod from the recruitable list.
-
-        This means that the worker is no longer available to be sent work
-        by the ClusterManager.
+    def getDetectorsIgnoredByHeadNode(self, instrument: str) -> list[int]:
+        """Get the detectors that the head node is currently not processing
+        data for.
 
         Parameters
         ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
-            The pod details of the worker to remove from the recruitable list.
-        """
-        self.redis.hdel("HEADNODE_RECRUITABLE_WORKERS", pod.queueName)
-
-    def getRecruitableWorkers(self) -> list[PodDetails]:
-        """Get a list of all recruitable worker pods.
+        instrument : `str`
+            The name of the instrument.
 
         Returns
         -------
-        recruitableWorkers : `list` of  `PodDetails`
-            The list of recruitable worker pods.
+        detectors : `list` of `int`
+            The list of detector numbers that are currently ignored by the head
+            node.
         """
-        recruitableWorkers = []
-        for queueName in self.redis.hkeys("HEADNODE_RECRUITABLE_WORKERS"):
-            pod = PodDetails.fromQueueName(queueName.decode("utf-8"))
-            recruitableWorkers.append(pod)
-        return recruitableWorkers
-
-    def clearRecruitableWorkers(self) -> None:
-        """Clear the list of recruitable workers.
-
-        This removes all worker pods from the recruitable list.
-        """
-        self.redis.delete("HEADNODE_RECRUITABLE_WORKERS")
+        key = f"{instrument}-HEADNODE-IGNORED_DETECTORS"
+        value = self.redis.get(key)
+        if value is None:
+            return []
+        return [int(det) for det in value.decode("utf-8").split(",") if det.isdigit()]
 
     def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.

@@ -606,6 +606,14 @@ class HeadProcessController:
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
+            # set the current state of selected detectors in redis. Could
+            # change this to resume from redis now, if we wanted to, but coming
+            # up in a clean and predictable state is probably preferable for
+            # now
+            self.redisHelper.setDetectorsIgnoredByHeadNode(
+                self.instrument, self.focalPlaneControl.getDisabledDetIds(excludeCwfs=True)
+            )
+
         allGraphs, pipelines = buildPipelines(
             instrument=instrument,
             locationConfig=locationConfig,
@@ -627,11 +635,6 @@ class HeadProcessController:
             f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
             f"Data will be writen data to {self.outputRun}"
         )
-        # clear any previous state wrt what's recruitable, at least until
-        # redis holds enough state for us to safely resume from there. Given
-        # that init resets the head node CC state to re-select everythig, this
-        # is definitely correct for now.
-        self.redisHelper.clearRecruitableWorkers()
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
@@ -731,6 +734,9 @@ class HeadProcessController:
                 self.log.info(f"Applying new chip selection config: {ccConfig}")
                 self.focalPlaneControl.applyNamedPattern(ccConfig)
                 self.log.info(f"{self.focalPlaneControl.getEnabledDetIds()} now enabled")
+                self.redisHelper.setDetectorsIgnoredByHeadNode(
+                    self.instrument, self.focalPlaneControl.getDisabledDetIds(excludeCwfs=True)
+                )
 
     def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
@@ -1829,7 +1835,7 @@ class CameraControlConfig:
         Returns
         -------
         nEnabled : `int`
-            The number of enabled CCDs.
+            The number of enabled detectors.
         """
         return sum(self._detectorStates.values())
 
@@ -1839,12 +1845,25 @@ class CameraControlConfig:
         Returns
         -------
         enabled : `list` of `int`
-            The detectorIds of the enabled CCDs.
+            The detectorIds of the enabled detectors.
         """
         enabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
         if excludeCwfs:
             enabled = [det for det in enabled if det not in self.CWFS_NUMS]
         return enabled
+
+    def getDisabledDetIds(self, excludeCwfs=False) -> list[int]:
+        """Get the detectorIds of the disabled sensors.
+
+        Returns
+        -------
+        disabled : `list` of `int`
+            The detectorIds of the disabled detectors.
+        """
+        disabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is False])
+        if excludeCwfs:
+            disabled = [det for det in disabled if det not in self.CWFS_NUMS]
+        return disabled
 
     def asPlotData(self) -> dict[str, list[int] | list[None] | NDArray]:
         """Get the data in a form for rendering as a ``FocalPlaneGeometryPlot``
