@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 from matplotlib.figure import Figure
 
-from lsst.daf.butler import DatasetNotFoundError, EmptyQueryResultError
+from lsst.daf.butler import DatasetNotFoundError
 from lsst.summit.extras.plotting.focusSweep import (
     collectSweepData,
     fitSweepParabola,
@@ -586,33 +586,15 @@ class RadialPlotter:
         self.s3Uploader = MultiUploader()
 
     def plotAndUpload(self, expRecord: DimensionRecord) -> None:
-
-        sat_col_ref = "calib_psf_used"
-        try:
-            imgRefs = self.butler.query_datasets("preliminary_visit_image", data_id=expRecord.dataId)
-            srcRefs = self.butler.query_datasets("single_visit_star_footprints", data_id=expRecord.dataId)
-        except EmptyQueryResultError:
-            self.log.error(f"No data found for {expRecord.dataId}")
-            return
-
-        imgDict = {
-            self.camera[dr.dataId["detector"]].getName(): self.butler.get(dr)
-            for dr in imgRefs
-            if "S11" in self.camera[dr.dataId["detector"]].getName()
-        }
-        srcDict = {
-            self.camera[dr.dataId["detector"]].getName(): self.butler.get(dr)
-            for dr in srcRefs
-            if "S11" in self.camera[dr.dataId["detector"]].getName()
-        }
-        srcDict = {key: tab.asAstropy()[(tab[sat_col_ref])].to_pandas() for key, tab in srcDict.items()}
-        fig = makePanel(imgDict, srcDict, instrument="LSSTCam", figsize=(15, 15), onlyS11=True)
+        fig = makePanel(self.butler, expRecord.id, onlyS11=True, figsize=(15, 15))
+        fig.suptitle(f"visit: {expRecord.id}", x=0.65, y=1.25, fontsize=35)
 
         plotName = "imexam"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
         fig.savefig(plotFile, bbox_inches="tight")
+
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument),
             plotName=plotName,
