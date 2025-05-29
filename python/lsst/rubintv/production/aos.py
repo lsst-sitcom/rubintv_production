@@ -586,7 +586,12 @@ class RadialPlotter:
         self.s3Uploader = MultiUploader()
 
     def plotAndUpload(self, expRecord: DimensionRecord) -> None:
-        fig = makePanel(self.butler, expRecord.id, onlyS11=True, figsize=(15, 15))
+        try:
+            fig = makePanel(self.butler, expRecord.id, onlyS11=True, figsize=(15, 15))
+        except ValueError as e:  # raised if there's no source tables or images available
+            self.log.error(f"Could not make radial plot for {expRecord.id}: {e}, skipping")
+            return
+
         fig.suptitle(f"visit: {expRecord.id}", x=0.65, y=1.25, fontsize=35)
 
         plotName = "imexam"
