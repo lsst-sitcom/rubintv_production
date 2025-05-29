@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.afw.cameraGeom import Camera
+    from lsst.afw.image import Exposure, ExposureSummaryStats
 
 __all__ = [
     "writeDimensionUniverseFile",
@@ -88,6 +89,7 @@ __all__ = [
     "makeFocalPlaneTitle",
     "logDuration",
     "timeFunction",
+    "summaryStatsToDict",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -1610,3 +1612,45 @@ def timeFunction(logger: Logger) -> Callable:
         return wrapper
 
     return decorate
+
+
+def summaryStatsToDict(stats: ExposureSummaryStats) -> dict[str, Any]:
+    """Return a dictionary of summary statistics.
+
+    Parameters
+    ----------
+    stats : `ExposureSummaryStats`
+        The summary statistics object to convert to a dictionary.
+
+    Returns
+    -------
+    statsDict : `dict`
+        A dictionary containing the summary statistics, with keys as attribute
+        names and values as the corresponding attribute values.
+    """
+    return {
+        attr: getattr(stats, attr)
+        for attr in dir(stats)
+        if not attr.startswith("_") and not callable(getattr(stats, attr))
+    }
+
+
+def getAirmass(exp: Exposure) -> float | None:
+    """Get the airmass of an exposure if available and finite, else None.
+
+    Parameters
+    ----------
+    exp : `lsst.afw.image.Exposure`
+        The exposure to get the airmass for.
+
+    Returns
+    -------
+    airmass : `float` or `None`
+        The airmass of the exposure if available and finite, else None.
+    """
+
+    vi = exp.info.getVisitInfo()
+    airmass = vi.boresightAirmass
+    if airmass is not None and np.isfinite(airmass):
+        return float(airmass)
+    return None
