@@ -31,13 +31,14 @@ import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Callable
 
+import numpy as np
 import redis
 
 from lsst.daf.butler import DataCoordinate, DimensionRecord
 
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
-from .utils import expRecordFromJson, removeDetector
+from .utils import expRecordFromJson, removeDetector, summaryStatsToDict
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None
@@ -61,6 +62,7 @@ except (ImportError, NameError):
 
 if TYPE_CHECKING:
     from lsst.afw.cameraGeom import Camera
+    from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import Butler
 
     from .utils import LocationConfig
@@ -1178,6 +1180,87 @@ class RedisHelper:
         if value is None:
             return []
         return [int(det) for det in value.decode("utf-8").split(",") if det.isdigit()]
+
+    def reportVisitSummaryStats(
+        self, instrument: str, visit: int, detector: int, stats: ExposureSummaryStats
+    ) -> None:
+        """Report summary statistics for a visit.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        visit : `int`
+            The visit ID.
+        stats : `ExposureSummaryStats`
+            The summary statistics for the visit.
+        """
+        key = f"{instrument}-VISIT_SUMMARY_STATS-{visit}"
+        statsDict = summaryStatsToDict(stats)
+        self.redis.hset(key, str(detector), json.dumps(statsDict))
+        self.redis.expire(key, int(86400 * 1.5))
+
+    def getAllVisitSummaryStats(self, instrument: str, visit: int) -> dict[int, dict[str, Any]]:
+        """Get all summary statistics for a visit.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        visit : `int`
+            The visit ID.
+
+        Returns
+        -------
+        stats : `dict[int, ExposureSummaryStats]`
+            A dictionary mapping detector numbers to their summary statistics.
+        """
+        key = f"{instrument}-VISIT_SUMMARY_STATS-{visit}"
+        statsDict = self.redis.hgetall(key)
+        if not statsDict:
+            return {}
+
+        return {int(detector): json.loads(stats) for detector, stats in statsDict.items()}
+
+    def getAveragedStatsForVisit(self, instrument: str, visit: int) -> dict[str, float]:
+        """Get the medianed summary statistics for a visit for numerical types.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        visit : `int`
+            The visit ID.
+
+        Returns
+        -------
+        averagedStats : `dict[str, Any]` or `None`
+            The averaged summary statistics for the visit, or ``None`` if not
+            found.
+        """
+        allStats = self.getAllVisitSummaryStats(instrument, visit)
+        if not allStats:
+            self.log.warning(f"No summary statistics found for {instrument} visit {visit}")
+            return {}
+        # Calculate the average statistics across all detectors
+        statAccumulator: dict[str, list[int | float]] = {}
+        for detector, stats in allStats.items():
+            for statName, value in stats.items():
+                # raCorners and decCorners are a lists of floats, so let's be
+                # general and just skip anything that's not averageable
+                if not isinstance(value, (int, float)):
+                    continue
+                if statName not in statAccumulator:
+                    statAccumulator[statName] = []
+                statAccumulator[statName].append(value)
+
+        # Average the statistics
+        averagedStats: dict[str, float] = {}
+        for statName, values in statAccumulator.items():
+            if values:
+                averagedStats[statName] = float(np.nanmedian(values))
+
+        return averagedStats
 
     def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
         """Get the next unit of work from a specific worker queue.

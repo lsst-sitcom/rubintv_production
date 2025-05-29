@@ -44,7 +44,12 @@ from lsst.summit.utils.simonyi.mountAnalysis import (
     plotMountErrors,
 )
 from lsst.summit.utils.spectrumExaminer import SpectrumExaminer
-from lsst.summit.utils.utils import calcEclipticCoords, getCameraFromInstrumentName
+from lsst.summit.utils.utils import (
+    calcEclipticCoords,
+    getAirmassSeeingCorrection,
+    getBandpassSeeingCorrection,
+    getCameraFromInstrumentName,
+)
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
@@ -55,8 +60,10 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .redisUtils import RedisHelper
 from .utils import (
+    getAirmass,
     getFilterColorName,
     getRubinTvInstrumentName,
+    getShardPath,
     isCalibration,
     makePlotFile,
     makeWitnessDetectorTitle,
@@ -76,6 +83,8 @@ if TYPE_CHECKING:
 __all__ = [
     "OneOffProcessor",
 ]
+
+SIGMA2FWHM = np.sqrt(8 * np.log(2))
 
 
 class OneOffProcessor(BaseButlerChannel):
@@ -164,9 +173,8 @@ class OneOffProcessor(BaseButlerChannel):
         else:
             md = {seqNum: {"Focus Z": "MISSING VALUE!"}}
 
-        airmass = vi.boresightAirmass
-        if airmass is not None and not np.isnan(airmass):
-            airmass = float(airmass)
+        airmass = getAirmass(exp)
+        if airmass is not None:
             md[seqNum].update({"Airmass": f"{airmass:.3f}"})
 
         controller = header.get("CONTRLLR", None)
@@ -368,6 +376,31 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: {"Witness detector": f"{detName} ({detNum})"}}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
+    def publishVisitSummaryStats(self, visitImage: Exposure, expRecord: DimensionRecord) -> None:
+        stats = self.redisHelper.getAveragedStatsForVisit(self.instrument, expRecord.id)
+        if not stats:
+            self.log.warning(f"No averaged stats found for visit {expRecord.id}")
+            return
+
+        outputDict: dict[str, str | float] = {}
+        fwhm = float(stats["psfSigma"] * SIGMA2FWHM * stats["pixelScale"])
+        outputDict["PSF FWHM (median)"] = fwhm  # PSF FWHM (median) doesn't collide with the regular one
+
+        if airmass := getAirmass(visitImage):
+            airmassCorrection = getAirmassSeeingCorrection(airmass)
+            filter_ = expRecord.physical_filter
+            bandpassCorrection = getBandpassSeeingCorrection(filter_)
+            correctedFwhm = fwhm * airmassCorrection * bandpassCorrection
+            outputDict["PSF FWHM standardized"] = correctedFwhm
+
+        labels = {"_" + k: "measured" for k in outputDict.keys()}
+        outputDict.update(labels)
+        dayObs = expRecord.day_obs
+        seqNum = expRecord.seq_num
+        rowData = {seqNum: outputDict}
+        shardPath = getShardPath(self.locationConfig, expRecord)
+        writeMetadataShard(shardPath, dayObs, rowData)
+
     def runVisitImage(self, dataId: DataCoordinate) -> None:
         # for safety, as this is now dynamically set in the previous function
         # and is inside the dataId already
@@ -386,6 +419,11 @@ class OneOffProcessor(BaseButlerChannel):
         if visitImage is None:
             self.log.warning(f"Failed to get post_isr_image for {dataId}")
             return
+
+        self.log.info("Publishing visit summary stats...")
+        self.publishVisitSummaryStats(visitImage, expRecord)
+        self.log.info("Finished publishing visit summary stats")
+
         self.log.info("Calculating pointing offsets...")
         self.publishPointingOffsets(visitImage, dataId, expRecord)
         self.log.info("Finished calculating pointing offsets")

@@ -44,6 +44,7 @@ from .redisUtils import RedisHelper
 from .utils import getShardPath, logDuration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
+    from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import Butler, DataCoordinate, Quantum
 
     from .payloads import Payload
@@ -522,14 +523,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.redisHelper.reportTaskFinished(self.instrument, "binnedVisitImageCreation", dRef.dataId)
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
 
+        summaryStats = exp.getInfo().getSummaryStats()
+        if summaryStats:
+            detNum = exp.detector.getId()
+            self.redisHelper.reportVisitSummaryStats(
+                visitRecord.instrument, visitRecord.id, detector=detNum, stats=summaryStats
+            )
+
         try:
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
             if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
                 summaryStats = exp.getInfo().getSummaryStats()
-                visitRecord = dRef.dataId.records["visit"]
-                assert visitRecord is not None, "visitRecord is None, this shouldn't be possible"
                 detectorNum = exp.getDetector().getId()
                 self.consDBPopulator.populateCcdVisitRow(visitRecord, detectorNum, summaryStats)
                 self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
@@ -538,6 +544,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.exception("Failed to populate ccd-visit row in ConsDB")
             else:
                 self.log.info(f"Failed to populate ccd-visit row in ConsDB at {self.locationConfig.location}")
+
+        stats: None | ExposureSummaryStats = exp.getInfo().getSummaryStats()
+        if stats:
+            detId: int = exp.detector.getId()
+            self.redisHelper.reportVisitSummaryStats(self.instrument, visitRecord.id, detId, stats)
 
     def postProcessVisitSummary(self, quantum: Quantum) -> None:
         output_dataset_name = "preliminary_visit_summary"
