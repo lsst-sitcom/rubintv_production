@@ -41,7 +41,7 @@ from .payloads import pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
-from .utils import getShardPath, raiseIf, writeMetadataShard
+from .utils import getShardPath, logDuration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DataCoordinate, Quantum
@@ -299,15 +299,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " (should be ~1s per id)"
             )
 
-            qg: QuantumGraph = builder.build(
-                metadata={
-                    "input": list(self.butler.collections.defaults) + [self.runCollection],
-                    "output_run": self.runCollection,
-                    "data_query": where,
-                    "bind": bind,
-                    "time": f"{datetime.datetime.now()}",
-                }
-            )
+            with logDuration(self.log, f"Building quantum graph for {compoundId} for {who}"):
+                qg: QuantumGraph = builder.build(
+                    metadata={
+                        "input": list(self.butler.collections.defaults) + [self.runCollection],
+                        "output_run": self.runCollection,
+                        "data_query": where,
+                        "bind": bind,
+                        "time": f"{datetime.datetime.now()}",
+                    }
+                )
 
             if not qg:
                 raise RuntimeError(f"No work found for {dataIds}")
