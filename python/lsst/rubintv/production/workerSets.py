@@ -138,6 +138,20 @@ class WorkerSet:
         """Get the number of workers in this set."""
         return len(self.pods)
 
+    def getWorkerForDetector(self, detectorNumber: int, clusterStatus: ClusterStatus) -> PodDetails | None:
+        """Get the worker pod for a specific detector number."""
+        for pod in self.pods:
+            if pod.detectorNumber == detectorNumber:
+                if pod in clusterStatus.flavorStatuses[self.podFlavor].workers:
+                    return pod
+                else:
+                    self.log.warning(
+                        f"Pod {pod} for detector {detectorNumber} is not found in the cluster status."
+                    )
+                    return None
+        self.log.warning(f"No worker found for detector {detectorNumber} in {self.name}.")
+        return None
+
 
 @dataclass
 class SfmWorkerSet(WorkerSet):

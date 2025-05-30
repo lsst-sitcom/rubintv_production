@@ -36,6 +36,7 @@ __all__ = [
     "Payload",
     "RestartPayload",
     "isRestartPayload",
+    "getDetectorId",
 ]
 
 RESTART_SIGNAL = "__RESTART_SIGNAL__"
