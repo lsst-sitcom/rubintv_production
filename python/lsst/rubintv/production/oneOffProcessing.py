@@ -544,7 +544,7 @@ class OneOffProcessor(BaseButlerChannel):
         if value >= warningLevel:
             flag = f"_{key}"
             outputDict[flag] = "warning"
-        elif value >= badLevel:
+        if value >= badLevel:  # not elif!
             flag = f"_{key}"
             outputDict[flag] = "bad"
         return outputDict
