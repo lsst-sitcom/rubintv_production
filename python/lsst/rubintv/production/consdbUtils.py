@@ -38,6 +38,7 @@ from lsst.afw.image import ExposureSummaryStats  # type: ignore
 from lsst.afw.table import ExposureCatalog  # type: ignore
 from lsst.daf.butler import Butler, DimensionRecord
 from lsst.summit.utils import ConsDbClient
+from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
 from .redisUtils import RedisHelper
@@ -289,27 +290,45 @@ class ConsDBPopulator:
     def populateMountErrors(
         self,
         expRecord: DimensionRecord,
-        mountErrors: dict[str, float],
+        mountErrors: dict[str, float] | MountErrors,
         instrument: str,
         allowUpdate: bool = False,
     ) -> None:
         values: dict[str, float] = {}
+        if isinstance(mountErrors, MountErrors):
+            image_az_rms = mountErrors.imageAzRms
+            image_el_rms = mountErrors.imageElRms
+            imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
 
-        image_az_rms = mountErrors["image_az_rms"]
-        image_el_rms = mountErrors["image_el_rms"]
-        imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
+            values["mount_motion_image_degradation"] = imageError
+            values["mount_motion_image_degradation_az"] = image_az_rms
+            values["mount_motion_image_degradation_el"] = image_el_rms
 
-        values["mount_motion_image_degradation"] = imageError
-        values["mount_motion_image_degradation_az"] = mountErrors["image_az_rms"]
-        values["mount_motion_image_degradation_el"] = mountErrors["image_el_rms"]
+            az_rms = mountErrors.azRms
+            el_rms = mountErrors.elRms
+            mountError = (az_rms**2 + el_rms**2) ** 0.5
+            values["mount_jitter_rms"] = mountError
+            values["mount_jitter_rms_az"] = az_rms
+            values["mount_jitter_rms_el"] = el_rms
+            values["mount_jitter_rms_rot"] = mountErrors.rotRms
+        elif isinstance(mountErrors, dict):
+            image_az_rms = mountErrors["image_az_rms"]
+            image_el_rms = mountErrors["image_el_rms"]
+            imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
 
-        az_rms = mountErrors["az_rms"]
-        el_rms = mountErrors["el_rms"]
-        mountError = (az_rms**2 + el_rms**2) ** 0.5
-        values["mount_jitter_rms"] = mountError
-        values["mount_jitter_rms_az"] = mountErrors["az_rms"]
-        values["mount_jitter_rms_el"] = mountErrors["el_rms"]
-        values["mount_jitter_rms_rot"] = mountErrors["rot_rms"]
+            values["mount_motion_image_degradation"] = imageError
+            values["mount_motion_image_degradation_az"] = mountErrors["image_az_rms"]
+            values["mount_motion_image_degradation_el"] = mountErrors["image_el_rms"]
+
+            az_rms = mountErrors["az_rms"]
+            el_rms = mountErrors["el_rms"]
+            mountError = (az_rms**2 + el_rms**2) ** 0.5
+            values["mount_jitter_rms"] = mountError
+            values["mount_jitter_rms_az"] = mountErrors["az_rms"]
+            values["mount_jitter_rms_el"] = mountErrors["el_rms"]
+            values["mount_jitter_rms_rot"] = mountErrors["rot_rms"]
+        else:
+            raise TypeError(f"Expected MountErrors or dict, got {type(mountErrors)}")
 
         table = f"cdb_{instrument.lower()}.exposure_quicklook"
         self.client.insert(

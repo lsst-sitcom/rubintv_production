@@ -496,6 +496,10 @@ class OneOffProcessor(BaseButlerChannel):
         )
         del fig
 
+        self.log.info("Sending mount jitter to ConsDB")
+        if not runningCI():
+            self.consDBPopulator.populateMountErrors(expRecord, errors, "lsstcam")
+
     def writeLogMessageShards(self, dayObs: int) -> None:
         """Write a shard containing all the expLog annotations on the dayObs.
 
