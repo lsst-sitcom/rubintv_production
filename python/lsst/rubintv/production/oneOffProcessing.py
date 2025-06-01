@@ -386,6 +386,8 @@ class OneOffProcessor(BaseButlerChannel):
         fwhm = float(stats["psfSigma"] * SIGMA2FWHM * stats["pixelScale"])
         outputDict["PSF FWHM (median)"] = fwhm  # PSF FWHM (median) doesn't collide with the regular one
 
+        outputDict["Transparency (effTime zeropoint)"] = float(stats["effTimeZeroPointScale"])
+
         if airmass := getAirmass(visitImage):
             airmassCorrection = getAirmassSeeingCorrection(airmass)
             filter_ = expRecord.physical_filter
