@@ -308,7 +308,7 @@ def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardD
 
 
 def writeAosConfigShards(
-    expRecord: DimensionRecord, pipelineComponents: PipelineComponents, shardDir: str
+    expRecord: DimensionRecord, pipelineComponents: PipelineComponents, shardDir: str, pipelineName: str
 ) -> None:
     """Write all the requested the AOS tasks configs out the AOS page.
 
@@ -322,6 +322,8 @@ def writeAosConfigShards(
         The directory to write the shards to.
     """
     graph = pipelineComponents.graphs["step1a"]
+
+    writeMetadataShard(shardDir, expRecord.day_obs, {expRecord.seq_num: {"Pipeline name": pipelineName}})
 
     czTasks = [task for name, task in graph.tasks.items() if "zern" in name.lower()]
     if czTasks:
@@ -833,7 +835,9 @@ class HeadProcessController:
         aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
         if not isCalibration(expRecord):
             targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
-            writeAosConfigShards(expRecord, self.pipelines[self.currentAosPipeline], aosShardPath)
+            writeAosConfigShards(
+                expRecord, self.pipelines[self.currentAosPipeline], aosShardPath, self.currentAosPipeline
+            )
             who = "AOS"
         else:
             # send the detectors to the AOS workers for normal ISR processing
