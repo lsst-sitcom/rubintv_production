@@ -34,6 +34,7 @@ import threading
 from time import sleep, time
 from typing import TYPE_CHECKING
 
+import numpy as np
 from matplotlib.figure import Figure
 
 from lsst.daf.butler import DatasetNotFoundError
@@ -50,7 +51,7 @@ from lsst.summit.extras.plotting.psfPlotting import (
     makeTableFromSourceCatalogs,
 )
 from lsst.summit.utils import ConsDbClient
-from lsst.summit.utils.efdUtils import makeEfdClient
+from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 from lsst.utils.plotting.figures import make_figure
@@ -388,6 +389,7 @@ class FocalPlaneFWHMPlotter:
         self.log = logging.getLogger("lsst.rubintv.production.aos.FocalPlaneFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
+        self.efdClient = makeEfdClient()
 
     def plotAndUpload(self, visitRecord: DimensionRecord) -> None:
         """Make the FWHM Focal Plane plot for the given visit ID.
@@ -411,7 +413,7 @@ class FocalPlaneFWHMPlotter:
             self.log.error(f"Could not find visitInfo for visitId {visitRecord.id}")
             return
 
-        fwhmValues, detectorIds = getFwhmValues(visitSummary)
+        fwhmValues = getFwhmValues(visitSummary)
 
         plotName = "fwhm_focal_plane"
         plotFile = makePlotFile(
@@ -419,7 +421,8 @@ class FocalPlaneFWHMPlotter:
         )
         fig = make_figure(figsize=(12, 9))
         axes = fig.subplots(nrows=1, ncols=1)
-        makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, detectorIds, self.camera, saveAs=plotFile)
+        title = self.makeTitle(visitRecord)
+        makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, self.camera, saveAs=plotFile, title=title)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument),
             plotName=plotName,
@@ -427,6 +430,30 @@ class FocalPlaneFWHMPlotter:
             seqNum=visitRecord.seq_num,
             filename=plotFile,
         )
+
+    def makeTitle(self, visitRecord: DimensionRecord) -> str:
+        """Create the title for the FWHM Focal Plane plot inc mining the EFD.
+
+        Parameters
+        ----------
+        visitRecord : `lsst.daf.butler.DimensionRecord`
+            The visit record.
+
+        Returns
+        -------
+        title : `str`
+            The title for the plot.
+        """
+        title = f"Focal plane FWHM dayObs={visitRecord.day_obs} seqNum={visitRecord.seq_num}\n"
+        (expRecord,) = self.butler.query_dimension_records("exposure", visit=visitRecord.id)
+        title += f"Sky angle = {expRecord.sky_angle:.2f}°, elevation = {90 - expRecord.zenith_angle:.2f}°"
+
+        data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=expRecord)
+        if not data.empty:
+            rotPos = np.mean(data["actualPosition"])
+            title += f", physical rotation = {rotPos:.2f}°"
+
+        return title
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
