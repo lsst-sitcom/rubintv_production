@@ -213,7 +213,8 @@ RUN chown -R ${UID}:${GID} /repos/rubintv_production
 
 USER saluser
 
-RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git
+RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git && \
+    git config --local --unset http."https://github.com/".extraheader
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
