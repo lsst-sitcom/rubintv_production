@@ -758,8 +758,7 @@ class HeadProcessController:
             self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
             return busyWorker
         except IndexError as e:
-            self.log.warning(f"No workers AT ALL for {podFlavor=}")
-            raiseIf(self.doRaise, e, self.log)
+            raiseIf(self.doRaise, e, self.log, msg=f"No workers AT ALL for {podFlavor=}")
             return None
 
     def getPipelineConfig(self, expRecord: DimensionRecord) -> tuple[bytes, PipelineGraph, str]:
