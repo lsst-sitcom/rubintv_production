@@ -963,19 +963,28 @@ class ResultCollector:
 
         expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
             # Regular LSSTCam plots -------
-            ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            # event timelines for all images
             ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000311.png", 5000),
+            # post ISR mosaics for all images
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000086.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000087.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000311.jpg", 5000),
+            # witness detector images for all with postISR that aren't CWFS
+            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000311.jpg", 5000),
+            # calexp mosaic for the only in-focus image
+            ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            # mount plots for the three on-sky images
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
+            # all the other plots for the on-sky image: fwhm, imexam
+            # TODO: DM-51391 add psfAzEl plot
             ("LSSTCam/20250415/LSSTCam_fwhm_focal_plane_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.jpg", 5000),
             ("LSSTCam/20250415/LSSTCam_imexam_dayObs_20250415_seqNum_000088.png", 5000),
             # AOS plots -------
             # FAM donut galleries
