@@ -122,10 +122,6 @@ def makeTitle(record: DimensionRecord) -> str:
     ----------
     record : `lsst.daf.butler.DimensionRecord`
         The exposure or visit record.
-    detector : `int` or `str`
-        The detector number or name.
-    camera : `lsst.afw.cameraGeom.Camera`
-        The camera object.
 
     Returns
     -------
@@ -725,8 +721,8 @@ class PerformanceMonitor(BaseButlerChannel):
 
         isrTaskNames = [k for k in resultsDict.keys() if "isr" in k.lower()]
         # isr runs on the AOS chips, cpVerifyIsr runs on the imaging chips for
-        # calib type images, so pick deal with the keys and pick the quickest
-        # one to start
+        # calib type images, so deal with the keys and pick the quickest one to
+        # start
         if len(isrTaskNames) != 0:
             minTime = 9999999.0
             for isrTaskName in isrTaskNames:

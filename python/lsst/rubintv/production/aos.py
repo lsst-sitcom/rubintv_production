@@ -579,7 +579,7 @@ class FocusSweepAnalysis:
 
 
 class RadialPlotter:
-    """The Radial plotter, for making the radial analysus plots.
+    """The Radial plotter, for making the radial analysis plots.
 
     Parameters
     ----------

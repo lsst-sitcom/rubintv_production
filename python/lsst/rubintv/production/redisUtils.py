@@ -881,16 +881,26 @@ class RedisHelper:
     def getQueueLength(self, pod: PodDetails) -> int:
         """Get the length of a specific worker queue.
 
+        Parameters
+        ----------
+        pod : `lsst.rubintv.production.podDetails.PodDetails`
+            The pod to get the queue length for.
+
+        Returns
+        -------
+        length : `int`
+            The length of the queue for the specified pod.
+
+        Notes
+        -----
         It's costly to get the lengths of all the queues, so they're tracked in
         a separate hash. This is updated when items are added or removed from
         the queue, so it should be accurate. Each time the queue is fully
         emptied the length is set to zero, so this should add some security
         against things diverging too much over time in case of a bug.
 
-        Parameters
-        ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
-            The pod to get the queue length for.
+        TODO: consider removing this function/approach - it might not be
+        saving any time at all now.
         """
         length = self.redis.hget("_QUEUE-LENGTHS", f"{pod.queueName}")
         return int(length) if length else 0
@@ -933,7 +943,7 @@ class RedisHelper:
         self.redis.set(key, ",".join(str(det) for det in detectors))
 
         # this key expiring has an interesting and useful side effect. It means
-        # that even is tasks have failures or their Payloads disappear somehow
+        # that even if tasks have failures or their Payloads disappear somehow
         # and they never report back, when this is removed, the visit level
         # processing will see this as (over) finished (because it'll have
         # non-zero items finished and zero expected detectors) so all the other

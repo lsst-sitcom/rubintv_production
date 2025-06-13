@@ -532,13 +532,16 @@ def remakeStarTrackerDay(
 def syncBuckets(multiUploader: MultiUploader, locationConfig: LocationConfig) -> None:
     """Make sure all objects in the local bucket are also in the remote bucket.
 
-    Call this function after a bad night to (slow) send all the plots which
+    Call this function after a bad night to (slowly) send all the plots that
     didn't make it to USDF.
 
     Parameters
     ----------
     multiUploader : `MultiUploader`
         The multiUploader to use to sync the buckets.
+    locationConfig : `LocationConfig`
+        The location configuration to use, which contains the scratch path
+        to exclude from the sync.
     """
     log = logging.getLogger(__name__)
 

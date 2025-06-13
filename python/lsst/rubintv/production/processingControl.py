@@ -524,9 +524,6 @@ class PipelineComponents:
             self.uris[stepAlias] = pipelineFile + f"#{step}"
             pipeline = Pipeline.fromFile(self.uris[stepAlias])
 
-            # TODO: Temporary workaround for DM-50107, remove when that is
-            # deployed.
-            pipeline._pipelineIR.steps = []
             if overrides:
                 for override in overrides:
                     if override[0] in pipeline.task_labels:
@@ -871,8 +868,8 @@ class HeadProcessController:
         self.redisHelper.writeDetectorsToExpect(
             self.instrument, expRecord.id, list(d[0] for d in detectorPairs), "AOS"
         )
-        # AOS is running ISR (for now, at least) so we need to write the
-        # detectors to expect for that too.
+        # AOS is running ISR (for now, at least) so we need to write that we
+        # expected the detectors from that processing too.
         cwfsDets = list(self.focalPlaneControl.CWFS_NUMS)
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, cwfsDets, "ISR")
         self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
@@ -1538,7 +1535,7 @@ class CameraControlConfig:
         pairs : `list` of `tuple`
             List of tuples of the form (intra, extra) for each pair.
         """
-        return [(x, y) for (x, y) in zip(self.INTRA_FOCAL_NUMS, self.EXTRA_FOCAL_NUMS)]
+        return list(zip(self.INTRA_FOCAL_NUMS, self.EXTRA_FOCAL_NUMS))
 
     def setDiagonalOn(self, other: bool = False) -> None:
         """Set the diagonal pattern on the focal plane.
@@ -1856,8 +1853,14 @@ class CameraControlConfig:
             enabled = [det for det in enabled if det not in self.CWFS_NUMS]
         return enabled
 
-    def getDisabledDetIds(self, excludeCwfs=False) -> list[int]:
+    def getDisabledDetIds(self, excludeCwfs: bool = False) -> list[int]:
         """Get the detectorIds of the disabled sensors.
+
+        Parameters
+        ----------
+        excludeCwfs : `bool`, optional
+            If ``True``, exclude the CWFS detectors from the list of disabled
+            detectors.
 
         Returns
         -------

@@ -344,15 +344,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
 
                 except Exception as e:
-                    # don't use quantum directly in this block in case it is
-                    # not defined due to executor.execute() raising
-
                     # Track when the tasks finish, regardless of whether they
                     # succeeded.
-
-                    # TODO: consider whether to track all the intermediate
-                    # tasks, or only the points used for triggering other
-                    # workflows.
                     self.log.exception(f"Task {taskName} failed: {e}")
                     self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
                     if quantum is not None:
@@ -449,7 +442,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # check here for mypy, and reraise if it was None
                 self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
             else:
-                raise RuntimeError(
+                raise AssertionError(
                     f"Failed to post-process *failed* isr quantum {quantum} and dRef was None. This shouldn't"
                     " be possible."
                 ) from e

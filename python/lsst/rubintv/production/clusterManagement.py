@@ -146,6 +146,8 @@ class ClusterManager:
             The pod to drain.
         newQueue : `str`, optional
             The queue to move the work to. If ``None``, the work is discarded.
+        noWarn : `bool`, optional
+            If ``True``, do not log a warning when discarding payloads.
         """
         counter = 0
         payload = self.rh.dequeuePayload(pod)
@@ -168,8 +170,6 @@ class ClusterManager:
         ----------
         queueName : `str`
             Name of the queue to inspect.
-        detailed : `bool`
-            Whether to fetch detailed information about queue items.
 
         Returns
         -------
@@ -223,7 +223,7 @@ class ClusterManager:
         ----------
         worker : `PodDetails`
             Worker pod to get status for.
-        detailed : `bool`
+        detailed : `bool`, optional
             Whether to include detailed queue information.
 
         Returns
@@ -324,6 +324,8 @@ class ClusterManager:
 
         Parameters
         ----------
+        clusterStatus : `ClusterStatus`, optional
+            The cluster status to print. If ``None``, it will be fetched.
         detailed : `bool`, optional
             Whether to print detailed queue information.
         ignoreFree : `bool`, optional
@@ -593,7 +595,7 @@ class ClusterManager:
         ----------
         detectorNum : `int`
             The detector number to find a worker for.
-        freeBacklogWorkers : `set[PodDetails]`
+        freeBacklogWorkers : `set` [`PodDetails`]
             Set of free backlog workers to choose from.
         Returns
         -------
@@ -649,7 +651,7 @@ class ClusterManager:
 
         Returns
         -------
-        recruitablePods: `set[PodDetails]`
+        recruitablePods: `set` [`PodDetails`]
             A set of pods that are currently recruitable for work.
         """
 
