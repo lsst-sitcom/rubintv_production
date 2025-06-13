@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_21"
+ARG STACK_TAG="w_2025_24"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -184,7 +184,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup lsst_distrib && \
     setup obs_lsst && \
     setup sconsUtils && \
-    scons version 
+    scons version
 
 WORKDIR /repos/ts_wep
 
@@ -225,7 +225,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup lsst_distrib && \
     setup obs_lsst && \
     setup sconsUtils && \
-    scons version 
+    scons version
 
 
 ENV RUN_ARG="-v"
