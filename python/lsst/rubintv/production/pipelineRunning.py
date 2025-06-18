@@ -557,7 +557,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
 
-        nominalPlateScale = 0.2000821
+        # 0.2"/pix is virtually exact - the detector median on an image gave
+        # 0.2000821, so round that off for the fallback value.
+        nominalPlateScale = 0.2
         pixToArcseconds = np.nanmean(
             [
                 row.wcs.getPixelScale().asArcseconds() if row.wcs is not None else nominalPlateScale
