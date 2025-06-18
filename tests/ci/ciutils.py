@@ -41,10 +41,12 @@ class TestScript:
 
 @dataclass
 class Check:
-    passed: bool
+    passed: bool | None
     message: str
 
     def __str__(self):
+        if self.passed is None:
+            return f"⚠️  {self.message}"  # double space is needed for the unicode triangle
         return f"{'✅' if self.passed else '❌'} {self.message}"
 
 

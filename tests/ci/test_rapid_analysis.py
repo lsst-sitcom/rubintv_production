@@ -663,8 +663,8 @@ class ProcessManager:
     def _exec_script(self, test_script: TestScript, output_queue) -> None:
         """Execute a test script in a separate process and capture output."""
 
-        def termination_handler(signum, frame) -> None:
-            print("Termination signal received, exiting...")
+        def termination_handler(signum, frame, test_script=test_script) -> None:
+            print(f"Termination signal received for {test_script}, exiting...")
             raise KeyboardInterrupt()
 
         signal.signal(signal.SIGTERM, termination_handler)
@@ -1005,6 +1005,9 @@ class ResultCollector:
             ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
         ]
 
+        # Create a set of the expected plot paths for comparison
+        expectedPlotPaths = {file for file, _ in expected}
+
         destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
         if config.copy_plots_to_public_html:
             if destinationDir.exists():
@@ -1026,8 +1029,7 @@ class ResultCollector:
                     self.checks.append(
                         Check(
                             True,
-                            f"Found expected plot {file.removeprefix(locationConfig.plotPath)}"
-                            f" with size {file_size} bytes",
+                            f"Found expected plot {file}" f" with size {file_size} bytes",
                         )
                     )
                 else:
@@ -1037,23 +1039,47 @@ class ResultCollector:
             else:
                 self.checks.append(Check(False, f"Did not find expected plot {file}"))
 
+        # Find all actual plots in the directory
+        actualPlotPaths = set()
+        for root, _, files in os.walk(locationConfig.plotPath):
+            for file in files:
+                if file.endswith((".png", ".jpg", ".jpeg", ".gif")):
+                    relPath = os.path.relpath(os.path.join(root, file), locationConfig.plotPath)
+                    actualPlotPaths.add(relPath)
+
+        # Check for plots that exist but weren't in our expected list
+        uncheckedPlots = actualPlotPaths - expectedPlotPaths
+        if uncheckedPlots:
+            for plot in sorted(uncheckedPlots):
+                self.checks.append(Check(None, f"Found unchecked-for plot {plot}"))
+
     def print_final_result(self, config: TestConfig) -> bool:
         """Print final test results and return overall pass status."""
-        fails = [check for check in self.checks if not check.passed]
-        passes = [check for check in self.checks if check.passed]
+        fails = [check for check in self.checks if check.passed is False]
+        passes = [check for check in self.checks if check.passed is True]
+        warnings = [check for check in self.checks if check.passed is None]
         n_fails = len(fails)
         n_passes = len(passes)
+        n_warnings = len(warnings)
         terminal_width = os.get_terminal_size().columns
 
         # Determine the colors and text to display
         if n_fails > 0:
             pass_color = "\033[92m"  # green
             fail_color = "\033[91m"  # red
-            text = f"{pass_color}{n_passes} passing tests\033[0m, {fail_color}{n_fails} failing tests\033[0m"
+            warn_color = "\033[93m"  # yellow
+            text = (
+                f"{pass_color}{n_passes} passing tests\033[0m, "
+                f"{fail_color}{n_fails} failing tests\033[0m"
+                + (f", {warn_color}{n_warnings} warnings\033[0m" if n_warnings > 0 else "")
+            )
             padding_color = fail_color
         else:
-            pass_color = fail_color = "\033[92m"  # all green
-            text = f"{pass_color}{n_passes} passing tests, {n_fails} failing tests\033[0m"
+            pass_color = "\033[92m"  # green
+            warn_color = "\033[93m"  # yellow
+            text = f"{pass_color}{n_passes} passing tests, {n_fails} failing tests" + (
+                f", {warn_color}{n_warnings} warnings\033[0m" if n_warnings > 0 else ""
+            )
             padding_color = pass_color
 
         # Calculate the padding
@@ -1061,10 +1087,12 @@ class ResultCollector:
         padding = f"{padding_color}{'-' * padding_length}\033[0m"
 
         # Print the centered text with colored padding
-        for fail in fails:
-            print(fail)
         for test_pass in passes:
             print(test_pass)
+        for warning in warnings:
+            print(warning)
+        for fail in fails:
+            print(fail)
         print(f"{padding}{text}{padding}")
         if config.copy_plots_to_public_html:
             print("⚠️  Plots copied to ~/public_html/ra_ci_automated_output/ - please check and delete ASAP.")
