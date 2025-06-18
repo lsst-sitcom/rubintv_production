@@ -40,9 +40,10 @@ butler = Butler.from_config(
 
 while True:
 
-    query = butler.registry.queryDimensionRecords("exposure", datasets=["raw"])
-    records = list(query.order_by("-exposure.timespan.end").limit(1))
-    exposure_dataId = records[0].dataId
+    with butler.query() as query:
+        _x = query.expression_factory
+        (exposure_dataId,) = query.data_ids(["exposure"]).order_by(_x.exposure.timespan.end.desc).limit(1)
+
     log.info(f"Using exposure {exposure_dataId}")
     print("Started loop")
 
