@@ -178,11 +178,11 @@ class OneOffProcessor(BaseButlerChannel):
             md[seqNum].update({"Airmass": f"{airmass:.3f}"})
 
         controller = header.get("CONTRLLR", None)
-        if controller is not None and controller != "":
+        if controller:
             md[seqNum].update({"Controller": f"{controller}"})
 
         dimmSeeing = header.get("SEEING", None)
-        if dimmSeeing is not None and dimmSeeing != "":
+        if dimmSeeing:
             md[seqNum].update({"DIMM Seeing": f"{dimmSeeing:.3f}"})
 
         writeMetadataShard(self.shardsDirectory, dayObs, md)
