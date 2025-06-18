@@ -46,7 +46,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class TempFileCleaner:
-    """ """
+    """Clean up all temporary files and directories created by RA."""
 
     def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.log = _LOG.getChild("TempFileCleaner")
@@ -63,6 +63,9 @@ class TempFileCleaner:
         self.keepDays = 2  # 2 means curent dayObs and the day before
 
     def deleteDirectories(self) -> None:
+        """Delete all specified NFS directories that are older than `keepDays`
+        days.
+        """
         currentDayObs = getCurrentDayObs_int()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
 
@@ -91,6 +94,9 @@ class TempFileCleaner:
                 raiseIf(self.doRaise, e, self.log, msg)
 
     def deleteS3Directories(self) -> None:
+        """Delete all specified S3 directories that are older than `keepDays`
+        days.
+        """
         currentDayObs = getCurrentDayObs_int()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
 
@@ -126,6 +132,11 @@ class TempFileCleaner:
                 raiseIf(self.doRaise, e, self.log, msg)
 
     def cleanupBuckets(self) -> None:
+        """Delete stale S3 files and sync local and remote buckets.
+
+        Delete any stale all sky stills and non-final movies from the buckets
+        and sync the local bucket's objects to the remote.
+        """
         # reinit the MultiUploader each time rather than holding one on the
         # class in case of connection problems
         mu = MultiUploader()
@@ -147,6 +158,7 @@ class TempFileCleaner:
         self.log.info("Finished bucket cleanup")
 
     def runEndOfDay(self) -> None:
+        """Run all the functions at the end of the day to clean up."""
         self.deleteDirectories()
         self.deleteS3Directories()
         self.cleanupBuckets()
