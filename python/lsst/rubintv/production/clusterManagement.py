@@ -80,12 +80,12 @@ class FlavorStatus:
 
     name: str
     nFreeWorkers: int
-    workerStatuses: list[WorkerStatus]
+    workerStatuses: tuple[WorkerStatus, ...]
 
     @property
-    def workers(self) -> list[PodDetails]:
+    def workers(self) -> tuple[PodDetails, ...]:
         """Get the list of workers in this flavor."""
-        return [ws.worker for ws in self.workerStatuses]
+        return tuple([ws.worker for ws in self.workerStatuses])
 
     @property
     def totalWorkers(self) -> int:
@@ -93,9 +93,9 @@ class FlavorStatus:
         return len(self.workerStatuses)
 
     @property
-    def freeWorkers(self) -> list[PodDetails]:
+    def freeWorkers(self) -> tuple[PodDetails, ...]:
         """Get the free workers in this flavor."""
-        return [ws.worker for ws in self.workerStatuses if not ws.isBusy]
+        return tuple([ws.worker for ws in self.workerStatuses if not ws.isBusy])
 
 
 @dataclass
@@ -116,9 +116,11 @@ class ClusterStatus:
         return pod in flavorStatus.freeWorkers
 
     @property
-    def allWorkers(self) -> list[PodDetails]:
+    def allWorkers(self) -> tuple[PodDetails, ...]:
         """Get a list of all workers in the cluster."""
-        return [worker for flavorStatus in self.flavorStatuses.values() for worker in flavorStatus.workers]
+        return tuple(
+            worker for flavorStatus in self.flavorStatuses.values() for worker in flavorStatus.workers
+        )
 
 
 class ClusterManager:
@@ -264,9 +266,9 @@ class ClusterManager:
         workers = self.rh.getAllWorkers(instrument=instrument, podFlavor=flavor)
 
         if not workers:
-            return FlavorStatus(name=flavor.name, nFreeWorkers=0, workerStatuses=[])
+            return FlavorStatus(name=flavor.name, nFreeWorkers=0, workerStatuses=tuple())
 
-        workerStatuses = []
+        workerStatuses: list[WorkerStatus] = []
         freeWorkers = 0
 
         for worker in sorted(workers):
@@ -279,7 +281,7 @@ class ClusterManager:
         return FlavorStatus(
             name=flavor.name,
             nFreeWorkers=freeWorkers,
-            workerStatuses=workerStatuses,
+            workerStatuses=tuple(workerStatuses),
         )
 
     def getClusterStatus(self, instrument: str = "LSSTCam", detailed: bool = False) -> ClusterStatus:
