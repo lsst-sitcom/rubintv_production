@@ -986,10 +986,12 @@ class ResultCollector:
             # TODO: DM-51391 add psfAzEl plot
             ("LSSTCam/20250415/LSSTCam_fwhm_focal_plane_dayObs_20250415_seqNum_000088.png", 5000),
             ("LSSTCam/20250415/LSSTCam_imexam_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_psf_shape_azel_dayObs_20250415_seqNum_000088.png", 5000),
             # AOS plots -------
             # FAM donut galleries
             ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000086.png", 5000),
             ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000088.png", 5000),
             # Extrafocal id for FAM plot
             ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
             # CWFS plot
@@ -998,6 +1000,9 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
             # CWFS plot
             ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            # PSF zernike panels FAM extra-focal and regular image
+            ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000088.png", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
