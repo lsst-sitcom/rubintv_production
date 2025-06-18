@@ -160,6 +160,7 @@ class TestConfig:
         self.do_run_meta_tests = True
         self.do_check_yaml_files = True
         self.copy_plots_to_public_html = False
+
         self.debug = False
 
         # Redis settings
@@ -1003,6 +1004,8 @@ class ResultCollector:
             # PSF zernike panels FAM extra-focal and regular image
             ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000087.png", 5000),
             ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000088.png", 5000),
+            # Donut pairing plot for regular image
+            ("LSSTCam/20250415/LSSTCam_fp_pairing_plot_dayObs_20250415_seqNum_000088.png", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
