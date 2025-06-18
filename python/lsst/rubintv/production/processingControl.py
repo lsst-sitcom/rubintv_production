@@ -1236,7 +1236,7 @@ class HeadProcessController:
             else:
                 whoToUse = who
 
-            if who != "ISR":  # no actual step1b dispatch for ISR
+            if self.pipelines[whoToUse].graphBytes.get("step1b") is not None:  # no step1b dispatch for ISR
                 visitRecord = None
                 try:  # not used, but checks whether this payload is even usable downstream
                     (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoords[0])
