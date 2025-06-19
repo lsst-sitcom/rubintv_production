@@ -209,6 +209,44 @@ class ConsDBPopulator:
             print(e.response.json())
             raise RuntimeError from e
 
+    def populateCcdVisitRowZernikes(
+        self,
+        visitRecord: DimensionRecord,
+        detectorNum: int,
+        zernikeValues: dict[str, float],
+        allowUpdate: bool = False,
+    ) -> None:
+        """Populate a row in the cdb_<instrument>.ccdvisit1_quicklook table
+        with Zernike values.
+
+        Parameters
+        ----------
+        visitRecord : `DimensionRecord`
+            The visit record to populate the row for.
+        detectorNum : `int`
+            The detector number to populate the row for.
+        zernikeValues : `dict[str, float]`
+            A dictionary containing Zernike values to populate the row with,
+            where keys are Zernike names and values are the corresponding float
+            values. Names are as in the consDB schema, e.g. "z4", "z5", etc.
+        allowUpdate : `bool`, optional
+            Allow updating existing rows in the table.
+        """
+        obsId = computeCcdExposureId(visitRecord.instrument, visitRecord.id, detectorNum)
+        table = f"cdb_{visitRecord.instrument.lower()}.ccdvisit1_quicklook"
+
+        try:
+            self.client.insert(
+                instrument=visitRecord.instrument,
+                table=table,
+                obs_id=obsId,
+                values=_removeNans(zernikeValues),
+                allow_update=allowUpdate,
+            )
+        except HTTPError as e:
+            print(e.response.json())
+            raise RuntimeError from e
+
     def populateAllCcdVisitRowsWithButler(
         self, butler: Butler, expRecord: DimensionRecord, createRows: bool = False, allowUpdate: bool = False
     ) -> None:
