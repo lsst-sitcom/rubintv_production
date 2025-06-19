@@ -19,21 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTComCamSim"
+instrument = "LSSTComCam"
+
+workerNum = 0
+
 locationConfig = getAutomaticLocationConfig()
 
-workerNum = getPodWorkerNumber()
+# The detectorNumber to be processed is defined in the init of the
+# OneOffProcessor class below. However, because this is a one-per-instrument
+# pod type, the detector number defined in the podDetails is therefore None,
+# despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.STEP2A_AOS_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_VISITIMAGE_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -42,22 +46,24 @@ print(
 
 butler = Butler.from_config(
     locationConfig.comCamButlerPath,
-    instrument=instrument,
     collections=[
-        "LSSTComCamSim/defaults",
+        f"{instrument}/defaults",
+        locationConfig.getOutputChain(instrument),
     ],
     writeable=True,
 )
 
-step2aRunner = SingleCorePipelineRunner(
+metadataDirectory = locationConfig.comCamMetadataPath
+shardsDirectory = locationConfig.comCamMetadataShardPath
+
+oneOffProcessor = OneOffProcessor(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getAosPipelineFile(instrument),
-    step="step2a",
-    awaitsDataProduct=None,
     podDetails=podDetails,
+    detectorNumber=4,  # central CCD for ComCam
+    shardsDirectory=shardsDirectory,
+    processingStage="preliminary_visit_image",
     doRaise=getDoRaise(),
 )
-step2aRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+oneOffProcessor.run()

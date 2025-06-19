@@ -19,21 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
+from lsst.rubintv.production.plotting.mosaicPlotting import Plotter
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
 instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()
-
-workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.STEP2A_AOS_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.MOSAIC_WORKER, detectorNumber=None, depth=1
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -41,24 +37,14 @@ print(
 )
 
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath,
-    instrument=instrument,
-    collections=[
-        f"{instrument}/defaults",
-        locationConfig.getOutputChain(instrument),
-    ],
-    writeable=True,
+    locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"], instrument=instrument
 )
-
-step2aRunner = SingleCorePipelineRunner(
+plotter = Plotter(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getAosPipelineFile(instrument),
-    step="step2a",
-    awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-step2aRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+
+plotter.run()

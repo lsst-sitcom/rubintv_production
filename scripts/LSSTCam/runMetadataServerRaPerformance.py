@@ -19,24 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.daf.butler import Butler
-from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
+from lsst.rubintv.production.timedServices import TimedMetadataServer
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
-locationConfig = getAutomaticLocationConfig()
-print(f"Running {instrument} butler watcher at {locationConfig.location}...")
+checkRubinTvExternalPackages()
 
-butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"], instrument=instrument
-)
-writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
-butlerWatcher = ButlerWatcher(
-    butler=butler,
+locationConfig = getAutomaticLocationConfig()
+print(f"Running RA performance metadata server at {locationConfig.location}...")
+
+metadataDirectory = locationConfig.raPerformanceDirectory
+shardsDirectory = locationConfig.raPerformanceShardsDirectory
+channelName = "ra_performance"
+
+metadataServer = TimedMetadataServer(
     locationConfig=locationConfig,
-    instrument=instrument,
+    metadataDirectory=metadataDirectory,
+    shardsDirectory=shardsDirectory,
+    channelName=channelName,
     doRaise=getDoRaise(),
 )
-butlerWatcher.run()
+metadataServer.run()

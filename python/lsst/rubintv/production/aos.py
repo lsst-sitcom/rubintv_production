@@ -23,16 +23,18 @@ from __future__ import annotations
 __all__ = [
     "DonutLauncher",
     "PsfAzElPlotter",
+    "FocalPlaneFWHMPlotter",
     "FocusSweepAnalysis",
+    "RadialPlotter",
 ]
 
 import logging
 import subprocess
-import tempfile
 import threading
 from time import sleep, time
 from typing import TYPE_CHECKING
 
+import numpy as np
 from matplotlib.figure import Figure
 
 from lsst.daf.butler import DatasetNotFoundError
@@ -42,21 +44,24 @@ from lsst.summit.extras.plotting.focusSweep import (
     inferSweepVariable,
     plotSweepParabola,
 )
+from lsst.summit.extras.plotting.fwhmFocalPlane import getFwhmValues, makeFocalPlaneFWHMPlot
 from lsst.summit.extras.plotting.psfPlotting import (
     makeAzElPlot,
     makeFigureAndAxes,
     makeTableFromSourceCatalogs,
 )
 from lsst.summit.utils import ConsDbClient
-from lsst.summit.utils.efdUtils import makeEfdClient
+from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
+from lsst.utils.plotting.figures import make_figure
 
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
-from .utils import getRubinTvInstrumentName, writeExpRecordMetadataShard, writeMetadataShard
+from .utils import getRubinTvInstrumentName, makePlotFile, writeExpRecordMetadataShard, writeMetadataShard
 
 if TYPE_CHECKING:
-    from lsst.daf.butler import Butler
+    from lsst.daf.butler import Butler, DimensionRecord
 
     from .utils import LocationConfig
 
@@ -299,17 +304,21 @@ class PsfAzElPlotter:
         """
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
         detectorIds = getDetectorIds(self.instrument)
-        icSrcDict = {}
+        srcDict = {}
         for detectorId in detectorIds:
             try:
-                icSrcDict[detectorId] = self.butler.get("icSrc", visit=visitId, detector=detectorId)
+                srcDict[detectorId] = self.butler.get(
+                    "single_visit_star_footprints", visit=visitId, detector=detectorId
+                )
             except DatasetNotFoundError:
                 pass
 
         visitInfo = None
         for detectorId in detectorIds:
             try:
-                visitInfo = self.butler.get("calexp.visitInfo", visit=visitId, detector=detectorId)
+                visitInfo = self.butler.get(
+                    "preliminary_visit_image.visitInfo", visit=visitId, detector=detectorId
+                )
                 break
             except DatasetNotFoundError:
                 pass
@@ -317,20 +326,22 @@ class PsfAzElPlotter:
             self.log.error(f"Could not find visitInfo for visitId {visitId}")
             return
 
-        table = makeTableFromSourceCatalogs(icSrcDict, visitInfo)
+        table = makeTableFromSourceCatalogs(srcDict, visitInfo)
 
-        # TODO: DM-45437 Use a context manager here and everywhere
-        tempFilename = tempfile.mktemp(suffix=".png")
         self.fig.clf()
-        self.axes = self.fig.subplots(nrows=2, ncols=2)
-        makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=tempFilename)
+        self.axes = self.fig.subplots(nrows=2, ncols=3)
 
+        plotName = "psf_shape_azel"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=plotFile)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument),
-            plotName="psf_shape_azel",
+            plotName=plotName,
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
-            filename=tempFilename,
+            filename=plotFile,
         )
 
     def run(self) -> None:
@@ -341,6 +352,119 @@ class PsfAzElPlotter:
                 visitId = int(visitIdBytes.decode("utf-8"))
                 self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
                 self.makePlot(visitId)
+            else:
+                sleep(0.5)
+
+
+class FocalPlaneFWHMPlotter:
+    """The FocalPlaneFWHMPlotter, for automatically plotting FWHM
+    in Focal Plane.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    instrument : `str`
+        The instrument.
+    queueName : `str`
+        The name of the redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        queueName: str,
+    ) -> None:
+        self.butler = butler
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.queueName = queueName
+        self.instrument = instrument
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.FocalPlaneFWHMPlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.s3Uploader = MultiUploader()
+        self.efdClient = makeEfdClient()
+
+    def plotAndUpload(self, visitRecord: DimensionRecord) -> None:
+        """Make the FWHM Focal Plane plot for the given visit ID.
+
+        Makes the plot by getting the available data from the butler, saves it
+        to a temporary file, and uploads it to RubinTV.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The visit ID for which to make the plot.
+        """
+        visitSummary = None
+        try:
+            # might not be the best query here
+            visitSummary = self.butler.get("preliminary_visit_summary", visit=visitRecord.id)
+        except DatasetNotFoundError:
+            pass
+
+        if visitSummary is None:
+            self.log.error(f"Could not find visitInfo for visitId {visitRecord.id}")
+            return
+
+        fwhmValues = getFwhmValues(visitSummary)
+
+        plotName = "fwhm_focal_plane"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, visitRecord.day_obs, visitRecord.seq_num, plotName, "png"
+        )
+        fig = make_figure(figsize=(12, 9))
+        axes = fig.subplots(nrows=1, ncols=1)
+        title = self.makeTitle(visitRecord)
+        makeFocalPlaneFWHMPlot(fig, axes, fwhmValues, self.camera, saveAs=plotFile, title=title)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=visitRecord.day_obs,
+            seqNum=visitRecord.seq_num,
+            filename=plotFile,
+        )
+
+    def makeTitle(self, visitRecord: DimensionRecord) -> str:
+        """Create the title for the FWHM Focal Plane plot inc mining the EFD.
+
+        Parameters
+        ----------
+        visitRecord : `lsst.daf.butler.DimensionRecord`
+            The visit record.
+
+        Returns
+        -------
+        title : `str`
+            The title for the plot.
+        """
+        title = f"Focal plane FWHM dayObs={visitRecord.day_obs} seqNum={visitRecord.seq_num}\n"
+        (expRecord,) = self.butler.query_dimension_records("exposure", visit=visitRecord.id)
+        title += f"Sky angle = {expRecord.sky_angle:.2f}°, elevation = {90 - expRecord.zenith_angle:.2f}°"
+
+        data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=expRecord)
+        if not data.empty:
+            rotPos = np.mean(data["actualPosition"])
+            title += f", physical rotation = {rotPos:.2f}°"
+
+        return title
+
+    def run(self) -> None:
+        """Start the event loop, listening for data and launching plotting."""
+        while True:
+            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
+            if expRecord is not None:
+                t0 = time()
+                self.log.info(f"Making for FWHMFocalPlane plot for visitId {expRecord.id}")
+                self.plotAndUpload(expRecord)
+                t1 = time()
+                self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {expRecord.id}")
             else:
                 sleep(0.5)
 
@@ -429,15 +553,17 @@ class FocusSweepAnalysis:
         self.fig.clf()
         axes = self.fig.subplots(nrows=3, ncols=4)
 
-        tempFilename = tempfile.mktemp(suffix=".png")
-        plotSweepParabola(data, varName, fit, saveAs=tempFilename, figAxes=(self.fig, axes))
-
+        plotName = "focus_sweep"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, lastRecord.day_obs, lastRecord.seq_num, plotName, "png"
+        )
+        plotSweepParabola(data, varName, fit, saveAs=plotFile, figAxes=(self.fig, axes))
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
-            plotName="focus_sweep",
+            plotName=plotName,
             dayObs=lastRecord.day_obs,
             seqNum=lastRecord.seq_num,
-            filename=tempFilename,
+            filename=plotFile,
         )
 
     def run(self) -> None:
@@ -448,5 +574,76 @@ class FocusSweepAnalysis:
                 visitIds = _extractExposureIds(visitIdsBytes, self.instrument)
                 self.log.info(f"Making for focus sweep plots for visitIds: {visitIds}")
                 self.makePlot(visitIds)
+            else:
+                sleep(0.5)
+
+
+class RadialPlotter:
+    """The Radial plotter, for making the radial analysis plots.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    instrument : `str`
+        The instrument.
+    queueName : `str`
+        The name of the redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        queueName: str,
+    ) -> None:
+        self.butler = butler
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.queueName = queueName
+
+        self.instrument = instrument
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.RadialPlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.s3Uploader = MultiUploader()
+
+    def plotAndUpload(self, expRecord: DimensionRecord) -> None:
+        try:
+            fig = makePanel(self.butler, expRecord.id, onlyS11=True, figsize=(15, 15))
+        except ValueError as e:  # raised if there's no source tables or images available
+            self.log.error(f"Could not make radial plot for {expRecord.id}: {e}, skipping")
+            return
+
+        fig.suptitle(f"visit: {expRecord.id}", x=0.65, y=1.25, fontsize=35)
+
+        plotName = "imexam"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        fig.savefig(plotFile, bbox_inches="tight")
+
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
+
+    def run(self) -> None:
+        """Start the event loop, listening for data and launching plotting."""
+        while True:
+            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
+            if expRecord is not None:
+                t0 = time()
+                self.log.info(f"Making for radial plot for {expRecord.id}")
+                self.plotAndUpload(expRecord)
+                t1 = time()
+                self.log.info(f"Finished making radial plot in {(t1 - t0):.2f}s for {expRecord.id}")
             else:
                 sleep(0.5)

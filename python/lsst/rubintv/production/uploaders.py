@@ -22,6 +22,7 @@
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -99,6 +100,7 @@ def createRemoteS3UploaderForSite():
             return S3Uploader.from_information(
                 endPoint=EndPoint.USDF,
                 bucket=Bucket.BTS,
+                proxyUrl="http://squid-service:3128/",
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
@@ -147,11 +149,13 @@ class BucketInformation:
 
 class EndPoint(Enum):
     USDF = {
-        "end_point": "https://s3dfrgw.slac.stanford.edu",
+        "end_point": "https://sdfembs3.sdf.slac.stanford.edu/",
         "buckets_available": {
-            Bucket.SUMMIT: BucketInformation("rubin-rubintv-data-summit", "rubin-rubintv-data-summit"),
-            Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf", "rubin-rubintv-data-usdf"),
-            Bucket.BTS: BucketInformation("rubin-rubintv-data-base", "rubin-rubintv-data-base"),
+            Bucket.SUMMIT: BucketInformation(
+                "rubin-rubintv-data-summit-embargo", "rubin-rubintv-data-summit"
+            ),
+            Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf-embargo", "rubin-rubintv-data-usdf"),
+            Bucket.BTS: BucketInformation("rubin-rubintv-data-bts", "rubin-rubintv-data-bts"),
             Bucket.TTS: BucketInformation("rubin-rubintv-data-tts", "rubin-rubintv-data-tts"),
         },
     }
@@ -257,8 +261,8 @@ class IUploader(ABC):
 
 
 class MultiUploader(IUploader):
-    def __init__(self):
-        # TODO: thread the remote upload
+    def __init__(self, allowNoRemote: bool = False) -> None:
+
         self.localUploader = createLocalS3UploaderForSite()
         localOk = self.localUploader.checkAccess()
         if not localOk:
@@ -269,12 +273,12 @@ class MultiUploader(IUploader):
         except Exception:
             self.remoteUploader = None
 
-        remoteRequired = getSite() in ["summit", "tucson", "base"]
-        if remoteRequired and not self.hasRemote:
+        remoteRequired = getSite() == "summit"
+        if (remoteRequired and not self.hasRemote) and not allowNoRemote:
             raise RuntimeError("Failed to create remote S3 uploader")
         elif remoteRequired and self.hasRemote:
             remoteOk = self.remoteUploader.checkAccess()
-            if not remoteOk:
+            if not remoteOk and not allowNoRemote:
                 raise RuntimeError("Failed to connect to remote S3 bucket")
 
         self.log = _LOG.getChild("MultiUploader")
@@ -286,43 +290,84 @@ class MultiUploader(IUploader):
     def hasRemote(self):
         return self.remoteUploader is not None
 
+    def _runRemoteUpload(self, method_name: str, *args, **kwargs):
+        """Run a remote upload in a separate thread.
+
+        Parameters
+        ----------
+        method_name : `str`
+            Name of the method to call on the remote uploader.
+        *args, **kwargs
+            Arguments to pass to the method.
+        """
+        if not self.hasRemote:
+            return
+
+        try:
+            method = getattr(self.remoteUploader, method_name)
+            method(*args, **kwargs)
+            self.log.info(f"Successfully uploaded to remote using {method_name}")
+        except Exception as e:
+            self.log.warning(f"Remote upload failed in {method_name}: {str(e)}")
+
     def uploadPerSeqNumPlot(self, *args, **kwargs):
         self.localUploader.uploadPerSeqNumPlot(*args, **kwargs)
         self.log.info("uploaded to local")
 
         if self.hasRemote:
-            self.remoteUploader.uploadPerSeqNumPlot(*args, **kwargs)
-            self.log.info("uploaded to remote")
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadPerSeqNumPlot",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def uploadNightReportData(self, *args, **kwargs):
         self.localUploader.uploadNightReportData(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadNightReportData(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadNightReportData",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def upload(self, *args, **kwargs):
         self.localUploader.upload(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.upload(*args, **kwargs)
+            thread = threading.Thread(target=self._runRemoteUpload, args=("upload",) + args, kwargs=kwargs)
+            thread.daemon = True
+            thread.start()
 
     def uploadMetdata(self, *args, **kwargs):
         self.localUploader.uploadMetdata(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadMetdata(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadMetdata",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def uploadMovie(self, *args, **kwargs):
         self.localUploader.uploadMovie(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadMovie(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadMovie",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
     def uploadAllSkyStill(self, *args, **kwargs):
         self.localUploader.uploadAllSkyStill(*args, **kwargs)
 
         if self.hasRemote:
-            self.remoteUploader.uploadAllSkyStill(*args, **kwargs)
+            thread = threading.Thread(
+                target=self._runRemoteUpload, args=("uploadAllSkyStill",) + args, kwargs=kwargs
+            )
+            thread.daemon = True
+            thread.start()
 
 
 class S3Uploader(IUploader):
@@ -669,9 +714,11 @@ class S3Uploader(IUploader):
         """
         try:
             self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
-        except ClientError as e:
-            logging.error(e)
-            raise UploadError(f"Failed uploading file {sourceFilename} as Key: {destinationFilename}")
+        except Exception as e:
+            log = logging.getLogger(__name__)
+            # Log the exception but don't raise it to avoid blocking on timeout
+            # errors
+            log.exception(f"Failed uploading file {sourceFilename} as Key: {destinationFilename} \n {e}")
         return destinationFilename
 
     def uploadMovie(
@@ -784,7 +831,7 @@ class Uploader:
         ------
         ValueError
             Raised if the specified channel is not in the list of existing
-            channels as specified in CHANNELS
+            channels as specified in CHANNELS.
         RuntimeError
             Raised if the Google cloud storage is not installed/importable.
         """

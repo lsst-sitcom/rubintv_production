@@ -24,7 +24,7 @@ from __future__ import annotations
 import base64
 import io
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Self
 
 from lsst.daf.butler import Butler, DataCoordinate
@@ -34,8 +34,12 @@ __all__ = [
     "pipelineGraphToBytes",
     "pipelineGraphFromBytes",
     "Payload",
-    "PayloadResult",
+    "RestartPayload",
+    "isRestartPayload",
+    "getDetectorId",
 ]
+
+RESTART_SIGNAL = "__RESTART_SIGNAL__"
 
 
 def pipelineGraphToBytes(pipelineGraph: PipelineGraph) -> bytes:
@@ -59,6 +63,47 @@ def pipelineGraphFromBytes(pipelineGraphBytes: bytes) -> PipelineGraph:
         return PipelineGraph._read_stream(f)  # to be public soon
 
 
+def isRestartPayload(payload: Payload) -> bool:
+    """Check if the payload is a restart signal.
+
+    Note that this function should be used, and *not* `isinstance`, because
+    the payload is deserialized as a `Payload` instance, not a `RestartPayload`
+    instance.
+    """
+    return payload.run == RESTART_SIGNAL or payload.who == RESTART_SIGNAL
+
+
+def getDetectorId(payload: Payload) -> int | None:
+    """Get the detector ID from the payload.
+
+    Parameters
+    ----------
+    payload : `Payload`
+        The payload to get the detector ID from.
+
+    Returns
+    -------
+    detectorId : `int`
+        The detector ID, or None if there is no detector ID in the payload.
+
+    Raises
+    ------
+    ValueError
+        If there are multiple detector IDs in the payload.
+    """
+    if len(payload.dataIds) == 0:
+        return None
+    detectors = set()
+    for dataId in payload.dataIds:
+        if "detector" in dataId:
+            detectors.add(dataId["detector"])
+    if len(detectors) == 0:
+        return None
+    if len(detectors) > 1:
+        raise ValueError(f"Payload contains multiple detectors: {detectors}. ")
+    return int(detectors.pop())
+
+
 @dataclass(frozen=True)
 class Payload:
     """
@@ -71,6 +116,7 @@ class Payload:
     pipelineGraphBytes: bytes
     run: str
     who: str
+    specialMessage: str = ""
 
     @classmethod
     def from_json(
@@ -85,7 +131,11 @@ class Payload:
 
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
         return cls(
-            dataIds=dataIds, pipelineGraphBytes=pipelineGraphBytes, run=json_dict["run"], who=json_dict["who"]
+            dataIds=dataIds,
+            pipelineGraphBytes=pipelineGraphBytes,
+            run=json_dict["run"],
+            who=json_dict["who"],
+            specialMessage=json_dict.get("specialMessage", ""),
         )
 
     def to_json(self) -> str:
@@ -93,6 +143,7 @@ class Payload:
             "pipelineGraphBytes": base64.b64encode(self.pipelineGraphBytes).decode(),
             "run": self.run,
             "who": self.who,
+            "specialMessage": self.specialMessage,
         }
         json_dict["dataIds"] = []
         for dataId in self.dataIds:
@@ -106,48 +157,24 @@ class Payload:
         )
 
 
-@dataclass(frozen=True)
-class PayloadResult:
+class RestartPayload(Payload):
+    """The restart payload.
+
+    Enqueue this payload on a worker so that it restarts without terminating
+    any work in progress.
+
+    Note: do not check for this via `isinstance` because it will be
+    deserialised just like other payloads, and will end up as a `Payload`
+    instance. This class just exists to make instantiation clearer.
     """
-    A dataclass representing a payload result, composed of a Payload.
-    """
 
-    payload: Payload
-    startTime: float
-    endTime: float
-    splitTimings: dict
-    success: bool
-    message: str
-
-    @classmethod
-    def from_json(
-        cls,
-        json_str: str,
-        butler: Butler,
-    ) -> Self:
-        json_dict = json.loads(json_str)
-
-        # Validate JSON keys
-        allowed_keys = {"payload", "startTime", "endTime", "splitTimings", "success", "message"}
-        unexpected_keys = set(json_dict.keys()) - allowed_keys
-        if unexpected_keys:
-            raise TypeError(f"Unexpected keys in JSON: {unexpected_keys}")
-
-        # Extract the payload section for Payload.from_json
-        payload_dict = json_dict["payload"]
-        payload_json = json.dumps(payload_dict)
-        payload = Payload.from_json(payload_json, butler)
-
-        return cls(
-            payload=payload,
-            startTime=json_dict["startTime"],
-            endTime=json_dict["endTime"],
-            splitTimings=json_dict["splitTimings"],
-            success=json_dict["success"],
-            message=json_dict["message"],
+    def __init__(self) -> None:
+        super().__init__(
+            dataIds=[],
+            # these are all unused, but set them to something to be clear if
+            # they end up elsewhere somehow. Can repurose them later if needed.
+            pipelineGraphBytes=b"{RESTART_SIGNAL}",
+            run=f"{RESTART_SIGNAL}",
+            who=f"{RESTART_SIGNAL}",
+            specialMessage="RESTARTING",
         )
-
-    def to_json(self) -> str:
-        json_dict = asdict(self)
-        json_dict["payload"] = json.loads(self.payload.to_json())
-        return json.dumps(json_dict)

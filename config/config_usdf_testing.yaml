@@ -1,7 +1,6 @@
 bucketName: rubintv_data
 
 # Required items:
-dataIdScanPath: /sdf/home/m/mfl/u/rubintv/dataIds
 dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
 
 # Summit items:
@@ -49,6 +48,9 @@ comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sideca
 comCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata
 comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata/shards
 
+raPerformanceDirectory: /sdf/home/m/mfl/u/rubintv/raPerformance/sidecar_metadata
+raPerformanceShardsDirectory: /sdf/home/m/mfl/u/rubintv/raPerformance/sidecar_metadata/shards
+
 lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
@@ -56,16 +58,20 @@ lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metada
 lsstCamButlerPath: embargo
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
-scratchPath: /sdf/home/m/mfl/u/rubintv
+scratchPath : rapidAnalysisScratchCi
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
-calculatedDataPath: /sdf/home/m/mfl/u/rubintv/calculatedData
-binnedCalexpPath: /sdf/home/m/mfl/u/rubintv/calculatedData/calexps
 
 # TMA config:
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
+aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamPipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+
+aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
 
 sfmPipelineFile:
   LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
@@ -77,7 +83,6 @@ aosPipelineFile:
   LATISS: ''
   LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
   LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
-  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
   LATISS: LATISS/runs/quickLookTesting

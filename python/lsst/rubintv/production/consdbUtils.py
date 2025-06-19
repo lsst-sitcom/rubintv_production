@@ -38,6 +38,7 @@ from lsst.afw.image import ExposureSummaryStats  # type: ignore
 from lsst.afw.table import ExposureCatalog  # type: ignore
 from lsst.daf.butler import Butler, DimensionRecord
 from lsst.summit.utils import ConsDbClient
+from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
 from .redisUtils import RedisHelper
@@ -179,7 +180,9 @@ class ConsDBPopulator:
         detectorNum: int,
         allowUpdate: bool = False,
     ) -> None:
-        summaryStats = butler.get("calexp.summaryStats", visit=expRecord.id, detector=detectorNum)
+        summaryStats = butler.get(
+            "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
+        )
         self.populateCcdVisitRow(expRecord, detectorNum, summaryStats, allowUpdate=allowUpdate)
 
     def populateCcdVisitRow(
@@ -199,7 +202,7 @@ class ConsDBPopulator:
                 table=table,
                 obs_id=obsId,
                 values=_removeNans(values),
-                allow_update=True,
+                allow_update=allowUpdate,
             )
             self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
         except HTTPError as e:
@@ -221,7 +224,7 @@ class ConsDBPopulator:
     def populateVisitRowWithButler(
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
-        visitSummary = butler.get("visitSummary", visit=expRecord.id)
+        visitSummary = butler.get("preliminary_visit_summary", visit=expRecord.id)
         instrument = expRecord.instrument
         self.populateVisitRow(visitSummary, instrument, allowUpdate=allowUpdate)
 
@@ -252,12 +255,17 @@ class ConsDBPopulator:
             VISIT_MIN_MED_MAX_MAPPING.items(),
             VISIT_MIN_MED_MAX_TOTAL_MAPPING.items(),
         ):
-            for suffix in ["_min", "_max", "_median"]:
-                consDbKey = consDbKeyNoSuffix + suffix
-                typeFunc = changeType(consDbKey)
-                values[consDbKey] = typeFunc(np.nanmin(visitSummary[summaryKey]))
-                values[consDbKey] = typeFunc(np.nanmax(visitSummary[summaryKey]))
-                values[consDbKey] = typeFunc(np.nanmedian(visitSummary[summaryKey]))
+            consDbKey = consDbKeyNoSuffix + "_min"
+            typeFunc = changeType(consDbKey)
+            values[consDbKey] = typeFunc(np.nanmin(visitSummary[summaryKey]))
+
+            consDbKey = consDbKeyNoSuffix + "_max"
+            typeFunc = changeType(consDbKey)
+            values[consDbKey] = typeFunc(np.nanmax(visitSummary[summaryKey]))
+
+            consDbKey = consDbKeyNoSuffix + "_median"
+            typeFunc = changeType(consDbKey)
+            values[consDbKey] = typeFunc(np.nanmedian(visitSummary[summaryKey]))
 
         for summaryKey, consDbKey in VISIT_MIN_MED_MAX_TOTAL_MAPPING.items():
             typeFunc = changeType(consDbKey + "_total")
@@ -266,7 +274,7 @@ class ConsDBPopulator:
         nInputs = max([len(visitSummary[col]) for col in visitSummary.columns])
         minInputs = min([len(visitSummary[col]) for col in visitSummary.columns])
         if minInputs != nInputs:
-            raise RuntimeError("visitSummary is jagged - this should be impossible")
+            raise RuntimeError("preliminary_visit_summary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
@@ -275,34 +283,52 @@ class ConsDBPopulator:
             table=table,
             obs_id=visit,
             values=_removeNans(values),
-            allow_update=True,
+            allow_update=allowUpdate,
         )
         self.redisHelper.announceResultInConsDb(instrument, table, visit)
 
     def populateMountErrors(
         self,
         expRecord: DimensionRecord,
-        mountErrors: dict[str, float],
+        mountErrors: dict[str, float] | MountErrors,
         instrument: str,
         allowUpdate: bool = False,
     ) -> None:
         values: dict[str, float] = {}
+        if isinstance(mountErrors, MountErrors):
+            image_az_rms = mountErrors.imageAzRms
+            image_el_rms = mountErrors.imageElRms
+            imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
 
-        image_az_rms = mountErrors["image_az_rms"]
-        image_el_rms = mountErrors["image_el_rms"]
-        imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
+            values["mount_motion_image_degradation"] = imageError
+            values["mount_motion_image_degradation_az"] = image_az_rms
+            values["mount_motion_image_degradation_el"] = image_el_rms
 
-        values["mount_motion_image_degradation"] = imageError
-        values["mount_motion_image_degradation_az"] = mountErrors["image_az_rms"]
-        values["mount_motion_image_degradation_el"] = mountErrors["image_el_rms"]
+            az_rms = mountErrors.azRms
+            el_rms = mountErrors.elRms
+            mountError = (az_rms**2 + el_rms**2) ** 0.5
+            values["mount_jitter_rms"] = mountError
+            values["mount_jitter_rms_az"] = az_rms
+            values["mount_jitter_rms_el"] = el_rms
+            values["mount_jitter_rms_rot"] = mountErrors.rotRms
+        elif isinstance(mountErrors, dict):
+            image_az_rms = mountErrors["image_az_rms"]
+            image_el_rms = mountErrors["image_el_rms"]
+            imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
 
-        az_rms = mountErrors["az_rms"]
-        el_rms = mountErrors["el_rms"]
-        mountError = (az_rms**2 + el_rms**2) ** 0.5
-        values["mount_jitter_rms"] = mountError
-        values["mount_jitter_rms_az"] = mountErrors["az_rms"]
-        values["mount_jitter_rms_el"] = mountErrors["el_rms"]
-        values["mount_jitter_rms_rot"] = mountErrors["rot_rms"]
+            values["mount_motion_image_degradation"] = imageError
+            values["mount_motion_image_degradation_az"] = mountErrors["image_az_rms"]
+            values["mount_motion_image_degradation_el"] = mountErrors["image_el_rms"]
+
+            az_rms = mountErrors["az_rms"]
+            el_rms = mountErrors["el_rms"]
+            mountError = (az_rms**2 + el_rms**2) ** 0.5
+            values["mount_jitter_rms"] = mountError
+            values["mount_jitter_rms_az"] = mountErrors["az_rms"]
+            values["mount_jitter_rms_el"] = mountErrors["el_rms"]
+            values["mount_jitter_rms_rot"] = mountErrors["rot_rms"]
+        else:
+            raise TypeError(f"Expected MountErrors or dict, got {type(mountErrors)}")
 
         table = f"cdb_{instrument.lower()}.exposure_quicklook"
         self.client.insert(

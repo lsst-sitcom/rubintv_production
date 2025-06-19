@@ -19,45 +19,31 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.aos import RadialPlotter
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
+instrument = "LSSTCam"
+
 setupLogging()
-instrument = "LSSTComCamSim"
+
 locationConfig = getAutomaticLocationConfig()
-
-workerNum = getPodWorkerNumber()
-podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.STEP2A_WORKER, detectorNumber=None, depth=workerNum
-)
-print(
-    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
-    f"consuming from {podDetails.queueName}..."
-)
-
 butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
+    locationConfig.lsstCamButlerPath,
     instrument=instrument,
     collections=[
-        "LSSTComCamSim/defaults",
+        f"{instrument}/defaults",
+        locationConfig.getOutputChain(instrument),
     ],
-    writeable=True,
 )
+print(f"Running psf plotter launcher at {locationConfig.location}")
 
-step2aRunner = SingleCorePipelineRunner(
+queueName = f"{instrument}-RADIALPLOTTER"
+radialPlotter = RadialPlotter(  # XXX needs type annotations adding and moving to podDetails
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
-    step="step2a",
-    awaitsDataProduct=None,
-    podDetails=podDetails,
-    doRaise=getDoRaise(),
+    queueName=queueName,
 )
-step2aRunner.run()
-sys.exit(1)  # run is an infinite loop, so we should never get here
+radialPlotter.run()

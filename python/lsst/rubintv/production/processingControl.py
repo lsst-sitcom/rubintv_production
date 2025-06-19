@@ -22,10 +22,9 @@
 from __future__ import annotations
 
 import enum
-import json
 import logging
+import sys
 import time
-from ast import literal_eval
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
@@ -48,6 +47,7 @@ from lsst.daf.butler import (
 from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: DM-XXXXX fix this import
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
+from lsst.pex.config.configurableField import ConfigurableInstance
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
@@ -59,6 +59,7 @@ from .timing import BoxCarTimer
 from .utils import (
     LocationConfig,
     getShardPath,
+    isCalibration,
     isWepImage,
     raiseIf,
     writeExpRecordMetadataShard,
@@ -69,6 +70,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from lsst.afw.cameraGeom import Detector
+    from lsst.pipe.base import PipelineTaskConfig
+    from lsst.pipe.base.pipeline_graph import TaskNode
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -264,6 +267,34 @@ def getIsrConfigDict(graph: PipelineGraph) -> dict[str, str]:
     return isrDict
 
 
+def configToReadableDict(config: PipelineTaskConfig) -> dict[str, str]:
+    """Convert a config to a readable dict.
+
+    Currently just removes boring things like connections, but allows for easy
+    extension as we see how other configs serialize.
+
+    Parameters
+    ----------
+    config : `lsst.pipe.base.PipelineTaskConfig`
+        The config to convert to a readable dict.
+
+    Returns
+    -------
+    readable : `dict` [`str`, `str`]
+        The config as a dict of strings.
+    """
+    SKIP = ["connections"]
+    readable = {}
+    for k, v in config.items():
+        if k in SKIP:
+            continue
+        if isinstance(v, ConfigurableInstance):
+            readable[k] = repr(v.value)
+        else:
+            readable[k] = repr(v)
+    return readable
+
+
 def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardDir: str) -> None:
     """Write the ISR config to a shard.
 
@@ -276,11 +307,72 @@ def writeIsrConfigShard(expRecord: DimensionRecord, graph: PipelineGraph, shardD
     writeMetadataShard(shardDir, expRecord.day_obs, {expRecord.seq_num: {"ISR config": isrDict}})
 
 
+def writeAosConfigShards(
+    expRecord: DimensionRecord, pipelineComponents: PipelineComponents, shardDir: str, pipelineName: str
+) -> None:
+    """Write all the requested the AOS tasks configs out the AOS page.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to process.
+    pipelineComponents : `PipelineComponents`
+        The pipeline components to use.
+    shardDir : `str`
+        The directory to write the shards to.
+    """
+    graph = pipelineComponents.graphs["step1a"]
+
+    writeMetadataShard(shardDir, expRecord.day_obs, {expRecord.seq_num: {"Pipeline name": pipelineName}})
+
+    czTasks = [task for name, task in graph.tasks.items() if "zern" in name.lower()]
+    if czTasks:
+        czTask = czTasks[0]
+        readableConfig = configToReadableDict(czTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir, expRecord.day_obs, {expRecord.seq_num: {"CalcZernikes config": readableConfig}}
+        )
+
+    generateDonutTasks = [task for name, task in graph.tasks.items() if "generatedonut" in name.lower()]
+    if generateDonutTasks:
+        generateDonutTask = generateDonutTasks[0]
+        readableConfig = configToReadableDict(generateDonutTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir,
+            expRecord.day_obs,
+            {expRecord.seq_num: {"GenerateDonutDirectDetectTask config": readableConfig}},
+        )
+
+    cutoutDonutTasks = [task for name, task in graph.tasks.items() if "cutoutdonutscwfs" in name.lower()]
+    if cutoutDonutTasks:
+        cutoutDonutTask = cutoutDonutTasks[0]
+        readableConfig = configToReadableDict(cutoutDonutTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir, expRecord.day_obs, {expRecord.seq_num: {"CutOutDonutsCwfsPair config": readableConfig}}
+        )
+
+    cutoutDonutScienceSensorTasks = [
+        task for name, task in graph.tasks.items() if "cutoutdonutssciencesensorgroup" in name.lower()
+    ]
+    if cutoutDonutScienceSensorTasks:
+        cutoutDonutScienceSensorTask = cutoutDonutScienceSensorTasks[0]
+        readableConfig = configToReadableDict(cutoutDonutScienceSensorTask.config)
+        readableConfig["DISPLAY_VALUE"] = "📖"
+        writeMetadataShard(
+            shardDir,
+            expRecord.day_obs,
+            {expRecord.seq_num: {"CutOutDonutsScienceSensorGroup config": readableConfig}},
+        )
+
+
 def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
-    """Get the last task that runs in step2, to know when to trigger rollup.
+    """Get the last task that runs in step1b, to know when to trigger rollup.
 
     This is the task which is run when a decetor-exposure is complete, and
-    which therefore means it's time to trigger the step2a processing if all
+    which therefore means it's time to trigger the step1b processing if all
     quanta are complete.
 
     Parameters
@@ -292,7 +384,7 @@ def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
     Returns
     -------
     taskName : `str`
-        The task which triggers step2a processing.
+        The task which triggers step1b processing.
     """
     # TODO: See if this can be removed entirely now we have finished counters
     if "nightly-validation" in pipelineFile:
@@ -301,6 +393,86 @@ def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
         return "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask"
     else:
         raise ValueError(f"Unsure how to trigger nightly rollup when {pipelineFile=}")
+
+
+def buildPipelines(
+    instrument: str,
+    locationConfig: LocationConfig,
+    butler: Butler,
+) -> tuple[list[PipelineGraph], dict[str, PipelineComponents]]:
+    """Build the pipeline graphs from the pipeline file.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The name of the instrument.
+    locationConfig : `LocationConfig`
+        The location config object.
+    butler : `lsst.daf.butler.Butler`
+        The butler object.
+
+    Returns
+    -------
+    pipelineGraphs : `list` [`lsst.pipe.base.PipelineGraph`]
+        The `PipelineGraph`s, as a list.
+    pipelines : `dict` [`str`, `PipelineComponents`]
+        The `PipelineComponent`s as a dict, keyed by the overall pipeline names
+        e.g. "SFM", "ISR", "AOS" etc.
+    """
+    pipelines: dict[str, PipelineComponents] = {}
+    sfmPipelineFile = locationConfig.getSfmPipelineFile(instrument)
+    aosFileDanish = locationConfig.aosLSSTCamPipelineFileDanish
+    aosFileTIE = locationConfig.aosLSSTCamPipelineFileTie
+    aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
+    aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
+
+    drpPipeDir = getPackageDir("drp_pipe")
+    biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
+    darkFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookDark.yaml").as_posix()
+    flatFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookFlat.yaml").as_posix()
+
+    pipelines["BIAS"] = PipelineComponents(butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"])
+    pipelines["DARK"] = PipelineComponents(butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"])
+    pipelines["FLAT"] = PipelineComponents(butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"])
+    pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"], ["step1a"])
+
+    if instrument == "LATISS":
+        # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
+        pipelines["SFM"] = PipelineComponents(
+            butler.registry,
+            sfmPipelineFile,
+            ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
+            ["step1a", "step1b"],
+        )
+    else:
+        # TODO: remove nightlyrollup
+        pipelines["SFM"] = PipelineComponents(
+            butler.registry,
+            sfmPipelineFile,
+            ["step1a-single-visit-detectors", "step1b-single-visit-visits", "step1d-single-visit-global"],
+            ["step1a", "step1b", "nightlyRollup"],
+        )
+        # NOTE: there is no dict entry for LATISS for AOS as AOS runs
+        # differently there. It might change in the future, but not soon.
+        pipelines["AOS_DANISH"] = PipelineComponents(
+            butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_TIE"] = PipelineComponents(
+            butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+
+        pipelines["AOS_FAM_TIE"] = PipelineComponents(
+            butler.registry, aosFileTIEFam, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_FAM_DANISH"] = PipelineComponents(
+            butler.registry, aosFileDanishFam, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+
+    allGraphs: list[PipelineGraph] = []
+    for pipeline in pipelines.values():
+        allGraphs.extend(pipeline.graphs.values())
+
+    return allGraphs, pipelines
 
 
 @dataclass
@@ -326,6 +498,7 @@ class PipelineComponents:
     graphBytes: dict[str, bytes]
     uris: dict[str, str]
     steps: list[str]
+    stepAliases: list[str]
     pipelineFile: str
 
     def __init__(
@@ -333,34 +506,51 @@ class PipelineComponents:
         registry: Registry,
         pipelineFile: str,
         steps: list[str],
-        overrides: list[tuple[str, str, str]] | None = None,
+        stepAliases: list[str],
+        overrides: list[tuple[str, str, object]] | None = None,
     ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
         self.pipelineFile = pipelineFile
+        self.stepAliases = stepAliases
 
-        for step in steps:
-            self.uris[step] = pipelineFile + f"#{step}"
-            pipeline = Pipeline.fromFile(self.uris[step])
+        if len(steps) != len(stepAliases):
+            raise ValueError(
+                f"Number of steps ({len(steps)}) does not match number of step names ({len(stepAliases)})"
+            )
+
+        for stepAlias, step in zip(stepAliases, steps):
+            self.uris[stepAlias] = pipelineFile + f"#{step}"
+            pipeline = Pipeline.fromFile(self.uris[stepAlias])
+
             if overrides:
                 for override in overrides:
                     if override[0] in pipeline.task_labels:
                         pipeline.addConfigOverride(*override)
-            self.graphs[step] = pipeline.to_graph(registry=registry)
-            self.graphBytes[step] = pipelineGraphToBytes(self.graphs[step])
+            self.graphs[stepAlias] = pipeline.to_graph(registry=registry)
+            self.graphBytes[stepAlias] = pipelineGraphToBytes(self.graphs[stepAlias])
 
         self.steps = steps
+
+    def getTasks(self) -> dict[str, TaskNode]:
+        """Get the tasks in the pipeline graph.
+
+        Returns
+        -------
+        tasks : `dict` [`str`, `PipelineGraph`]
+            The tasks in the pipeline graph.
+        """
+        tasks: dict[str, TaskNode] = {}
+        for stepAlias in self.stepAliases:
+            tasks.update(self.graphs[stepAlias].tasks)
+        return tasks
 
 
 class HeadProcessController:
     """The head node, which controls which pods process which images.
 
     Decides how and when each detector-visit is farmed out.
-
-    Despite being the head node, the behaviour of this controller can be
-    remotely controlled by a RemoteController, for example to change the
-    processing strategy from a notebook or from LOVE.
     """
 
     targetLoopDuration = 0.2  # in seconds, so 5Hz
@@ -384,7 +574,6 @@ class HeadProcessController:
         )
         self.workerMode = WorkerProcessingMode.WAITING
         self.visitMode = VisitProcessingMode.CONSTANT
-        self.remoteController = RemoteController(butler=butler, locationConfig=locationConfig)
         # don't start here, the event loop starts the lap timer
         self.workTimer = BoxCarTimer(length=100)
         self.loopTimer = BoxCarTimer(length=100)
@@ -394,9 +583,11 @@ class HeadProcessController:
         self.doRaise = doRaise
         self.nDispatched: int = 0
         self.nNightlyRollups: int = 0
+        self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
+        self.currentAosFamPipeline = "AOS_FAM_DANISH"  # ignored for ComCam
 
         if self.focalPlaneControl is not None:
-            if self.locationConfig.location == "base":
+            if self.locationConfig.location == "bts":
                 # five on a dice pattern in the middle, plus AOS chips
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setRaftOn("R22")
@@ -404,12 +595,31 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R11")
                 self.focalPlaneControl.setRaftOn("R13")
                 self.focalPlaneControl.setRaftOn("R31")
+            if self.locationConfig.location == "usdf_testing":
+                # For the CI suite - might be good to find a better way of
+                # controlling this but this is fine for gettin it working
+                self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setRaftOn("R22")  # central raft
+                self.focalPlaneControl.setRaftOn("R33")  # one more for luck because of 0, 1, inf.
             else:
                 self.focalPlaneControl.setWavefrontOn()
                 self.focalPlaneControl.setAllImagingOn()
 
-        self.pipelines: dict[str, PipelineComponents] = {}
-        self.buildPipelines()
+            # set the current state of selected detectors in redis. Could
+            # change this to resume from redis now, if we wanted to, but coming
+            # up in a clean and predictable state is probably preferable for
+            # now
+            self.redisHelper.setDetectorsIgnoredByHeadNode(
+                self.instrument, self.focalPlaneControl.getDisabledDetIds(excludeCwfs=True)
+            )
+
+        allGraphs, pipelines = buildPipelines(
+            instrument=instrument,
+            locationConfig=locationConfig,
+            butler=butler,
+        )
+        self.allGraphs = allGraphs
+        self.pipelines = pipelines
 
         if outputChain is None:
             # allows it to be user specified, or use the default from the site
@@ -424,54 +634,6 @@ class HeadProcessController:
             f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
             f"Data will be writen data to {self.outputRun}"
         )
-
-    def buildPipelines(self) -> None:
-        """Build the pipeline graphs from the pipeline file.
-
-        This is a separate method so that it can be called after the
-        RemoteController has been set up, which is needed for the AOS pipeline.
-        """
-        sfmPipelineFile = self.locationConfig.getSfmPipelineFile(self.instrument)
-        aosPipelineFile = self.locationConfig.getAosPipelineFile(self.instrument)
-
-        cpVerifyDir = getPackageDir("cp_verify")
-        biasFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyBias.yaml").as_posix()
-        darkFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyDark.yaml").as_posix()
-        flatFile = (Path(cpVerifyDir) / "pipelines" / self.instrument / "verifyFlat.yaml").as_posix()
-        self.pipelines["BIAS"] = PipelineComponents(
-            self.butler.registry,
-            biasFile,
-            ["verifyBiasIsr"],
-            overrides=[("verifyBiasIsr", "connections.outputExposure", "postISRCCD")],
-        )
-        self.pipelines["DARK"] = PipelineComponents(
-            self.butler.registry,
-            darkFile,
-            ["verifyDarkIsr"],
-            overrides=[("verifyDarkIsr", "connections.outputExposure", "postISRCCD")],
-        )
-        self.pipelines["FLAT"] = PipelineComponents(
-            self.butler.registry,
-            flatFile,
-            ["verifyFlatIsr"],
-            overrides=[("verifyFlatIsr", "connections.outputExposure", "postISRCCD")],
-        )
-
-        self.pipelines["ISR"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["isr"])
-        if self.instrument == "LATISS":
-            self.pipelines["SFM"] = PipelineComponents(self.butler.registry, sfmPipelineFile, ["step1"])
-        else:
-            self.pipelines["SFM"] = PipelineComponents(
-                self.butler.registry, sfmPipelineFile, ["step1", "step2a", "nightlyRollup"]
-            )
-            # TODO: see if this will matter that this component doesn't exist
-            self.pipelines["AOS"] = PipelineComponents(
-                self.butler.registry, aosPipelineFile, ["step1", "step2a"]
-            )
-
-        self.allGraphs: list[PipelineGraph] = []
-        for pipeline in self.pipelines.values():
-            self.allGraphs.extend(pipeline.graphs.values())
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         packages = Packages.fromSystem()
@@ -532,6 +694,49 @@ class HeadProcessController:
             return True
         return False
 
+    def updateConfigsFromRubinTV(self) -> None:
+        if self.instrument != "LSSTCam":
+            # TODO: Only the LSSTCam head node should consume these, and this
+            # is a solution, but it's not a very good one. Need frontend
+            # changes to do better though
+            return
+
+        # do this first so that any other commands take effect upon restart
+        if self.redisHelper.redis.getdel("RUBINTV_CONTROL_RESET_HEAD_NODE"):
+            self.log.warning("Received reset command from RubinTV, restarting the head node...")
+            sys.exit(0)
+
+        _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
+        if _aosPipeline is not None:
+            aosOverride = _aosPipeline.decode()
+            if aosOverride != self.currentAosPipeline:
+                # comes as 'tie' or 'danish'
+                aosOverride = f"AOS_{aosOverride.upper()}"
+                aosFamOverride = f"AOS_FAM_{aosOverride.upper()}"
+                # Note: always keep currentAosPipeline and
+                # currentAosFamPipeline as the same flavour
+                self.currentAosPipeline = aosOverride
+                self.currentAosFamPipeline = aosFamOverride
+                self.log.info(f"Now running AOS: {self.currentAosPipeline}")
+            else:
+                self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
+
+        _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
+        if _processingMode is not None:
+            processingMode = _processingMode.decode()
+            self.log.warning(f"Received new visit processing mode: {processingMode} but not implemented yet")
+
+        _ccConfig = self.redisHelper.redis.getdel("RUBINTV_CONTROL_CHIP_SELECTION")
+        if _ccConfig is not None:
+            ccConfig = _ccConfig.decode()
+            if self.focalPlaneControl is not None:
+                self.log.info(f"Applying new chip selection config: {ccConfig}")
+                self.focalPlaneControl.applyNamedPattern(ccConfig)
+                self.log.info(f"{self.focalPlaneControl.getEnabledDetIds()} now enabled")
+                self.redisHelper.setDetectorsIgnoredByHeadNode(
+                    self.instrument, self.focalPlaneControl.getDisabledDetIds(excludeCwfs=True)
+                )
+
     def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
         freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
         freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
@@ -545,12 +750,138 @@ class HeadProcessController:
         # worker in the stack.
         busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         try:
+            if len(busyWorkers) == 0:
+                self.log.error(f"No free or busy workers available for {podFlavor=}, cannot dispatch work.")
+                return None
+
             busyWorker = busyWorkers[-1]
             self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
             return busyWorker
         except IndexError as e:
-            raiseIf(self.doRaise, e, self.log)
+            raiseIf(self.doRaise, e, self.log, msg=f"No workers AT ALL for {podFlavor=}")
             return None
+
+    def getPipelineConfig(self, expRecord: DimensionRecord) -> tuple[bytes, PipelineGraph, str]:
+        """Get the pipeline config for the given expRecord.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process.
+
+        Returns
+        -------
+        targetPipelineBytes : `bytes`
+            The pipeline graph as bytes.
+        targetPipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+        who : `str`
+            Who this processing is for, either "ISR" or "SFM", "AOS"
+        """
+
+        # run isr only for calibs, otherwise run the appropriate step1a
+        targetPipelineBytes: bytes = b""
+        imageType = expRecord.observation_type.lower()
+
+        # TODO: DM-50003 Make this data-driven dispatch config instead of code
+        match imageType:
+            case "bias":
+                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
+                targetPipelineBytes = self.pipelines["BIAS"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["BIAS"].graphs["step1a"]
+                who = "ISR"
+            case "dark":
+                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style dark processing")
+                targetPipelineBytes = self.pipelines["DARK"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["DARK"].graphs["step1a"]
+                who = "ISR"
+            case "flat":
+                self.log.info(f"Sending {expRecord.id} {imageType=}  to for cp_verify style flat processing")
+                targetPipelineBytes = self.pipelines["FLAT"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["FLAT"].graphs["step1a"]
+                who = "ISR"
+            case "unknown":
+                self.log.info(f"Sending {expRecord.id} {imageType=} for full ISR processing")
+                targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["ISR"].graphs["step1a"]
+                who = "ISR"
+            case _:  # all non-calib, properly headered images
+                self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
+                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines["SFM"].graphs["step1a"]
+                who = "SFM"
+
+        return targetPipelineBytes, targetPipelineGraph, who
+
+    def doAosFanout(self, expRecord: DimensionRecord) -> None:
+        """Send the CWFS sensors out for AOS processing. LSSTCam only.
+
+        Hard-codes always sending this to all 8 CWFS detectors (191, 192, 195,
+        196, 199, 200, 203, 204).
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process.
+        """
+        if expRecord.instrument in ["LATISS", "LSSTComCam"]:
+            return
+        assert self.focalPlaneControl is not None  # just for mypy
+
+        aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+        if not isCalibration(expRecord):
+            targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
+            writeAosConfigShards(
+                expRecord, self.pipelines[self.currentAosPipeline], aosShardPath, self.currentAosPipeline
+            )
+            who = "AOS"
+        else:
+            # send the detectors to the AOS workers for normal ISR processing
+            targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
+            who = "ISR"
+
+        detectorPairs = self.focalPlaneControl.getIntraExtraFocalPairs()
+
+        payloads: dict[int, Payload] = {}
+        for det1, det2 in detectorPairs:
+            dataId1 = DataCoordinate.standardize(expRecord.dataId, detector=det1)
+            dataId2 = DataCoordinate.standardize(expRecord.dataId, detector=det2)
+            self.log.debug("AOS paired dispatch:")
+            self.log.debug(f"{dataId1=}")
+            self.log.debug(f"{dataId2=}")
+            payload = Payload(
+                dataIds=[dataId1, dataId2],
+                pipelineGraphBytes=targetPipelineBytes,
+                run=self.outputRun,
+                who=who,
+            )
+            # TODO: indexing payloads by only det1 wastes half the worker pool
+            # the way it's currently done. If this stays the way we do things,
+            # fix this.
+            payloads[det1] = payload
+
+        # TODO: Again just key on the first of the pair for downstream - the
+        # count needs to be the number of processings which will finish so
+        # that's 4 not 8 and there's no need to compoundify them as they're
+        # only counted in dispatchGatherSteps
+        self.redisHelper.writeDetectorsToExpect(
+            self.instrument, expRecord.id, list(d[0] for d in detectorPairs), "AOS"
+        )
+        # AOS is running ISR (for now, at least) so we need to write that we
+        # expected the detectors from that processing too.
+        cwfsDets = list(self.focalPlaneControl.CWFS_NUMS)
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, cwfsDets, "ISR")
+        self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
+
+        # NOTE: probably want a segregated pool for AOS processing when we go
+        # to dynamic allocation - SFM shouldn't be able to bog down the AOS
+        # pool
+        self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+
+        # TODO: Consider whether this should move to the expRecord getting
+        # function, or the event loop, or if this is OK. If this really does
+        # fire for every image this is probably fine.
+        writeExpRecordMetadataShard(expRecord, aosShardPath)
 
     def doDetectorFanout(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -560,53 +891,32 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        # run isr only for calibs, otherwise run the appropriate step1
-        targetPipelineBytes: bytes = b""
+        # AOS first
+        self.doAosFanout(expRecord)
 
-        imageType = expRecord.observation_type.lower()
+        # data driven section
+        targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
         shardPath = getShardPath(self.locationConfig, expRecord)
-
-        # TODO: DM-50003 Make this data-driven dispatch config instead of code
-        match imageType:
-            case "bias":
-                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
-                targetPipelineBytes = self.pipelines["BIAS"].graphBytes["verifyBiasIsr"]
-                targetPipelineGraph = self.pipelines["BIAS"].graphs["verifyBiasIsr"]
-                who = "ISR"
-            case "dark":
-                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style dark processing")
-                targetPipelineBytes = self.pipelines["DARK"].graphBytes["verifyDarkIsr"]
-                targetPipelineGraph = self.pipelines["DARK"].graphs["verifyDarkIsr"]
-                who = "ISR"
-            case "flat":
-                self.log.info(f"Sending {expRecord.id} {imageType=}  to for cp_verify style flat processing")
-                targetPipelineBytes = self.pipelines["FLAT"].graphBytes["verifyFlatIsr"]
-                targetPipelineGraph = self.pipelines["FLAT"].graphs["verifyFlatIsr"]
-                who = "ISR"
-            case "unknown":
-                self.log.info(f"Sending {expRecord.id} {imageType=} for full ISR processing")
-                targetPipelineBytes = self.pipelines["ISR"].graphBytes["isr"]
-                targetPipelineGraph = self.pipelines["ISR"].graphs["isr"]
-                who = "ISR"
-            case _:  # all non-calib, properly headered images
-                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1"]
-                targetPipelineGraph = self.pipelines["SFM"].graphs["step1"]
-                who = "SFM"
-
-        writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
+        writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)  # all pipelines contain an ISR step
 
         detectorIds: list[int] = []
         nEnabled = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
-            detectorIds = self.focalPlaneControl.getEnabledDetIds()
+            # excludeCwfs=True if we sent them to AOS
+            detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
             nEnabled = len(detectorIds)
         else:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, who)
+
+        namedPattern = self.focalPlaneControl.currentNamedPattern if self.focalPlaneControl else None
         self.log.info(
             f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
-            f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'}."
+            f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'} "
+            f"{' with named pattern ' + namedPattern if namedPattern else ''}"
         )
 
         payloads: dict[int, Payload] = {}
@@ -622,23 +932,52 @@ class HeadProcessController:
 
         self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
-    def doStep1FanoutAos(self, expRecords: list[DimensionRecord]) -> None:
+    def doDonutPairFanout(self) -> None:
         """Send the expRecord out for processing based on current selection.
+
+        This is ONLY for full-focal-plane intra-focal, extra-focal pairs where
+        the processing is triggered by OCS (vis OCPS sending a redis signal).
+
+        It appropriates the entire cluster for the processing of these pairs,
+        so uses the SFM worker pool, and the AOS pipeline graph.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
+        donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
+        if donutPair is None:
+            return
+
+        self.log.info(f"Found a donut pair trigger for {donutPair}")
+        (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
+        (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
+        aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
+        writeExpRecordMetadataShard(record1, aosShardPath)
+        writeExpRecordMetadataShard(record2, aosShardPath)
+
+        expRecords = [record1, record2]
+
+        # define visits here for the edge case that the donut pair
+        # signal arrives before the getNewExposureAndDefineVisit
+        # call in the main loop
+        defineVisit(self.butler, record1)
+        defineVisit(self.butler, record2)
+
         # just some basic sanity checking
         instruments = list(set([expRecord.instrument for expRecord in expRecords]))
         assert len(instruments) == 1, f"Expected all expRecords to have same instrument, got {instruments=}"
         instrument = instruments[0]
         assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
 
-        self.log.info(f"Sending {[r.id for r in expRecords]} to WEP pipeline")
-        targetPipelineBytes = self.pipelines["AOS"].graphBytes["step1"]
-        targetPipelineGraph = self.pipelines["AOS"].graphs["step1"]
+        self.log.info(f"Sending {[r.id for r in expRecords]} to {self.currentAosFamPipeline} pipeline")
+        targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
+        targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
+        # record pipeline config via the first id for interoperability with
+        # CWFS processing. This is just so the step1b dispatch knows what the
+        # active pipeline was
+        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosFamPipeline)
 
         # deliberately do NOT set isAos=True here because we want this written
         # to the main table, not the AOS page on RubinTV
@@ -646,13 +985,17 @@ class HeadProcessController:
             shardPath = getShardPath(self.locationConfig, expRecord)
             writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
 
-        # this block will be different when we're observing with LSSTCam the
-        # triggering will be too, because it'll be for every image so at that
-        # point consider making this part of the normal step1 fanout
+        assert self.focalPlaneControl is not None  # just for mypy
+        # excludeCwfs because they get normal fanout to CWFS pipelines
+        detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
 
-        detectorIds = []
-        results = list(set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument)))
-        detectorIds = cast(list[int], sorted([item["detector"] for item in results]))
+        identifier = "+".join(str(r.id) for r in expRecords)
+        self.redisHelper.writeDetectorsToExpect(self.instrument, identifier, detectorIds, "AOS")
+        for expRecord in expRecords:
+            # send expect signal with who=ISR for single expIds as these are
+            # for the focal plane mosaicing, and send above with who=AOS as
+            # + joined above, as this is the real dispatch
+            self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
 
         dataIds: dict[int, list[DataCoordinate]] = {}
         for detectorId in detectorIds:
@@ -676,7 +1019,9 @@ class HeadProcessController:
             f" {len(detectorIds)} detectors"
         )
 
-        self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+        # SFM_WORKER set here deliberately as we're appropriating the entire
+        # cluster for this processing.
+        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
     def _dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
         """Distribute payloads to available workers based on detector IDs.
@@ -717,11 +1062,14 @@ class HeadProcessController:
                 self._dispatchPayloads(payloads, podFlavor)
                 return
 
+        sentToBusy = 0
+        sentToFree = 0
+        notDispatched = 0
         for detectorId, payload in payloads.items():
             matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
             if matchingFreeWorkers:
                 worker = matchingFreeWorkers[0]
-                self.log.info(f"Sending {detectorId=} to free worker {worker.queueName} for {payload.who}")
+                sentToFree += 1
                 self.redisHelper.enqueuePayload(payload, worker)
                 continue
 
@@ -730,20 +1078,24 @@ class HeadProcessController:
                 matchingBusyWorkers = [w for w in busyWorkers if w.detectorNumber == detectorId]
                 if matchingBusyWorkers:
                     worker = matchingBusyWorkers[0]
-                    self.log.warning(
-                        f"No free workers available for {detectorId=},"
-                        f" sending to busy worker {worker.queueName}"
-                    )
+                    sentToBusy += 1
                     self.redisHelper.enqueuePayload(payload, worker)
                     continue
                 else:
-                    # Consider changing this to a log.exception for production,
-                    # but this should be a raise while we're configuring things
-                    # for LSSTCam
-                    raise RuntimeError(
-                        f"No workers (not even busy ones) available for {detectorId=},",
+                    notDispatched += 1
+                    self.log.error(
+                        f"No workers (not even busy ones) available for {detectorId=},"
                         f" cannot dispatch process for {payload.who}",
                     )
+
+        allWhos = {p.who for p in payloads.values()}
+        whos = ",".join(sorted(allWhos))
+        mixed = "" if len(allWhos) == 1 else "mixed "
+        self.log.info(
+            f"Sent {sentToFree} {mixed}payloads to free workers, {sentToBusy} to busy workers for {whos}"
+        )
+        if notDispatched:
+            self.log.error(f"Failed to dispatch {notDispatched} {mixed}payloads for {whos}")
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -798,17 +1150,29 @@ class HeadProcessController:
             case _:
                 raise ValueError(f"Unknown visit processing mode {self.visitMode=}")
 
-    def getNumExpected(self, instrument: str) -> int:
-        if instrument in ("LSSTComCam", "LSSTComCamSim"):
-            return 9
-        elif instrument == "LSSTCam":
-            # TODO: probably should redirect this to utils.py
-            # getNumExpectedItems() soon, but that will need to be
-            # site-dependent to properly work, and we also need Tony to start
-            # writing out the expected sensors file too, before it's useful on
-            # the summit.
-            return 189
-        raise ValueError(f"Unknown instrument {instrument=}")
+    def dispatchVisitImageMosaic(self, visitId: int) -> None:
+        """Dispatch a preliminary_visit_image mosaic for the given visitId.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The visit ID to dispatch the preliminary_visit_image mosaic for.
+        """
+        dataProduct = "preliminary_visit_image"
+        self.log.info(f"Dispatching complete {dataProduct} mosaic for {visitId}")
+
+        dataCoord = DataCoordinate.standardize(
+            instrument=self.instrument, visit=visitId, universe=self.butler.dimensions
+        )
+
+        # TODO: this abuse of Payload really needs improving
+        payload = Payload([dataCoord], b"", dataProduct, who="SFM")
+        worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+        if worker is None:
+            self.log.warning(f"No workers AT ALL for {dataProduct} mosaic - should be impossible, check k8s")
+            return
+        self.redisHelper.enqueuePayload(payload, worker)
+        return
 
     def dispatchGatherSteps(self, who: str) -> bool:
         """Dispatch any gather steps as needed.
@@ -821,27 +1185,32 @@ class HeadProcessController:
         dispatchedWork : `bool`
             Was anything sent out?
         """
-        if self.instrument == "LATISS":  # no gather type steps for single chip cameras
-            return False
-
-        assert who in ("SFM", "AOS"), f"Unknown pipeline {who=}"
-        processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1", who=who)
+        assert who in ("SFM", "AOS", "ISR"), f"Unknown pipeline {who=}"
+        processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1a", who=who)
 
         if not processedIds:
             return False
 
-        completeIds = []
+        completeIds: list[str] = []
         for idStr in processedIds:
-            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1", who, idStr)
-            if nFinished == self.getNumExpected(self.instrument):
+            # idStr is "<int>" or "<int>+<int"> for AOS pairs
+            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, idStr)
+            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, idStr, who))
+            if nFinished >= nExpected:
                 completeIds.append(idStr)
+            if nFinished > nExpected:
+                self.log.warning(
+                    f"Found {nFinished} step1as finished for {idStr=}, but expected {nExpected} for {who=}"
+                )
 
         if not completeIds:
             return False
 
-        podFlavour = PodFlavor.STEP2A_AOS_WORKER if who == "AOS" else PodFlavor.STEP2A_WORKER
+        # let isr dispatch to the step1b workers anyway, they'll just drop
+        # everything due to a lack of quanta
+        podFlavour = PodFlavor.STEP1B_AOS_WORKER if who == "AOS" else PodFlavor.STEP1B_WORKER
 
-        self.log.debug(f"For {who}: Found {completeIds=} for step1 for {who}")
+        self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
 
         for idStr in completeIds:
             # idStr is a list of visitIds as a string with a + separator if AOS
@@ -855,28 +1224,76 @@ class HeadProcessController:
                 for intId in intIds
             ]
 
-            payload = Payload(
-                dataIds=dataCoords,
-                pipelineGraphBytes=self.pipelines[who].graphBytes["step2a"],
-                run=self.outputRun,
-                who=who,
-            )
+            if who == "AOS":  # get the full AOS_XXX name for this exposure
+                # Note: does not break the paired-processing because we always
+                # record the config via the first id. Therefore always retrieve
+                # the config for the first id.
+                whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, intIds[0])
+                # whoToUse takes values like "AOS_DANISH" or "AOS_FAM_TIE"
+                if whoToUse is None:
+                    self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
+                    continue
+            else:
+                whoToUse = who
 
-            worker = self.getSingleWorker(self.instrument, podFlavour)
-            if not worker:
-                self.log.warning(f"No worker available for {who} step2a")
-                return False
-            self.log.info(f"Dispatching step2a for {who} with complete inputs: {dataCoords} to {worker}")
-            self.redisHelper.enqueuePayload(payload, worker)
-            self.log.debug(f"Removing step1 finished counter for {idStr=}")
-            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1", who, idStr)
+            if self.pipelines[whoToUse].graphBytes.get("step1b") is not None:  # no step1b dispatch for ISR
+                visitRecord = None
+                try:  # not used, but checks whether this payload is even usable downstream
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoords[0])
+                except ValueError:
+                    # note: do not ``continue`` here, because there's other
+                    # bits that still need to run later on - this is why we use
+                    # a visitRecord=None sentinel instead
+                    self.log.info(f"Skipping doomed step1b dispatch for {idStr=} due to lack of visit record")
+
+                if visitRecord is not None:
+                    payload = Payload(
+                        dataIds=dataCoords,
+                        pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
+                        run=self.outputRun,
+                        who=who,
+                    )
+                    worker = self.getSingleWorker(self.instrument, podFlavour)
+                    if not worker:
+                        self.log.warning(f"No worker available for {who} step1b")
+                        return False
+                    self.log.info(
+                        f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}"
+                    )
+                    self.redisHelper.enqueuePayload(payload, worker)
+                    if who == "AOS":
+                        intraId = visitRecord.id  # got from dataCoords[0] above so is intra
+                        numZernikesFinished = self.redisHelper.getNumDetectorLevelFinished(
+                            self.instrument, "step1a", who, idStr
+                        )
+                        self.redisHelper.sendZernikeCountToMTAOS(
+                            self.instrument, intraId, numZernikesFinished
+                        )
+
+            self.log.debug(f"Removing step1a finished counter for {idStr=}")
+            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
 
             # never dispatch this incomplete because it relies on a specific
             # detector having finished. It might have failed, but that's OK
             # because the one-off processor will time out quickly.
-            if who == "SFM":
-                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoords[0])
-                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_CALEXP_WORKER)
+            if who in ["SFM", "ISR"]:
+                # use exposure=dataCoords[0]["visit"] because we still want
+                # to dispatch one-off post-isr processing for non-on-sky
+                # images, and if you used dataId=dataCoords[0] that will fail
+                # if the visit isn't defined.
+                (expRecord,) = self.butler.registry.queryDimensionRecords(
+                    "exposure", exposure=dataCoords[0]["visit"]
+                )
+                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
+                if self.instrument != "LATISS" and who != "ISR":
+                    self.log.info(f"Dispatching the focal plane visit_image mosaic for {expRecord.id}")
+                    # TODO: this should be visitId but that's OK for now
+                    self.dispatchVisitImageMosaic(expRecord.id)
+
+                    self.log.info(f"Sending {expRecord.id} for one-off visit image processing")
+                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_VISITIMAGE_WORKER)
+                    self.log.info(f"Sending {expRecord.id} for radial plot processing")
+                    self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
             if who == "AOS":
                 for dataCoord in dataCoords:
                     (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
@@ -892,15 +1309,16 @@ class HeadProcessController:
         doRollup : `bool`
             Did we do another rollup?
         """
+        return False  # stop running rollups until we have some plots attached etc
         if self.instrument == "LATISS":
             # self.log.info("Consider making a one-off processor for
             # the night plots and dispatching it here")
             return False
 
-        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step2a", who="SFM")
+        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step1b", who="SFM")
         if numComplete > self.nNightlyRollups:
             self.log.info(
-                f"Found {numComplete - self.nNightlyRollups} more completed step2a's - "
+                f"Found {numComplete - self.nNightlyRollups} more completed step1b's - "
                 " dispatching them for nightly rollup"
             )
             self.nNightlyRollups = numComplete
@@ -918,7 +1336,7 @@ class HeadProcessController:
             return True
         return False
 
-    def dispatchFocalPlaneMosaics(self) -> None:
+    def dispatchPostIsrMosaic(self) -> None:
         """Dispatch the focal plane mosaic task.
 
         This will be dispatched to a worker which will then gather the
@@ -930,36 +1348,42 @@ class HeadProcessController:
             # happens in a one-off-processor instead for all round ease.
             return
 
-        triggeringTasks = ("lsst.ip.isr.isrTaskLSST.IsrTaskLSST", "binnedCalexpCreation")
-        dataProducts = ("postISRCCD", "calexp")
+        triggeringTask = "binnedIsrCreation"
+        dataProduct = "post_isr_image"
 
-        for triggeringTask, dataProduct in zip(triggeringTasks, dataProducts):
-            allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
-            completeIds = [
-                _id
-                for _id in allDataIds
-                if self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
-                == self.getNumExpected(self.instrument)
-            ]
-            if not completeIds:
+        allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
+
+        completeIds = []
+        for _id in allDataIds:
+            nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
+            expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
+            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR"))
+            if nFinished >= nExpected:
+                completeIds.append(_id)
+            if nFinished > nExpected:
+                msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"
+                self.log.warning(msg)
+
+        if not completeIds:
+            return
+
+        idString = (
+            f"{len(completeIds)} images: {completeIds}" if len(completeIds) > 1 else f"expId={completeIds[0]}"
+        )
+        self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
+
+        for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
+            # TODO: this abuse of Payload really needs improving
+            payload = Payload([dataId], b"", dataProduct, who="SFM")
+            worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+            if worker is None:
+                self.log.error(f"No free workers available for {dataProduct} mosaic")
                 continue
+            self.redisHelper.enqueuePayload(payload, worker)
+            self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
 
-            idString = (
-                f"{len(completeIds)} images: {completeIds}"
-                if len(completeIds) > 1
-                else f"expId={completeIds[0]}"
-            )
-            self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
-
-            for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
-                # TODO: this abuse of Payload really needs improving
-                payload = Payload([dataId], b"", dataProduct, who="SFM")
-                worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
-                if worker is None:
-                    self.log.error(f"No free workers available for {dataProduct} mosaic")
-                    continue
-                self.redisHelper.enqueuePayload(payload, worker)
-                self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+            self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 
     def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
@@ -973,9 +1397,13 @@ class HeadProcessController:
         self.loopTimer.lap()  # times the actual loop
         self.workTimer.lap()  # times the actual work done in the loop
 
-        # XXX there is a minor bug here in what the logs say but it's not
-        # serious enough for me to fix right now. I don't think it's affecting
-        # things.
+        # Get timing values once and reuse them
+        lastLap = self.loopTimer.lastLapTime()
+        lastWork = self.workTimer.lastLapTime()
+        assert lastLap is not None, "Expected lastLap to be set"
+        assert lastWork is not None, "Expected lastWork to be set"
+
+        # Log statistics periodically
         if self.loopTimer.totalLaps % 100 == 0:
             loopSpeed = self.loopTimer.median(frequency=True)
             maxLoopTime = self.loopTimer.max(frequency=False)
@@ -991,20 +1419,15 @@ class HeadProcessController:
                 f" workload of {maxWorkTime:.2f}s in the last {len(self.workTimer._buffer)} loops"
             )
 
-        lastLap = self.loopTimer.lastLapTime()
-        assert lastLap is not None, "Expected lastLap to be set"
         sleepPeriod = self.targetLoopDuration - lastLap
         if sleepPeriod > 0:
             self.workTimer.pause()  # don't count the sleeping towards the loop time on work timer
             sleep(sleepPeriod)
             self.workTimer.resume()
-        else:
-            if sleepPeriod < -0.05:  # allow some noise
-                lastLap = self.loopTimer.lastLapTime()
-                lastWork = self.workTimer.lastLapTime()
-                self.log.warning(
-                    f"Event loop running slow, last loop took {lastLap:.2f}s" f" with {lastWork:.2f}s of work"
-                )
+        elif sleepPeriod < -0.3:  # allow some noise and only warn when we're severely slow
+            self.log.warning(
+                f"Event loop running slow, last loop took {lastLap:.2f}s with {lastWork:.2f}s of work"
+            )
 
     @property
     def timeAlive(self) -> float:
@@ -1017,7 +1440,7 @@ class HeadProcessController:
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)
-            self.remoteController.executeRemoteCommands(self)  # look for remote control commands here
+            self.updateConfigsFromRubinTV()
 
             expRecord = self.getNewExposureAndDefineVisit()
             if expRecord is not None:
@@ -1026,25 +1449,13 @@ class HeadProcessController:
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
                     self.doDetectorFanout(expRecord)
-                    self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_POSTISR_WORKER)
 
-            if self.runningAos:  # only consume this queue once we switch from DonutLauncher to this approach
-                donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
-                if donutPair is not None:
-                    self.log.info(f"Found a donut pair trigger for {donutPair}")
-                    (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
-                    (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
-                    aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
-                    writeExpRecordMetadataShard(record1, aosShardPath)
-                    writeExpRecordMetadataShard(record2, aosShardPath)
-                    # define visits here for the edge case that the donut pair
-                    # signal arrives before the getNewExposureAndDefineVisit
-                    # call in the main loop
-                    defineVisit(self.butler, record1)
-                    defineVisit(self.butler, record2)
-                    self.doStep1FanoutAos([record1, record2])
+            try:
+                self.doDonutPairFanout()  # checks for pair signal and dispatches
+            except Exception as e:
+                self.log.exception(f"Failed during of donut PAIR fanout: {e}")
 
-            # for now, only dispatch to step2a once things are complete because
+            # for now, only dispatch to step1b once things are complete because
             # there is some subtlety in the dispatching incomplete things
             # because they will be dispatched again and again until they are
             # complete, and that will happen not when another completes, but at
@@ -1052,13 +1463,31 @@ class HeadProcessController:
             # with tracking that and dispatching only if the number has gone up
             # *and* there are 2+ free workers, because it's not worth
             # re-dispatching for every single new CCD exposure which finishes.
-            self.dispatchGatherSteps(who="SFM")
+            try:
+                self.dispatchGatherSteps(who="SFM")
+            except Exception as e:
+                self.log.exception(f"Failed during dispatch of gather steps for SFM: {e}")
 
-            self.dispatchGatherSteps(who="AOS")
+            try:
+                self.dispatchGatherSteps(who="AOS")
+            except Exception as e:
+                self.log.warning(f"Failed during dispatch of gather steps for AOS: {e}")
 
-            self.dispatchFocalPlaneMosaics()
+            try:  # there's no real step1b for ISR, but the one-off postISR
+                # trigger is in here, so this keeps the design more simple
+                self.dispatchGatherSteps(who="ISR")
+            except Exception as e:
+                self.log.exception(f"Failed during dispatch of gather steps for ISR: {e}")
 
-            self.dispatchRollupIfNecessary()
+            try:
+                self.dispatchPostIsrMosaic()
+            except Exception as e:
+                self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
+
+            try:
+                self.dispatchRollupIfNecessary()
+            except Exception as e:
+                self.log.exception(f"Failed during dispatch nightly rollup: {e}")
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
@@ -1069,154 +1498,12 @@ class HeadProcessController:
             self.regulateLoopSpeed()
 
 
-class RemoteController:
-    # TODO: consider removing this completely. There has to be a simpler way
-    # and this was basically a fun plane project
-    def __init__(self, butler: Butler, locationConfig: LocationConfig) -> None:
-        self.log = logging.getLogger("lsst.rubintv.production.processControl.RemoteController")
-        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-
-    def sendCommand(self, method: str, **kwargs) -> None:
-        """Execute the specified method on the head node with the specified
-        kwargs.
-
-        Note that all kwargs must be JSON serializable.
-        """
-        payload = {method: kwargs}
-        self.redisHelper.redis.lpush("commands", json.dumps(payload))
-
-    def executeRemoteCommands(self, parentClass):
-        """Execute commands sent from a RemoteController or LOVE.
-
-        Pops all remote commands from the stack and executes them as if they
-        were calls to this class itself. Remote code can therefore do anything
-        that this class itself can do, and furthermore, nothing that it cannot.
-
-        Parameters
-        ----------
-        parentClass : `obj`
-            The class which owns this ``RemoteController``, such that commands
-            can be executed on the parent object itself, rather than only on
-            the remote controller.
-        """
-        commandList = self.redisHelper.getRemoteCommands()
-        if commandList is None:
-            return
-
-        def getBottomComponent(obj, componentList):
-            """Get the bottom-most component of an object.
-
-            Given a part of compound object, get the part which is being
-            referred to, so for example, if passed
-            `someClass.somePart.otherPart.componentToGet` then return
-            `componentToGet` as an object, such that it can be called or set to
-            things, as appropriate.
-
-            Parameters
-            ----------
-            obj : `object`
-                The object to get the component from.
-            componentList : `list` of `str`
-                The drill-down list, so from the example above, this would be
-                ['somePart', 'otherPart', 'componentToGet']. Note it does not
-                include the name of the class itself, i.e. 'self'.
-            """
-            if len(componentList) == 0:
-                return obj
-            else:
-                return getBottomComponent(getattr(obj, componentList[0]), componentList[1:])
-
-        def parseCommand(command):
-            """Given a command, return the getting parts and the setting parts,
-            if any.
-
-            For example, 'focalPlane.setFullCheckerboard' is just components to
-            call, and would therefore return `['focalPlane',
-            'setFullCheckerboard'], None` and if the command were
-            'workerMode=WorkerProcessingMode.CONSUMING' this would return
-            `['workerMode'], ['WorkerProcessingMode.CONSUMING']`
-
-            Parameters
-            ----------
-            command : `str`
-                The command to parse.
-
-            Returns
-            -------
-            getterParts : `list` of `str`
-                List of components to get from `self`, such that the last item
-                can be called.
-            setterPart : `str`
-                If a setter type command, what the component is being set to,
-                such that it can be instantiated.
-            """
-            getterParts = None
-            setterPart = None
-            if "=" in command:
-                getterPart, setterPart = command.split("=")
-                getterParts = getterPart.split(".")
-            else:
-                getterParts = command.split(".")
-            return getterParts, setterPart
-
-        def safeEval(setterPart):
-            """Ensure whatever we're being asked to instantiate is safe to.
-
-            If a primitive is passed, it's safely evaluated with literal_eval,
-            otherwise, it's only instantiated if it's already an item in the
-            global namespace, ensuring that arbitrary code execution cannot
-            occur.
-
-            Parameters
-            ----------
-            setterPart : `str`
-                Whatever item we need to instantiate.
-
-            Returns
-            -------
-            item : `obj`
-                Whatever item was asked for.
-
-            Raises
-                ValueError if the item could not be safely evaluated.
-            """
-            try:
-                # if we have a primative, get it simply and safely
-                item = literal_eval(setterPart)
-                return item
-            except (SyntaxError, ValueError):  # anything non-primative will raise like this
-                pass
-
-            if setterPart.split(".")[0] in globals():
-                # we're instantiating a known class, so it's safe
-                item = eval(setterPart)
-                return item
-            raise ValueError(f"Will not execute arbitrary code - got {setterPart=}")
-
-        # command list is a list of dict: dict with each dict only having a
-        # single key, and the value being the kwargs, if any.
-        for command in commandList:
-            try:
-                for method, kwargs in command.items():
-                    getterParts, setter = parseCommand(method)
-                    component = getBottomComponent(parentClass, getterParts[:-1])
-                    functionName = getterParts[-1]
-                    if setter is not None:
-                        setItem = safeEval(setter)
-                        component.__setattr__(functionName, setItem)
-                    else:
-                        attr = getattr(component, functionName)
-                        attr.__call__(**kwargs)
-            except Exception as e:
-                self.log.exception(f"Failed to apply command {command}: {e}")
-                return  # do not apply further commands as soon as one fails
-
-
 class CameraControlConfig:
     """Processing control for which CCDs will be processed."""
 
     # TODO: Make this camera agnostic if necessary.
     def __init__(self) -> None:
+        self.log = logging.getLogger("lsst.rubintv.production.processControl.CameraControlConfig")
         self.camera = LsstCam.getCamera()
         self._detectorStates = {det: False for det in self.camera}
         self._detectors = [det for det in self.camera]
@@ -1228,8 +1515,87 @@ class CameraControlConfig:
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
-        self.GUIDER_NUMS = tuple(det.getId() for det in self._guiders)
-        self.CWFS_NUMS = tuple(det.getId() for det in self._wavefronts)
+        self.GUIDER_NUMS: tuple[int] = tuple(det.getId() for det in self._guiders)
+        self.CWFS_NUMS: tuple[int] = tuple(det.getId() for det in self._wavefronts)
+        self.INTRA_FOCAL_NUMS = (192, 196, 200, 204)
+        self.EXTRA_FOCAL_NUMS = (191, 195, 199, 203)
+        self.DIAGONAL = (90, 94, 98, 144, 148, 152, 36, 40, 44)
+        self.DIAGONAL2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
+        self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
+        self.VERTICAL = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
+
+        self.currentNamedPattern = ""
+
+    def getIntraExtraFocalPairs(self) -> list[tuple[int, int]]:
+        """Get the intra-focal and extra-focal pairs.
+
+        Returns
+        -------
+        pairs : `list` of `tuple`
+            List of tuples of the form (intra, extra) for each pair.
+        """
+        return list(zip(self.INTRA_FOCAL_NUMS, self.EXTRA_FOCAL_NUMS))
+
+    def setDiagonalOn(self, other: bool = False) -> None:
+        """Set the diagonal pattern on the focal plane.
+
+        Parameters
+        ----------
+        other : `bool`, optional
+            If True, set the diagonal2 pattern instead of the default diagonal.
+            Default is False.
+
+        """
+        dets = self.DIAGONAL if not other else self.DIAGONAL2
+        for det in dets:
+            self.setDetectorOn(det)
+
+    def setCardinalsOn(self, horizontal: bool = False) -> None:
+        """Set the cardinal pattern on the focal plane.
+
+        Parameters
+        ----------
+        other : `bool`, optional
+            If True, set the cardinal2 pattern instead of the default cardinal.
+            Default is False.
+
+        """
+        dets = self.HORIZONTAL if horizontal else self.VERTICAL
+        for det in dets:
+            self.setDetectorOn(det)
+
+    def applyNamedPattern(self, pattern: str) -> None:
+        """Apply a named pattern to the focal plane."""
+        # strings from RubinTV frontend
+        pattern = pattern.lower()
+        match pattern:
+            case "raft_checkerboard":
+                self.setRaftCheckerboard()
+            case "ccd_checkerboard":
+                self.setFullCheckerboard()
+            case "all":
+                self.setAllImagingOn()
+            case "5-on-a-die":
+                self.setAllImagingOff()
+                self.setRaftOn("R22")
+                self.setRaftOn("R33")
+                self.setRaftOn("R11")
+                self.setRaftOn("R13")
+                self.setRaftOn("R31")
+            case "minimal":
+                self.setAllImagingOff()
+                self.setDiagonalOn()
+                self.setDiagonalOn(other=True)
+                self.setCardinalsOn()
+                self.setCardinalsOn(horizontal=True)
+            case "ultra-minimal":
+                self.setAllImagingOff()
+                self.setDiagonalOn()
+                self.setDiagonalOn(other=True)
+            case _:
+                self.log.error(f"Tried and failed to apply pattern {pattern} - not a valid pattern")
+                return  # don't hold the named pattern on fail
+        self.currentNamedPattern = pattern
 
     @staticmethod
     def isWavefront(detector: Detector) -> bool:
@@ -1469,19 +1835,41 @@ class CameraControlConfig:
         Returns
         -------
         nEnabled : `int`
-            The number of enabled CCDs.
+            The number of enabled detectors.
         """
         return sum(self._detectorStates.values())
 
-    def getEnabledDetIds(self) -> list[int]:
+    def getEnabledDetIds(self, excludeCwfs=False) -> list[int]:
         """Get the detectorIds of the enabled sensors.
 
         Returns
         -------
         enabled : `list` of `int`
-            The detectorIds of the enabled CCDs.
+            The detectorIds of the enabled detectors.
         """
-        return sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
+        enabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
+        if excludeCwfs:
+            enabled = [det for det in enabled if det not in self.CWFS_NUMS]
+        return enabled
+
+    def getDisabledDetIds(self, excludeCwfs: bool = False) -> list[int]:
+        """Get the detectorIds of the disabled sensors.
+
+        Parameters
+        ----------
+        excludeCwfs : `bool`, optional
+            If ``True``, exclude the CWFS detectors from the list of disabled
+            detectors.
+
+        Returns
+        -------
+        disabled : `list` of `int`
+            The detectorIds of the disabled detectors.
+        """
+        disabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is False])
+        if excludeCwfs:
+            disabled = [det for det in disabled if det not in self.CWFS_NUMS]
+        return disabled
 
     def asPlotData(self) -> dict[str, list[int] | list[None] | NDArray]:
         """Get the data in a form for rendering as a ``FocalPlaneGeometryPlot``

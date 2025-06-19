@@ -19,24 +19,42 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.daf.butler import Butler
-from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
+import logging
+import time
+
+from lsst.daf.butler import Butler, DataCoordinate
+from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTCam"
-locationConfig = getAutomaticLocationConfig()
-print(f"Running {instrument} butler watcher at {locationConfig.location}...")
 
+log = logging.getLogger(__name__)
+
+log.info("Starting butlerCanary")
+print("Wrote a log message")
+
+locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath, collections=["LSSTCam/raw/all"], instrument=instrument
+    locationConfig.lsstCamButlerPath, collections=["LSSTCam/defaults"], instrument="LSSTCam"
 )
-writeDimensionUniverseFile(butler, locationConfig)  # all summit repos need to update at the same time!
-butlerWatcher = ButlerWatcher(
-    butler=butler,
-    locationConfig=locationConfig,
-    instrument=instrument,
-    doRaise=getDoRaise(),
-)
-butlerWatcher.run()
+
+while True:
+
+    with butler.query() as query:
+        _x = query.expression_factory
+        (exposure_dataId,) = query.data_ids(["exposure"]).order_by(_x.exposure.timespan.end.desc).limit(1)
+
+    log.info(f"Using exposure {exposure_dataId}")
+    print("Started loop")
+
+    for detector in range(189):
+        dataId = DataCoordinate.standardize(exposure_dataId, detector=detector)
+        start = time.time()
+        raw = butler.get("raw", dataId=dataId)
+        end = time.time()
+        duration = end - start
+        log.info(f"Butler get duration: {duration}")
+
+        del raw
+
+        time.sleep(60)

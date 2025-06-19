@@ -28,7 +28,7 @@ from time import sleep
 from typing import TYPE_CHECKING, Any
 
 from .uploaders import MultiUploader
-from .watchers import FileWatcher, RedisWatcher
+from .watchers import RedisWatcher
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -55,8 +55,8 @@ class BaseChannel(ABC):
         The location configuration to use.
     log : `logging.Logger`
         The logger to use.
-    watcher : `lsst.rubintv.production.watchers.FileWatcher`
-        The file watcher to use.
+    watcher : `lsst.rubintv.production.watchers.RedisWatcher`
+        The watcher to use.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
     addUploader : `bool`, optional
@@ -68,7 +68,7 @@ class BaseChannel(ABC):
         *,
         locationConfig: LocationConfig,
         log: Logger,
-        watcher: FileWatcher | RedisWatcher | StarTrackerWatcher,
+        watcher: RedisWatcher | StarTrackerWatcher,
         doRaise: bool,
         addUploader: bool = False,
     ) -> None:
@@ -134,36 +134,21 @@ class BaseButlerChannel(BaseChannel):
         self,
         *,
         locationConfig: LocationConfig,
-        instrument: str,
         butler: Butler,
         dataProduct: str | None,
         detectors: int | list[int] | None,
         channelName: str,
-        watcherType: str,
         doRaise: bool,
         # podDetails only needed for redis watcher. Not the neatest but will do
         # for now
-        podDetails: PodDetails | None = None,
+        podDetails: PodDetails,
         addUploader: bool = True,
     ) -> None:
-        watcher: FileWatcher | RedisWatcher
-        if watcherType == "file":
-            assert dataProduct is not None, "dataProduct must be provided for file watcher"
-            watcher = FileWatcher(
-                locationConfig=locationConfig,
-                instrument=instrument,
-                dataProduct=dataProduct,
-                doRaise=doRaise,
-            )
-        elif watcherType == "redis":
-            assert podDetails is not None, "podDetails must be provided for redis watcher"
-            watcher = RedisWatcher(
-                butler=butler,
-                locationConfig=locationConfig,
-                podDetails=podDetails,
-            )
-        else:
-            raise ValueError(f"Unknown watcherType, expected one of ['file', 'redis'], got {watcherType}")
+        watcher = RedisWatcher(
+            butler=butler,
+            locationConfig=locationConfig,
+            podDetails=podDetails,
+        )
         log = logging.getLogger(f"lsst.rubintv.production.{channelName}")
         super().__init__(
             locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise, addUploader=addUploader

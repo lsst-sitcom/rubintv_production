@@ -19,9 +19,4 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.rubintv.production.soarSeeing import SoarUploader
-from lsst.rubintv.production.utils import getDoRaise
-
-uploader = SoarUploader(doRaise=getDoRaise())
-
-uploader.run()
+from .mosaicPlotting import *

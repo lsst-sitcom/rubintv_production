@@ -33,7 +33,7 @@ locationConfig = getAutomaticLocationConfig()
 
 workerNum = getPodWorkerNumber()
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.NIGHTLYROLLUP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.STEP1B_AOS_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -42,20 +42,21 @@ print(
 
 butler = Butler.from_config(
     locationConfig.comCamButlerPath,
+    instrument=instrument,
     collections=[
         "LSSTComCamSim/defaults",
     ],
     writeable=True,
 )
 
-rollupRunner = SingleCorePipelineRunner(
+step1bRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    step="nightlyRollup",
+    step="step1b",
     awaitsDataProduct=None,
     podDetails=podDetails,
     doRaise=getDoRaise(),
 )
-rollupRunner.run()
+step1bRunner.run()
 sys.exit(1)  # run is an infinite loop, so we should never get here

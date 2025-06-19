@@ -22,7 +22,7 @@
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getWitnessDetectorNumber
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -46,6 +46,7 @@ print(
 
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -61,9 +62,9 @@ oneOffProcessor = OneOffProcessor(
     locationConfig=locationConfig,
     instrument=instrument,
     podDetails=podDetails,
-    detectorNumber=getWitnessDetectorNumber(instrument),
+    detectorNumber=94,  # this is the fallback value, the dynamic one comes from redis
     shardsDirectory=shardsDirectory,
-    processingStage="postISRCCD",
+    processingStage="post_isr_image",
     doRaise=getDoRaise(),
 )
 oneOffProcessor.run()

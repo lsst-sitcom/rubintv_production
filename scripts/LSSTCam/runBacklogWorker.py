@@ -19,33 +19,41 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
+import os
+from time import sleep
+
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.oneOffProcessing import OneOffProcessor
+from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
-instrument = "LSSTComCam"
+log = logging.getLogger(__name__)
+instrument = "LSSTCam"
 
-workerNum = 0
+workerNum = getPodWorkerNumber()
+detectorDepth = workerNum  # flat set like step1b workers, so depth is workerNum
+
+sleepDuration = float(os.getenv("BUTLER_ROLLOUT_PAUSE", 0)) * workerNum
+log.info(f"Sleeping worker {workerNum} {detectorDepth}) for {sleepDuration}s ease postgres load")
+sleep(sleepDuration)
+log.info(f"Worker {workerNum} {detectorDepth}) starting up...")
 
 locationConfig = getAutomaticLocationConfig()
-
-# The detectorNumber to be processed is defined in the init of the
-# OneOffProcessor class below. However, because this is a one-per-instrument
-# pod type, the detector number defined in the podDetails is therefore None,
-# despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.BACKLOG_WORKER, detectorNumber=None, depth=detectorDepth
 )
-print(
+log.info(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
     f"consuming from {podDetails.queueName}..."
 )
 
+locationConfig = getAutomaticLocationConfig()
 butler = Butler.from_config(
-    locationConfig.comCamButlerPath,
+    locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -53,17 +61,13 @@ butler = Butler.from_config(
     writeable=True,
 )
 
-metadataDirectory = locationConfig.comCamMetadataPath
-shardsDirectory = locationConfig.comCamMetadataShardPath
-
-oneOffProcessor = OneOffProcessor(
+runner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
+    step="step1a",
+    awaitsDataProduct="raw",
     podDetails=podDetails,
-    detectorNumber=4,  # central CCD for ComCam
-    shardsDirectory=shardsDirectory,
-    processingStage="calexp",
     doRaise=getDoRaise(),
 )
-oneOffProcessor.run()
+runner.run()

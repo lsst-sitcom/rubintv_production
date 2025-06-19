@@ -1,7 +1,6 @@
 bucketName: rubintv_data
 
 # Required items:
-dataIdScanPath: /project/rubintv/dataIds
 dimensionUniverseFile: /project/rubintv/butlerDimensionUniverse.json
 
 # Summit items:
@@ -48,6 +47,9 @@ comCamSimAosMetadataShardPath: /project/rubintv/LSSTComCamSimAos/sidecar_metadat
 comCamAosMetadataPath: /project/rubintv/LSSTComCamAos/sidecar_metadata
 comCamAosMetadataShardPath: /project/rubintv/LSSTComCamAos/sidecar_metadata/shards
 
+raPerformanceDirectory: /project/rubintv/raPerformance/sidecar_metadata
+raPerformanceShardsDirectory: /project/rubintv/raPerformance/sidecar_metadata/shards
+
 lsstCamMetadataPath: /project/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /project/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamAosMetadataPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
@@ -55,16 +57,20 @@ lsstCamAosMetadataShardPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: LSSTCam
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
-scratchPath: /project/rubintv/
+scratchPath : rapidAnalysisScratch
 plotPath: /project/rubintv/plots
-calculatedDataPath: /project/rubintv/calculatedData
-binnedCalexpPath: /project/rubintv/calculatedData/calexps
 
 # TMA config:
 tmaMetadataPath: /project/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /project/rubintv/tma/sidecar_metadata/shards
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
+aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamPipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+
+aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
 
 sfmPipelineFile:
   LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml
@@ -76,7 +82,8 @@ aosPipelineFile:
   LATISS: ''
   LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
   LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
-  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+  LSSTCam_danish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
+  LSSTCam_tie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
 
 outputChains:
   LATISS: LATISS/runs/quickLook

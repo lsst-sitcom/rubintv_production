@@ -42,6 +42,7 @@ print(
 
 butler = Butler.from_config(
     locationConfig.lsstCamButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
@@ -53,7 +54,6 @@ rollupRunner = SingleCorePipelineRunner(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    pipeline=locationConfig.getSfmPipelineFile(instrument),
     step="nightlyRollup",
     awaitsDataProduct=None,
     podDetails=podDetails,

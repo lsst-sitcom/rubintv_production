@@ -41,12 +41,14 @@ class PodFlavor(Enum):
     AOS_WORKER = auto()
     PSF_PLOTTER = auto()
     NIGHTLYROLLUP_WORKER = auto()
-    STEP2A_WORKER = auto()
-    STEP2A_AOS_WORKER = auto()
+    STEP1B_WORKER = auto()
+    STEP1B_AOS_WORKER = auto()
     MOSAIC_WORKER = auto()
     ONE_OFF_EXPRECORD_WORKER = auto()
     ONE_OFF_POSTISR_WORKER = auto()
-    ONE_OFF_CALEXP_WORKER = auto()
+    ONE_OFF_VISITIMAGE_WORKER = auto()
+    PERFORMANCE_MONITOR = auto()
+    BACKLOG_WORKER = auto()
 
     HEAD_NODE = auto()
 
@@ -69,12 +71,16 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
-        PodFlavor.STEP2A_WORKER: PodType.PER_INSTRUMENT,
-        PodFlavor.STEP2A_AOS_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_AOS_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.ONE_OFF_EXPRECORD_WORKER: PodType.PER_INSTRUMENT,  # one per focal plane, det is meaningless
         PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
-        PodFlavor.ONE_OFF_CALEXP_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
+        PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
+        PodFlavor.PERFORMANCE_MONITOR: PodType.PER_INSTRUMENT_SINGLETON,  # only one of these I think, for now
+        # BACKLOG_WORKER can run any step1 workload, no detector affinity, just
+        # a depth
+        PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
     }
     return mapping[podFlavor]
 
@@ -139,6 +145,26 @@ class PodDetails:
         return (
             f"PodDetails({self.instrument}-{self.podFlavor}, depth={self.depth},"
             f" detNum={self.detectorNumber})"
+        )
+
+    def __hash__(self) -> int:
+        # self.queueName must be functionally unique as this is where pods are
+        # getting their work from. It's a combination of the podFlavor,
+        # instrument, depth and detectorNumber and so would be what we pass
+        # here anyway.
+        return hash(self.queueName)
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, PodDetails):
+            raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
+        return all(
+            [
+                self.instrument == other.instrument,
+                self.podFlavor == other.podFlavor,
+                self.detectorNumber == other.detectorNumber,
+                self.depth == other.depth,
+                self.queueName == other.queueName,
+            ]
         )
 
     def validate(self) -> None:

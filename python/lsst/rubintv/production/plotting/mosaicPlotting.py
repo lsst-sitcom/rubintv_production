@@ -23,15 +23,15 @@ from __future__ import annotations
 __all__ = ["Plotter"]
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import lsst.afw.display as afwDisplay
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
+from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig, getNumExpectedItems
+from ..utils import LocationConfig, makeFocalPlaneTitle, makePlotFile
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
@@ -55,11 +55,6 @@ class Plotter:
     a complete set across the focal plane (taking into account partial
     readouts), deletes the input data, both to tidy up after itself, and to
     signal that this was completely processed and nothing is left to do.
-
-    The Replotter class, which inherits from this one, will replot anything
-    that it finds to be complete later on, motivating this to leave any
-    incomplete data, so that other processes can make complete plots once their
-    input processing has finished.
 
     Parameters
     ----------
@@ -93,11 +88,12 @@ class Plotter:
             locationConfig=locationConfig,
             podDetails=podDetails,
         )
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.afwDisplay = afwDisplay.getDisplay(backend="matplotlib", figsize=(20, 20))
         self.doRaise = doRaise
         self.STALE_AGE_SECONDS = 45  # in seconds
 
-    def plotFocalPlane(self, expRecord: DimensionRecord, dataProduct: str, timeout: float) -> str:
+    def plotFocalPlane(self, expRecord: DimensionRecord, dataProduct: str) -> str:
         """Create a binned mosaic of the full focal plane as a png.
 
         The binning factor is controlled via the locationConfig.binning
@@ -108,60 +104,60 @@ class Plotter:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record.
         dataProduct : `str`
-            The data product to use for the plot, either `'postISRCCD'` or
-            `'calexp'`.
-        timeout : `int`
-            The timeout for waiting for the data to be complete.
+            The data product to use for the plot, either `'post_isr_image'` or
+            `'preliminary_visit_image'`.
 
         Returns
         -------
         filename : `str`
-            The filename the plot was saved to.
+            The filename the plot was saved to, or "" if the plot failed.
         """
-        expId = expRecord.id
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        nExpected = getNumExpectedItems(expRecord, self.log)
+        nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="ISR"))
 
-        datapath = ""
         stretch = "CCS"
         displayToUse: Any = None
+        plotName = "unknown"
         match dataProduct:
-            case "postISRCCD":
-                datapath = self.locationConfig.calculatedDataPath
+            case "post_isr_image":
                 stretch = "CCS"
                 displayToUse = make_figure(figsize=(12, 12))
-            case "calexp":
-                datapath = self.locationConfig.binnedCalexpPath
+                plotName = "focal_plane_mosaic"
+            case "preliminary_visit_image":
                 stretch = "zscale"
                 displayToUse = self.afwDisplay
+                # this name is used by RubinTV internally - do not change
+                # without both changing the frontend code and also renaming
+                # every item with this name in the buckets at all locations
+                plotName = "calexp_mosaic"
             case _:
                 raise ValueError(f"Unknown data product: {dataProduct}")
 
-        # TODO: DM-49948 this template should go somewhere reusable as it's
-        # relied upon elsewhere so this is fragile at present. Linked in
-        # animation code.
-        path = Path(self.locationConfig.plotPath) / self.instrument / str(dayObs)
-        path.mkdir(mode=0o777, parents=True, exist_ok=True)
-        plotName = f"{self.instrument}_{dataProduct}_mosaic_dayObs_{dayObs}_seqNum_{seqNum:06}.jpg"
-        saveFile = (path / plotName).as_posix()
+        saveFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+        title = makeFocalPlaneTitle(expRecord)
 
-        plotFocalPlaneMosaic(
+        image = plotFocalPlaneMosaic(
             butler=self.butler,
             figureOrDisplay=displayToUse,
-            expId=expId,
+            dayObs=dayObs,
+            seqNum=seqNum,
             camera=self.camera,
             binSize=self.locationConfig.binning,
-            dataPath=datapath,
+            dataProduct=dataProduct,
             savePlotAs=saveFile,
             nExpected=nExpected,
-            timeout=timeout,
-            logger=self.log,
+            title=title,
             stretch=stretch,
+            locationConfig=self.locationConfig,
         )
-        self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
-        return saveFile
+        if image is not None:
+            self.log.info(f"Wrote focal plane plot for {expRecord.dataId} to {saveFile}")
+            return saveFile
+        else:
+            self.log.warning(f"Failed to make plot for {expRecord.dataId}")
+            return ""
 
     @staticmethod
     def getInstrumentChannelName(instrument: str) -> str:
@@ -226,12 +222,15 @@ class Plotter:
 
         plotName = None
         match dataProduct:
-            case "postISRCCD":
-                plotName = "focal_plane_mosaic"
-            case "calexp":
+            case "preliminary_visit_image":
+                # this name is used by RubinTV internally - do not change
+                # without both changing the frontend code and also renaming
+                # every item with this name in the buckets at all locations
                 plotName = "calexp_mosaic"
+            case "post_isr_image":
+                plotName = "focal_plane_mosaic"
 
-        focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct, timeout=0)
+        focalPlaneFile = self.plotFocalPlane(expRecord, dataProduct)
         if focalPlaneFile:  # only upload on plot success
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument=instPrefix,

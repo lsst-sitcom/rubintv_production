@@ -1,13 +1,10 @@
 # Required items:
-dataIdScanPath: '/sdf/scratch/rubin/rapid-analysis/dataIds'
 bucketName: 'rubintv_data_slac'
 dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUniverse.json'
 
 # # data paths
-scratchPath: ''
+scratchPath : rapidAnalysisScratch
 plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
-calculatedDataPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData'
-binnedCalexpPath: '/sdf/scratch/rubin/rapid-analysis/calculatedData/calexps'
 
 # configuration
 binning: 8
@@ -18,24 +15,33 @@ comCamButlerPath: 's3://embargo@rubin-summit-users/butler+sasquatch_dev.yaml'
 comCamMetadataPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata'
 comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_metadata/shards'
 
+raPerformanceDirectory: /sdf/scratch/rubin/rapid-analysis/raPerformance/sidecar_metadata
+raPerformanceShardsDirectory: /sdf/scratch/rubin/rapid-analysis/raPerformance/sidecar_metadata/shards
+
 # LSSTCam config:
 lsstCamAosMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata
 lsstCamAosMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata/shards
 lsstCamMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
 lsstCamMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
-lsstCamButlerPath: /repo/embargo/butler.yaml
+lsstCamButlerPath: 's3://embargo@rubin-summit-users/butler.yaml'
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
+
+aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamPipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+
+aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
+aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
+
+sfmPipelineFile:
+  LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml
+# Temporary before nightly validation pipeline is ready.
+  LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/nightly-validation.yaml
 
 aosPipelineFile:
   LATISS: ''
   LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
   LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
-  LSSTCam: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
-
-sfmPipelineFile:
-  LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/nightly-validation.yaml
-  LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/nightly-validation.yaml
 
 outputChains:
   LSSTComCam: LSSTComCam/runs/nightlyValidation

@@ -23,20 +23,21 @@ from __future__ import annotations
 
 import glob
 import io
+import itertools
 import json
 import logging
 import math
 import os
 import sys
-import tempfile
 import time
 import uuid
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import cached_property
+from functools import cached_property, wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Generator
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import numpy as np
 import yaml
@@ -52,12 +53,12 @@ from .channels import PREFIXES
 if TYPE_CHECKING:
     from logging import Logger
 
+    from lsst.afw.cameraGeom import Camera
+    from lsst.afw.image import Exposure, ExposureSummaryStats
 
 __all__ = [
     "writeDimensionUniverseFile",
     "getDimensionUniverse",
-    "writeDataIdFile",
-    "getGlobPatternForDataProduct",
     "expRecordToUploadFilename",
     "checkRubinTvExternalPackages",
     "raiseIf",
@@ -75,18 +76,21 @@ __all__ = [
     "getShardPath",
     "getRubinTvInstrumentName",
     "getPodWorkerNumber",
-    "getWitnessDetectorNumber",
     "isCalibration",
     "isWepImage",
     "removeDetector",
     "getFilterColorName",
     "runningCI",
-    "managedTempFile",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
     "runningCI",
-    "getCiPlotName",
-    "managedTempFile",
+    "makePlotFile",
+    "makePlotFileFromRecord",
+    "makeWitnessDetectorTitle",
+    "makeFocalPlaneTitle",
+    "logDuration",
+    "timeFunction",
+    "summaryStatsToDict",
 ]
 
 EFD_CLIENT_MISSING_MSG = (
@@ -97,8 +101,6 @@ GOOGLE_CLOUD_MISSING_MSG = (
     "ImportError: Google cloud storage not found. Please install with:\n"
     "    pip install google-cloud-storage"
 )
-
-DATA_ID_TEMPLATE = os.path.join("{path}", "{instrument}_{dataProduct}_{expId}.json")
 
 # ALLOWED_DATASET_TYPES is the types of data that can be written as sharded
 # data. In principle, there is no reason this can't be or shouldn't be totally
@@ -112,6 +114,9 @@ SEQNUM_PADDING = 6
 SHARDED_DATA_TEMPLATE = os.path.join(
     "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
 )
+
+AOS_CCDS = [191, 192, 195, 196, 199, 200, 203, 204]
+AOS_WORKER_MAPPING = {n: (depth, ccd) for n, (depth, ccd) in enumerate(itertools.product(range(9), AOS_CCDS))}
 
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
@@ -131,56 +136,6 @@ def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
 def getDimensionUniverse(locationConfig: LocationConfig) -> DimensionUniverse:
     duJson = safeJsonOpen(locationConfig.dimensionUniverseFile)
     return DimensionUniverse(DimensionConfig(duJson))
-
-
-def writeDataIdFile(
-    dataIdPath: str, dataProduct: str, expRecord: DimensionRecord, log: Logger | None = None
-) -> None:
-    """Write a dataId file for a dataProduct to be consumed by a FileWatcher.
-
-    Note that the dataProduct can be any string, it need not be restricted to
-    dafButler dataProducts.
-
-    Parameters
-    ----------
-    dataIdPath : `str`
-        The path to write the dataId file to.
-    dataProduct : `str`
-        The data product to write the dataId file for.
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record to write the dataId file for.
-    log : `logging.Logger`, optional
-        The logger to use. If provided, and info-level message is logged about
-        where what file was written.
-    """
-    expId = expRecord.id
-    dayObs = expRecord.day_obs
-    seqNum = expRecord.seq_num
-    outFile = DATA_ID_TEMPLATE.format(
-        path=dataIdPath, instrument=expRecord.instrument, dataProduct=dataProduct, expId=expId
-    )
-    with open(outFile, "w") as f:
-        f.write(json.dumps(expRecord.to_simple().json()))
-    if log:
-        log.info(f"Wrote dataId file for {dataProduct} {dayObs}/{seqNum}, {expId} to {outFile}")
-
-
-def getGlobPatternForDataProduct(dataIdPath: str, dataProduct: str, instrument: str) -> str:
-    """Get a glob-style pattern for finding dataId files for a dataProduct.
-
-    These are the dataId files used to signal that a given dataId or
-    dataProduct is ready for use.
-
-    Parameters
-    ----------
-    dataIdPath : `str`
-        The path find the dataIds in.
-    dataProduct : `str`
-        The data product to find the dataIds for.
-    instrument : `str`
-        The instrument.
-    """
-    return DATA_ID_TEMPLATE.format(path=dataIdPath, instrument=instrument, dataProduct=dataProduct, expId="*")
 
 
 def getGlobPatternForShardedData(
@@ -292,8 +247,6 @@ class LocationConfig:
         # exist in all the different locations, otherwise it will fail in some
         # locations and not others, so add things with caution.
         self._config
-        self.binnedCalexpPath
-        self.calculatedDataPath
         self.plotPath
 
     def _checkDir(self, dirName: str, createIfMissing=True) -> None:
@@ -358,6 +311,12 @@ class LocationConfig:
         return file
 
     @cached_property
+    def scratchPath(self) -> str:
+        """The scratch path for the location."""
+        getShardPath = self._config["scratchPath"]
+        return getShardPath
+
+    @cached_property
     def auxtelButlerPath(self):
         return self._config["auxtelButlerPath"]
 
@@ -372,12 +331,6 @@ class LocationConfig:
         file = self._config["botButlerPath"]
         self._checkFile(file)
         return file
-
-    @cached_property
-    def dataIdScanPath(self):
-        directory = self._config["dataIdScanPath"]
-        self._checkDir(directory)
-        return directory
 
     @cached_property
     def metadataPath(self):
@@ -412,18 +365,6 @@ class LocationConfig:
     @cached_property
     def plotPath(self):
         directory = self._config["plotPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def calculatedDataPath(self):
-        directory = self._config["calculatedDataPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def binnedCalexpPath(self):
-        directory = self._config["binnedCalexpPath"]
         self._checkDir(directory)
         return directory
 
@@ -566,6 +507,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def raPerformanceDirectory(self) -> str:
+        directory = self._config["raPerformanceDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def raPerformanceShardsDirectory(self) -> str:
+        directory = self._config["raPerformanceShardsDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
@@ -613,8 +566,24 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument: str) -> str:
+    def getAosPipelineFile(self, instrument) -> str:
         return self._config["aosPipelineFile"][instrument]
+
+    @cached_property
+    def aosLSSTCamPipelineFileDanish(self) -> str:
+        return self._config["aosLSSTCamPipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamPipelineFileTie(self) -> str:
+        return self._config["aosLSSTCamPipelineFileTie"]
+
+    @cached_property
+    def aosLSSTCamFullArrayModePipelineFileDanish(self) -> str:
+        return self._config["aosLSSTCamFullArrayModePipelineFileDanish"]
+
+    @cached_property
+    def aosLSSTCamFullArrayModePipelineFileTie(self) -> str:
+        return self._config["aosLSSTCamFullArrayModePipelineFileTie"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:
@@ -916,7 +885,7 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Azimuth"] = expRecord.azimuth
     md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
-    md["Can see the sky?"] = expRecord.can_see_sky
+    md["Can see the sky?"] = f"{expRecord.can_see_sky}"
 
     if expRecord.instrument == "LATISS":
         filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
@@ -1132,6 +1101,8 @@ def isFileWorldWritable(filename: str) -> bool:
     ok : `bool`
         True if the file has the correct permissions, False otherwise.
     """
+    # XXX remove this function once we've done the S3 move. Removing it will
+    # also help find other bits of file use.
     stat = os.stat(filename)
     return stat.st_mode & 0o777 == 0o777
 
@@ -1330,33 +1301,6 @@ def getPodWorkerNumber() -> int:
     return workerNum
 
 
-def getWitnessDetectorNumber(instrument: str) -> int:
-    """Get the witness detector number for a given instrument.
-
-    This is a placeholder function to provide the interface for if we want to
-    make this user selectable in the future (e.g. via LOVE), or read from a
-    config file. For now, we hard-code the central detectors.
-
-    Parameters
-    ----------
-    instrument : `str`
-        The instrument name.
-
-    Returns
-    -------
-    detectorNum : `int`
-        The witness detector number.
-    """
-    if instrument == "LATISS":
-        return 0
-    elif instrument == "LSSTCam":
-        return 94
-    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
-        return 4
-    else:
-        raise ValueError(f"Unknown instrument {instrument=}")
-
-
 def isCalibration(expRecord: DimensionRecord) -> bool:
     """Check if the exposure is a calibration exposure.
 
@@ -1416,6 +1360,24 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
 
 
+def mapAosWorkerNumber(workerNum: int) -> tuple[int, int]:
+    """Map the worker number to the AOS worker number.
+
+    Parameters
+    ----------
+    workerNum : `int`
+        The worker number.
+
+    Returns
+    -------
+    depth : `int`
+        The depth of the worker.
+    detectorNum : `int`
+        The detector number of the worker.
+    """
+    return AOS_WORKER_MAPPING[workerNum]
+
+
 def getFilterColorName(physicalFilter: str) -> str | None:
     """Get the color name for a physical filter to color cells on RubinTV.
 
@@ -1432,12 +1394,22 @@ def getFilterColorName(physicalFilter: str) -> str | None:
         The color name.
     """
     filterMap = {
+        # ComCam filters:
         "u_02": "u_color",
         "g_01": "g_color",
         "r_03": "r_color",
         "i_06": "i_color",
         "z_03": "z_color",
         "y_04": "y_color",
+        # LSSTCam filters:
+        "ph_5": "white_color",  # pinhole filter
+        "ef_43": "white_color",  # "empty" filter
+        "u_24": "u_color",
+        "g_6": "g_color",
+        "r_57": "r_color",
+        "i_39": "i_color",
+        "z_20": "z_color",
+        "y_10": "y_color",
     }
     return filterMap.get(physicalFilter)
 
@@ -1447,69 +1419,167 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
-def getCiPlotName(locationConfig: LocationConfig, expRecord: DimensionRecord, plotType: str) -> str:
-    dayObs: int = expRecord.day_obs
-    seqNum: int = expRecord.seq_num
-    ciOutputName = (
+def makePlotFileFromRecord(
+    locationConfig: LocationConfig, record: DimensionRecord, plotType: str, suffix: str
+) -> str:
+    dayObs: int = record.day_obs
+    seqNum: int = record.seq_num
+    instrument: str = record.instrument
+    return makePlotFile(locationConfig, instrument, dayObs, seqNum, plotType, suffix)
+
+
+def makePlotFile(
+    locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str, suffix: str
+) -> str:
+    filename = (
         Path(locationConfig.plotPath)
-        / expRecord.instrument
+        / instrument
         / str(dayObs)
-        / f"{expRecord.instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.png"
+        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.{suffix}"
     )
-    return ciOutputName.as_posix()
+    filename.parent.mkdir(mode=0o777, parents=True, exist_ok=True)
+    # add a path.touch() here?
+    return filename.as_posix()
 
 
-@contextmanager
-def managedTempFile(
-    suffix: str,
-    ciOutputName: str = "",
-) -> Generator[str]:
-    """Context manager for temp files with handling for CI environments.
-
-    In normal operation, this creates a temporary file that is automatically
-    deleted when the context exits. In CI mode, it creates a permanent file in
-    the specified location. This is useful for testing and debugging, as it
-    allows inspection the output files in CI mode. The file is created with
-    a specific name to allow for existence checking.
+def makeWitnessDetectorTitle(record: DimensionRecord, detector: int | str, camera: Camera) -> str:
+    """Make a title for a plot based on the exp/visit record and detector.
 
     Parameters
     ----------
-    suffix : str
-        File suffix/extension.
-    ciOutputName : str, optional
-        The full name and path to the output file. Must be specified if running
-        in CI mode.
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure or visit record.
+    detector : `int` or `str`
+        The detector number or name.
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera object.
 
-    Yields
-    ------
-    str
-        Path to the temporary file
+    Returns
+    -------
+    title : `str`
+        The title for the plot.
     """
-    ciMode = runningCI()
-    if ciMode and not ciOutputName:
-        raise ValueError("CI mode is enabled but no output filename is specified.")
-    if ciMode and os.path.exists(ciOutputName):
-        raise FileExistsError(f"Output file {ciOutputName} already exists.")
+    d = camera[detector]  # gets the actual detector object. Camera supports indexing by name or numerical id
+    detName = d.getName()
+    detId = d.getId()
+    r = record
+    title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
+    title += f"{detName}(#{detId}) {r.observation_type} image @ {r.exposure_time:.1f}s"
+    return title
 
-    if not ciMode:
-        # Standard operation - use a true temporary file that gets cleaned up
-        # delete=False so that it stays when we yield, but is cleaned up in
-        # finally block.
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tempFile:
-            tempFilename = tempFile.name
+
+def makeFocalPlaneTitle(record: DimensionRecord) -> str:
+    """Make a title for a plot based on the exp/visit record.
+
+    Parameters
+    ----------
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure or visit record.
+
+    Returns
+    -------
+    title : `str`
+        The title for the plot.
+    """
+    r = record
+    title = f"dayObs={r.day_obs} - seqNum={r.seq_num}\n"
+    title += f"{r.observation_type} image @ {r.exposure_time:.1f}s in filter {r.physical_filter}"
+    return title
+
+
+@contextmanager
+def logDuration(logger: Logger, label: str) -> Iterator[None]:
+    """Context manager to log the duration of a block of code.
+
+    Example usage:
+
+    with logDuration(log, "this block of code"):
+        doSomething()
+    This will log the time taken to execute the block of code with the label
+    message "<loggerName>.info this block of code took 1.23s".
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration.
+    label : `str`
+        A label for the block of code being timed, used in the log message.
+    """
+    start = perf_counter()
+    try:
+        yield
+    finally:
+        logger.info("%s took %.3fs", label, (perf_counter() - start))
+
+
+def timeFunction(logger: Logger) -> Callable:
+    """Decorator to log the duration of a function call.
+
+    Example usage:
+    @timeFunc(logger)
+    def my_function():
+        doSomething()
+
+    This will log the time taken to execute the function with the label
+    message "<loggerName>.info my_function took 1.23s".
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration of the function call.
+    """
+
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = perf_counter()
             try:
-                yield tempFilename
+                return func(*args, **kwargs)
             finally:
-                # Always clean up in normal mode
-                if os.path.exists(tempFilename):
-                    os.unlink(tempFilename)
-    else:
-        # In CI mode, we keep the file for inspection
-        dirname = os.path.dirname(ciOutputName)
-        os.makedirs(dirname, exist_ok=True)
+                logger.info("%s took %.3fs", func.__qualname__, (perf_counter() - start))
 
-        # Create an empty file to match the behavior of NamedTemporaryFile
-        with open(ciOutputName, "w"):
-            pass
+        return wrapper
 
-        yield ciOutputName
+    return decorate
+
+
+def summaryStatsToDict(stats: ExposureSummaryStats) -> dict[str, Any]:
+    """Return a dictionary of summary statistics.
+
+    Parameters
+    ----------
+    stats : `ExposureSummaryStats`
+        The summary statistics object to convert to a dictionary.
+
+    Returns
+    -------
+    statsDict : `dict`
+        A dictionary containing the summary statistics, with keys as attribute
+        names and values as the corresponding attribute values.
+    """
+    return {
+        attr: getattr(stats, attr)
+        for attr in dir(stats)
+        if not attr.startswith("_") and not callable(getattr(stats, attr))
+    }
+
+
+def getAirmass(exp: Exposure) -> float | None:
+    """Get the airmass of an exposure if available and finite, else None.
+
+    Parameters
+    ----------
+    exp : `lsst.afw.image.Exposure`
+        The exposure to get the airmass for.
+
+    Returns
+    -------
+    airmass : `float` or `None`
+        The airmass of the exposure if available and finite, else None.
+    """
+
+    vi = exp.info.getVisitInfo()
+    airmass = vi.boresightAirmass
+    if airmass is not None and np.isfinite(airmass):
+        return float(airmass)
+    return None

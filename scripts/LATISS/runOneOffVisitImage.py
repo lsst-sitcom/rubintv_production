@@ -37,7 +37,7 @@ locationConfig = getAutomaticLocationConfig()
 # pod type, the detector number defined in the podDetails is therefore None,
 # despite the fact that this will actually operate on a specific detector.
 podDetails = PodDetails(
-    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_CALEXP_WORKER, detectorNumber=None, depth=workerNum
+    instrument=instrument, podFlavor=PodFlavor.ONE_OFF_VISITIMAGE_WORKER, detectorNumber=None, depth=workerNum
 )
 print(
     f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
@@ -46,6 +46,7 @@ print(
 
 butler = Butler.from_config(
     locationConfig.auxtelButlerPath,
+    instrument=instrument,
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),

@@ -10,874 +10,1300 @@ import subprocess
 import sys
 import time
 import traceback
-from multiprocessing import Manager
+from multiprocessing import Manager, Process
 from pathlib import Path
+from queue import Empty
+from typing import Any
 from unittest.mock import patch
 
 import redis
 import yaml
 
-# it would be great not to type: ignore this, but I can't make this work while
-# also having the code itself run - mypy config is really hard
-from ciutils import Check, TestScript, conditional_redirect  # type: ignore
 
-
+# Disable logging.basicConfig to avoid interference with log capture
 def do_nothing(*args, **kwargs):
     pass
 
 
-# ensure nothing downstream can use this function as it has global consequences
-# which stop the log capture working
 logging.basicConfig = do_nothing
 
-
-# these imports need to come after the log patching (I think)
+# these imports need to come after the log patching
 from lsst.daf.butler.cli.cliLog import CliLog  # noqa: E402
 
-# call this once and then also disable it so it doesn't interfere with the log
-# capture later on
+# Initialize once and disable to prevent interference with log capture
 CliLog.initLog(False)
 CliLog.initLog = do_nothing  # type: ignore
 
+# Import test utilities
+from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
-# only import from lsst.anything once the logging configs have been frozen
-# noqa: E402
+from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
+from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
+
+# Only import from lsst packages after logging is configured
 from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI  # noqa: E402
 
-# --------------- Configuration --------------- #
 
-DO_RUN_META_TESTS = True
-DO_CHECK_YAML_FILES = True
-COPY_PLOTS_TO_PUBLIC_HTML = True
-
-REDIS_HOST = "127.0.0.1"
-REDIS_PORT = "6111"
-REDIS_PASSWORD = "redis_password"
-META_TEST_DURATION = 30  # How long to leave meta-tests running for
-TEST_DURATION = 300  # How long to leave test suites to run for
-REDIS_INIT_WAIT_TIME = 3  # Time to wait after starting redis-server before using it
-CAPTURE_REDIS_OUTPUT = True  # Whether to capture Redis output
-TODAY = 20240101
-DEBUG = False
-
-# List of test scripts to run, defined relative to package root
-TEST_SCRIPTS_ROUND_1 = [
-    # LATISS pods:
-    TestScript(
-        "scripts/LATISS/runHeadNode.py",
-        ["usdf_testing"],
-        display_on_pass=True,
-        tee_output=True,
-    ),
-    TestScript(
-        "scripts/LATISS/runSfmRunner.py",
-        ["usdf_testing", "0"],
-        display_on_pass=True,
-    ),
-    # TestScript(
-    #     "scripts/LATISS/runOneOffCalexp.py",
-    #     ["usdf_testing"],
-    # ),
-    TestScript(
-        "scripts/LATISS/runOneOffExpRecord.py",
-        ["usdf_testing"],
-        display_on_pass=True,
-    ),
-    TestScript(
-        "scripts/LATISS/runOneOffPostIsr.py",
-        ["usdf_testing"],
-        display_on_pass=True,
-    ),
-    # ComCam pods:
-    # the main RA testing - runs data through the processing pods
-    TestScript(
-        "scripts/LSSTComCam/runPlotter.py",
-        ["usdf_testing"],
-        display_on_pass=False,
-        tee_output=False,
-    ),
-    TestScript(
-        "scripts/LSSTComCam/runStep2aWorker.py",
-        ["usdf_testing", "0"],
-        tee_output=False,
-    ),
-    TestScript("scripts/LSSTComCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=False),
-    TestScript(
-        "scripts/LSSTComCam/runSfmRunner.py",
-        ["usdf_testing", "0"],
-        display_on_pass=False,
-        tee_output=False,
-    ),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "1"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "2"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "3"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "4"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "5"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "6"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "7"]),
-    TestScript("scripts/LSSTComCam/runSfmRunner.py", ["usdf_testing", "8"]),
-    TestScript(
-        "scripts/LSSTComCam/runAosWorker.py",
-        ["usdf_testing", "0"],
-        display_on_pass=False,
-        tee_output=False,
-        # do_debug=True
-    ),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "1"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "2"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "3"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "4"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "5"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "6"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "7"]),
-    TestScript("scripts/LSSTComCam/runAosWorker.py", ["usdf_testing", "8"]),
-    TestScript(
-        "scripts/LSSTComCam/runStep2aAosWorker.py",
-        ["usdf_testing", "0"],
-        display_on_pass=False,
-    ),
-    TestScript(
-        "scripts/LSSTComCam/runOneOffExpRecord.py",
-        ["usdf_testing"],
-        tee_output=False,
-        display_on_pass=False,
-    ),
-    TestScript(
-        "scripts/LSSTComCam/runOneOffPostIsr.py",
-        ["usdf_testing"],
-        tee_output=False,
-        display_on_pass=False,
-    ),
-    TestScript(
-        "scripts/LSSTComCam/runOneOffCalexp.py",
-        ["usdf_testing"],
-        tee_output=False,
-        display_on_pass=False,
-    ),
-    TestScript(
-        "scripts/LSSTComCam/runHeadNode.py",
-        ["usdf_testing"],
-        delay=5,  # we do NOT want the head node to fanout work before workers report in - that's a fail
-        tee_output=False,
-        display_on_pass=False,
-        # do_debug=True
-    ),
-    TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=True),
-]
-
-TEST_SCRIPTS_ROUND_3 = [
-    # run after the processing pods are torn down, so that, for example, the
-    # butler watcher can be checked without attempting to process the image it
-    # drops into redis
-    # TODO need to get this to actually run
-    # TODO need to add check that this actually output to redis
-    TestScript("scripts/LSSTComCam/runButlerWatcher.py", ["usdf_testing"]),
-]
-
-META_TESTS_FAIL_EXPECTED = [
-    TestScript("meta_test_raise.py"),  # This one should fail
-    TestScript("meta_test_sys_exit_non_zero.py"),  # This one should fail
-]
-
-META_TESTS_PASS_EXPECTED = [
-    TestScript("meta_test_runs_ok.py"),  # This should pass by running forever
-    TestScript("meta_test_debug_config.py", do_debug=True),  # check the remote connection magic works
-    TestScript("meta_test_patching.py"),  # Confirms that getCurrentDayObs_int returns the patched value
-    TestScript("meta_test_env.py"),  # Confirms things we're manipulating via the env are set in workers
-    TestScript("meta_test_s3_upload.py"),  # confirms S3 uploads work and are mocked correctly
-    TestScript("meta_test_logging_capture.py"),  # check logs are captured when not being teed
-    TestScript("meta_test_logging_capture.py", tee_output=True),  # confirm teeing works
-]
-
-YAML_FILES_TO_CHECK = [
-    # TODO Add the commented out files back in when you're ready
-    "config/config_bts.yaml",
-    "config/config_tts.yaml",
-    "config/config_summit.yaml",
-    "config/config_usdf_testing.yaml",
-    "config/config_usdf.yaml",
-]
-
-# --------------- code to make file paths full --------------- #
-
-ci_dir = os.path.dirname(os.path.abspath(__file__))
-package_dir = os.path.abspath(os.path.join(ci_dir, "../../"))
-TEST_SCRIPTS_ROUND_1 = [
-    TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
-    for test_script in TEST_SCRIPTS_ROUND_1
-]
-
-TEST_SCRIPTS_ROUND_1 = [
-    TestScript.from_existing(test_script, os.path.join(package_dir, test_script.path))
-    for test_script in TEST_SCRIPTS_ROUND_1
-]
-
-META_TESTS_FAIL_EXPECTED = [
-    TestScript.from_existing(test_script, os.path.join(ci_dir, test_script.path))
-    for test_script in META_TESTS_FAIL_EXPECTED
-]
-
-META_TESTS_PASS_EXPECTED = [
-    TestScript.from_existing(test_script, os.path.join(ci_dir, test_script.path))
-    for test_script in META_TESTS_PASS_EXPECTED
-]
-YAML_FILES_TO_CHECK = [os.path.join(package_dir, file) for file in YAML_FILES_TO_CHECK]
-
-
-# Globals for communication between functions
-manager = Manager()
-exit_codes = manager.dict()
-outputs = manager.dict()
-REDIS_PROCESS = None
-
-CHECKS = []  # holds the results
-
-
-def exec_script(test_script: TestScript, output_queue):
-    """
-    Function to run the script in a separate process and capture its output.
-    """
-
-    def termination_handler(signum, frame):
-        print("Termination signal received, exiting...")
-        raise KeyboardInterrupt()
-
-    signal.signal(signal.SIGTERM, termination_handler)
-
-    script_path = test_script.path
-    script_args = test_script.args
-
-    f_stdout = io.StringIO()
-    f_stderr = io.StringIO()
-    log_stream = io.StringIO()
-
-    # Setup log capture
-    log_handler = logging.StreamHandler(log_stream)
-    log_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
-
-    # Add handler to the root logger
-    root_logger = logging.getLogger()
-    root_logger.addHandler(log_handler)
-    root_logger.setLevel(logging.INFO)
-
-    exit_code: str | int | None = None
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
-
-    lsstDebug = None
-    if test_script.do_debug:
-        import ciutils  # type: ignore
-        import lsstDebug  # type: ignore
-
-        def getConnection():
-            debugConfig = {
-                "port": 4444,
-                "addr": "127.0.0.1",
-            }
-            return debugConfig
-
-        ciutils.getConnection = getConnection
-
-    try:
-        with conditional_redirect(test_script.tee_output, f_stdout, f_stderr, log_handler, root_logger):
-            with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
-                with open(script_path, "r") as script_file:
-                    script_content = script_file.read()
-                exec_globals = {
-                    "__name__": "__main__",
-                    "__file__": script_path,
-                    "sys": sys,
-                    "logging": logging,  # Pass the logging module to the script
-                    "lsst.daf.butler.cli.cliLog": CliLog,
-                    "CliLog": CliLog,
-                    "lsstDebug": lsstDebug,
-                }
-                sys.argv = [script_path] + script_args if script_args else [script_path]
-                time.sleep(test_script.delay)
-                exec(script_content, exec_globals)
-                exit_code = 0
-    except Exception:
-        traceback.print_exc(file=f_stderr)
-        exit_code = 1
-    except SystemExit as e:
-        logging.info(f"Script exited with status: {e}")
-        exit_code = e.code if e.code is not None else 0
-    except KeyboardInterrupt:  # this is the timeout error now
-        exit_code = "timeout"
-    finally:
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-
-        log_output = log_stream.getvalue()
-        if DEBUG:
-            print(f"Putting outputs for script {test_script} into queue")
-        output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue(), log_output))
-
-        # Clean up logger handlers
-        root_logger.removeHandler(log_handler)
-        log_handler.close()
-
-
-def check_system_size_and_load():
-    number_of_cores = os.cpu_count()
-    number_of_scripts = len(TEST_SCRIPTS_ROUND_1)
-    if number_of_scripts > number_of_cores:
-        print(
-            f"The number of test scripts ({number_of_scripts}) is greater than"
-            f" the number of cores ({number_of_cores}).\nThis test suite needs to be run on a bigger system."
-        )
-        sys.exit(1)
-
-    load1, load5, load15 = os.getloadavg()  # 1, 5 and 15 min load averages
-    if any(load > 50 for load in [load1, load5, load15]):
-        # double space after warning sign is necessary
-        print("⚠️  High system load detected, results could be affected ⚠️ ")
-
-    approx_cores_free = (100 - load5) / 100 * number_of_cores
-    if number_of_scripts > approx_cores_free:
-        print(
-            # double space after warning sign is necessary
-            f"⚠️  Number of test scripts ({number_of_scripts}) is greater than the approximage number of free"
-            f" cores {approx_cores_free:.1f} ⚠️ "
-        )
-
-
-def clear_redis_database(host, port, password):
-    r = redis.Redis(host=host, port=port, password=password)
-    r.flushall()  # Clear the database
-    print("Cleared Redis database")
-
-
-def start_redis(redis_init_wait_time):
-    global REDIS_PROCESS
-    host = os.environ["REDIS_HOST"]
-    port = os.environ["REDIS_PORT"]
-    password = os.environ["REDIS_PASSWORD"]
-
-    capture_kwargs = {}
-    if CAPTURE_REDIS_OUTPUT:
-        capture_kwargs["stdout"] = subprocess.PIPE
-        capture_kwargs["stderr"] = subprocess.PIPE
-
-    print(f"Starting redis on {host}:{port}")
-    # Start the Redis server
-    REDIS_PROCESS = subprocess.Popen(
-        ["redis-server", "--port", port, "--bind", host, "--requirepass", password],
-        **capture_kwargs,
-    )
-    print(f"✅ Redis server started on {host}:{port} with PID: {REDIS_PROCESS.pid}")
-    print(f"Waiting for {redis_init_wait_time}s to let redis startup finish")
-
-    time.sleep(redis_init_wait_time)  # Give redis a moment to start
-    clear_redis_database(host, port, password)
-    return
-
-
-def run_setup():
-    """Setup everything for testing.
-
-    Sets env vars and starts redis, returning the process.
-    """
-    # set other env vars required for RA config
-    os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
-    os.environ["RAPID_ANALYSIS_CI"] = "true"
-
-    # Set environment variables for Redis
-    os.environ["REDIS_HOST"] = REDIS_HOST
-    os.environ["REDIS_PORT"] = REDIS_PORT
-    os.environ["REDIS_PASSWORD"] = REDIS_PASSWORD
-
-    # set so that runners raise on error, and confirm that's working via
-    # getDoRaise as that's how they will retrieve the value
-    os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-    if getDoRaise() is not True:  # confirm that this will be used correctly by services
-        raise RuntimeError("getDoRaise is not True")
-
-    if runningCI() is not True:
-        raise RuntimeError("runningCI is not True")
-
-    return
-
-
-def check_redis_startup():
-    """
-    Ping Redis and check we can set and read back a test key.
-    """
-    host = os.environ["REDIS_HOST"]
-    port = os.environ["REDIS_PORT"]
-    password = os.environ["REDIS_PASSWORD"]
-
-    r = redis.Redis(host=host, port=port, password=password)
-
-    # Ping Redis
-    if not r.ping():
-        raise RuntimeError("Could not ping Redis")
-
-    # Set and read back a test key
-    r.set("test_key", "test_value")
-    value = r.get("test_key").decode("utf-8")
-    if value != "test_value":
-        raise RuntimeError("Could not set and read back a test key in Redis")
-    r.flushall()  # Clear the database
-    print("✅ Successfully pinged Redis and set/read back a test key")
-
-
-def check_redis_final_contents():
-    """
-    Ping Redis and check we can set and read back a test key.
-    """
-    from lsst.rubintv.production.redisUtils import RedisHelper
-
-    redisHelper = RedisHelper(None, None)  # doesn't actually need a butler or a LocationConfig here
-    redisHelper.displayRedisContents()
-
-    # ComCam section
-    inst = "LSSTComCam"
-
-    visits_sfm = [
-        2024110200170,
-    ]
-
-    visits_aos = [
-        "2024110200171+2024110200172",
-    ]
-
-    # n_visits = len(visits)
-    n_visits_sfm = len(visits_sfm)
-    n_visits_aos = len(visits_aos)
-
-    # TODO add something for the task counters too, not just step2a entry etc
-
-    n_step2a_sfm = redisHelper.getNumVisitLevelFinished(inst, "step2a", "SFM")
-    if n_step2a_sfm != n_visits_sfm:
-        CHECKS.append(
-            Check(
-                False, f"Expected {n_visits_sfm} SFM step2a for {inst} to have finished, got {n_step2a_sfm}"
-            )
-        )
-    else:
-        CHECKS.append(Check(True, f"{n_step2a_sfm}x {inst} SFM step2a finished"))
-    del n_visits_sfm
-
-    n_step2a_aos = redisHelper.getNumVisitLevelFinished(inst, "step2a", "AOS")
-    if n_visits_aos != n_step2a_aos:
-        CHECKS.append(
-            Check(False, f"Expected {n_visits_aos} AOS step2a to have finished, got {n_step2a_aos}")
-        )
-    else:
-        CHECKS.append(Check(True, f"{n_visits_aos}x AOS step2a finished"))
-    del n_visits_aos
-
-    key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
-    n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
-    if n_nightly_rollups != 1:
-        CHECKS.append(Check(False, f"Expected {1} nightly rollup finished, got {n_nightly_rollups}"))
-    else:
-        CHECKS.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
-
-    # TODO spin up the PSF plotter and check for an output. For now just check
-    # the signal made it to redis
-    key = f"{inst}-PSFPLOTTER"
-    expected = redisHelper.redis.lpop(key)
-    if expected is not None:
-        expected = int(expected.decode("utf-8"))
-    if expected == visits_sfm[0]:
-        CHECKS.append(Check(True, "PSF plotter received the expected visit"))
-    else:
-        CHECKS.append(Check(False, f"PSF plotter did not receive the expected visit, got {expected}"))
-
-    allKeys = redisHelper.redis.keys()
-    failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
-    if failed_keys:
-        CHECKS.append(Check(False, f"Found failed keys: {failed_keys}"))
-    else:
-        CHECKS.append(Check(True, "No failed keys found in redis"))
-
-    # LATISS section
-    inst = "LATISS"
-
-    visits_sfm = [
-        2024081300632,
-    ]
-    n_visits_sfm = len(visits_sfm)
-
-    # TODO add something for the task counters too, not just step2a entry etc
-
-    n_step1_sfm = redisHelper.getNumDetectorLevelFinished(inst, "step1", "SFM", "2024081300632")
-    if n_step1_sfm != n_visits_sfm:
-        CHECKS.append(
-            Check(False, f"Expected {n_visits_sfm} SFM step1 for {inst} to have finished, got {n_step1_sfm}")
-        )
-    else:
-        CHECKS.append(Check(True, f"{n_step1_sfm}x {inst} SFM step1 finished"))
-    del n_visits_sfm
-
-    return
-
-
-def print_final_result(checks):
-    fails = [check for check in checks if not check.passed]
-    passes = [check for check in checks if check.passed]
-    n_fails = len(fails)
-    n_passes = len(passes)
-    terminal_width = os.get_terminal_size().columns
-
-    # Determine the colors and text to display
-    if n_fails > 0:
-        pass_color = "\033[92m"
-        fail_color = "\033[91m"
-        text = f"{pass_color}{n_passes} passing tests\033[0m, {fail_color}{n_fails} failing tests\033[0m"
-        padding_color = fail_color
-    else:
-        pass_color = fail_color = "\033[92m"
-        text = f"{pass_color}{n_passes} passing tests, {n_fails} failing tests\033[0m"
-        padding_color = pass_color
-
-    # Calculate the padding
-    padding_length = (terminal_width - len(text)) // 2
-    padding = f"{padding_color}{'-' * padding_length}\033[0m"
-
-    # Print the centered text with colored padding
-    for fail in fails:
-        print(fail)
-    for testPass in passes:
-        print(testPass)
-    print(f"{padding}{text}{padding}")
-
-
-def check_yaml_keys():
-    # Dictionary to hold the keys for each file
-    file_keys = {}
-
-    # Load all YAML files in the directory
-    for filename in YAML_FILES_TO_CHECK:
-        with open(filename, "r") as file:
-            try:
-                data = yaml.safe_load(file)
-                if data:
-                    file_keys[filename] = set(data.keys())
-                else:
-                    file_keys[filename] = set()
-            except yaml.YAMLError as exc:
-                print(f"Error loading {filename}: {exc}")
-
-    # Get the set of all keys across all files
-    all_keys = set().union(*file_keys.values())
-
-    # Prepare the report of missing keys
-    missing_keys_report = {}
-    for filename, keys in file_keys.items():
-        missing_keys = all_keys - keys
-        if missing_keys:
-            missing_keys_report[filename] = missing_keys
-
-    # Print the report
-    if missing_keys_report:
-        print("Missing Keys Report:")
-        for filename, missing_keys in missing_keys_report.items():
-            filename = filename.replace(package_dir + "/", "")
-            print(f"{filename} is missing keys:")
-            for key in missing_keys:
-                print(f"  {key}")
-            print()  # blank line between each failing file
-        return False
-    else:
-        print("All files contain the same keys.")
+# Add mock uploader class for testing
+class MockUploader:
+    """A mock uploader that doesn't actually attempt to upload files but
+    records calls."""
+
+    def __init__(self, *args, **kwargs):
+        self.uploaded_files = []
+        self.log = logging.getLogger("MockUploader")
+        self.log.info("Created MockUploader")
+
+    def checkAccess(self, *args, **kwargs):
+        """Always report access as successful."""
         return True
 
+    def upload(self, destinationFilename, sourceFilename):
+        """Record attempted upload without actually uploading."""
+        self.uploaded_files.append((destinationFilename, sourceFilename))
+        self.log.info(f"Mock upload: {sourceFilename} to {destinationFilename}")
+        return destinationFilename
 
-def terminate_redis():
-    global REDIS_PROCESS
-    if REDIS_PROCESS:
-        REDIS_PROCESS.terminate()
-        REDIS_PROCESS.wait()
-        print("Terminated Redis process")
+    def uploadNightReportData(
+        self, instrument, dayObs, filename, uploadAs, plotGroup=None, *, isMetadataFile=False
+    ):
+        """Mock implementation of uploadNightReportData."""
+        dayObsStr = str(dayObs)
+        baseName = f"{instrument}/{dayObsStr}/night_report"
+        if isMetadataFile:
+            destName = f"{baseName}/{instrument}_night_report_{dayObsStr}_md.json"
+        else:
+            plotGroup = plotGroup or "default"
+            plotFilename = f"{instrument}_night_report_{dayObsStr}_{plotGroup}_{uploadAs}"
+            destName = f"{baseName}/{plotGroup}/{plotFilename}"
+        self.uploaded_files.append((destName, filename))
+        self.log.info(f"Mock uploadNightReportData: {filename} to {destName}")
+        return destName
 
+    def uploadPerSeqNumPlot(self, instrument, plotName, dayObs, seqNum, filename):
+        """Mock implementation of uploadPerSeqNumPlot."""
+        dayObsStr = str(dayObs)
+        paddedSeqNum = f"{seqNum:06}"
+        extension = os.path.splitext(filename)[1]
+        uploadAs = (
+            f"{instrument}/{dayObsStr}/{plotName}/{paddedSeqNum}/"
+            f"{instrument}_{plotName}_{dayObsStr}_{paddedSeqNum}{extension}"
+        )
+        self.uploaded_files.append((uploadAs, filename))
+        self.log.info(f"Mock uploadPerSeqNumPlot: {filename} to {uploadAs}")
+        return uploadAs
 
-def run_test_scripts(scripts, timeout, is_meta_tests=False):
-    start_time = time.time()
-    processes = {}
-    output_queue = multiprocessing.Queue()
+    def uploadMovie(self, instrument, dayObs, filename, seqNum=None):
+        """Mock implementation of uploadMovie."""
+        dayObsStr = str(dayObs)
+        ext = os.path.splitext(filename)[1]
+        seqNum_str = "final" if seqNum is None else f"{seqNum:06}"
+        uploadAs = (
+            f"{instrument}/{dayObsStr}/movies/{seqNum_str}/{instrument}_movies_{dayObsStr}_{seqNum_str}{ext}"
+        )
+        self.uploaded_files.append((uploadAs, filename))
+        self.log.info(f"Mock uploadMovie: {filename} to {uploadAs}")
+        return uploadAs
 
-    # allow_debug is so we don't increase timeout on the meta tests
-    doing_debug = not is_meta_tests and any(s.do_debug for s in scripts)
-    if doing_debug:
-        if sum(s.do_debug for s in scripts) > 1:
-            debug_attempts = [s for s in scripts if s.do_debug]
-            script_string = "\n".join([str(s) for s in debug_attempts])
-            err_msg = f"You can only interactively debug one script at a time! Attempted:\n{script_string}"
-            raise RuntimeError(err_msg)
-        print("\n\n⚠️ ⚠️ INTERACTIVE SCRIPT DEBUG MODE ENABLED ⚠️ ⚠️")
-        print("     tests will continue until killed manually\n\n")
-        timeout = 9999999  # keeping things alive forever when debugging
+    def uploadAllSkyStill(self, *args, **kwargs):
+        """Mock implementation of uploadAllSkyStill."""
+        return "mock_all_sky_still_path"
 
-    for script in scripts:
-        p = multiprocessing.Process(target=exec_script, args=(script, output_queue))
-        p.start()
-        processes[p] = script
-        print(f"Launched {script} with pid={p.pid}...")
+    def uploadMetdata(self, channel, dayObs, filename):
+        """Mock implementation of uploadMetdata."""
+        dayObsStr = str(dayObs)
+        uploadAs = f"{channel}/{dayObsStr}/metadata.json"
+        self.uploaded_files.append((uploadAs, filename))
+        self.log.info(f"Mock uploadMetdata: {filename} to {uploadAs}")
+        return uploadAs
 
-    last_secs = None
-    while (time_remaining := (timeout - (time.time() - start_time))) > 0:
-        # Check running time
-        mins, secs = divmod(time_remaining, 60)
-        if int(secs) != last_secs:  # only update when the seconds change
-            last_secs = int(secs)
-            timer = f"{int(mins):02d}:{int(secs):02d} remaining" if time_remaining > 0 else "time's up"
-            end = "\r" if time_remaining > 0 else "\n"  # overwrite until the end, then leave it showing
-            n_alive = sum([p.is_alive() for p in processes])
-            print(f"{timer} with {n_alive} processes running", end=end)
-        time.sleep(1)
+    def __str__(self):
+        return "MockUploader()"
 
-    for p in list(processes.keys()):
-        if p.is_alive():
-            if DEBUG:
-                print(f"Terminating running process {processes[p]} at timeout.")
-            p.terminate()  # Send SIGTERM signal
-
-    print("Post SIGTERM sleep")
-    time.sleep(3)  # leave time to die
-
-    # Ensure all processes have terminated
-    for p in list(processes.keys()):
-        if DEBUG:
-            print(f"Joining terminated process {p.pid}.")
-        p.join(timeout=3)
-
-    if DEBUG:
-        print("Finished terminating running processes, collecting outputs...")
-
-    while not output_queue.empty():
-        script, exit_code, stdout, stderr, log_output = output_queue.get()
-        exit_codes[script] = exit_code
-        outputs[script] = (stdout, stderr, log_output)
-        if DEBUG:
-            print(f"Collected output for {script}")
+    def __repr__(self):
+        return self.__str__()
 
 
-def check_log_capture():
-    def get_log_capture_scripts():
-        scripts = [s for s in META_TESTS_PASS_EXPECTED if "meta_test_logging_capture.py" in s.path]
-        return scripts
+def setup_mock_uploaders():
+    """Set up mock uploaders for testing."""
+    # Patch uploader creation functions
+    s3_uploader_patch = patch(
+        "lsst.rubintv.production.uploaders.createLocalS3UploaderForSite", return_value=MockUploader()
+    )
+    s3_uploader_patch.start()
 
-    stdout_expected = ["This is in stdout"]
-    log_expected = [
-        "logger at info level",
-        "logger at warning level",
-        "logger at error level",
-        "logger at info level - post CliLog.initLog()",
-        "logger at warning level - post CliLog.initLog()",
-        "logger at error level - post CliLog.initLog()",
-    ]
-    passed = True
+    remote_uploader_patch = patch(
+        "lsst.rubintv.production.uploaders.createRemoteS3UploaderForSite", return_value=MockUploader()
+    )
+    remote_uploader_patch.start()
 
-    for logging_capture_script in get_log_capture_scripts():
-        stdout, stderr, logs = outputs[logging_capture_script]  # single strings with \n embedded
-        missing_items = []
-        for line in stdout_expected:
-            if line not in stdout:
-                print(f"❌ Test {logging_capture_script} did not capture stdout as expected.")
-                missing_items.append(line)
+    # Create mock MultiUploader init that doesn't try to connect
+    def mock_multi_uploader_init(self, allowNoRemote=False):
+        self.localUploader = MockUploader()
+        self.remoteUploader = MockUploader()
+        self.log = logging.getLogger("MockMultiUploader")
+        self.log.info("Created MockMultiUploader")
+
+    multi_uploader_patch = patch(
+        "lsst.rubintv.production.uploaders.MultiUploader.__init__", mock_multi_uploader_init
+    )
+    multi_uploader_patch.start()
+
+    return [s3_uploader_patch, remote_uploader_patch, multi_uploader_patch]
+
+
+class TestConfig:
+    """Centralized configuration for the test suite."""
+
+    def __init__(self) -> None:
+        # Test execution settings
+        self.do_run_meta_tests = True
+        self.do_check_yaml_files = True
+        self.copy_plots_to_public_html = False
+
+        self.debug = False
+
+        # Redis settings
+        self.redis_host = "127.0.0.1"
+        self.redis_port = "6111"
+        self.redis_password = "redis_password"
+        self.redis_init_wait_time = 3
+        self.capture_redis_output = True
+
+        # Test durations
+        self.meta_test_duration = 30
+        self.test_duration = 600
+
+        # Date for testing
+        self.today = 20240101
+
+        # File paths
+        self.ci_dir = os.path.dirname(os.path.abspath(__file__))
+        self.package_dir = os.path.abspath(os.path.join(self.ci_dir, "../../"))
+
+        # Initialize test scripts and yaml files
+        self._init_test_scripts()
+        self._init_yaml_files()
+
+    def _init_test_scripts(self) -> None:
+        """Initialize test script definitions."""
+        # LATISS pods
+        latiss_scripts = [
+            TestScript(
+                "scripts/LATISS/runHeadNode.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runSfmRunner.py",
+                ["usdf_testing", "0"],
+                display_on_pass=True,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runStep1bWorker.py",
+                ["usdf_testing", "0"],
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runOneOffExpRecord.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+            ),
+            TestScript(
+                "scripts/LATISS/runOneOffPostIsr.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+            ),
+        ]
+
+        # LSSTCam pods
+        lsstcam_scripts = [
+            TestScript(
+                "scripts/LSSTCam/runPlotter.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runFWHMPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runRadialPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runPsfPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=False,
+                tee_output=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runStep1bWorker.py",
+                ["usdf_testing", "0"],
+                display_on_pass=True,
+                tee_output=False,
+            ),
+            TestScript("scripts/LSSTCam/runNightlyWorker.py", ["usdf_testing", "0"], tee_output=False),
+        ]
+
+        # SFM Runners for LSSTCam
+        # these do both the in-focus image and the FAM pair
+        detectorNumbers = [
+            90,
+            91,
+            92,
+            93,
+            94,
+            95,
+            96,
+            97,
+            98,
+            144,
+            145,
+            146,
+            147,
+            148,
+            149,
+            150,
+            151,
+            152,
+        ]
+        sfm_runners = [
+            TestScript(
+                "scripts/LSSTCam/runSfmRunner.py",
+                ["usdf_testing", str(detectorNumbers[0])],
+                display_on_pass=True,
+                tee_output=False,
+            )
+        ]
+        sfm_runners.extend(
+            [
+                TestScript("scripts/LSSTCam/runSfmRunner.py", ["usdf_testing", str(i)])
+                for i in detectorNumbers[1:]
+            ]
+        )
+
+        # AOS Workers for LSSTCam
+        # these do the corner chips, and the run as dual dataIds on the
+        # split chips, so need only 4
+        # XXX TODO: bugfix the need to use odd numbers! fix AOS_WORKER_MAPPING
+        aos_workers = [
+            TestScript(
+                "scripts/LSSTCam/runAosWorker.py",
+                ["usdf_testing", "1"],
+                display_on_pass=True,
+                tee_output=True,
+            )
+        ]
+        aos_workers.extend(
+            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in [3, 5, 7]]
+        )
+
+        # Additional LSSTCam scripts
+        # runStep1baAosWorker deals with the outputs from the regular CWFS and
+        # the FAM output, so make 3
+        additional_lsstcam_scripts = [
+            TestScript(
+                "scripts/LSSTCam/runStep1bAosWorker.py",
+                ["usdf_testing", "0", "1", "2"],
+                display_on_pass=True,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runOneOffExpRecord.py",
+                ["usdf_testing"],
+                tee_output=False,
+                display_on_pass=True,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runOneOffPostIsr.py",
+                ["usdf_testing"],
+                tee_output=False,
+                display_on_pass=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runOneOffVisitImage.py",
+                ["usdf_testing"],
+                tee_output=False,
+                display_on_pass=False,
+            ),
+            TestScript(
+                "scripts/LSSTCam/runHeadNode.py",
+                ["usdf_testing"],
+                delay=5,
+                tee_output=True,
+                display_on_pass=True,
+            ),
+            TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
+        ]
+
+        # Combine all test scripts
+        self.test_scripts_round_1 = (
+            latiss_scripts + lsstcam_scripts + sfm_runners + aos_workers + additional_lsstcam_scripts
+        )
+
+        # Scripts to run after processing pods are torn down
+        self.test_scripts_round_3 = [
+            TestScript("scripts/LSSTCam/runButlerWatcher.py", ["usdf_testing"]),
+        ]
+
+        # Meta tests that are expected to fail
+        self.meta_tests_fail_expected = [
+            TestScript("meta_test_raise.py"),
+            TestScript("meta_test_sys_exit_non_zero.py"),
+        ]
+
+        # Meta tests that are expected to pass
+        self.meta_tests_pass_expected = [
+            TestScript("meta_test_runs_ok.py"),
+            TestScript("meta_test_debug_config.py", do_debug=True),
+            TestScript("meta_test_patching.py"),
+            TestScript("meta_test_env.py"),
+            TestScript("meta_test_s3_upload.py"),
+            TestScript("meta_test_logging_capture.py"),
+            TestScript("meta_test_logging_capture.py", tee_output=True),
+        ]
+
+        # Convert relative paths to absolute paths
+        self._resolve_paths()
+
+    def _resolve_paths(self) -> None:
+        """Convert relative script paths to absolute paths."""
+        self.test_scripts_round_1 = [
+            TestScript.from_existing(script, os.path.join(self.package_dir, script.path))
+            for script in self.test_scripts_round_1
+        ]
+
+        self.test_scripts_round_3 = [
+            TestScript.from_existing(script, os.path.join(self.package_dir, script.path))
+            for script in self.test_scripts_round_3
+        ]
+
+        self.meta_tests_fail_expected = [
+            TestScript.from_existing(script, os.path.join(self.ci_dir, script.path))
+            for script in self.meta_tests_fail_expected
+        ]
+
+        self.meta_tests_pass_expected = [
+            TestScript.from_existing(script, os.path.join(self.ci_dir, script.path))
+            for script in self.meta_tests_pass_expected
+        ]
+
+    def _init_yaml_files(self) -> None:
+        """Initialize YAML file paths for configuration checks."""
+        self.yaml_files_to_check = [
+            "config/config_bts.yaml",
+            "config/config_tts.yaml",
+            "config/config_summit.yaml",
+            "config/config_usdf_testing.yaml",
+            "config/config_usdf.yaml",
+        ]
+
+        # Convert to absolute paths
+        self.yaml_files_to_check = [os.path.join(self.package_dir, file) for file in self.yaml_files_to_check]
+
+
+class RedisManager:
+    """Manages Redis server operations."""
+
+    def __init__(self, config: TestConfig) -> None:
+        self.config = config
+        self.redis_process = None
+
+    def is_redis_running(self) -> bool:
+        """Check if redis-server is already running."""
+        try:
+            # Run pgrep to find redis-server processes
+            result = subprocess.run(["pgrep", "-f", "redis-server"], capture_output=True, text=True)
+            # Get process IDs if any
+            redis_pids = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            return bool(redis_pids and redis_pids[0])
+        except Exception as e:
+            print(f"Error checking Redis process: {e}")
+            return False
+
+    def start(self) -> None:
+        """Start the Redis server."""
+        host = self.config.redis_host
+        port = self.config.redis_port
+        password = self.config.redis_password
+
+        # Check if Redis is already running
+        if self.is_redis_running():
+            raise RuntimeError("Redis server is already running. Cannot start another instance.")
+
+        # Set environment variables
+        os.environ["REDIS_HOST"] = host
+        os.environ["REDIS_PORT"] = port
+        os.environ["REDIS_PASSWORD"] = password
+
+        capture_kwargs = {}
+        if self.config.capture_redis_output:
+            capture_kwargs["stdout"] = subprocess.PIPE
+            capture_kwargs["stderr"] = subprocess.PIPE
+
+        print(f"Starting Redis on {host}:{port}")
+        self.redis_process = subprocess.Popen(
+            ["redis-server", "--port", port, "--bind", host, "--requirepass", password], **capture_kwargs
+        )  # type: ignore[call-overload]
+        assert self.redis_process is not None
+        print(f"✅ Redis server started on {host}:{port} with PID: {self.redis_process.pid}")
+
+        # Wait for Redis to initialize
+        wait_time = self.config.redis_init_wait_time
+        print(f"Waiting for {wait_time}s to let Redis startup finish")
+        time.sleep(wait_time)
+
+        self.clear_database()
+
+    def clear_database(self) -> None:
+        """Clear the Redis database."""
+        r = redis.Redis(
+            host=self.config.redis_host, port=int(self.config.redis_port), password=self.config.redis_password
+        )
+        r.flushall()
+        print("Cleared Redis database")
+
+    def check_connection(self) -> None:
+        """Verify Redis connection is working properly."""
+        host = self.config.redis_host
+        port = self.config.redis_port
+        password = self.config.redis_password
+
+        r = redis.Redis(host=host, port=int(port), password=password)
+
+        # Ping Redis
+        if not r.ping():
+            raise RuntimeError("Could not ping Redis")
+
+        # Set and read back a test key
+        r.set("test_key", "test_value")
+        result = r.get("test_key")
+        if result is None:
+            raise RuntimeError("Could not retrieve test key from Redis")
+        value = result.decode("utf-8")
+        if value != "test_value":
+            raise RuntimeError("Could not set and read back a test key in Redis")
+
+        r.flushall()  # Clear the database
+        print("✅ Successfully pinged Redis and set/read back a test key")
+
+    def check_final_contents(self, checks: list[Check]) -> None:
+        """Check Redis contents after test execution."""
+        # no need for a butler or location config when just monitoring
+        # so ignore arg types for the helper init
+        redisHelper = RedisHelper(None, None)  # type: ignore[arg-type]
+        redisHelper.displayRedisContents()
+
+        # Check LSSTCam data
+        self._check_lsstcam_data(redisHelper, checks)
+
+        # Check LATISS data
+        self._check_latiss_data(redisHelper, checks)
+
+        # Check for failure keys
+        self._check_failure_keys(redisHelper, checks)
+
+    def _check_lsstcam_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check LSSTCam data in Redis."""
+        inst = "LSSTCam"
+
+        visits_sfm = [2025041500088]
+        visits_aos = ["2025041500088", "20250415000086+20250415000087"]
+
+        n_visits_sfm = len(visits_sfm)
+        n_visits_aos = len(visits_aos)
+
+        # Check SFM step1b
+        n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
+        if n_step1b_sfm != n_visits_sfm:
+            checks.append(
+                Check(
+                    False,
+                    f"Expected {n_visits_sfm} SFM step1b for {inst} to have finished, got {n_step1b_sfm}",
+                )
+            )
+        else:
+            checks.append(Check(True, f"{n_step1b_sfm}x {inst} SFM step1b finished"))
+
+        # Check AOS step1b
+        n_step1b_aos = redisHelper.getNumVisitLevelFinished(inst, "step1b", "AOS")
+        if n_visits_aos != n_step1b_aos:
+            checks.append(
+                Check(False, f"Expected {n_visits_aos} AOS step1b to have finished, got {n_step1b_aos}")
+            )
+        else:
+            checks.append(Check(True, f"{n_visits_aos}x AOS step1b finished"))
+
+        # Check nightly rollup
+        key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
+        n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
+        if n_nightly_rollups != 1:
+            checks.append(Check(False, f"Expected 1 nightly rollup finished, got {n_nightly_rollups}"))
+        else:
+            checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
+
+        # check zernike announcement for MTAOS
+        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025041500088) == 4:
+            checks.append(Check(True, "MTAOS Zernike count for non-FAM image 2025041500088 is 4"))
+        else:
+            checks.append(Check(False, "MTAOS Zernike count for non-FAM image 2025041500088 is not 4"))
+
+        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025041500086) == 18:
+            checks.append(Check(True, "MTAOS Zernike count for FAM image 2025041500086 is 18"))
+        else:
+            checks.append(Check(False, "MTAOS Zernike count for FAM image 2025041500086 is not 18"))
+
+    def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check LATISS data in Redis."""
+        inst = "LATISS"
+
+        visits_sfm = [2024081300632]
+        n_visits_sfm = len(visits_sfm)
+
+        n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
+        if n_step1b_sfm != n_visits_sfm:
+            checks.append(
+                Check(
+                    False,
+                    f"Expected {n_visits_sfm} SFM step1b for {inst} to have finished, got {n_step1b_sfm}",
+                )
+            )
+        else:
+            checks.append(Check(True, f"{n_step1b_sfm}x {inst} SFM step1b finished"))
+
+    def _check_failure_keys(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check for failure keys in Redis."""
+        allKeys = redisHelper.redis.keys()
+        failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
+        if failed_keys:
+            checks.append(Check(False, f"Found failed keys: {failed_keys}"))
+        else:
+            checks.append(Check(True, "No failed keys found in Redis"))
+
+    def terminate(self) -> None:
+        """Terminate the Redis server."""
+        if self.redis_process:
+            self.redis_process.terminate()
+            self.redis_process.wait()
+            print("Terminated Redis process")
+
+
+class ProcessManager:
+    """Manages test script processes and output collection."""
+
+    def __init__(self) -> None:
+        self.manager = Manager()
+        self.exit_codes = self.manager.dict()
+        self.outputs = self.manager.dict()
+        self.processes: dict[Process, TestScript] = {}
+
+    def run_test_scripts(self, scripts: list[TestScript], timeout: int, is_meta_tests: bool = False) -> None:
+        """Run test scripts with timeout and collect results."""
+        start_time = time.time()
+        output_queue: multiprocessing.Queue[tuple[TestScript, int | str | None, str, str, str]] = (
+            multiprocessing.Queue()
+        )
+        reported_outputs: set[TestScript] = set()
+
+        # Check for debug mode
+        doing_debug = not is_meta_tests and any(s.do_debug for s in scripts)
+        if doing_debug:
+            if sum(s.do_debug for s in scripts) > 1:
+                debug_attempts = [s for s in scripts if s.do_debug]
+                script_string = "\n".join([str(s) for s in debug_attempts])
+                err_msg = (
+                    f"You can only interactively debug one script at a time! Attempted:\n{script_string}"
+                )
+                raise RuntimeError(err_msg)
+            print("\n\n⚠️ ⚠️ INTERACTIVE SCRIPT DEBUG MODE ENABLED ⚠️ ⚠️")
+            print("     tests will continue until killed manually\n\n")
+            timeout = 9999999  # Keep alive indefinitely when debugging
+
+        # Start all processes
+        for script in scripts:
+            p = Process(target=self._exec_script, args=(script, output_queue))
+            p.start()
+            self.processes[p] = script
+            print(f"Launched {script} with pid={p.pid}...")
+
+        # Main monitoring loop
+        last_secs = None
+        try:
+            while (time_remaining := (timeout - (time.time() - start_time))) > 0:
+                # Collect outputs from the queue
+                self._collect_outputs_from_queue(output_queue, reported_outputs)
+
+                # Update timer display
+                mins, secs = divmod(time_remaining, 60)
+                if int(secs) != last_secs:
+                    last_secs = int(secs)
+                    timer = (
+                        f"{int(mins):02d}:{int(secs):02d} remaining" if time_remaining > 0 else "time's up"
+                    )
+                    end = "\r" if time_remaining > 0 else "\n"
+                    n_alive = sum([p.is_alive() for p in self.processes])
+                    print(f"{timer} with {n_alive} processes running", end=end)
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("Interrupted by user, terminating processes...")
+
+        # Process termination and cleanup
+        print("\nTime's up or interrupted. Collecting remaining outputs before termination...")
+        self._terminate_processes(output_queue, reported_outputs)
+
+        # Check for any missing script outputs
+        self._check_missing_outputs(scripts, reported_outputs)
+
+    def _exec_script(self, test_script: TestScript, output_queue) -> None:
+        """Execute a test script in a separate process and capture output."""
+
+        def termination_handler(signum, frame, test_script=test_script) -> None:
+            print(f"Termination signal received for {test_script}, exiting...")
+            raise KeyboardInterrupt()
+
+        signal.signal(signal.SIGTERM, termination_handler)
+
+        script_path = test_script.path
+        script_args = test_script.args
+
+        f_stdout = io.StringIO()
+        f_stderr = io.StringIO()
+        log_stream = io.StringIO()
+
+        # Setup log capture
+        log_handler = logging.StreamHandler(log_stream)
+        log_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+
+        # Add handler to the root logger
+        root_logger = logging.getLogger()
+        root_logger.addHandler(log_handler)
+        root_logger.setLevel(logging.INFO)
+
+        exit_code: str | int | None = None
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+
+        # Set up debugging if needed
+        lsstDebug = None
+        if test_script.do_debug:
+            import ciutils  # type: ignore
+            import lsstDebug  # type: ignore
+
+            def getConnection():
+                return {"port": 4444, "addr": "127.0.0.1"}
+
+            ciutils.getConnection = getConnection
+
+        try:
+            with conditional_redirect(test_script.tee_output, f_stdout, f_stderr, log_handler, root_logger):
+                with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
+                    with open(script_path, "r") as script_file:
+                        script_content = script_file.read()
+                    exec_globals = {
+                        "__name__": "__main__",
+                        "__file__": script_path,
+                        "sys": sys,
+                        "logging": logging,
+                        "lsst.daf.butler.cli.cliLog": CliLog,
+                        "CliLog": CliLog,
+                        "lsstDebug": lsstDebug,
+                    }
+                    sys.argv = [script_path] + script_args if script_args else [script_path]
+                    time.sleep(test_script.delay)
+                    exec(script_content, exec_globals)
+                    exit_code = 0
+        except Exception:
+            traceback.print_exc(file=f_stderr)
+            exit_code = 1
+        except SystemExit as e:
+            logging.info(f"Script exited with status: {e}")
+            exit_code = e.code if e.code is not None else 0
+        except KeyboardInterrupt:
+            exit_code = "timeout"
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+
+            log_output = log_stream.getvalue()
+            output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue(), log_output))
+
+            # Clean up logger handlers
+            root_logger.removeHandler(log_handler)
+            log_handler.close()
+
+    def _collect_outputs_from_queue(self, queue, reported_outputs, timeout=0) -> int:
+        """Collect outputs from the queue without blocking indefinitely."""
+        collected = 0
+        try:
+            while True:
+                try:
+                    # Use a small timeout to avoid blocking forever
+                    script, exit_code, stdout, stderr, logs = queue.get(timeout=timeout)
+                    self.exit_codes[script] = exit_code
+                    self.outputs[script] = (stdout, stderr, logs)
+                    reported_outputs.add(script)
+                    collected += 1
+                except Empty:
+                    break
+        except Exception as e:
+            print(f"Error collecting from queue: {e}")
+
+        return collected
+
+    def _terminate_processes(self, output_queue, reported_outputs) -> None:
+        """Terminate all running processes and collect their outputs."""
+        # Give processes a chance to finish naturally
+        self._collect_outputs_from_queue(output_queue, reported_outputs, timeout=2)
+
+        # Terminate remaining processes
+        remaining_processes = [p for p in self.processes.keys() if p.is_alive()]
+        if remaining_processes:
+            print(f"Sending SIGTERM to {len(remaining_processes)} remaining processes...")
+            for p in remaining_processes:
+                script = self.processes[p]
+                if script not in reported_outputs:
+                    print(f"Terminating {script} (PID {p.pid})...")
+                    p.terminate()
+
+        # Collect outputs again
+        self._collect_outputs_from_queue(output_queue, reported_outputs, timeout=2)
+
+        # Wait for processes to terminate
+        for i in range(5):
+            if not any(p.is_alive() for p in self.processes):
+                break
+
+            remaining = sum(1 for p in self.processes if p.is_alive())
+            if remaining > 0:
+                print(f"{remaining} processes still alive, waiting {i + 1}s more...")
+                time.sleep(i + 1)
+
+            self._collect_outputs_from_queue(output_queue, reported_outputs)
+
+        # Force kill any remaining processes
+        for p in [p for p in self.processes if p.is_alive()]:
+            print(f"Forcefully terminating {self.processes[p]} (PID: {p.pid})")
+            if p.pid is not None:  # shoudn't be None by mypy doesn't know that
+                os.kill(p.pid, signal.SIGKILL)
+
+        # Final cleanup
+        for p in self.processes:
+            p.join(timeout=1)
+
+        self._collect_outputs_from_queue(output_queue, reported_outputs, timeout=5)
+
+    def _check_missing_outputs(self, scripts, reported_outputs) -> None:
+        """Check for any scripts that didn't report output."""
+        missing_scripts = set(scripts) - reported_outputs
+        if missing_scripts:
+            print(f"WARNING: Failed to collect outputs for {len(missing_scripts)} scripts:")
+            for script in missing_scripts:
+                print(f"  - {script}")
+                # Set default values for missing outputs
+                self.exit_codes[script] = "missing"
+                self.outputs[script] = ("", f"ERROR: Failed to collect output for {script}", "")
+
+
+class ResultCollector:
+    """Collects and analyzes test results."""
+
+    def __init__(self) -> None:
+        self.checks: list[Check] = []
+
+    def check_meta_test_results(
+        self, process_manager: ProcessManager, scripts_fail: list[TestScript], scripts_pass: list[TestScript]
+    ) -> bool:
+        """Validate meta test results against expectations."""
+        passed = True
+
+        # Check failure tests
+        for script in scripts_fail:
+            code = process_manager.exit_codes[script]
+            if code in (0, "timeout"):
+                print(f"❌ Test {script} was expected to fail but returned a zero-like exit code: {code}")
+                print(process_manager.outputs[script][1])
                 passed = False
-
-        for line in log_expected:
-            if line not in logs:
-                print(f"❌ Test {logging_capture_script} did not capture logs as expected.")
-                missing_items.append(line)
-                passed = False
-
-        if missing_items:
-            print(f"❌ Missing log items: {missing_items}")
-        else:
-            print(f"✅ Test {logging_capture_script} captured all stdout and logs as expected.")
-
-    return passed
-
-
-def check_meta_test_results():
-    # Don't count these towards passes and fail, just raise if these aren't
-    # as expected, as it means the test suite is fundamentally broken
-
-    passed = True
-    for script in META_TESTS_FAIL_EXPECTED:
-        code = exit_codes[script]
-        if code in (0, "timeout"):
-            print(f"❌ Test {script} was expected to fail but returned a zero-like exit code: {code}")
-            print(outputs[script][1])
-            passed = False
-        else:
-            print(f"✅ Test {script} passed (by failing) with exit code: {code}")
-    for script in META_TESTS_PASS_EXPECTED:
-        code = exit_codes[script]
-        if code not in (0, "timeout"):
-            print(f"❌ Test {script} was expected to pass but returned a non-zero exit code: {code}")
-            print(outputs[script][1])
-            passed = False
-        else:
-            print(f"✅ Test {script} passed with exit code: {code}")
-
-    capture_ok = check_log_capture()
-    passed = passed and capture_ok
-
-    if not passed:
-        raise RuntimeError("Meta-tests did not pass as expected - fix the test suite and try again.")
-
-
-def delete_output_files():
-    locationConfig = LocationConfig("usdf_testing")
-    deletionLocations = [
-        locationConfig.binnedCalexpPath,
-        locationConfig.calculatedDataPath,
-        locationConfig.plotPath,
-    ]
-    import shutil
-
-    for location in deletionLocations:
-        if os.path.exists(location):
-            shutil.rmtree(location)
-            print(f"✅ Deleted output directory: {location}")
-
-    # reinit a config as that creates the dirs again as needed
-    locationConfig = LocationConfig("usdf_testing")
-    # check that all those paths are now empty. Don't check os.listdir()
-    # naively as that will find directories in directories, and some paths are
-    # within others.
-    for location in deletionLocations:
-        if any(os.path.isfile(os.path.join(location, f)) for f in os.listdir(location)):
-            raise RuntimeError(f"Failed to delete files in {location}")
-
-
-def check_plots():
-    locationConfig = LocationConfig("usdf_testing")
-
-    expected = [  # (path, size) tuples
-        ("LSSTComCam/20241102/LSSTComCam_calexp_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000170.jpg", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000171.jpg", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_postISRCCD_mosaic_dayObs_20241102_seqNum_000172.jpg", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000170.png", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000171.png", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_mount_dayObs_20241102_seqNum_000172.png", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000170.png", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000171.png", 5000),
-        ("LSSTComCam/20241102/LSSTComCam_event_timeline_dayObs_20241102_seqNum_000172.png", 5000),
-        ("20241102_171-fp_donut_gallery.png", 0),  # these are just touch()ed for now
-        ("20241102_172-fp_donut_gallery.png", 0),  # these are just touch()ed for now
-        ("20241102_172-zk_measurement_pyramid.png", 0),  # these are just touch()ed for now
-        ("20241102_172-zk_residual_pyramid.png", 0),  # these are just touch()ed for now
-        ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
-        ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.png", 5000),
-        ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
-        ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
-    ]
-
-    destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
-    if COPY_PLOTS_TO_PUBLIC_HTML:
-        if destinationDir.exists():
-            shutil.rmtree(destinationDir)
-        if destinationDir.exists():
-            CHECKS.append(Check(False, "Failed to remove output dir - files in there cannot be trusted!"))
-
-    for file, expected_size in expected:
-        full_path = os.path.join(locationConfig.plotPath, file)
-        if os.path.exists(full_path):
-            if COPY_PLOTS_TO_PUBLIC_HTML:
-                destination = destinationDir / file
-                os.makedirs(destination.parent, exist_ok=True)
-                shutil.copy(full_path, destination)
-            file_size = os.path.getsize(full_path)
-            if file_size >= expected_size:
-                CHECKS.append(Check(True, f"Found expected plot {file} with size {file_size} bytes"))
             else:
-                CHECKS.append(Check(False, f"Plot {file} exists but is too small: {file_size} bytes"))
+                print(f"✅ Test {script} passed (by failing) with exit code: {code}")
+
+        # Check passing tests
+        for script in scripts_pass:
+            code = process_manager.exit_codes[script]
+            if code not in (0, "timeout"):
+                print(f"❌ Test {script} was expected to pass but returned a non-zero exit code: {code}")
+                print(process_manager.outputs[script][1])
+                passed = False
+            else:
+                print(f"✅ Test {script} passed with exit code: {code}")
+
+        # Check log capture
+        capture_ok = self._check_log_capture(process_manager)
+        passed = passed and capture_ok
+
+        if not passed:
+            raise RuntimeError("Meta-tests did not pass as expected - fix the test suite and try again.")
+
+        return passed
+
+    def _check_log_capture(self, process_manager: ProcessManager) -> bool:
+        """Verify log capture is working correctly."""
+
+        def get_log_capture_scripts():
+            scripts = [
+                s for s in process_manager.exit_codes.keys() if "meta_test_logging_capture.py" in s.path
+            ]
+            return scripts
+
+        stdout_expected = ["This is in stdout"]
+        log_expected = [
+            "logger at info level",
+            "logger at warning level",
+            "logger at error level",
+            "logger at info level - post CliLog.initLog()",
+            "logger at warning level - post CliLog.initLog()",
+            "logger at error level - post CliLog.initLog()",
+        ]
+        passed = True
+
+        for script in get_log_capture_scripts():
+            stdout, stderr, logs = process_manager.outputs[script]
+            missing_items = []
+
+            for line in stdout_expected:
+                if line not in stdout:
+                    print(f"❌ Test {script} did not capture stdout as expected.")
+                    missing_items.append(line)
+                    passed = False
+
+            for line in log_expected:
+                if line not in logs:
+                    print(f"❌ Test {script} did not capture logs as expected.")
+                    missing_items.append(line)
+                    passed = False
+
+            if missing_items:
+                print(f"❌ Missing log items: {missing_items}")
+            else:
+                print(f"✅ Test {script} captured all stdout and logs as expected.")
+
+        return passed
+
+    def check_script_results(self, process_manager: ProcessManager, scripts: list[TestScript]) -> None:
+        """Check the results of test scripts and update checks list."""
+        for script in scripts:
+            result = process_manager.exit_codes[script]
+            stdout, stderr, log_output = process_manager.outputs[script]
+
+            if result in ["timeout", 0]:
+                self.checks.append(Check(True, f"{script} passed"))
+                if script.display_on_pass:
+                    print(f"\n🙂 *Passing* logs from {script}:")
+                    print(f"stdout:\n{stdout}")
+                    print(f"stderr:\n{stderr}")
+                    print(f"logs:\n{log_output}")
+            else:
+                print(f"🚨 {script}: Failed with exit code {result}. Stdout, stderr and logs below 🚨")
+                print(f"stdout:\n{stdout}")
+                print(f"stderr:\n{stderr}")
+                print(f"logs:\n{log_output}")
+                print("\n")
+                self.checks.append(Check(False, f"{script} failed"))
+
+    def check_yaml_files(self, yaml_files: list[str]) -> bool:
+        """Check YAML files for consistent keys."""
+        # Dictionary to hold the keys for each file
+        file_keys = {}
+
+        # Load all YAML files
+        for filename in yaml_files:
+            with open(filename, "r") as file:
+                try:
+                    data = yaml.safe_load(file)
+                    if data:
+                        file_keys[filename] = set(data.keys())
+                    else:
+                        file_keys[filename] = set()
+                except yaml.YAMLError as exc:
+                    print(f"Error loading {filename}: {exc}")
+
+        # Get the set of all keys across all files
+        all_keys = set().union(*file_keys.values())
+
+        # Prepare the report of missing keys
+        missing_keys_report = {}
+        for filename, keys in file_keys.items():
+            missing_keys = all_keys - keys
+            if missing_keys:
+                missing_keys_report[filename] = missing_keys
+
+        # Print the report
+        if missing_keys_report:
+            print("Missing Keys Report:")
+            package_dir = os.path.dirname(yaml_files[0]).split("/config")[0]
+            for filename, missing_keys in missing_keys_report.items():
+                rel_filename = filename.replace(package_dir + "/", "")
+                print(f"{rel_filename} is missing keys:")
+                for key in missing_keys:
+                    print(f"  {key}")
+                print()
+            return False
         else:
-            CHECKS.append(Check(False, f"Did not find expected plot {file}"))
+            print("All files contain the same keys.")
+            return True
+
+    def check_plots(self, config: TestConfig) -> None:
+        """Check that expected plots were generated."""
+        locationConfig = LocationConfig("usdf_testing")
+
+        expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
+            # Regular LSSTCam plots -------
+            # event timelines for all images
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000086.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000311.png", 5000),
+            # post ISR mosaics for all images
+            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000086.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000087.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000311.jpg", 5000),
+            # witness detector images for all with postISR that aren't CWFS
+            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000311.jpg", 5000),
+            # calexp mosaic for the only in-focus image
+            ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            # mount plots for the three on-sky images
+            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
+            # all the other plots for the on-sky image: fwhm, imexam
+            # TODO: DM-51391 add psfAzEl plot
+            ("LSSTCam/20250415/LSSTCam_fwhm_focal_plane_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_imexam_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_psf_shape_azel_dayObs_20250415_seqNum_000088.png", 5000),
+            # AOS plots -------
+            # FAM donut galleries
+            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000086.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000088.png", 5000),
+            # Extrafocal id for FAM plot
+            ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
+            # CWFS plot
+            ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            # Extrafocal id for FAM plot
+            ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
+            # CWFS plot
+            ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            # PSF zernike panels FAM extra-focal and regular image
+            ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000088.png", 5000),
+            # Donut pairing plot for regular image
+            ("LSSTCam/20250415/LSSTCam_fp_pairing_plot_dayObs_20250415_seqNum_000088.png", 5000),
+            # LATISS plots -------
+            ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
+            ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
+            ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
+            ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
+        ]
+
+        # Create a set of the expected plot paths for comparison
+        expectedPlotPaths = {file for file, _ in expected}
+
+        destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
+        if config.copy_plots_to_public_html:
+            if destinationDir.exists():
+                shutil.rmtree(destinationDir)
+            if destinationDir.exists():
+                self.checks.append(
+                    Check(False, "Failed to remove output dir - files in there cannot be trusted!")
+                )
+
+        for file, expected_size in expected:
+            full_path = os.path.join(locationConfig.plotPath, file)
+            if os.path.exists(full_path):
+                if config.copy_plots_to_public_html:
+                    destination = destinationDir / file
+                    os.makedirs(destination.parent, exist_ok=True)
+                    shutil.copy(full_path, destination)
+                file_size = os.path.getsize(full_path)
+                if file_size >= expected_size:
+                    self.checks.append(
+                        Check(
+                            True,
+                            f"Found expected plot {file}" f" with size {file_size} bytes",
+                        )
+                    )
+                else:
+                    self.checks.append(
+                        Check(False, f"Plot {file} exists but is too small: {file_size} bytes")
+                    )
+            else:
+                self.checks.append(Check(False, f"Did not find expected plot {file}"))
+
+        # Find all actual plots in the directory
+        actualPlotPaths = set()
+        for root, _, files in os.walk(locationConfig.plotPath):
+            for file in files:
+                if file.endswith((".png", ".jpg", ".jpeg", ".gif")):
+                    relPath = os.path.relpath(os.path.join(root, file), locationConfig.plotPath)
+                    actualPlotPaths.add(relPath)
+
+        # Check for plots that exist but weren't in our expected list
+        uncheckedPlots = actualPlotPaths - expectedPlotPaths
+        if uncheckedPlots:
+            for plot in sorted(uncheckedPlots):
+                self.checks.append(Check(None, f"Found unchecked-for plot {plot}"))
+
+    def print_final_result(self, config: TestConfig) -> bool:
+        """Print final test results and return overall pass status."""
+        fails = [check for check in self.checks if check.passed is False]
+        passes = [check for check in self.checks if check.passed is True]
+        warnings = [check for check in self.checks if check.passed is None]
+        n_fails = len(fails)
+        n_passes = len(passes)
+        n_warnings = len(warnings)
+        terminal_width = os.get_terminal_size().columns
+
+        # Determine the colors and text to display
+        if n_fails > 0:
+            pass_color = "\033[92m"  # green
+            fail_color = "\033[91m"  # red
+            warn_color = "\033[93m"  # yellow
+            text = (
+                f"{pass_color}{n_passes} passing tests\033[0m, "
+                f"{fail_color}{n_fails} failing tests\033[0m"
+                + (f", {warn_color}{n_warnings} warnings\033[0m" if n_warnings > 0 else "")
+            )
+            padding_color = fail_color
+        else:
+            pass_color = "\033[92m"  # green
+            warn_color = "\033[93m"  # yellow
+            text = f"{pass_color}{n_passes} passing tests, {n_fails} failing tests" + (
+                f", {warn_color}{n_warnings} warnings\033[0m" if n_warnings > 0 else ""
+            )
+            padding_color = pass_color
+
+        # Calculate the padding
+        padding_length = (terminal_width - len(text)) // 2
+        padding = f"{padding_color}{'-' * padding_length}\033[0m"
+
+        # Print the centered text with colored padding
+        for test_pass in passes:
+            print(test_pass)
+        for warning in warnings:
+            print(warning)
+        for fail in fails:
+            print(fail)
+        print(f"{padding}{text}{padding}")
+        if config.copy_plots_to_public_html:
+            print("⚠️  Plots copied to ~/public_html/ra_ci_automated_output/ - please check and delete ASAP.")
+        return n_fails == 0
 
 
-def main():
-    check_system_size_and_load()
+class TestRunner:
+    """Main class for orchestrating the test suite."""
 
-    # setup env vars for all processes
-    run_setup()  # needs to come before meta tests as they test the env vars
+    def __init__(self) -> None:
+        self.config = TestConfig()
+        self.redis_manager = RedisManager(self.config)
+        self.process_manager = ProcessManager()
+        self.result_collector = ResultCollector()
+        self.patches: Any = []  # not sure what type to use here
 
-    if DO_CHECK_YAML_FILES:
-        yaml_files_ok = check_yaml_keys()
-        if not yaml_files_ok:  # not an instant fail
-            CHECKS.append(Check(False, "YAML check"))
+    def check_system_requirements(self) -> None:
+        """Check system size and load for running tests."""
+        number_of_cores = os.cpu_count()
+        assert number_of_cores is not None
+        number_of_scripts = len(self.config.test_scripts_round_1)
 
-    # these exit if any fail because that means everything is broken so there's
-    # no point in continuing
-    if DO_RUN_META_TESTS:
-        for test_script in itertools.chain(
-            TEST_SCRIPTS_ROUND_1, META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED
-        ):
+        if number_of_scripts > number_of_cores:
+            print(
+                f"The number of test scripts ({number_of_scripts}) is greater than the number of"
+                f" cores ({number_of_cores}).\nThis test suite needs to be run on a bigger system."
+            )
+            sys.exit(1)
+
+        load1, load5, load15 = os.getloadavg()
+        if any(load > 50 for load in [load1, load5, load15]):
+            print("⚠️  High system load detected, results could be affected ⚠️ ")
+
+        approx_cores_free = (100 - load5) / 100 * number_of_cores
+        if number_of_scripts > approx_cores_free:
+            print(
+                f"⚠️  Number of test scripts ({number_of_scripts}) is greater than the approximate number"
+                f"  of free cores {approx_cores_free:.1f} ⚠️ "
+            )
+
+    def setup_environment(self) -> None:
+        """Set up environment variables for testing."""
+        # Set environment variables for rapid analysis
+        os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
+        os.environ["RAPID_ANALYSIS_CI"] = "true"
+        os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
+
+        # Verify environment settings
+        if getDoRaise() is not True:
+            raise RuntimeError("getDoRaise is not True")
+
+        if runningCI() is not True:
+            raise RuntimeError("runningCI is not True")
+
+        # Apply mock uploader patches for testing
+        self.patches = setup_mock_uploaders()
+        print("✅ Applied mock uploader patches for testing")
+
+    def check_test_scripts_exist(self) -> None:
+        """Ensure all test scripts exist."""
+        all_scripts = itertools.chain(
+            self.config.test_scripts_round_1,
+            self.config.meta_tests_fail_expected,
+            self.config.meta_tests_pass_expected,
+        )
+
+        for test_script in all_scripts:
             if not os.path.isfile(test_script.path):
                 raise FileNotFoundError(f"Test script {test_script.path} not found - your tests are doomed")
-        print(f"Running meta-tests to test the CI suite for the next {META_TEST_DURATION}s...")
-        run_test_scripts(
-            META_TESTS_FAIL_EXPECTED + META_TESTS_PASS_EXPECTED, META_TEST_DURATION, is_meta_tests=True
+
+    def run_meta_tests(self) -> None:
+        """Run meta tests to verify the test framework."""
+        print(f"Running meta-tests to test the CI suite for the next {self.config.meta_test_duration}s...")
+
+        self.process_manager.run_test_scripts(
+            self.config.meta_tests_fail_expected + self.config.meta_tests_pass_expected,
+            self.config.meta_test_duration,
+            is_meta_tests=True,
         )
-        check_meta_test_results()
+
+        self.result_collector.check_meta_test_results(
+            self.process_manager, self.config.meta_tests_fail_expected, self.config.meta_tests_pass_expected
+        )
+
         print("✅ All meta-tests passed, running real tests now...\n")
 
-    atexit.register(terminate_redis)
-    start_redis(REDIS_INIT_WAIT_TIME)
-    check_redis_startup()  # Wait for the setup timeout and then check Redis
+    def delete_output_files(self) -> None:
+        """Delete previous output files."""
+        locationConfig = LocationConfig("usdf_testing")
+        nfs_deletion_locations: list[str] = [
+            locationConfig.plotPath,
+        ]
 
-    delete_output_files()
+        for location in nfs_deletion_locations:
+            if os.path.exists(location):
+                shutil.rmtree(location)
+                print(f"✅ Deleted output directory: {location}")
 
-    # Run each real test script
-    run_test_scripts(TEST_SCRIPTS_ROUND_1, TEST_DURATION)
+        # Reinitialize to create directories as needed
+        locationConfig = LocationConfig("usdf_testing")
 
-    # Check there's a result for all scripts
-    expected = [script for script in TEST_SCRIPTS_ROUND_1]
-    if DO_RUN_META_TESTS:
-        expected += [s for s in itertools.chain(META_TESTS_FAIL_EXPECTED, META_TESTS_PASS_EXPECTED)]
-    if not set(exit_codes.keys()) == set(expected) or not set(outputs.keys()) == set(expected):
-        missing_exit_codes = set(expected) - set(exit_codes.keys())
-        missing_outputs = set(expected) - set(outputs.keys())
-        extra_exit_codes = set(exit_codes.keys()) - set(expected)
-        extra_outputs = set(outputs.keys()) - set(expected)
-        msg = "Not all test scripts have had their results collected somehow - this is drastically wrong!\n"
-        if missing_exit_codes:
-            msg += f"Missing exit codes for: {missing_exit_codes}\n"
-        if missing_outputs:
-            msg += f"Missing outputs for: {missing_outputs}\n"
-        if extra_exit_codes:
-            msg += f"Unexpected exit codes for: {extra_exit_codes}\n"
-        if extra_outputs:
-            msg += f"Unexpected outputs for: {extra_outputs}\n"
-        raise RuntimeError(msg)
+        # Verify directories are empty
+        for location in nfs_deletion_locations:
+            if any(os.path.isfile(os.path.join(location, f)) for f in os.listdir(location)):
+                raise RuntimeError(f"Failed to delete files in {location}")
 
-    print("\nTest Results:")
-    for script, result in exit_codes.items():
-        if script not in [s for s in TEST_SCRIPTS_ROUND_1]:  # We've already done these
-            continue
+        # delete S3 scratch area completely
+        path = getBasePath(locationConfig)
+        rmtree(path, raiseOnError=True)
+        remainingContents = listDir(path, includeSubDirs=True)
+        if remainingContents:
+            raise RuntimeError(f"Failed to delete files in {path}, {remainingContents=}")
+        print(f"✅ Deleted S3 scratch area at {path}")
 
-        stdout, stderr, log_output = outputs[script]
-        if result in ["timeout", 0]:
-            CHECKS.append(Check(True, f"{script} passed"))
-            if script.display_on_pass:
-                print(f"\n🙂 *Passing* logs from {script}:")
-                print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
-                print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
-                print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
-            continue
-        else:
-            print(f"🚨 {script}: Failed with exit code {result}. Stdout, stderr and logs below 🚨")
-            print(f"stdout:\n{stdout}")  # ensure use of str not repr to print properly
-            print(f"stdout:\n{stderr}")  # ensure use of str not repr to print properly
-            print(f"logs:\n{log_output}")  # ensure use of str not repr to print properly
-            print("\n")  # put a nice gap between each failing scripts's output
-            CHECKS.append(Check(False, f"{script} failed"))
+    def run(self) -> None:
+        try:
+            # Check system capabilities
+            self.check_system_requirements()
 
-    check_plots()
-    check_redis_final_contents()
+            # Setup testing environment
+            self.setup_environment()
 
-    print_final_result(CHECKS)
-    overallPass = all(check.passed for check in CHECKS)
-    if not overallPass:
-        sys.exit(1)
+            # Check YAML files if configured
+            if self.config.do_check_yaml_files:
+                yaml_files_ok = self.result_collector.check_yaml_files(self.config.yaml_files_to_check)
+                if not yaml_files_ok:
+                    self.result_collector.checks.append(Check(False, "YAML check"))
+
+            # Verify test scripts exist
+            self.check_test_scripts_exist()
+
+            # Run meta tests if configured
+            if self.config.do_run_meta_tests:
+                self.run_meta_tests()
+
+            # Start Redis and register shutdown handler
+            atexit.register(self.redis_manager.terminate)
+            self.redis_manager.start()
+            self.redis_manager.check_connection()
+
+            # Delete previous output files
+            self.delete_output_files()
+
+            # Run the main test scripts
+            self.process_manager.run_test_scripts(self.config.test_scripts_round_1, self.config.test_duration)
+
+            # Verify all scripts reported results
+            self._verify_all_scripts_reported()
+
+            # Check test results
+            print("\nTest Results:")
+            self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
+
+            # Check for plots and Redis results
+            self.result_collector.check_plots(self.config)
+            self.redis_manager.check_final_contents(self.result_collector.checks)
+
+            # Print final results and exit with appropriate status
+            overall_pass = self.result_collector.print_final_result(self.config)
+            if not overall_pass:
+                sys.exit(1)
+        finally:
+            # Clean up patches
+            for patch_ in self.patches:
+                patch_.stop()
+
+    def _verify_all_scripts_reported(self) -> None:
+        """Verify that all test scripts have reported their results."""
+        expected: list[TestScript] = []
+        if self.config.do_run_meta_tests:
+            expected.extend(self.config.meta_tests_fail_expected)
+            expected.extend(self.config.meta_tests_pass_expected)
+        expected.extend(self.config.test_scripts_round_1)
+
+        exit_codes_keys = set(self.process_manager.exit_codes.keys())
+        outputs_keys = set(self.process_manager.outputs.keys())
+        expected_set = set(expected)
+
+        if exit_codes_keys != expected_set or outputs_keys != expected_set:
+            missing_exit_codes = expected_set - exit_codes_keys
+            missing_outputs = expected_set - outputs_keys
+            extra_exit_codes = exit_codes_keys - expected_set
+            extra_outputs = outputs_keys - expected_set
+
+            msg = (
+                "Not all test scripts have had their results collected somehow - this is drastically wrong!\n"
+            )
+            if missing_exit_codes:
+                msg += "Missing exit codes for:\n" + "\n".join(str(m) for m in missing_exit_codes) + "\n"
+            if missing_outputs:
+                msg += "Missing outputs for:\n" + "\n".join(str(m) for m in missing_outputs) + "\n"
+            if extra_exit_codes:
+                msg += "Unexpected exit codes for:\n" + "\n".join(str(m) for m in extra_exit_codes) + "\n"
+            if extra_outputs:
+                msg += "Unexpected outputs for:\n" + "\n".join(str(m) for m in extra_outputs) + "\n"
+
+            raise RuntimeError(msg)
+
+
+def main() -> None:
+    """Main entry point for the test suite."""
+    runner = TestRunner()
+    runner.run()
 
 
 if __name__ == "__main__":
