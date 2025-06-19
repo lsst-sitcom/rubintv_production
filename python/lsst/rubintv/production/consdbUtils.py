@@ -45,6 +45,11 @@ from .redisUtils import RedisHelper
 
 # The mapping from ExposureSummaryStats columns to consDB columns
 CCD_VISIT_MAPPING = {
+    "effTime": "eff_time",
+    "effTimePsfSigmaScale": "eff_time_psf_sigma_scale",
+    "effTimeSkyBgScale": "eff_time_sky_bg_scale",
+    "effTimeZeroPointScale": "eff_time_zero_point_scale",
+    "magLim": "stats_mag_lim",
     "astromOffsetMean": "astrom_offset_mean",
     "astromOffsetStd": "astrom_offset_std",
     "maxDistToNearestPsf": "max_dist_to_nearest_psf",
@@ -72,6 +77,7 @@ VISIT_MIN_MED_MAX_MAPPING = {
     "effTimePsfSigmaScale": "eff_time_psf_sigma_scale",
     "effTimeSkyBgScale": "eff_time_sky_bg_scale",
     "effTimeZeroPointScale": "eff_time_zero_point_scale",
+    "magLim": "stats_mag_lim",
     "astromOffsetMean": "astrom_offset_mean",
     "astromOffsetStd": "astrom_offset_std",
     "maxDistToNearestPsf": "max_dist_to_nearest_psf",
