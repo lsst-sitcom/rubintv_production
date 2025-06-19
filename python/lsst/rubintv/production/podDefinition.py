@@ -147,12 +147,25 @@ class PodDetails:
             f" detNum={self.detectorNumber})"
         )
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         # self.queueName must be functionally unique as this is where pods are
         # getting their work from. It's a combination of the podFlavor,
         # instrument, depth and detectorNumber and so would be what we pass
         # here anyway.
         return hash(self.queueName)
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, PodDetails):
+            raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
+        return all(
+            [
+                self.instrument == other.instrument,
+                self.podFlavor == other.podFlavor,
+                self.detectorNumber == other.detectorNumber,
+                self.depth == other.depth,
+                self.queueName == other.queueName,
+            ]
+        )
 
     def validate(self) -> None:
         if self.podType == PodType.PER_INSTRUMENT_SINGLETON:
