@@ -25,15 +25,18 @@ import datetime
 import logging
 import os
 import time
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
+from galsim.zernike import zernikeRotMatrix
 
 from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
 from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
+from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
@@ -44,6 +47,8 @@ from .redisUtils import RedisHelper
 from .utils import getShardPath, logDuration, raiseIf, writeMetadataShard
 
 if TYPE_CHECKING:
+    from lsst_efd_client import EfdClient
+
     from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import Butler, DataCoordinate, Quantum
 
@@ -166,6 +171,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+
+    @cached_property
+    def efdClient(self) -> EfdClient:
+        """Create an EFD client as needed, but don't add automatically to all
+        runners.
+
+        Returns
+        -------
+        efdClient : `lsst.efd_client.EfdClient`
+            The EFD client to use for this runner.
+        """
+        return makeEfdClient()
 
     def doProcessImage(self, dataId: DataCoordinate) -> bool:
         """Determine if we should skip this image.
@@ -423,6 +440,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.postProcessVisitSummary(quantum)
         elif "AggregateZernikeTablesTask".lower() in taskName.lower():
             self.postProcessAggregateZernikeTables(quantum)
+        elif "CalcZernikesTask".lower() in taskName.lower():
+            self.postProcessCalcZernikes(quantum)
         else:
             return
 
@@ -606,6 +625,67 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
+
+    def postProcessCalcZernikes(self, quantum: Quantum) -> None:
+        """Post-process the Zernike table to send results to ConsDB."""
+        # protect import to stop the whole package depending on ts_wep. If this
+        # becomes a problem we could copy the functions or just accept that RA
+        # needs T&S software.
+        from lsst.ts.wep.utils.zernikeUtils import makeDense
+
+        try:
+            dRef = quantum.outputs["zernikes"][0]
+            zkTable = self.cachingButler.get(dRef)
+        except Exception:
+            self.log.warning(
+                f"Failed to post-process *failed* quantum {quantum}. This is not unexpected"
+                " but still merits a warning due to the failing quantum."
+            )
+            return
+
+        # *ideally* this would be pulled from maxconfig.nollIndices() but
+        # that's not possible here, but a) they never run above 28, and b)
+        # ConsDB only goes out that far, so we'd truncate there anyway, so we
+        # just hardcode it here.
+        MAX_NOLL_INDEX = 28
+
+        # Get the physical rotation from the EFD. Ideally this would be pulled
+        # from the ConsDB, but that's calculated elsewhere in RA, and although
+        # that process is much quicker, using it here is introducing an
+        # unnecessary race condition, so it's better to recalculate it here.
+        visitRecord = dRef.dataId.records["visit"]
+        assert visitRecord is not None, "visitRecord is None, this shouldn't be possible"
+        data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=visitRecord)
+        physicalRotation = np.nanmean(data["actualPosition"])
+
+        detector = dRef.dataId.records["detector"]  # not a detector object, but a detector dimension
+        assert detector is not None, "detector is None, this shouldn't be possible"
+        detectorId: int = detector.id  # hence .id rather than .getId()
+
+        zkTable = zkTable[zkTable["label"] == "average"]
+        zkColsHere = [col for col in zkTable.colnames if col.startswith("Z")]
+        nollIndicesHere = np.asarray([int(col.removeprefix("Z")) for col in zkColsHere], dtype=int)
+        # Grab Zernike values, convert to dense array, save
+        zkSparse = zkTable[zkColsHere].to_pandas().values[0]
+        zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
+        rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
+        # we only track z4 upwards and ConsDB only has slots for z4 to z28
+        zernikeValues: np.ndarray = zkDense / 1e3 @ rotationMatrix[4:, 4:]
+
+        consDbValues: dict[str, float] = {}
+        for i in range(len(zernikeValues)):  # these start at z4 and are dense so contain zeros
+            value = float(zernikeValues[i])  # make a real float for ConsDB
+            if value == 0:  # skip the ones which were zero due to sparseness so they're null in the DB
+                continue
+            consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
+
+        # don't fill ConsDB at USDF, but put this at the very bottom so that CI
+        # still exercises all the code right up until filling the data
+        if self.locationConfig.location not in ["summit", "bts", "tts"]:
+            self.log.info(f"Skipping postProcessAggregateZernikeTables at {self.locationConfig.location}")
+            return
+
+        self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
         # protect import to stop the whole package depending on ts_wep. If this
