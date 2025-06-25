@@ -678,6 +678,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             if value == 0:  # skip the ones which were zero due to sparseness so they're null in the DB
                 continue
             consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
+
+        # don't fill ConsDB at USDF, but put this at the very bottom so that CI
+        # still exercises all the code right up until filling the data
+        if self.locationConfig.location not in ["summit", "bts", "tts"]:
+            self.log.info(f"Skipping postProcessAggregateZernikeTables at {self.locationConfig.location}")
+            return
+
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
