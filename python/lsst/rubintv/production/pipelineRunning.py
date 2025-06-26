@@ -714,6 +714,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
 
         outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
+
+        if donutBlurFwhm := zernikes.meta["estimatorInfo"].get("fwhm"):
+            # if danish is run then fwhm is in the metadata, if TIE then it's
+            # not. danish models the width of the Kolmogorov profile needed to
+            # convolve with the geometric donut model (the optics) to match the
+            # donut
+            outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
+
         labels = {"_" + k: "measured" for k in outputDict.keys()}
         outputDict.update(labels)
         dayObs = expRecord.day_obs
