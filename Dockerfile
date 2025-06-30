@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_24"
+ARG STACK_TAG="w_2025_26"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
