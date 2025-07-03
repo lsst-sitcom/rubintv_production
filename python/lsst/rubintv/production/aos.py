@@ -289,7 +289,6 @@ class PsfAzElPlotter:
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
-        self.fig, self.axes = makeFigureAndAxes()
 
     def makePlot(self, visitId: int) -> None:
         """Make the PSF plot for the given visit ID.
@@ -328,14 +327,13 @@ class PsfAzElPlotter:
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
 
-        self.fig.clf()
-        self.axes = self.fig.subplots(nrows=2, ncols=3)
+        fig, axes = makeFigureAndAxes()
 
         plotName = "psf_shape_azel"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
-        makeAzElPlot(self.fig, self.axes, table, self.camera, saveAs=plotFile)
+        makeAzElPlot(fig, axes, table, self.camera, saveAs=plotFile)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument),
             plotName=plotName,
