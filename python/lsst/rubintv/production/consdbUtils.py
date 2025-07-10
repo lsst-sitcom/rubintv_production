@@ -336,7 +336,7 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         mountErrors: dict[str, float] | MountErrors,
         instrument: str,
-        allowUpdate: bool = False,
+        allowUpdate: bool = True,
     ) -> None:
         values: dict[str, float] = {}
         if isinstance(mountErrors, MountErrors):
