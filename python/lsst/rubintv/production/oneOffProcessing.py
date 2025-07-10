@@ -486,7 +486,7 @@ class OneOffProcessor(BaseButlerChannel):
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
-        fig = make_figure(figsize=(10, 8))
+        fig = make_figure(figsize=(12, 8))
         plotMountErrors(data, errors, fig, saveFilename=plotFile)
         assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
