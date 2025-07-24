@@ -691,8 +691,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # protect import to stop the whole package depending on ts_wep. If this
         # becomes a problem we could copy the functions or just accept that RA
         # needs T&S software.
-        from lsst.ts.wep.utils import convertZernikesToPsfWidth  # type: ignore
-        from lsst.ts.wep.utils.zernikeUtils import makeDense
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
         try:
             dRef = quantum.outputs["aggregateZernikesAvg"][0]
