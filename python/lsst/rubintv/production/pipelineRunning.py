@@ -692,6 +692,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # becomes a problem we could copy the functions or just accept that RA
         # needs T&S software.
         from lsst.ts.wep.utils import convertZernikesToPsfWidth  # type: ignore
+        from lsst.ts.wep.utils.zernikeUtils import makeDense
 
         try:
             dRef = quantum.outputs["aggregateZernikesAvg"][0]
@@ -706,8 +707,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         rowSums = []
         zkOcs = zernikes["zk_OCS"]
+        nollIndices = zernikes.meta["nollIndices"]
+        maxNollIndex = np.max(zernikes.meta["nollIndices"])
         for row in zkOcs:
-            zk_fwhm = convertZernikesToPsfWidth(row)
+            zk_fwhm = convertZernikesToPsfWidth(makeDense(row, nollIndices, maxNollIndex))
             rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
 
         average_result = np.nanmean(rowSums)
