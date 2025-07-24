@@ -682,7 +682,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # don't fill ConsDB at USDF, but put this at the very bottom so that CI
         # still exercises all the code right up until filling the data
         if self.locationConfig.location not in ["summit", "bts", "tts"]:
-            self.log.info(f"Skipping postProcessAggregateZernikeTables at {self.locationConfig.location}")
+            self.log.info(
+                f"Skipping sending postProcessCalcZernikes result to ConsDB at {self.locationConfig.location}"
+            )
             return
 
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
