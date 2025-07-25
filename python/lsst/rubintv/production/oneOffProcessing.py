@@ -162,7 +162,7 @@ class OneOffProcessor(BaseButlerChannel):
 
     def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         vi = exp.info.getVisitInfo()
-        header = exp.metadata.toDict()
+        header: dict[str, str] = dict(exp.metadata.toDict())  # assume everything is a string to be safe
 
         md: dict[int, dict[str, str]] = {}
 
@@ -183,7 +183,12 @@ class OneOffProcessor(BaseButlerChannel):
 
         dimmSeeing = header.get("SEEING", None)
         if dimmSeeing:
-            md[seqNum].update({"DIMM Seeing": f"{dimmSeeing:.3f}"})
+            # why doesn't mypy flag this without the float() call?
+            md[seqNum].update({"DIMM Seeing": f"{float(dimmSeeing):.3f}"})
+
+        vignMin = header.get("VIGN_MIN", None)
+        if vignMin:
+            md[seqNum].update({"Vignetting minimum": f"{vignMin}"})  # example value: FULLY
 
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
