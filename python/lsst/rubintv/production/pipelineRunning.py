@@ -31,10 +31,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 from galsim.zernike import zernikeRotMatrix
 
-from lsst.ctrl.mpexec import SingleQuantumExecutor, TaskFactory
-from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph
+from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
+from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 

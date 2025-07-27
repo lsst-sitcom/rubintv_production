@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any, Iterable, Sequence, cast
 import numpy as np
 
 from lsst.analysis.tools.actions.plot import FocalPlaneGeometryPlot
-from lsst.ctrl.mpexec import TaskFactory
 from lsst.daf.butler import (
     Butler,
     CollectionType,
@@ -48,7 +47,7 @@ from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: D
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pex.config.configurableField import ConfigurableInstance
-from lsst.pipe.base import Instrument, Pipeline, PipelineGraph
+from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, TaskFactory
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
