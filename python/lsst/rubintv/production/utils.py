@@ -519,6 +519,18 @@ class LocationConfig:
         return directory
 
     @cached_property
+    def guiderDirectory(self) -> str:
+        directory = self._config["guiderDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
+    def guiderShardsDirectory(self) -> str:
+        directory = self._config["guiderShardsDirectory"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def botMetadataPath(self) -> str:
         directory = self._config["botMetadataPath"]
         self._checkDir(directory)
