@@ -68,7 +68,6 @@ from .utils import (
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from lsst.afw.cameraGeom import Detector
     from lsst.pipe.base import PipelineTaskConfig
     from lsst.pipe.base.pipeline_graph import TaskNode
 
@@ -868,7 +867,7 @@ class HeadProcessController:
         )
         # AOS is running ISR (for now, at least) so we need to write that we
         # expected the detectors from that processing too.
-        cwfsDets = list(self.focalPlaneControl.CWFS_NUMS)
+        cwfsDets = list(self.focalPlaneControl.CWFS_IDS)
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, cwfsDets, "ISR")
         self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
@@ -1504,24 +1503,24 @@ class CameraControlConfig:
     def __init__(self) -> None:
         self.log = logging.getLogger("lsst.rubintv.production.processControl.CameraControlConfig")
         self.camera = LsstCam.getCamera()
-        self._detectorStates = {det: False for det in self.camera}
-        self._detectors = [det for det in self.camera]
-        self._imaging = [det for det in self._detectors if self.isImaging(det)]
-        self._guiders = [det for det in self._detectors if self.isGuider(det)]
-        self._wavefronts = [det for det in self._detectors if self.isWavefront(det)]
+        self._detectorStates: dict[int, bool] = {det.getId(): False for det in self.camera}
+        self._detectorIds: list[int] = [det.getId() for det in self.camera]
+        self._imagingIds: list[int] = [detId for detId in self._detectorIds if self.isImaging(detId)]
+        self._guiderIds: list[int] = [detId for detId in self._detectorIds if self.isGuider(detId)]
+        self._wavefrontIds: list[int] = [detId for detId in self._detectorIds if self.isWavefront(detId)]
         # plotConfig = FocalPlaneGeometryPlotConfig()
         self._focalPlanePlot = FocalPlaneGeometryPlot()
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
-        self.GUIDER_NUMS: tuple[int] = tuple(det.getId() for det in self._guiders)
-        self.CWFS_NUMS: tuple[int] = tuple(det.getId() for det in self._wavefronts)
-        self.INTRA_FOCAL_NUMS = (192, 196, 200, 204)
-        self.EXTRA_FOCAL_NUMS = (191, 195, 199, 203)
-        self.DIAGONAL = (90, 94, 98, 144, 148, 152, 36, 40, 44)
-        self.DIAGONAL2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
-        self.HORIZONTAL = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
-        self.VERTICAL = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
+        self.GUIDER_IDS: tuple[int, ...] = tuple(detId for detId in self._guiderIds)
+        self.CWFS_IDS: tuple[int, ...] = tuple(detId for detId in self._wavefrontIds)
+        self.INTRA_FOCAL_IDS = (192, 196, 200, 204)
+        self.EXTRA_FOCAL_IDS = (191, 195, 199, 203)
+        self.DIAGONAL_IDS = (90, 94, 98, 144, 148, 152, 36, 40, 44)
+        self.DIAGONAL_IDS2 = (92, 94, 96, 132, 130, 128, 58, 56, 60)
+        self.HORIZONTAL_IDS = (76, 75, 77, 85, 84, 86, 94, 93, 95, 103, 102, 104, 112, 111, 113)
+        self.VERTICAL_IDS = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
 
         self.currentNamedPattern = ""
 
@@ -1533,7 +1532,7 @@ class CameraControlConfig:
         pairs : `list` of `tuple`
             List of tuples of the form (intra, extra) for each pair.
         """
-        return list(zip(self.INTRA_FOCAL_NUMS, self.EXTRA_FOCAL_NUMS))
+        return list(zip(self.INTRA_FOCAL_IDS, self.EXTRA_FOCAL_IDS))
 
     def setDiagonalOn(self, other: bool = False) -> None:
         """Set the diagonal pattern on the focal plane.
@@ -1545,7 +1544,7 @@ class CameraControlConfig:
             Default is False.
 
         """
-        dets = self.DIAGONAL if not other else self.DIAGONAL2
+        dets = self.DIAGONAL_IDS if not other else self.DIAGONAL_IDS2
         for det in dets:
             self.setDetectorOn(det)
 
@@ -1559,7 +1558,7 @@ class CameraControlConfig:
             Default is False.
 
         """
-        dets = self.HORIZONTAL if horizontal else self.VERTICAL
+        dets = self.HORIZONTAL_IDS if horizontal else self.VERTICAL_IDS
         for det in dets:
             self.setDetectorOn(det)
 
@@ -1596,64 +1595,60 @@ class CameraControlConfig:
                 return  # don't hold the named pattern on fail
         self.currentNamedPattern = pattern
 
-    @staticmethod
-    def isWavefront(detector: Detector) -> bool:
+    def isWavefront(self, detectorId: int) -> bool:
         """Check if the detector is a wavefront sensor.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector.
+        detectorId : `int`
+            The detector id.
 
         Returns
         -------
         isWavefront : `bool`
             `True` is the detector is a wavefront sensor, else `False`.
         """
-        return detector.getPhysicalType() == "ITL_WF"
+        return self.camera[detectorId].getPhysicalType() == "ITL_WF"
 
-    @staticmethod
-    def isGuider(detector: Detector) -> bool:
+    def isGuider(self, detectorId: int) -> bool:
         """Check if the detector is a guider.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector.
+        detectorId : `int`
+            The detector id.
 
         Returns
         -------
         isGuider : `bool`
             `True` is the detector is a guider sensor, else `False`.
         """
-        return detector.getPhysicalType() == "ITL_G"
+        return self.camera[detectorId].getPhysicalType() == "ITL_G"
 
-    @staticmethod
-    def isImaging(detector: Detector) -> bool:
+    def isImaging(self, detectorId: int) -> bool:
         """Check if the detector is an imaging sensor.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector.
+        detectorId : `int`
+            The detector id.
 
         Returns
         -------
         isImaging : `bool`
             `True` is the detector is an imaging sensor, else `False`.
         """
-        return detector.getPhysicalType() in ["E2V", "ITL"]
+        return self.camera[detectorId].getPhysicalType() in ["E2V", "ITL"]
 
-    @staticmethod
-    def _getRaftTuple(detector: Detector) -> tuple[int, int]:
+    def _getRaftTuple(self, detectorId: int) -> tuple[int, int]:
         """Get the detector's raft x, y coordinates as integers.
 
         Numbers are zero-indexed, with (0, 0) being at the bottom left.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector.
+        detectorId : `int`
+            The detector id.
 
         Returns
         -------
@@ -1662,19 +1657,18 @@ class CameraControlConfig:
         y : `int`
             The raft's row number, zero-indexed.
         """
-        rString = detector.getName().split("_")[0]
+        rString = self.camera[detectorId].getName().split("_")[0]
         return int(rString[1]), int(rString[2])
 
-    @staticmethod
-    def _getSensorTuple(detector: Detector) -> tuple[int, int]:
+    def _getSensorTuple(self, detectorId: int) -> tuple[int, int]:
         """Get the detector's x, y coordinates as integers within the raft.
 
         Numbers are zero-indexed, with (0, 0) being at the bottom left.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector.
+        detectorId : `int`
+            The detector id.
 
         Returns
         -------
@@ -1683,39 +1677,39 @@ class CameraControlConfig:
         y : `int`
             The detectors's row number, zero-indexed within the raft.
         """
-        sString = detector.getName().split("_")[1]
+        sString = self.camera[detectorId].getName().split("_")[1]
         return int(sString[1]), int(sString[2])
 
-    def _getFullLocationTuple(self, detector) -> tuple[int, int]:
+    def _getFullLocationTuple(self, detectorId: int) -> tuple[int, int]:
         """Get the (colNum, rowNum) of the detector wrt the full focal plane.
 
         0, 0 is the bottom left
         """
-        raftX, raftY = self._getRaftTuple(detector)
-        sensorX, sensorY = self._getSensorTuple(detector)
+        raftX, raftY = self._getRaftTuple(detectorId)
+        sensorX, sensorY = self._getSensorTuple(detectorId)
         col = (raftX * 3) + sensorX + 1
         row = (raftY * 3) + sensorY + 1
         return col, row
 
     def setWavefrontOn(self) -> None:
         """Turn all the wavefront sensors on."""
-        for detector in self._wavefronts:
-            self._detectorStates[detector] = True
+        for detectorId in self._wavefrontIds:
+            self._detectorStates[detectorId] = True
 
     def setWavefrontOff(self) -> None:
         """Turn all the wavefront sensors off."""
-        for detector in self._wavefronts:
-            self._detectorStates[detector] = False
+        for detectorId in self._wavefrontIds:
+            self._detectorStates[detectorId] = False
 
     def setGuidersOn(self) -> None:
         """Turn all the guider sensors on."""
-        for detector in self._guiders:
-            self._detectorStates[detector] = True
+        for detectorId in self._guiderIds:
+            self._detectorStates[detectorId] = True
 
     def setGuidersOff(self) -> None:
         """Turn all the wavefront sensors off."""
-        for detector in self._guiders:
-            self._detectorStates[detector] = False
+        for detectorId in self._guiderIds:
+            self._detectorStates[detectorId] = False
 
     def setFullCheckerboard(self, phase: int = 0) -> None:
         """Set a checkerboard pattern at the CCD level.
@@ -1727,9 +1721,9 @@ class CameraControlConfig:
             will get you one phase, and odd integers will give the other.
             Even-phase contains 96 detectors, odd-phase contains 93.
         """
-        for detector in self._imaging:
-            x, y = self._getFullLocationTuple(detector)
-            self._detectorStates[detector] = bool(((x % 2) + (y % 2) + phase) % 2)
+        for detectorId in self._imagingIds:
+            x, y = self._getFullLocationTuple(detectorId)
+            self._detectorStates[detectorId] = bool(((x % 2) + (y % 2) + phase) % 2)
 
     def setRaftCheckerboard(self, phase: int = 0) -> None:
         """Set a checkerboard pattern at the raft level.
@@ -1742,91 +1736,88 @@ class CameraControlConfig:
             even-phase contains 108 detectors (12 rafts), the odd-phase
             contains 81 (9 rafts).
         """
-        for detector in self._imaging:
-            raftX, raftY = self._getRaftTuple(detector)
-            self._detectorStates[detector] = bool(((raftX % 2) + (raftY % 2) + phase) % 2)
+        for detectorId in self._imagingIds:
+            raftX, raftY = self._getRaftTuple(detectorId)
+            self._detectorStates[detectorId] = bool(((raftX % 2) + (raftY % 2) + phase) % 2)
 
     def setE2Von(self) -> None:
         """Turn all e2v sensors on."""
-        for detector in self._imaging:
-            if detector.getPhysicalType() == "E2V":
-                self._detectorStates[detector] = True
+        for detectorId in self._imagingIds:
+            if self.camera[detectorId].getPhysicalType() == "E2V":
+                self._detectorStates[detectorId] = True
 
     def setE2Voff(self) -> None:
         """Turn all e2v sensors off."""
-        for detector in self._imaging:
-            if detector.getPhysicalType() == "E2V":
-                self._detectorStates[detector] = False
+        for detectorId in self._imagingIds:
+            if self.camera[detectorId].getPhysicalType() == "E2V":
+                self._detectorStates[detectorId] = False
 
     def setITLon(self) -> None:
         """Turn all ITL sensors on."""
-        for detector in self._imaging:
-            if detector.getPhysicalType() == "ITL":
-                self._detectorStates[detector] = True
+        for detectorId in self._imagingIds:
+            if self.camera[detectorId].getPhysicalType() == "ITL":
+                self._detectorStates[detectorId] = True
 
     def setITLoff(self) -> None:
         """Turn all ITL sensors off."""
-        for detector in self._imaging:
-            if detector.getPhysicalType() == "ITL":
-                self._detectorStates[detector] = False
+        for detectorId in self._imagingIds:
+            if self.camera[detectorId].getPhysicalType() == "ITL":
+                self._detectorStates[detectorId] = False
 
     def setRaftOn(self, raftName: str) -> None:
-        for detector in self._detectors:
-            if detector.getName().startswith(raftName):
-                self._detectorStates[detector] = True
+        for detectorId in self._detectorIds:
+            if self.camera[detectorId].getName().startswith(raftName):
+                self._detectorStates[detectorId] = True
 
     def setRaftOff(self, raftName: str) -> None:
-        for detector in self._detectors:
-            if detector.getName().startswith(raftName):
-                self._detectorStates[detector] = False
+        for detectorId in self._detectorIds:
+            if self.camera[detectorId].getName().startswith(raftName):
+                self._detectorStates[detectorId] = False
 
     def setDetectorOn(self, detectorNumber: int) -> None:
-        for detector in self._detectors:
-            if detector.getId() == detectorNumber:
-                self._detectorStates[detector] = True
+        self._detectorStates[detectorNumber] = True
 
     def setDetectorOff(self, detectorNumber: int) -> None:
-        for detector in self._detectors:
-            if detector.getId() == detectorNumber:
-                self._detectorStates[detector] = False
+        self._detectorStates[detectorNumber] = False
 
     def setFullFocalPlaneGuidersOn(self) -> None:
-        """Turn all ITL sensors on."""
-        for detector in self._imaging:
-            sensorX, sensorY = self._getSensorTuple(detector)
+        """Turn all the guiders on."""
+        # XXX is this actually correct??
+        for detectorId in self._imagingIds:
+            sensorX, sensorY = self._getSensorTuple(detectorId)
             if sensorX <= 1 and sensorY <= 1:
-                self._detectorStates[detector] = True
+                self._detectorStates[detectorId] = True
 
     def setAllOn(self) -> None:
         """Turn all sensors on.
 
         Note that this includes wavefront sensors and guiders.
         """
-        for detector in self._detectors:
-            self._detectorStates[detector] = True
+        for detectorId in self._detectorIds:
+            self._detectorStates[detectorId] = True
 
     def setAllOff(self) -> None:
         """Turn all sensors off.
 
         Note that this includes wavefront sensors and guiders.
         """
-        for detector in self._detectors:
-            self._detectorStates[detector] = False
+        for detectorId in self._detectorIds:
+            self._detectorStates[detectorId] = False
 
     def setAllImagingOn(self) -> None:
         """Turn all imaging sensors on."""
-        for detector in self._imaging:
-            self._detectorStates[detector] = True
+        for detectorId in self._imagingIds:
+            self._detectorStates[detectorId] = True
 
     def setAllImagingOff(self) -> None:
         """Turn all imaging sensors off."""
-        for detector in self._imaging:
-            self._detectorStates[detector] = False
+        for detectorId in self._imagingIds:
+            self._detectorStates[detectorId] = False
 
     def invertImagingSelection(self) -> None:
         """Invert the selection of the imaging chips only."""
-        for detector in self._imaging:
-            self._detectorStates[detector] = not self._detectorStates[detector]
+        for detectorId in self._imagingIds:
+            self._detectorStates[detectorId] = not self._detectorStates[detectorId]
 
     def getNumEnabled(self) -> int:
         """Get the number of enabled sensors.
@@ -1846,9 +1837,9 @@ class CameraControlConfig:
         enabled : `list` of `int`
             The detectorIds of the enabled detectors.
         """
-        enabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is True])
+        enabled = sorted([detId for (detId, state) in self._detectorStates.items() if state is True])
         if excludeCwfs:
-            enabled = [det for det in enabled if det not in self.CWFS_NUMS]
+            enabled = [detId for detId in enabled if detId not in self.CWFS_IDS]
         return enabled
 
     def getDisabledDetIds(self, excludeCwfs: bool = False) -> list[int]:
@@ -1865,9 +1856,9 @@ class CameraControlConfig:
         disabled : `list` of `int`
             The detectorIds of the disabled detectors.
         """
-        disabled = sorted([det.getId() for (det, state) in self._detectorStates.items() if state is False])
+        disabled = sorted([detId for (detId, state) in self._detectorStates.items() if state is False])
         if excludeCwfs:
-            disabled = [det for det in disabled if det not in self.CWFS_NUMS]
+            disabled = [detId for detId in disabled if detId not in self.CWFS_IDS]
         return disabled
 
     def asPlotData(self) -> dict[str, list[int] | list[None] | NDArray]:
@@ -1898,9 +1889,10 @@ class CameraControlConfig:
         x: list[None] = []
         y: list[None] = []
         z = []
-        for detector, state in self._detectorStates.items():
+        for detectorId, state in self._detectorStates.items():
+            detector = self.camera[detectorId]
             for amp in detector:
-                detNums.append(detector.getId())
+                detNums.append(detectorId)
                 ampNames.append(None)
                 x.append(None)
                 y.append(None)
