@@ -35,7 +35,7 @@ from PIL.ExifTags import TAGS
 from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_datetime, getCurrentDayObs_int
 from lsst.utils.iteration import ensure_iterable
 
-from .uploaders import MultiUploader, Uploader
+from .uploaders import MultiUploader
 from .utils import FakeExposureRecord, expRecordToUploadFilename, hasDayRolledOver, raiseIf
 
 try:
@@ -419,8 +419,6 @@ class DayAnimator:
     outputMovieDir : `str`
         The path to write the movies. Need not exist, but must be creatable
         with write privileges.
-    epoUploader : `lsst.rubintv.production.Uploader`
-        The uploader for sending images and movies to the EPO bucket.
     s3Uploader : `lsst.rubintv.production.MultiUploader`
         The uploader for sending images and movies to S3.
     channel : `str`
@@ -441,7 +439,6 @@ class DayAnimator:
         todaysDataDir: str,
         outputImageDir: str,
         outputMovieDir: str,
-        epoUploader: Uploader,
         s3Uploader: MultiUploader,
         channel: str,
         bucketName: str,
@@ -451,7 +448,6 @@ class DayAnimator:
         self.todaysDataDir = todaysDataDir
         self.outputImageDir = outputImageDir
         self.outputMovieDir = outputMovieDir
-        self.epoUploader = epoUploader
         self.s3Uploader = s3Uploader
         self.channel = channel
         self.historical = historical
@@ -542,12 +538,6 @@ class DayAnimator:
                 filename=creationFilename,
                 seqNum=seqNum if not isFinal else None,
             )
-            try:
-                self.epoUploader.googleUpload(
-                    self.channel, creationFilename, "all_sky_current.mp4", isLargeFile=True, isLiveFile=True
-                )
-            except Exception as e:
-                self.log.exception(f"Failed to upload movie to EPO bucket: {e}")
         else:
             self.log.info(f"Would have uploaded {creationFilename} as {uploadAsFilename}")
         return
@@ -575,15 +565,6 @@ class DayAnimator:
                 seqNum=seqNum,
                 filename=sourceFilename,
             )
-            try:
-                self.epoUploader.googleUpload(
-                    channel=channel,
-                    sourceFilename=sourceFilename,
-                    uploadAsFilename="all_sky_current.jpg",
-                    isLiveFile=True,
-                )
-            except Exception as e:
-                self.log.exception(f"Failed to upload still to EPO bucket: {e}")
         else:
             self.log.info(f"Would have uploaded {sourceFilename} as {uploadAsFilename}")
 
@@ -687,7 +668,6 @@ class AllSkyMovieChannel:
     def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.locationConfig = locationConfig
         self.s3Uploader = MultiUploader()
-        self.epoUploader = Uploader("epo_rubintv_data")
         self.log = _LOG.getChild("allSkyMovieMaker")
         self.channel = "all_sky_movies"
         self.doRaise = doRaise
@@ -731,7 +711,6 @@ class AllSkyMovieChannel:
             todaysDataDir=todaysDataDir,
             outputImageDir=outputJpgDir,
             outputMovieDir=outputMovieDir,
-            epoUploader=self.epoUploader,
             s3Uploader=self.s3Uploader,
             channel=self.channel,
             bucketName=self.locationConfig.bucketName,
