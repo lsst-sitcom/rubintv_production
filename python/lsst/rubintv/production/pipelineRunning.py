@@ -682,7 +682,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # don't fill ConsDB at USDF, but put this at the very bottom so that CI
         # still exercises all the code right up until filling the data
         if self.locationConfig.location not in ["summit", "bts", "tts"]:
-            self.log.info(f"Skipping postProcessAggregateZernikeTables at {self.locationConfig.location}")
+            self.log.info(
+                f"Skipping sending postProcessCalcZernikes result to ConsDB at {self.locationConfig.location}"
+            )
             return
 
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
@@ -691,7 +693,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # protect import to stop the whole package depending on ts_wep. If this
         # becomes a problem we could copy the functions or just accept that RA
         # needs T&S software.
-        from lsst.ts.wep.utils import convertZernikesToPsfWidth  # type: ignore
+        from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
         try:
             dRef = quantum.outputs["aggregateZernikesAvg"][0]
@@ -706,8 +708,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         rowSums = []
         zkOcs = zernikes["zk_OCS"]
+        nollIndices = zernikes.meta["nollIndices"]
+        maxNollIndex = np.max(zernikes.meta["nollIndices"])
         for row in zkOcs:
-            zk_fwhm = convertZernikesToPsfWidth(row)
+            zk_fwhm = convertZernikesToPsfWidth(makeDense(row, nollIndices, maxNollIndex))
             rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
 
         average_result = np.nanmean(rowSums)
