@@ -1781,8 +1781,12 @@ class CameraControlConfig:
         self._detectorStates[detectorNumber] = False
 
     def setFullFocalPlaneGuidersOn(self) -> None:
-        """Turn all the guiders on."""
-        # XXX is this actually correct??
+        """Turn on all the chips active during a full focal plane guider mode.
+
+        It is possible to run the imaging section of the focal plane in "guider
+        mode" but when that's the case we can only read out 4 chips per raft,
+        and this 4 is what is believed to be the selection.
+        """
         for detectorId in self._imagingIds:
             sensorX, sensorY = self._getSensorTuple(detectorId)
             if sensorX <= 1 and sensorY <= 1:
