@@ -4,6 +4,8 @@ import time
 t0 = time.time()
 
 from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
+from lsst.rubintv.production.payloads import Payload  # noqa: E402
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.utils import getAutomaticLocationConfig  # noqa: E402
 
@@ -55,6 +57,16 @@ time.sleep(2)  # make sure the head node has done the dispatch of the SFM image
 
 print("Pushing pair announcement signal to redis (simulating OCS signal)")
 redisHelper.redis.rpush("LSSTCam-FROM-OCS_DONUTPAIR", "2025041500086,2025041500087")
+
+# now send a single trigger manually to the guider pod
+where = f"exposure.day_obs=20250629 AND exposure.seq_num=340 AND instrument='{instrument}'"
+records = list(butler.registry.queryDimensionRecords("exposure", where=where))
+assert len(records) == 1, f"Expected a record for the guiders, got {len(records)}"
+podDetails = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.GUIDER_WORKER, detectorNumber=None, depth=0
+)
+payload = Payload([records[0].dataId], b"", "", who="")
+redisHelper.enqueuePayload(payload, podDetails)
 
 # do LATISS with the same drip-feeder
 instrument = "LATISS"
