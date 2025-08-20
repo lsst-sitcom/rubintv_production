@@ -340,6 +340,12 @@ class TestConfig:
                 tee_output=True,
                 display_on_pass=True,
             ),
+            TestScript(
+                "scripts/LSSTCam/runGuiderAnalysis.py",
+                ["usdf_testing"],
+                tee_output=True,
+                display_on_pass=True,
+            ),
             TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
         ]
 
@@ -1006,6 +1012,12 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000088.png", 5000),
             # Donut pairing plot for regular image
             ("LSSTCam/20250415/LSSTCam_fp_pairing_plot_dayObs_20250415_seqNum_000088.png", 5000),
+            # Guider plots and movies
+            ("LSSTCam/20250629/LSSTCam_full_movie_dayObs_20250629_seqNum_000340.mp4", 200_000),
+            ("LSSTCam/20250629/LSSTCam_star_movie_dayObs_20250629_seqNum_000340.mp4", 100_000),
+            ("LSSTCam/20250629/LSSTCam_centroid_alt_az_dayObs_20250629_seqNum_000340.jpg", 5000),
+            ("LSSTCam/20250629/LSSTCam_flux_trend_dayObs_20250629_seqNum_000340.jpg", 5000),
+            ("LSSTCam/20250629/LSSTCam_psf_trend_dayObs_20250629_seqNum_000340.jpg", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
