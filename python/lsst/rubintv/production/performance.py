@@ -785,3 +785,7 @@ class PerformanceMonitor(BaseButlerChannel):
 
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
+
+        # callback() is only called for the long-running RA process, so clear
+        # the cache so we don't have ever increasing memory usage
+        self.perf.data = {}
