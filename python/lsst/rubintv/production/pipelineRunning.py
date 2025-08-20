@@ -37,6 +37,7 @@ from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
@@ -77,6 +78,8 @@ TASK_ENDPOINTS_TO_TRACK = (
 )
 
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera"}
+PSF_GRADIENT_WARNING = 0.3
+PSF_GRADIENT_BAD = 0.35
 
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
@@ -613,6 +616,25 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         rowData = {seqNum: outputDict}
+
+        camera = getCameraFromInstrumentName(self.instrument)
+        detectors: list[int] = [det.getId() for det in camera]
+        fwhmValues = []
+        for detectorId in detectors:
+            row = vs[vs["id"] == detectorId]
+            if len(row) > 0:
+                psfSigma = row["psfSigma"][0]
+                fwhm = psfSigma * SIGMA2FWHM * pixToArcseconds  # Convert to microns (0.2"/pixel)
+                fwhmValues.append(float(fwhm))
+
+        fwhmValuesArray = np.array(fwhmValues)[~np.isnan(fwhmValues)]
+        psfGradient = np.sqrt(fwhmValuesArray**2 - np.min(fwhmValuesArray) ** 2)
+        gradientMedian = np.median(psfGradient)
+        outputDict["PSF gradient"] = gradientMedian
+        if gradientMedian >= PSF_GRADIENT_BAD:  # note this flag must be set after the measured labels
+            outputDict["PSF gradient" + "_flag"] = "bad"
+        elif gradientMedian >= PSF_GRADIENT_WARNING:
+            outputDict["PSF gradient" + "_flag"] = "warning"
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)

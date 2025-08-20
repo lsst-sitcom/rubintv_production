@@ -793,7 +793,7 @@ class ClusterManager:
         # things are run in serial - work runs on the intra-focal
         # indexed workers
         pods = status.flavorStatuses[PodFlavor.AOS_WORKER].workers
-        inaccessible = {p for p in pods if p.detectorNumber in self.focalPlaneControl.EXTRA_FOCAL_NUMS}
+        inaccessible = {p for p in pods if p.detectorNumber in self.focalPlaneControl.EXTRA_FOCAL_IDS}
 
         # right now the SFM workers are done //205 not //189
         # so the pods with detectorNumber between 189-205 are never used
