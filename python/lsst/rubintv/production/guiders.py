@@ -36,7 +36,14 @@ from lsst.summit.utils.guiders.tracking import GuiderStarTracker
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
-from .utils import LocationConfig, getRubinTvInstrumentName, logDuration, makePlotFile, writeMetadataShard
+from .utils import (
+    LocationConfig,
+    getRubinTvInstrumentName,
+    logDuration,
+    makePlotFile,
+    writeExpRecordMetadataShard,
+    writeMetadataShard,
+)
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -203,6 +210,10 @@ class GuiderWorker(BaseButlerChannel):
         if nIngested == 0:
             self.log.warning(f"No guider raws ingested for {dataId=}, skipping")
             return
+
+        # Write the expRecord metadata shard after waiting for ingest and
+        # confirming a non-zero number of guiders images were taken.
+        writeExpRecordMetadataShard(record, self.shardsDirectory)
 
         uploadPlot = partial(
             self.s3Uploader.uploadPerSeqNumPlot,
