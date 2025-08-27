@@ -44,6 +44,7 @@ CHANNELS = [
     "lsstcam_metadata",
     "lsstcam_aos_metadata",
     "ra_performance",
+    "lsstcam_guider",
 ]
 
 PREFIXES = {chan: chan.replace("_", "-") for chan in CHANNELS}
@@ -66,6 +67,7 @@ KNOWN_INSTRUMENTS = (
     "lsstcam",
     "lsstcam_aos",
     "ra_performance",
+    "lsstcam_guider",
 )
 
 
@@ -119,5 +121,6 @@ def getCameraAndPlotName(channel: str) -> tuple[str, str] | None:
         "lsstcam_metadata": ("lsstcam", "metadata"),
         "lsstcam_aos_metadata": ("lsstcam_aos", "metadata"),
         "ra_performance": ("ra_performance", "metadata"),
+        "lsstcam_guider_metadata": ("lsstcam_guider", "metadata"),
     }
     return channelLookup[channel]

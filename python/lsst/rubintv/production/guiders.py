@@ -27,14 +27,13 @@ __all__ = [
 from functools import partial
 from typing import TYPE_CHECKING
 
-from lsst.rubintv.production.baseChannels import BaseButlerChannel
-
-# TODO Change these back to relative imports
-from lsst.rubintv.production.utils import LocationConfig, logDuration, makePlotFile, writeMetadataShard
 from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
 from lsst.summit.utils.guiders.plotting import GuiderPlotter
 from lsst.summit.utils.guiders.reading import GuiderReader
 from lsst.summit.utils.guiders.tracking import GuiderStarTracker
+
+from .baseChannels import BaseButlerChannel
+from .utils import LocationConfig, getRubinTvInstrumentName, logDuration, makePlotFile, writeMetadataShard
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -146,10 +145,12 @@ class GuiderWorker(BaseButlerChannel):
 
         uploadPlot = partial(
             self.s3Uploader.uploadPerSeqNumPlot,
-            instrument=self.instrument,
+            instrument=getRubinTvInstrumentName(self.instrument) + "_guider",
             dayObs=dayObs,
             seqNum=seqNum,
         )
+
+        self.log.info(f"Processing guider data for {dayObs=} {seqNum=}")
 
         with logDuration(self.log, "Loading guider data"):
             guiderData = self.reader.get(dayObs=record.day_obs, seqNum=record.seq_num)
