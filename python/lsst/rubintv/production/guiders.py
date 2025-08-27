@@ -24,13 +24,16 @@ __all__ = [
     "GuiderWorker",
 ]
 
+import logging
 from functools import partial
+from time import monotonic, sleep
 from typing import TYPE_CHECKING
 
 from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
 from lsst.summit.utils.guiders.plotting import GuiderPlotter
 from lsst.summit.utils.guiders.reading import GuiderReader
 from lsst.summit.utils.guiders.tracking import GuiderStarTracker
+from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
 from .utils import LocationConfig, getRubinTvInstrumentName, logDuration, makePlotFile, writeMetadataShard
@@ -73,6 +76,47 @@ KEY_MAP: dict[str, str] = {
 }
 
 
+def waitForIngest(nExpected: int, timeout: float, expRecord: DimensionRecord, butler: Butler) -> int:
+    """
+    Wait for the expected number of guider_raw datasets to be ingested for the
+    given record.
+
+    TODO: replace this function by using the CachingLimitedButler on the
+    GuiderWorker once that has been upgraded to support dimensions, so that it
+    can cache all 8 guider raws at once.
+
+    Parameters
+    ----------
+    nExpected : `int`
+        Expected number of datasets to be present.
+    timeout : `float`
+        Maximum time to wait in seconds.
+    expRecord : `DimensionRecord`
+        The exposure or visit record whose dataId is used to query the
+        datasets.
+    butler : `Butler`
+        The Butler instance to query.
+
+    """
+    cadence = 0.25
+    startTime = monotonic()
+
+    while True:
+        nIngested = len(butler.query_datasets("guider_raw", data_id=expRecord.dataId))
+        if nIngested >= nExpected:
+            return nIngested
+
+        if monotonic() - startTime >= timeout:
+            log = logging.getLogger("lsst.rubintv.production.guiders")
+            log.warning(
+                f"Timed out waiting for ingest of {nExpected} guider_raws (got {nIngested}) for "
+                f"dataId={expRecord.dataId} after {timeout:.1f}s"
+            )
+            return nIngested
+
+        sleep(cadence)
+
+
 class GuiderWorker(BaseButlerChannel):
     def __init__(
         self,
@@ -105,6 +149,18 @@ class GuiderWorker(BaseButlerChannel):
         self.shardsDirectory = locationConfig.guiderShardsDirectory
         self.instrument = instrument  # why isn't this being set in the base class?!
         self.reader = GuiderReader(self.butler, view="dvcs")
+        camera = getCameraFromInstrumentName(self.instrument)
+        self.detectorNames: tuple[str, ...] = (
+            "R00_SG0",
+            "R00_SG1",
+            "R04_SG0",
+            "R04_SG1",
+            "R40_SG0",
+            "R40_SG1",
+            "R44_SG0",
+            "R44_SG1",
+        )
+        self.detectorIds: tuple[int, ...] = tuple([camera[d].getId() for d in self.detectorNames])
 
     def getRubinTvTableEntries(self, metrics: DataFrame) -> dict[str, str]:
         """Map the metrics to the RubinTV table entry names.
@@ -142,6 +198,11 @@ class GuiderWorker(BaseButlerChannel):
 
         dayObs: int = record.day_obs
         seqNum: int = record.seq_num
+
+        nIngested = waitForIngest(len(self.detectorIds), 30, record, self.butler)
+        if nIngested == 0:
+            self.log.warning(f"No guider raws ingested for {dataId=}, skipping")
+            return
 
         uploadPlot = partial(
             self.s3Uploader.uploadPerSeqNumPlot,
