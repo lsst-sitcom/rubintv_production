@@ -28,7 +28,7 @@ import logging
 import os
 from functools import partial
 from time import monotonic, sleep
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
 from lsst.summit.utils.guiders.plotting import GuiderPlotter
@@ -192,6 +192,43 @@ class GuiderWorker(BaseButlerChannel):
 
         return rubinTVtableItems
 
+    def makeAnimations(self, plotter: GuiderPlotter, dayObs: int, seqNum: int, uploadPlot: Callable) -> None:
+        with logDuration(self.log, "Making the full frame movie"):
+            plotName = "full_movie"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
+            plotter.makeAnimation(cutoutSize=-1, saveAs=plotFile, plo=70, phi=99)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
+
+        with logDuration(self.log, "Making the star cutout movie"):
+            plotName = "star_movie"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
+            plotter.makeAnimation(cutoutSize=20, saveAs=plotFile, plo=50, phi=98, fps=10)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
+
+    def makeStripPlots(self, plotter: GuiderPlotter, dayObs: int, seqNum: int, uploadPlot: Callable) -> None:
+        with logDuration(self.log, "Making the centroid alt/az plot"):
+            plotName = "centroid_alt_az"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+            plotter.stripPlot(saveAs=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
+
+        with logDuration(self.log, "Making the flux strip plot"):
+            plotName = "flux_trend"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+            plotter.stripPlot(plotType="flux", saveAs=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
+
+        with logDuration(self.log, "Making the psf strip plot"):
+            plotName = "psf_trend"
+            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+            plotter.stripPlot(plotType="psf", saveAs=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
+
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
         dataId = payload.dataIds[0]
@@ -234,40 +271,12 @@ class GuiderWorker(BaseButlerChannel):
 
         plotter = GuiderPlotter(guiderData, stars)
 
-        with logDuration(self.log, "Making the full frame movie"):
-            plotName = "full_movie"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
-            plotter.makeAnimation(cutoutSize=-1, saveAs=plotFile, plo=70, phi=99)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+        self.makeAnimations(plotter, dayObs, seqNum, uploadPlot)
 
-        with logDuration(self.log, "Making the star cutout movie"):
-            plotName = "star_movie"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
-            plotter.makeAnimation(cutoutSize=20, saveAs=plotFile, plo=50, phi=98, fps=10)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
-
-        with logDuration(self.log, "Making the centroid alt/az plot"):
-            plotName = "centroid_alt_az"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
-            plotter.stripPlot(saveAs=plotFile)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
-
-        with logDuration(self.log, "Making the flux strip plot"):
-            plotName = "flux_trend"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
-            plotter.stripPlot(plotType="flux", saveAs=plotFile)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
-
-        with logDuration(self.log, "Making the psf strip plot"):
-            plotName = "psf_trend"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
-            plotter.stripPlot(plotType="psf", saveAs=plotFile)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+        if not stars.empty:
+            self.makeStripPlots(plotter, dayObs, seqNum, uploadPlot)
+        else:
+            self.log.warning("No stars were tracked, skipping strip plots")
 
         rubinTVtableItems: dict[str, str | dict[str, str]] = {}
         rubinTVtableItems["Exposure time"] = record.exposure_time
