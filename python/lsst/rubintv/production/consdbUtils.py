@@ -111,6 +111,16 @@ def _removeNans(d: dict[str, float | int]) -> dict[str, float | int]:
     return {k: v for k, v in d.items() if not np.isnan(v)}
 
 
+def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float], int | float]:
+    dbType = typeMapping[key]
+    if dbType in ("BIGINT", "INTEGER"):
+        return int
+    elif dbType == "DOUBLE PRECISION":
+        return float
+    else:
+        raise ValueError(f"Got unknown database type {dbType}")
+
+
 class ConsDBPopulator:
     def __init__(self, client: ConsDbClient, redisHelper: RedisHelper) -> None:
         self.client = client
@@ -279,15 +289,6 @@ class ConsDBPopulator:
         schema = cast(dict[str, tuple[str, str]], schema)
         typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
 
-        def changeType(key: str) -> Callable[[int | float], int | float]:
-            dbType = typeMapping[key]
-            if dbType in ("BIGINT", "INTEGER"):
-                return int
-            elif dbType == "DOUBLE PRECISION":
-                return float
-            else:
-                raise ValueError(f"Got unknown database type {dbType}")
-
         visitSummary = visitSummary.asAstropy()
         visits = visitSummary["visit"]
         visit = visits[0]
@@ -300,19 +301,19 @@ class ConsDBPopulator:
             VISIT_MIN_MED_MAX_TOTAL_MAPPING.items(),
         ):
             consDbKey = consDbKeyNoSuffix + "_min"
-            typeFunc = changeType(consDbKey)
+            typeFunc = changeType(consDbKey, typeMapping)
             values[consDbKey] = typeFunc(np.nanmin(visitSummary[summaryKey]))
 
             consDbKey = consDbKeyNoSuffix + "_max"
-            typeFunc = changeType(consDbKey)
+            typeFunc = changeType(consDbKey, typeMapping)
             values[consDbKey] = typeFunc(np.nanmax(visitSummary[summaryKey]))
 
             consDbKey = consDbKeyNoSuffix + "_median"
-            typeFunc = changeType(consDbKey)
+            typeFunc = changeType(consDbKey, typeMapping)
             values[consDbKey] = typeFunc(np.nanmedian(visitSummary[summaryKey]))
 
         for summaryKey, consDbKey in VISIT_MIN_MED_MAX_TOTAL_MAPPING.items():
-            typeFunc = changeType(consDbKey + "_total")
+            typeFunc = changeType(consDbKey + "_total", typeMapping)
             values[consDbKey + "_total"] = typeFunc(np.nansum(visitSummary[summaryKey]))
 
         nInputs = max([len(visitSummary[col]) for col in visitSummary.columns])
@@ -330,6 +331,55 @@ class ConsDBPopulator:
             allow_update=allowUpdate,
         )
         self.redisHelper.announceResultInConsDb(instrument, table, visit)
+
+    def populateArbitrary(
+        self,
+        instrument: str,
+        table: str,
+        values: dict[str, int | float],
+        dayObs: int,
+        seqNum: int,
+        allowUpdate: bool = False,
+    ) -> None:
+        """Populate an arbitrary consDB table for a given visit or exposure.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name, used to resolve the schema namespace (e.g.,
+            "LATISS" or "lsstcam", case-insensitive).
+        table : `str`
+            The table name within the instrument schema (e.g.,
+            "visit1_quicklook").
+        values : `dict[str, int | float | str]`
+            Mapping of consDB column names to values to write. Values are
+            coerced to the database column types using the table schema; NaN
+            values are dropped.
+        visitOrExposureId : `int`
+            The visit or exposure identifier, i.e. the row in the table.
+        allowUpdate : `bool`, optional
+            If True, allow updating existing rows in the table. An error is
+            raised if False and a value exists.
+        """
+        schema = self.client.schema(instrument.lower(), table)
+        schema = cast(dict[str, tuple[str, str]], schema)
+        typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+
+        toSend: dict[str, int | float] = {}
+        for consDbKey, value in values.items():
+            if consDbKey not in typeMapping:
+                raise ValueError(f"Key {consDbKey} not in consDB table {table}")
+
+            typeFunc = changeType(consDbKey, typeMapping)
+            toSend[consDbKey] = typeFunc(value)
+
+        self.client.insert(
+            instrument=instrument,
+            table=table,
+            obs_id=(dayObs, seqNum),  # tuple is required when doing an update so always require it
+            values=_removeNans(toSend),
+            allow_update=allowUpdate,
+        )
 
     def populateMountErrors(
         self,
