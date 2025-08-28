@@ -394,23 +394,23 @@ class ConsDBPopulator:
         allowUpdate: bool = False,
     ) -> None:
         values: dict[str, float] = {}
-        if isinstance(mountErrors, MountErrors):
-            image_az_rms = mountErrors.imageAzRms
-            image_el_rms = mountErrors.imageElRms
-            imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
-
+        if isinstance(mountErrors, MountErrors):  # LSSTCam code path
+            # image impact measurements
+            imageError = (mountErrors.imageAzRms**2 + mountErrors.imageElRms**2) ** 0.5
             values["mount_motion_image_degradation"] = imageError
-            values["mount_motion_image_degradation_az"] = image_az_rms
-            values["mount_motion_image_degradation_el"] = image_el_rms
+            values["mount_motion_image_degradation_az"] = mountErrors.imageAzRms
+            values["mount_motion_image_degradation_el"] = mountErrors.imageElRms
+            values["mount_motion_image_degradation_rot"] = mountErrors.imageRotRms
 
-            az_rms = mountErrors.azRms
-            el_rms = mountErrors.elRms
-            mountError = (az_rms**2 + el_rms**2) ** 0.5
+            # raw axis jitter values
+            mountError = (mountErrors.azRms**2 + mountErrors.elRms**2) ** 0.5
             values["mount_jitter_rms"] = mountError
-            values["mount_jitter_rms_az"] = az_rms
-            values["mount_jitter_rms_el"] = el_rms
+            values["mount_jitter_rms_az"] = mountErrors.azRms
+            values["mount_jitter_rms_el"] = mountErrors.elRms
             values["mount_jitter_rms_rot"] = mountErrors.rotRms
-        elif isinstance(mountErrors, dict):
+            values["mount_jitter_rms_cam_hexapod"] = mountErrors.camHexRms
+            values["mount_jitter_rms_m2_hexapod"] = mountErrors.m2HexRms
+        elif isinstance(mountErrors, dict):  # LATISS code path until unified
             image_az_rms = mountErrors["image_az_rms"]
             image_el_rms = mountErrors["image_el_rms"]
             imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
