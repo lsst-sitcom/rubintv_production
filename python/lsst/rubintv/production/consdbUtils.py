@@ -361,6 +361,11 @@ class ConsDBPopulator:
             If True, allow updating existing rows in the table. An error is
             raised if False and a value exists.
         """
+        if allowUpdate and "exposure" in table.lower() and "exposure_id" not in values:
+            raise ValueError("When updating an exposure table, exposure_id must be in values")
+        if allowUpdate and "visit" in table.lower() and "visit_id" not in values:
+            raise ValueError("When updating a visit table, visit must be in values")
+
         schema = self.client.schema(instrument.lower(), table)
         schema = cast(dict[str, tuple[str, str]], schema)
         typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
