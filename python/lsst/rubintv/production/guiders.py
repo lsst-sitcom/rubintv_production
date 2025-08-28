@@ -25,6 +25,7 @@ __all__ = [
 ]
 
 import logging
+import os
 from functools import partial
 from time import monotonic, sleep
 from typing import TYPE_CHECKING
@@ -237,31 +238,36 @@ class GuiderWorker(BaseButlerChannel):
             plotName = "full_movie"
             plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
             plotter.makeAnimation(cutoutSize=-1, saveAs=plotFile, plo=70, phi=99)
-            uploadPlot(plotName=plotName, filename=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
 
         with logDuration(self.log, "Making the star cutout movie"):
             plotName = "star_movie"
             plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
             plotter.makeAnimation(cutoutSize=20, saveAs=plotFile, plo=50, phi=98, fps=10)
-            uploadPlot(plotName=plotName, filename=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
 
         with logDuration(self.log, "Making the centroid alt/az plot"):
             plotName = "centroid_alt_az"
             plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
             plotter.stripPlot(saveAs=plotFile)
-            uploadPlot(plotName=plotName, filename=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
 
         with logDuration(self.log, "Making the flux strip plot"):
             plotName = "flux_trend"
             plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
             plotter.stripPlot(plotType="flux", saveAs=plotFile)
-            uploadPlot(plotName=plotName, filename=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
 
         with logDuration(self.log, "Making the psf strip plot"):
             plotName = "psf_trend"
             plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
             plotter.stripPlot(plotType="psf", saveAs=plotFile)
-            uploadPlot(plotName=plotName, filename=plotFile)
+            if os.path.exists(plotFile):
+                uploadPlot(plotName=plotName, filename=plotFile)
 
         rubinTVtableItems: dict[str, str | dict[str, str]] = {}
         rubinTVtableItems["Exposure time"] = record.exposure_time
