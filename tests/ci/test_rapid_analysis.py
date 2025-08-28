@@ -1012,6 +1012,7 @@ class ResultCollector:
             ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000088.png", 5000),
             # Donut pairing plot for regular image
             ("LSSTCam/20250415/LSSTCam_fp_pairing_plot_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_donut_fits_dayObs_20250415_seqNum_000088.png", 5000),
             # Guider plots and movies
             ("LSSTCam/20250629/LSSTCam_full_movie_dayObs_20250629_seqNum_000340.mp4", 200_000),
             ("LSSTCam/20250629/LSSTCam_star_movie_dayObs_20250629_seqNum_000340.mp4", 100_000),
