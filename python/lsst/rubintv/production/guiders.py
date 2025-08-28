@@ -235,6 +235,10 @@ class GuiderWorker(BaseButlerChannel):
         record: DimensionRecord | None = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]
+            if not record.can_see_sky:  # can_see_sky only on exposure records, all visits should be on-sky
+                self.log.info(f"Skipping {dataId=} as it's not on sky")
+                return
+
         elif "visit" in dataId.dimensions:
             record = dataId.records["visit"]
 
