@@ -109,7 +109,7 @@ def waitForIngest(nExpected: int, timeout: float, expRecord: DimensionRecord, bu
     startTime = monotonic()
 
     while True:
-        nIngested = len(butler.query_datasets("guider_raw", data_id=expRecord.dataId))
+        nIngested = len(butler.query_datasets("guider_raw", data_id=expRecord.dataId, explain=False))
         if nIngested >= nExpected:
             return nIngested
 
