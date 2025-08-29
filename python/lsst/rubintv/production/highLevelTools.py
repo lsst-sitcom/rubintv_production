@@ -41,6 +41,8 @@ from .uploaders import Uploader
 from .utils import FakeExposureRecord, LocationConfig, expRecordToUploadFilename
 
 if TYPE_CHECKING:
+    from lsst.summit.utils import ConsDbClient
+
     from .uploaders import MultiUploader
 
 __all__ = [
@@ -616,3 +618,38 @@ def deleteNonFinalAllSkyMovies(bucket: Any) -> None:
         if (i + 1) % 100 == 0:
             log.info(f"Deleted {i + 1} of {len(filtered)} non-final movies...")
     log.info("Finished deleting non-final movies")
+
+
+def deleteConsDbColumn(client: ConsDbClient, instrument: str, table: str, column: str) -> None:
+    """Delete all values in a column in a ConsDB table by setting them to NULL.
+
+    Can only be used interactively, as it requires typing 'yes' to confirm.
+
+    Parameters
+    ----------
+    client : `ConsDbClient`
+        The ConsDbClient to use to connect to the database.
+    instrument : `str`
+        The instrument, e.g. 'latiss' or 'LSSTCam', case insensitive.
+    table : `str`
+        The table name, without the cdb_<instrument>. prefix.
+    column : `str`
+        The column name to delete values from.
+    """
+    inst = instrument.lower()
+    table = table.lower()
+    col = column.lower()
+
+    print(f"Are you sure you want to clear the entire {col} column from cdb_{inst}.{table}?")
+    print("This action cannot be undone. Type 'yes' to confirm.")
+    response = input()
+    if response != "yes":
+        print("Aborted.")
+        return
+
+    query = (
+        f"UPDATE cdb_{inst}.{table} SET {col} = NULL; "
+        f"SELECT COUNT(*) FROM cdb_{inst}.{table} WHERE {col} IS NOT NULL;"
+    )
+    ret = client.query(query)
+    print(f"{ret['count'].value[0]} rows remain with non-null values in {col}.")
