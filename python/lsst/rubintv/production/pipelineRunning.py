@@ -173,7 +173,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
 
     @cached_property
     def efdClient(self) -> EfdClient:
@@ -552,11 +552,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
-                summaryStats = exp.getInfo().getSummaryStats()
-                detectorNum = exp.getDetector().getId()
-                self.consDBPopulator.populateCcdVisitRow(visitRecord, detectorNum, summaryStats)
-                self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
+            summaryStats = exp.getInfo().getSummaryStats()
+            detectorNum = exp.getDetector().getId()
+            # consDBPopulator validates the location and only inserts if it's
+            # summit-like (summit, bts, tts)
+            self.consDBPopulator.populateCcdVisitRow(visitRecord, detectorNum, summaryStats)
+            self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
         except Exception:
             if self.locationConfig.location == "summit":
                 self.log.exception("Failed to populate ccd-visit row in ConsDB")
@@ -645,9 +646,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            if self.locationConfig.location in ["summit", "bts", "tts"]:
-                self.consDBPopulator.populateVisitRow(vs, self.instrument)
-                self.log.info(f"Populated consDB visit row for {expRecord.id}")
+            self.consDBPopulator.populateVisitRow(vs, self.instrument)  # consDBPopulator validates location
+            self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
 
@@ -704,14 +704,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 continue
             consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
 
-        # don't fill ConsDB at USDF, but put this at the very bottom so that CI
-        # still exercises all the code right up until filling the data
-        if self.locationConfig.location not in ["summit", "bts", "tts"]:
-            self.log.info(
-                f"Skipping sending postProcessCalcZernikes result to ConsDB at {self.locationConfig.location}"
-            )
-            return
-
+        # consDB validates the location and only inserts if it's summit-like
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
