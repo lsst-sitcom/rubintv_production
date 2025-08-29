@@ -193,17 +193,35 @@ class OneOffProcessor(BaseButlerChannel):
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
     def writePhysicalRotation(self, expRecord: DimensionRecord) -> None:
+        # TODO: DM-52351 work out how to do this for LATISS and make it work
+        # for both
+        if expRecord.instrument.lower() != "lsstcam":  # topic queried is specifically LSSTCam
+            return
+
         data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=expRecord)
         if data.empty:
             self.log.warning(f"Failed to get physical rotation data for {expRecord.id} - EFD data was empty")
             return
 
-        outputDict = {"Rotator physical position": f"{np.mean(data['actualPosition']):.3f}"}
+        physicalRotation = np.nanmean(data["actualPosition"])
+        outputDict = {"Rotator physical position": f"{physicalRotation:.3f}"}
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         rowData = {seqNum: outputDict}
 
         writeMetadataShard(self.shardsDirectory, dayObs, rowData)
+
+        # visit_id is required for updates
+        self.log.info(f"Writing physical rotator angle {physicalRotation:.3f} for {expRecord.id} to consDB")
+        consDbValues = {"physical_rotator_angle": physicalRotation, "visit_id": expRecord.id}
+        self.consDBPopulator.populateArbitrary(
+            expRecord.instrument,
+            "visit1_quicklook",
+            consDbValues,
+            expRecord.day_obs,
+            expRecord.seq_num,
+            True,
+        )
 
     def writeObservationAnnotation(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         headerMetadata = exp.metadata.toDict()
