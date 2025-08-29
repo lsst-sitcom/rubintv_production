@@ -758,3 +758,25 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)
+
+        consDbValues: dict[str, int | float] = {}
+        try:
+            self.log.info(f"Sending donut blur {donutBlurFwhm:.2f} for {expRecord.id} to consDB")
+            # visit_id is required for updates
+            consDbValues = {"aos_fwhm": residual, "visit_id": expRecord.id}
+            if donutBlurFwhm:
+                consDbValues["donut_blur_fwhm"] = donutBlurFwhm
+            self.consDBPopulator.populateArbitrary(
+                expRecord.instrument,
+                "visit1_quicklook",
+                consDbValues,
+                expRecord.day_obs,
+                expRecord.seq_num,
+                True,  # insert into existing an row requires allowUpdate
+            )
+        except Exception as e:
+            self.log.error(
+                f"Failed to write donut blur and/or AOS residual for {expRecord.id} with {consDbValues} {e}"
+            )
+            raiseIf(self.doRaise, e, self.log)
+            return
