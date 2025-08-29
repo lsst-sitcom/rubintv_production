@@ -211,17 +211,24 @@ class OneOffProcessor(BaseButlerChannel):
 
         writeMetadataShard(self.shardsDirectory, dayObs, rowData)
 
-        # visit_id is required for updates
-        self.log.info(f"Writing physical rotator angle {physicalRotation:.3f} for {expRecord.id} to consDB")
-        consDbValues = {"physical_rotator_angle": physicalRotation, "visit_id": expRecord.id}
-        self.consDBPopulator.populateArbitrary(
-            expRecord.instrument,
-            "visit1_quicklook",
-            consDbValues,
-            expRecord.day_obs,
-            expRecord.seq_num,
-            True,
-        )
+        try:  # TODO: DM-52351 remove the try block if this is known to work for off-sky images consistently
+            self.log.info(
+                f"Writing physical rotator angle {physicalRotation:.3f} for {expRecord.id} to consDB"
+            )
+            # visit_id is required for updates
+            consDbValues = {"physical_rotator_angle": physicalRotation, "visit_id": expRecord.id}
+            self.consDBPopulator.populateArbitrary(
+                expRecord.instrument,
+                "visit1_quicklook",
+                consDbValues,
+                expRecord.day_obs,
+                expRecord.seq_num,
+                True,
+            )
+        except Exception as e:
+            self.log.error(f"Failed to write physical rotator angle for {expRecord.id} to consDB: {e}")
+            raiseIf(self.doRaise, e, self.log)
+            return
 
     def writeObservationAnnotation(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         headerMetadata = exp.metadata.toDict()
