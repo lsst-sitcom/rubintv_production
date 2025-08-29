@@ -212,6 +212,9 @@ class ConsDBPopulator:
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
+        if allowUpdate and "visit_id" not in values:
+            values["visit_id"] = expRecord.id
+
         try:
             self.client.insert(
                 instrument=expRecord.instrument,
@@ -250,6 +253,9 @@ class ConsDBPopulator:
         """
         obsId = computeCcdExposureId(visitRecord.instrument, visitRecord.id, detectorNum)
         table = f"cdb_{visitRecord.instrument.lower()}.ccdvisit1_quicklook"
+
+        if allowUpdate and "visit_id" not in zernikeValues:
+            zernikeValues["visit_id"] = visitRecord.id
 
         try:
             self.client.insert(
@@ -430,6 +436,10 @@ class ConsDBPopulator:
             raise TypeError(f"Expected MountErrors or dict, got {type(mountErrors)}")
 
         table = f"cdb_{instrument.lower()}.exposure_quicklook"
+
+        if allowUpdate and "exposure_id" not in values:
+            values["exposure_id"] = expRecord.id
+
         self.client.insert(
             instrument=instrument,
             table=table,
