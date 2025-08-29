@@ -807,10 +807,14 @@ def catchPrintOutput(functionToCall: Callable, *args, **kwargs) -> str:
 
 
 def sanitizeNans(obj: Any) -> Any:
-    """Recursively sanitize an object of any NaN-valued items.
+    """
+    Recursively sanitize an object by replacing NaN values with None and coerce
+    numeric-looking strings to floats.
 
     Nans are not JSON de-serializable, so this function replaces them with
-    ``None``.
+    ``None``. In addition, strings that represent numeric values (including
+    scientific notation) are converted to floats to ensure proper JSON numeric
+    typing.
 
     Parameters
     ----------
@@ -821,7 +825,8 @@ def sanitizeNans(obj: Any) -> Any:
     Returns
     -------
     obj : `object`
-        The object with any NaNs replaced with ``None``.
+        The object with any NaNs replaced with ``None``, and numeric strings
+        converted to floats.
     """
     if isinstance(obj, list):
         return [sanitizeNans(o) for o in obj]
@@ -829,6 +834,18 @@ def sanitizeNans(obj: Any) -> Any:
         return {k: sanitizeNans(v) for k, v in obj.items()}
     elif isinstance(obj, float) and math.isnan(obj):
         return None
+    elif isinstance(obj, str):
+        s = obj.strip()
+        if not s:
+            return obj
+        # Try to coerce numeric-looking strings to floats; map NaN to None.
+        try:
+            value = float(s)
+            if math.isnan(value):
+                return None
+            return value
+        except Exception:
+            return obj
     else:
         return obj
 
