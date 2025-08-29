@@ -157,7 +157,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.redisHelper = RedisHelper(butler, self.locationConfig)
         self.efdClient = makeEfdClient()
         self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
         self.camera = getCameraFromInstrumentName(self.instrument)
 
     def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
