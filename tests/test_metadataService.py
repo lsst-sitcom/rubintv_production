@@ -92,7 +92,7 @@ class TimedMetadataServerTestCase(lsst.utils.tests.TestCase):
 
             # Build server with a no-op uploader
             server = TimedMetadataServer(
-                locationConfig=None,  # not used by TimedMetadataServer core merge
+                locationConfig=None,  # type: ignore[arg-type]
                 metadataDirectory=metadataDir,
                 shardsDirectory=shardsDir,
                 channelName="test_metadata",
