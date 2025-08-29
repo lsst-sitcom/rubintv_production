@@ -144,7 +144,7 @@ class ConsDBPopulator:
             self.client.insert(
                 instrument=expRecord.instrument,
                 table=f"cdb_{expRecord.instrument.lower()}.exposure",
-                obs_id=expRecord.id,
+                obs_id=(expRecord.day_obs, expRecord.seq_num),
                 values=exposureValues,
                 allow_update=allowUpdate,
             )
@@ -216,7 +216,7 @@ class ConsDBPopulator:
             self.client.insert(
                 instrument=expRecord.instrument,
                 table=table,
-                obs_id=obsId,
+                obs_id=(expRecord.day_obs, expRecord.seq_num),
                 values=_removeNans(values),
                 allow_update=allowUpdate,
             )
@@ -433,7 +433,7 @@ class ConsDBPopulator:
         self.client.insert(
             instrument=instrument,
             table=table,
-            obs_id=expRecord.id,
+            obs_id=(expRecord.day_obs, expRecord.seq_num),
             values=_removeNans(values),
             allow_update=allowUpdate,
         )
