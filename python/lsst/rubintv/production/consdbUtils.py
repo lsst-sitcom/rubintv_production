@@ -30,6 +30,7 @@ __all__ = [
 
 import itertools
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Callable, cast
 
 import numpy as np
@@ -113,8 +114,13 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _removeNans(d: dict[str, float | int]) -> dict[str, float | int]:
-    return {k: v for k, v in d.items() if not np.isnan(v)}
+def _removeNans(values: Mapping[str, float | int | str]) -> dict[str, float | int | str]:
+    out: dict[str, float | int | str] = {}
+    for k, v in values.items():
+        if isinstance(v, (float, np.floating)) and np.isnan(v):
+            continue
+        out[k] = v
+    return out
 
 
 def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float], int | float]:
@@ -154,7 +160,7 @@ class ConsDBPopulator:
         instrument: str,
         table: str,
         obsId: int | tuple[int, int],
-        values: dict[str, int | float | str],
+        values: Mapping[str, int | float | str],
         allowUpdate: bool,
     ) -> bool:
         """
