@@ -180,7 +180,7 @@ class ConsDBPopulator:
             ``True`` if an insert/update was attempted and succeeded; ``False``
             if skipped due to location.
         """
-        if not self._shouldInsert():
+        if not self._shouldInsert():  # called here again for safety
             location = self.locationConfig.location
             logger.info(f"Skipping consDB insert at {location} for {instrument}.{table} for {obsId}")
             return False
@@ -351,6 +351,11 @@ class ConsDBPopulator:
     def populateVisitRow(
         self, visitSummary: ExposureCatalog, instrument: str, allowUpdate: bool = False
     ) -> None:
+        if not self._shouldInsert():  # ugly but need to check this before accessing the schema
+            location = self.locationConfig.location
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
+            return
+
         schema = self.client.schema(instrument.lower(), "visit1_quicklook")
         schema = cast(dict[str, tuple[str, str]], schema)
         typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
@@ -429,10 +434,16 @@ class ConsDBPopulator:
             If True, allow updating existing rows in the table. An error is
             raised if False and a value exists.
         """
+        # validate before checking _shouldInsert() for better CI coverage
         if allowUpdate and "exposure" in table.lower() and "exposure_id" not in values:
             raise ValueError("When updating an exposure table, exposure_id must be in values")
         if allowUpdate and "visit" in table.lower() and "visit_id" not in values:
             raise ValueError("When updating a visit table, visit must be in values")
+
+        if not self._shouldInsert():  # ugly but need to check this before accessing the schema
+            location = self.locationConfig.location
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
+            return
 
         schema = self.client.schema(instrument.lower(), table)
         schema = cast(dict[str, tuple[str, str]], schema)
