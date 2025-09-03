@@ -224,7 +224,7 @@ class ConsDBPopulator:
         self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=f"cdb_{expRecord.instrument.lower()}.exposure",
-            obsId=(expRecord.day_obs, expRecord.seq_num),
+            obsId=expRecord.id,
             values=exposureValues,
             allowUpdate=allowUpdate,
         )
@@ -291,7 +291,7 @@ class ConsDBPopulator:
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
-            obsId=(expRecord.day_obs, expRecord.seq_num),
+            obsId=obsId,
             values=values,
             allowUpdate=allowUpdate,
         )
@@ -522,7 +522,7 @@ class ConsDBPopulator:
         self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obsId=(expRecord.day_obs, expRecord.seq_num),
+            obs_id=expRecord.id,
             values=values,
             allowUpdate=allowUpdate,
         )
