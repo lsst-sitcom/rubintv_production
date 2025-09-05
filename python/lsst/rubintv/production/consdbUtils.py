@@ -404,7 +404,7 @@ class ConsDBPopulator:
         inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obsId=visit,
+            obsId=(visit // 100000, visit % 100000), # This is gross
             values=values,
             allowUpdate=allowUpdate,
         )
