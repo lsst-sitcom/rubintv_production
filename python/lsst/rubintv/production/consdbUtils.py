@@ -399,6 +399,7 @@ class ConsDBPopulator:
             raise RuntimeError("preliminary_visit_summary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
+        values["visit_id"] = visit
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
 
         inserted = self._insertIfAllowed(
