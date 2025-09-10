@@ -105,6 +105,11 @@ def waitForIngest(nExpected: int, timeout: float, expRecord: DimensionRecord, bu
     butler : `Butler`
         The Butler instance to query.
 
+    Returns
+    -------
+    nIngested : `int`
+        The number of datasets found, which may be less than nExpected if the
+        timeout was reached.
     """
     cadence = 0.25
     startTime = monotonic()
