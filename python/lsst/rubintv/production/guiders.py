@@ -200,39 +200,39 @@ class GuiderWorker(BaseButlerChannel):
     def makeAnimations(self, plotter: GuiderPlotter, dayObs: int, seqNum: int, uploadPlot: Callable) -> None:
         with logDuration(self.log, "Making the full frame movie"):
             plotName = "full_movie"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
-            plotter.makeAnimation(cutoutSize=-1, saveAs=plotFile, plo=70, phi=99)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+            plotFilename = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
+            plotter.makeAnimation(cutoutSize=-1, saveAs=plotFilename, plo=70, phi=99)
+            if os.path.exists(plotFilename):
+                uploadPlot(plotName=plotName, filename=plotFilename)
 
         with logDuration(self.log, "Making the star cutout movie"):
             plotName = "star_movie"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
-            plotter.makeAnimation(cutoutSize=20, saveAs=plotFile, plo=50, phi=98, fps=10)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+            plotFilename = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "mp4")
+            plotter.makeAnimation(cutoutSize=20, saveAs=plotFilename, plo=50, phi=98, fps=10)
+            if os.path.exists(plotFilename):
+                uploadPlot(plotName=plotName, filename=plotFilename)
 
     def makeStripPlots(self, plotter: GuiderPlotter, dayObs: int, seqNum: int, uploadPlot: Callable) -> None:
         with logDuration(self.log, "Making the centroid alt/az plot"):
             plotName = "centroid_alt_az"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
-            plotter.stripPlot(saveAs=plotFile)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+            plotFilename = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+            plotter.stripPlot(saveAs=plotFilename)
+            if os.path.exists(plotFilename):
+                uploadPlot(plotName=plotName, filename=plotFilename)
 
         with logDuration(self.log, "Making the flux strip plot"):
             plotName = "flux_trend"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
-            plotter.stripPlot(plotType="flux", saveAs=plotFile)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+            plotFilename = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+            plotter.stripPlot(plotType="flux", saveAs=plotFilename)
+            if os.path.exists(plotFilename):
+                uploadPlot(plotName=plotName, filename=plotFilename)
 
         with logDuration(self.log, "Making the psf strip plot"):
             plotName = "psf_trend"
-            plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
-            plotter.stripPlot(plotType="psf", saveAs=plotFile)
-            if os.path.exists(plotFile):
-                uploadPlot(plotName=plotName, filename=plotFile)
+            plotFilename = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "jpg")
+            plotter.stripPlot(plotType="psf", saveAs=plotFilename)
+            if os.path.exists(plotFilename):
+                uploadPlot(plotName=plotName, filename=plotFilename)
 
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
