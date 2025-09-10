@@ -76,7 +76,7 @@ KEY_MAP: dict[str, str] = {
     "mag_slope_significance": "Significance of the magnitude drift (sigma)",
     "mag_trend_rmse": "Magnitude RMS (detrended)",
     "mag_global_std": "Magnitude standard deviation",
-    "psf_intercept": "PSF FWHM at zero stamp index",
+    "psf_intercept": "PSF FWHM at start of image sequence",
     "psf_slope": "PSF FWHM drift per exposure",
     "psf_slope_significance": "Significance of the PSF drift (sigma)",
     "psf_trend_rmse": "PSF RMS (detrended)",
