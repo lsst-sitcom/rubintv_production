@@ -240,16 +240,16 @@ class GuiderWorker(BaseButlerChannel):
         record: DimensionRecord | None = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]
-            assert record is not None, f"Failed to find exposure record in exposure-dimension dataId {dataId}"
-            if not record.can_see_sky:  # can_see_sky only on exposure records, all visits should be on-sky
-                self.log.info(f"Skipping {dataId=} as it's not on sky")
-                return
-
         elif "visit" in dataId.dimensions:
             record = dataId.records["visit"]
 
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         assert record is not None, f"Failed to find exposure or visit record in {dataId=}"
+        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
+
+        if record.definition.name == "exposure" and not record.can_see_sky:
+            # can_see_sky only on exposure records, all visits should be on-sky
+            self.log.info(f"Skipping {dataId=} as it's not on sky")
+            return
 
         dayObs: int = record.day_obs
         seqNum: int = record.seq_num
