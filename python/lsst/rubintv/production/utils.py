@@ -876,11 +876,11 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
 
     with open(filename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
-    if not isFileWorldWritable(filename):
-        try:
+    try:
+        if not isFileWorldWritable(filename):
             os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
-        except FileNotFoundError:
-            pass  # it was indeed deleted elsewhere, so just ignore
+    except FileNotFoundError:
+        pass  # it was indeed deleted elsewhere, so just ignore
     return
 
 
