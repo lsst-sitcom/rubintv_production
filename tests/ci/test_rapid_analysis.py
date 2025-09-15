@@ -343,8 +343,8 @@ class TestConfig:
             TestScript(
                 "scripts/LSSTCam/runGuiderAnalysis.py",
                 ["usdf_testing"],
-                tee_output=True,
-                display_on_pass=True,
+                tee_output=False,
+                display_on_pass=False,
             ),
             TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
         ]
