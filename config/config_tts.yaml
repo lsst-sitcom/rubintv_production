@@ -40,6 +40,9 @@ comCamAosMetadataShardPath: /project/rubintv/LSSTComCamAos/sidecar_metadata/shar
 raPerformanceDirectory: /project/rubintv/raPerformance/sidecar_metadata
 raPerformanceShardsDirectory: /project/rubintv/raPerformance/sidecar_metadata/shards
 
+guiderDirectory: /project/rubintv/LSSTCam/guiders/sidecar_metadata
+guiderShardsDirectory: /project/rubintv/LSSTCam/guiders/sidecar_metadata/shards
+
 lsstCamMetadataPath: /project/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /project/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamAosMetadataPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards

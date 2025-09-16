@@ -1447,6 +1447,8 @@ class HeadProcessController:
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
                     self.doDetectorFanout(expRecord)
+                if expRecord.can_see_sky and self.instrument == "LSSTCam":
+                    self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.GUIDER_WORKER)
 
             try:
                 self.doDonutPairFanout()  # checks for pair signal and dispatches

@@ -18,6 +18,9 @@ comCamMetadataShardPath: '/sdf/scratch/rubin/rapid-analysis/LSSTComCam/sidecar_m
 raPerformanceDirectory: /sdf/scratch/rubin/rapid-analysis/raPerformance/sidecar_metadata
 raPerformanceShardsDirectory: /sdf/scratch/rubin/rapid-analysis/raPerformance/sidecar_metadata/shards
 
+guiderDirectory: /project/rubintv/LSSTCam/guiders/sidecar_metadata
+guiderShardsDirectory: /project/rubintv/LSSTCam/guiders/sidecar_metadata/shards
+
 # LSSTCam config:
 lsstCamAosMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata
 lsstCamAosMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCam/sidecar_metadata/shards
