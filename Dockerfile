@@ -66,6 +66,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     redis-py \
     batoid \
     danish \
+    conda-forge/label/tarts_dev::tarts \
     rubin-libradtran
 
 USER saluser
