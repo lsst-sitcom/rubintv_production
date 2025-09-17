@@ -327,7 +327,7 @@ class PsfAzElPlotter:
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
 
-        fig, axes = makeFigureAndAxes()
+        fig, axes = makeFigureAndAxes(nrows=3)
 
         plotName = "psf_shape_azel"
         plotFile = makePlotFile(

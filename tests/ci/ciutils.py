@@ -16,6 +16,9 @@ class TestScript:
     def __post_init__(self):
         if self.args is None:
             self.args = []
+        if self.tee_output is False and self.do_debug is True:
+            print("INFO: Enabling debug mode requires tee_output to be True. Forcing tee_output to True.")
+            self.tee_output = True  # this is required for redirection to work
 
     def __str__(self):
         args_str = ":".join(self.args)
