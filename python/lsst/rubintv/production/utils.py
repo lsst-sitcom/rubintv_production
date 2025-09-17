@@ -597,6 +597,18 @@ class LocationConfig:
     def aosLSSTCamFullArrayModePipelineFileTie(self) -> str:
         return self._config["aosLSSTCamFullArrayModePipelineFileTie"]
 
+    @cached_property
+    def aosLSSTCamRefitWcsPipelineFile(self) -> str:
+        return self._config["aosLSSTCamRefitWcsPipelineFile"]
+
+    @cached_property
+    def aosLSSTCamAiDonutPipelineFile(self) -> str:
+        return self._config["aosLSSTCamAiDonutPipelineFile"]
+
+    @cached_property
+    def aosLSSTCamTartsPipelineFile(self) -> str:
+        return self._config["aosLSSTCamTartsPipelineFile"]
+
 
 def getAutomaticLocationConfig() -> LocationConfig:
     """Get a location config, based on RA location and command line args.
