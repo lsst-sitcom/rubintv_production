@@ -738,6 +738,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
 
+        donutBlurFwhm = float("nan")  # needs to be defined for lower block but nans are removed on send
         if "estimatorInfo" in zernikes.meta:
             # if danish is run then fwhm is in the metadata, if TIE then it's
             # not. danish models the width of the Kolmogorov profile needed to
