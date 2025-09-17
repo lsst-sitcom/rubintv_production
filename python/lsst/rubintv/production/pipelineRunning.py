@@ -738,12 +738,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
 
-        if donutBlurFwhm := zernikes.meta["estimatorInfo"].get("fwhm"):
+        if "estimatorInfo" in zernikes.meta:
             # if danish is run then fwhm is in the metadata, if TIE then it's
             # not. danish models the width of the Kolmogorov profile needed to
             # convolve with the geometric donut model (the optics) to match the
-            # donut
-            outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
+            # donut. If AI_DONUT then "estimatorInfo" might not be present.
+            if donutBlurFwhm := zernikes.meta["estimatorInfo"].get("fwhm"):
+                outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
 
         labels = {"_" + k: "measured" for k in outputDict.keys()}
         outputDict.update(labels)
