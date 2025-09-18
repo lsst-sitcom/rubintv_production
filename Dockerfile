@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="d_2025_09_16"
+ARG STACK_TAG="w_2025_38"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,12 +9,12 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2025.36"
-ENV drp_pipe_branch="w.2025.36"
-ENV spectractor_branch="w.2025.36"
-ENV atmospec_branch="w.2025.36"
-ENV summit_utils_branch="w.2025.36"
-ENV summit_extras_branch="w.2025.36"
+ENV obs_lsst_branch="w.2025.38"
+ENV drp_pipe_branch="w.2025.38"
+ENV spectractor_branch="w.2025.38"
+ENV atmospec_branch="w.2025.38"
+ENV summit_utils_branch="w.2025.38"
+ENV summit_extras_branch="w.2025.38"
 ENV eo_pipe_branch="w_2025_12"
 ENV ts_wep_branch="v14.7.0"
 ENV donut_viz_branch="5de0465"
