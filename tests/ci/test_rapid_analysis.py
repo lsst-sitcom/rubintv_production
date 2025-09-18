@@ -1169,6 +1169,7 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
+        os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
 
         # Verify environment settings
         if getDoRaise() is not True:
