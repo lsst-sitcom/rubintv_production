@@ -18,6 +18,8 @@ ENV summit_extras_branch="w.2025.38"
 ENV eo_pipe_branch="w_2025_12"
 ENV ts_wep_branch="v14.7.0"
 ENV donut_viz_branch="5de0465"
+# no tags for TARTS yet, so default to main if not using deployment branch
+ENV tarts_branch="main"
 
 ENV USER=${USER:-saluser}
 ENV WORKDIR=/opt/lsst/software/stack
@@ -66,7 +68,6 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     redis-py \
     batoid \
     danish \
-    conda-forge/label/tarts_dev::tarts \
     rubin-libradtran
 
 USER saluser
@@ -87,6 +88,7 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
     git clone https://github.com/lsst-ts/ts_wep.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
+    git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst-camera-dh/eo_pipe.git
 
 # TODO: (DM-43475) Resync RA images with the rest of the summit.
@@ -203,6 +205,12 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup donut_viz -t saluser && \
     scons version
 
+WORKDIR /repos/TARTS
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${tarts_branch} && \
+    eups declare -r . tarts ${tarts} -t saluser && \
+    setup tarts -t saluser
 
 WORKDIR /repos/rubintv_production
 
