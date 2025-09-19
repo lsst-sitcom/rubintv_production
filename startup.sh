@@ -27,7 +27,7 @@ source ${WORKDIR}/loadLSST.bash
 
 setup lsst_distrib
 
-ALL_REPOS="TARTS obs_lsst drp_pipe Spectractor atmospec summit_utils summit_extras rubintv_production eo_pipe rubintv_analysis_service ts_wep donut_viz"
+ALL_REPOS="obs_lsst drp_pipe Spectractor atmospec summit_utils summit_extras rubintv_production eo_pipe rubintv_analysis_service ts_wep donut_viz TARTS"
 
 for REPO in ${ALL_REPOS}
 do
