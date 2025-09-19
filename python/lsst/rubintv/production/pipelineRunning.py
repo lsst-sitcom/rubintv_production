@@ -77,7 +77,7 @@ TASK_ENDPOINTS_TO_TRACK = (
     "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",  # end of step1b for nightly
 )
 
-NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera"}
+NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera", "astrometry_camera"}
 PSF_GRADIENT_WARNING = 0.3
 PSF_GRADIENT_BAD = 0.35
 
