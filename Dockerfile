@@ -76,7 +76,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     pip install google-cloud-storage \
     lsst-efd-client \
     pytorch_lightning \
-    easyocr
+    easyocr \
+    && rm -rf ~/.cache/pip
 
 WORKDIR /repos
 
