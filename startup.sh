@@ -20,9 +20,6 @@ do
   echo -e "${directory} is at: ${commit_info}\n"
 done
 
-# Move back to the scripts directory
-cd "${SCRIPTS_LOCATION:-/repos/rubintv_production/scripts}"
-
 source ${WORKDIR}/loadLSST.bash
 
 setup lsst_distrib
@@ -38,6 +35,7 @@ do
     # git show --oneline | head -n1
 done
 
-cd /repos/rubintv_production/scripts
+# Move back to the scripts directory
+cd "${SCRIPTS_LOCATION:-/repos/rubintv_production/scripts}"
 
 python $RUN_ARG
