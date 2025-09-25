@@ -50,13 +50,12 @@ RUN mkdir -p /repos && \
     chmod a+rw /repos && \
     chown saluser:saluser /repos
 
-RUN yum install -y nano
-
-# Install OpenGL development libraries
-RUN yum install -y mesa-libGL-devel
-
-# Install rsync package
-RUN yum install -y rsync
+RUN yum install -y \
+      nano \
+      mesa-libGL-devel \
+      rsync \
+  && yum clean all \
+  && rm -rf /var/cache/yum
 
 USER lsst
 
@@ -68,7 +67,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     redis-py \
     batoid \
     danish \
-    rubin-libradtran
+    rubin-libradtran \
+    && conda clean -afy
 
 USER saluser
 
