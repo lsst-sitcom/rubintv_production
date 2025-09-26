@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_33"
+ARG STACK_TAG="w_2025_38"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,15 +9,17 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2025.33"
-ENV drp_pipe_branch="w.2025.33"
-ENV spectractor_branch="w.2025.33"
-ENV atmospec_branch="w.2025.33"
-ENV summit_utils_branch="w.2025.33"
-ENV summit_extras_branch="w.2025.33"
+ENV obs_lsst_branch="w.2025.38"
+ENV drp_pipe_branch="w.2025.38"
+ENV spectractor_branch="w.2025.38"
+ENV atmospec_branch="w.2025.38"
+ENV summit_utils_branch="w.2025.38"
+ENV summit_extras_branch="w.2025.38"
 ENV eo_pipe_branch="w_2025_12"
 ENV ts_wep_branch="v14.7.0"
 ENV donut_viz_branch="5de0465"
+# no tags for TARTS yet, so default to main if not using deployment branch
+ENV tarts_branch="main"
 
 ENV USER=${USER:-saluser}
 ENV WORKDIR=/opt/lsst/software/stack
@@ -48,13 +50,12 @@ RUN mkdir -p /repos && \
     chmod a+rw /repos && \
     chown saluser:saluser /repos
 
-RUN yum install -y nano
-
-# Install OpenGL development libraries
-RUN yum install -y mesa-libGL-devel
-
-# Install rsync package
-RUN yum install -y rsync
+RUN yum install -y \
+      nano \
+      mesa-libGL-devel \
+      rsync \
+  && yum clean all \
+  && rm -rf /var/cache/yum
 
 USER lsst
 
@@ -66,14 +67,17 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     redis-py \
     batoid \
     danish \
-    rubin-libradtran
+    rubin-libradtran \
+    && conda clean -afy
 
 USER saluser
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     pip install google-cloud-storage \
     lsst-efd-client \
-    easyocr
+    pytorch_lightning \
+    easyocr \
+    && rm -rf ~/.cache/pip
 
 WORKDIR /repos
 
@@ -86,6 +90,7 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
     git clone https://github.com/lsst-ts/ts_wep.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
+    git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst-camera-dh/eo_pipe.git
 
 # TODO: (DM-43475) Resync RA images with the rest of the summit.
@@ -202,6 +207,12 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup donut_viz -t saluser && \
     scons version
 
+WORKDIR /repos/TARTS
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${tarts_branch} && \
+    eups declare -r . tarts ${tarts} -t saluser && \
+    setup tarts -t saluser
 
 WORKDIR /repos/rubintv_production
 
@@ -261,7 +272,8 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/eo_pipe && \
     git config --system --add safe.directory /repos/rubintv_analysis_service && \
     git config --system --add safe.directory /repos/ts_wep && \
-    git config --system --add safe.directory /repos/donut_viz
+    git config --system --add safe.directory /repos/donut_viz && \
+    git config --system --add safe.directory /repos/TARTS
 
 USER saluser
 ENV USER=saluser
