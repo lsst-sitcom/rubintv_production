@@ -336,7 +336,7 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         mountErrors: dict[str, float] | MountErrors,
         instrument: str,
-        allowUpdate: bool = False,
+        allowUpdate: bool = True,
     ) -> None:
         values: dict[str, float] = {}
         if isinstance(mountErrors, MountErrors):
@@ -346,7 +346,7 @@ class ConsDBPopulator:
 
             values["mount_motion_image_degradation"] = imageError
             values["mount_motion_image_degradation_az"] = image_az_rms
-            values["mount_motion_image_degradation_el"] = image_el_rms
+            # values["mount_motion_image_degradation_el"] = image_el_rms
 
             az_rms = mountErrors.azRms
             el_rms = mountErrors.elRms
