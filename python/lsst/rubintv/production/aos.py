@@ -437,7 +437,7 @@ class ZernikePredictedFWHMPlotter:
             self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
             return
 
-        wavefrontResults = makeDataframeFromZernikes(zkAvgTable)
+        wavefrontResults = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
         wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered)
 
         plotName = "zernike_predicted_fwhm"
