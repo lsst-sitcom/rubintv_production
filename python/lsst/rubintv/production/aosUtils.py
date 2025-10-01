@@ -48,11 +48,11 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFr
         rotated field angles and aos_fwhm.
     """
     from lsst.ts.ofc import OFCData
-    from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
     from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
+    from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
     ofcData = OFCData("lsst")
-    ofcData.zn_selected = np.array(zernikeTable.meta['nollIndices'])
+    ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     rotationAngle = zernikeTable.meta["rotTelPos"]
     rotMat = np.array(
         [
@@ -65,9 +65,9 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFr
     for row in zernikeTable:
         zernikes = makeDense(row["zk_OCS"], nollIndices=zernikeTable.meta["nollIndices"])
         intrinsicZernikesSparse = get_intrinsic_zernikes(
-            ofcData, filterName.split("_")[0].upper(), [row['detector']], rotationAngle
+            ofcData, filterName.split("_")[0].upper(), [row["detector"]], rotationAngle
         ).squeeze()[ofcData.zn_idx]
-        intrinsicZernikes = makeDense(intrinsicZernikesSparse, nollIndices=zernikeTable.meta['nollIndices'])
+        intrinsicZernikes = makeDense(intrinsicZernikesSparse, nollIndices=zernikeTable.meta["nollIndices"])
         zernikesDeviation = zernikes - intrinsicZernikes
 
         aosFwhm = 1.06 * np.log(1 + np.sqrt(np.sum(np.square(convertZernikesToPsfWidth(zernikesDeviation)))))
