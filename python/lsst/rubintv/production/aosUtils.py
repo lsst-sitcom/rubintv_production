@@ -31,13 +31,15 @@ __all__ = [
 ]
 
 
-def makeDataframeFromZernikes(zernikeTable: Table) -> pd.DataFrame:
+def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFrame:
     """Convert a table of Zernike coefficients into a pandas DataFrame.
 
     Parameters
     ----------
     zernikeTable : `astropy.table.Table`
         Table containing Zernike coefficients.
+    filterName : `str`
+        Name of the filter used for the exposure.
 
     Returns
     -------
@@ -47,27 +49,35 @@ def makeDataframeFromZernikes(zernikeTable: Table) -> pd.DataFrame:
     """
     from lsst.ts.ofc import OFCData
     from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
+    from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
 
-    ofc_data = OFCData("lsst")
-    rotationAngle = -zernikeTable.meta["rotTelPos"]
+    ofcData = OFCData("lsst")
+    ofcData.zn_selected = np.array(zernikeTable.meta['nollIndices'])
+    rotationAngle = zernikeTable.meta["rotTelPos"]
     rotMat = np.array(
         [
-            [np.cos(rotationAngle), -np.sin(rotationAngle)],
-            [np.sin(rotationAngle), np.cos(rotationAngle)],
+            [np.cos(-rotationAngle), -np.sin(-rotationAngle)],
+            [np.sin(-rotationAngle), np.cos(-rotationAngle)],
         ]
     )
 
     records = []
     for row in zernikeTable:
         zernikes = makeDense(row["zk_OCS"], nollIndices=zernikeTable.meta["nollIndices"])
-        aosFwhm = 1.06 * np.log(1 + np.sqrt(np.sum(np.square(convertZernikesToPsfWidth(zernikes)))))
-        fieldAngles = ofc_data.sample_points[row["detector"]]
+        intrinsicZernikesSparse = get_intrinsic_zernikes(
+            ofcData, filterName.split("_")[0].upper(), [row['detector']], rotationAngle
+        ).squeeze()[ofcData.zn_idx]
+        intrinsicZernikes = makeDense(intrinsicZernikesSparse, nollIndices=zernikeTable.meta['nollIndices'])
+        zernikesDeviation = zernikes - intrinsicZernikes
+
+        aosFwhm = 1.06 * np.log(1 + np.sqrt(np.sum(np.square(convertZernikesToPsfWidth(zernikesDeviation)))))
+        fieldAngles = ofcData.sample_points[row["detector"]]
         rotatedFieldAngles = fieldAngles @ rotMat
 
         records.append(
             {
                 "detector": row["detector"],
-                "zernikes": zernikes,
+                "zernikesDeviation": zernikesDeviation,
                 "fieldAngles": rotatedFieldAngles,
                 "aosFwhm": aosFwhm,
             }
@@ -124,7 +134,7 @@ def extractWavefrontData(
 
     fwhmMeasured = np.vstack(wavefrontResults["aosFwhm"].to_numpy())
     fieldAngles = np.vstack(wavefrontResults["fieldAngles"].to_numpy())
-    zernikes = np.vstack(wavefrontResults["zernikes"].to_numpy())
+    zernikes = np.vstack(wavefrontResults["zernikesDeviation"].to_numpy())
     zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
     zernikesPadded[:, zMin : zernikes.shape[1] + zMin] = zernikes
 
