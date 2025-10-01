@@ -141,7 +141,8 @@ def extractWavefrontData(
     zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
     zernikesPadded[:, zMin : zernikes.shape[1] + zMin] = zernikes
 
-    # Fit a double Zernike to the measured Zernikes with maximum field order of kMax
+    # Fit a double Zernike to the measured Zernikes with maximum
+    # field order of kMax
     basis = galsim.zernike.zernikeBasis(kMax, fieldAngles[:, 0], fieldAngles[:, 1], R_outer=fieldRadius)
     doubleZernikeCoeffs, *_ = np.linalg.lstsq(basis.T, zernikesPadded, rcond=None)
     doubleZernikeCoeffs[0, :] = 0.0  # Need to zero out k=0 term which doesn't have any meaning
