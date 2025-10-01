@@ -123,21 +123,25 @@ def extractWavefrontData(
     Returns
     -------
     dict
-        Dictionary with keys 'zksMeasured', 'zksInterpolated',
-        'rotatedPositions', 'fwhmMeasured', 'fwhmInterpolated'.
+        Dictionary with keys 'fieldAngles', 'zksMeasured',
+        'zksInterpolated', 'rotatedPositions', 'fwhmMeasured',
+        'fwhmInterpolated'.
     """
     import galsim
 
     from lsst.ts.wep.utils import convertZernikesToPsfWidth
 
+    # Get rotated positions of the center for each camera detector
     rotatedPositions = getCameraRotatedPositions(rotMat)
 
+    # Retrieve data from Dataframe
     fwhmMeasured = np.vstack(wavefrontResults["aosFwhm"].to_numpy())
     fieldAngles = np.vstack(wavefrontResults["fieldAngles"].to_numpy())
     zernikes = np.vstack(wavefrontResults["zernikesDeviation"].to_numpy())
     zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
     zernikesPadded[:, zMin : zernikes.shape[1] + zMin] = zernikes
 
+    # Fit a double Zernike to the measured Zernikes with maximum field order of kMax
     basis = galsim.zernike.zernikeBasis(kMax, fieldAngles[:, 0], fieldAngles[:, 1], R_outer=fieldRadius)
     doubleZernikeCoeffs, *_ = np.linalg.lstsq(basis.T, zernikesPadded, rcond=None)
     doubleZernikeCoeffs[0, :] = 0.0  # Need to zero out k=0 term which doesn't have any meaning
@@ -151,16 +155,19 @@ def extractWavefrontData(
         xy_outer=pupilOuter,
     )
 
+    # Interpolate Zernikes at the rotated positions of the camera detectors
     zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), 29))
     for idx in range(len(rotatedPositions[:, 0])):
         zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
 
+    # Compute FWHM based on the interpolated Zernikes at the source positions
     fwhmInterpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
         zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[4:]
         fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
 
     return {
+        "fieldAngles": fieldAngles,
         "zksMeasured": zernikesPadded,
         "zksInterpolated": zksInterpolated,
         "rotatedPositions": rotatedPositions,
