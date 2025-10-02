@@ -181,9 +181,9 @@ def extractWavefrontData(
 
 
 def estimateTelescopeState(
+    zernikeTable: Table,
     wavefrontResults: pd.DataFrame,
     filterName: str,
-    rotationAngle: float,
     useDof: str = "0-9,10-16,30-34",
     nKeep: int = 12,
 ) -> np.ndarray:
@@ -196,12 +196,12 @@ def estimateTelescopeState(
         field angles, and aos_fwhm.
     filterName : `str`
         Name of the filter used for the exposure.
-    rotationAngle : `float`
-        Rotation angle of the telescope in radians.
     useDof : `str`
         String representing integer ranges of degrees of freedom to use.
     nKeep : `int`
         Number of modes to keep in the state estimation.
+    zMin : `int`
+        Minimum Zernike index to consider.
     """
     from lsst.ts.ofc import OFCData, StateEstimator
 
@@ -211,6 +211,7 @@ def estimateTelescopeState(
         raise ValueError("useDof must be a string representing integer ranges.")
 
     ofc_data = OFCData("lsst")
+    ofc_data.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     ofc_data.comp_dof_idx = newCompDofIdx
     ofc_data.controller["truncation_index"] = nKeep
     state_estimator = StateEstimator(ofc_data)
@@ -222,7 +223,7 @@ def estimateTelescopeState(
         filterName.split("_")[0].upper(),
         zernikesCCS,
         detector_names,
-        np.rad2deg(rotationAngle),
+        np.rad2deg(zernikeTable.meta['rotTelPos']),
     )
 
     return dof_state
