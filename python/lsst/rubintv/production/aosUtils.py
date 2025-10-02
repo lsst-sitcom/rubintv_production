@@ -208,7 +208,7 @@ def estimateWavefrontDataFromDofs(
     # Get rotated positions of the center for each camera detector
     rotatedPositions = getCameraRotatedPositions(rotMat)
 
-    fwhmMeasured = np.vstack(wavefrontResults["aosFwhm"].to_numpy())
+    fwhmMeasured = wavefrontResults["aosFwhm"].to_numpy()
     fieldAngles = np.vstack(wavefrontResults["fieldAngles"].to_numpy())
     zernikes = np.vstack(wavefrontResults["zernikesDeviation"].to_numpy())
     zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
