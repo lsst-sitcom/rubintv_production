@@ -79,7 +79,7 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFr
         records.append(
             {
                 "detector": row["detector"],
-                "zernikesCCS": zernikes,
+                "zernikesCCS": zernikesCCS,
                 "zernikesDeviation": zernikesDeviation,
                 "fieldAngles": rotatedFieldAngles,
                 "aosFwhm": aosFwhm,
