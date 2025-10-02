@@ -323,7 +323,6 @@ def estimateTelescopeState(
     -------
     numpy.ndarray
         Array representing the estimated telescope state.
-
     """
     from lsst.ts.ofc import OFCData, StateEstimator
 
@@ -350,7 +349,7 @@ def estimateTelescopeState(
 
     dof_state = np.zeros(50)
     dof_state[ofc_data.dof_idx] = out
-    return dof_state, ofc_data
+    return dof_state
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
