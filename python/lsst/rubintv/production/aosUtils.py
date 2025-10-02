@@ -186,6 +186,7 @@ def extractWavefrontData(
 def estimateTelescopeState(
     zernikeTable: Table,
     wavefrontResults: pd.DataFrame,
+    configPath: str,
     filterName: str,
     useDof: str = "0-9,10-16,30-34",
     nKeep: int = 12,
@@ -194,17 +195,26 @@ def estimateTelescopeState(
 
     Parameters
     ----------
+    zernikeTable : `astropy.table.Table`
+        Table containing Zernike coefficients.
     wavefrontResults : `pandas.DataFrame`
         DataFrame containing wavefront results with zernikes,
         field angles, and aos_fwhm.
     filterName : `str`
         Name of the filter used for the exposure.
+    configPath : `str`
+        Path to the configuration directory for OFCData.
     useDof : `str`
         String representing integer ranges of degrees of freedom to use.
     nKeep : `int`
         Number of modes to keep in the state estimation.
     zMin : `int`
         Minimum Zernike index to consider.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array representing the estimated telescope state.
     """
     from lsst.ts.ofc import OFCData, StateEstimator
 
@@ -213,7 +223,7 @@ def estimateTelescopeState(
     else:
         raise ValueError("useDof must be a string representing integer ranges.")
 
-    ofc_data = OFCData("lsst")
+    ofc_data = OFCData("lsst", config_dir=configPath)
     ofc_data.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     ofc_data.comp_dof_idx = newCompDofIdx
     ofc_data.controller["truncation_index"] = nKeep
@@ -222,17 +232,16 @@ def estimateTelescopeState(
     zernikesCCS = np.vstack(wavefrontResults["zernikesCCS"].to_numpy())
     detector_names = wavefrontResults["detector"].to_list()
 
-    dof_state = state_estimator.dof_state(
+    out = state_estimator.dof_state(
         filterName.split("_")[0].upper(),
         zernikesCCS,
         detector_names,
         np.rad2deg(zernikeTable.meta['rotTelPos']),
     )
 
-    out = np.zeros(50)
-    out[ofc_data.dof_idx] = dof_state
-
-    return out
+    dof_state = np.zeros(50)
+    dof_state[ofc_data.dof_idx] = out
+    return dof_state
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
