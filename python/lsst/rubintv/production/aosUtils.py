@@ -216,7 +216,7 @@ def estimateTelescopeState(
     state_estimator = StateEstimator(ofc_data)
 
     zernikesCCS = np.vstack(wavefrontResults["zernikesCCS"].to_numpy())
-    detector_names = np.vstack(wavefrontResults["detector"].to_numpy())
+    detector_names = wavefrontResults["detector"].to_list()
 
     dof_state = state_estimator.dof_state(
         filterName.split("_")[0].upper(),
