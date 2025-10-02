@@ -25,6 +25,7 @@ __all__ = [
     "PsfAzElPlotter",
     "FocalPlaneFWHMPlotter",
     "ZernikePredictedFWHMPlotter",
+    "DOFPredictedFWHMPlotter",
     "FocusSweepAnalysis",
     "RadialPlotter",
 ]
@@ -459,7 +460,117 @@ class ZernikePredictedFWHMPlotter:
             visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
+                self.log.info(f"Making for ZernikePredictedFWHM plot for visitId {visitId}")
+                self.makePlot(visitId)
+            else:
+                sleep(0.5)
+
+
+class DOFPredictedFWHMPlotter:
+    """The DOFPredictedFWHM, for automatically predicting
+    FWHM using the DOF estimated dofs and forward-modelled
+    zernikes.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The locationConfig containing the path configs.
+    instrument : `str`
+        The instrument.
+    queueName : `str`
+        The name of the redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        queueName: str,
+    ) -> None:
+        self.butler = butler
+        self.efd_client = makeEfdClient()
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.queueName = queueName
+
+        self.instrument = instrument
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.DOFPredictedFWHMPlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.s3Uploader = MultiUploader()
+
+    def makePlot(self, visitId: int) -> None:
+        """Make the DOF FWHM plot for the given visit ID.
+
+        Makes the plot by getting the available data from the butler, saves it
+        to a temporary file, and uploads it to RubinTV.
+
+        Parameters
+        ----------
+        visitId : `int`
+            The visit ID for which to make the plot.
+        """
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
+        detectorIds = getDetectorIds(self.instrument)
+        srcDict = {}
+        for detectorId in detectorIds:
+            try:
+                srcDict[detectorId] = self.butler.get(
+                    "single_visit_star_footprints", visit=visitId, detector=detectorId
+                )
+            except DatasetNotFoundError:
+                pass
+
+        visitInfo = None
+        for detectorId in detectorIds:
+            try:
+                visitInfo = self.butler.get(
+                    "preliminary_visit_image.visitInfo", visit=visitId, detector=detectorId
+                )
+                break
+            except DatasetNotFoundError:
+                pass
+        if visitInfo is None:
+            self.log.error(f"Could not find visitInfo for visitId {visitId}")
+            return
+
+        table = makeTableFromSourceCatalogs(srcDict, visitInfo)
+        tableFiltered = randomRowsPerDetector(table, 60)
+
+        try:
+            zkAvgTable = self.butler.get("aggregateZernikesAvg", visit=visitId)
+        except DatasetNotFoundError:
+            self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
+            return
+
+        wavefrontResults = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
+        
+        wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered)
+
+        plotName = "dof_predicted_fwhm"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
+        )
+        makeZernikePredictedFWHMPlot(tableFiltered, wavefrontData, saveAs=plotFile)
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=expRecord.day_obs,
+            seqNum=expRecord.seq_num,
+            filename=plotFile,
+        )
+
+    def run(self) -> None:
+        """Start the event loop, listening for data and launching plotting."""
+        while True:
+            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
+            if visitIdBytes is not None:
+                visitId = int(visitIdBytes.decode("utf-8"))
+                self.log.info(f"Making for DOFPredictedFWHM plot for visitId {visitId}")
                 self.makePlot(visitId)
             else:
                 sleep(0.5)

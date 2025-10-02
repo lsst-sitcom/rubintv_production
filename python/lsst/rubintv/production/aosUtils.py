@@ -28,6 +28,7 @@ from astropy.table import Table
 __all__ = [
     "makeDataframeFromZernikes",
     "extractWavefrontData",
+    "estimateTelescopeState",
 ]
 
 
@@ -176,6 +177,51 @@ def extractWavefrontData(
         "fwhmInterpolated": fwhmInterpolated,
     }
 
+def estimateTelescopeState(
+    wavefrontResults : pd.DataFrame,
+    filterName : str,
+    rotationAngle : float,
+    useDof : str = "0-9,10-16,30-34",
+    nKeep : int = 12,
+) -> np.ndarray:
+    """Estimate the telescope state from wavefront results.
+
+    Parameters
+    ----------
+    wavefrontResults : `pandas.DataFrame`
+        DataFrame containing wavefront results with zernikes,
+        field angles, and aos_fwhm.
+    filterName : `str`
+        Name of the filter used for the exposure.
+    rotationAngle : `float`
+        Rotation angle of the telescope in radians.
+    useDof : `str`
+        String representing integer ranges of degrees of freedom to use.
+    nKeep : `int`
+        Number of modes to keep in the state estimation.
+    """
+    from lsst.ts.ofc import OFCData, StateEstimator
+    if isinstance(useDof, str):
+        newCompDofIdx = parseDofStr(useDof)
+    else:
+        raise ValueError("useDof must be a string representing integer ranges.")        
+
+    ofc_data = OFCData("lsst", config_dir=self.config_dir)
+    ofc_data.comp_dof_idx = newCompDofIdx
+    ofc_data.controller["truncation_index"] = nkeep
+    state_estimator = StateEstimator(ofc_data)
+
+    zernikesCCS = np.vstack(wavefrontResults["zernikesCCS"].to_numpy())
+    detector_names = np.vstack(wavefrontResults["detector"].to_numpy())
+
+    dof_state = state_estimator.dof_state(
+        filterName.split("_")[0].upper(),
+        zernikesCCS,
+        detector_names,
+        np.rad2deg(rotationAngle),
+    )
+
+    return dof_state
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
     """Get rotated x and y positions of the camera detectors.
@@ -205,3 +251,65 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
         rotated_positions = np.array([x_positions, y_positions]).T @ rotMat
 
     return rotated_positions
+
+def parseDofStr(dofStr: str) -> dict:
+    """Parse a string representation of integer ranges
+    into a sorted list of integers.
+
+    The input string may contain comma-separated integers
+    and/or ranges of the form "start-end".
+    For example:
+        "0-4,10-14" -> [0, 1, 2, 3, 4, 10, 11, 12, 13, 14]
+        "3,7,9-11"  -> [3, 7, 9, 10, 11]
+
+    Parameters
+    ----------
+    dofStr : str
+        A string containing integers and/or integer ranges,
+        separated by commas.
+
+    Returns
+    -------
+    dict
+        A dictionary with boolean arrays indicating active DOFs
+
+    Raises
+    ------
+    ValueError
+        If the string cannot be parsed into integers or ranges of integers.
+    """
+    dofStr = dofStr.strip()
+    useDof = []
+    for part in dofStr.split(","):
+        if "-" in part:
+            start, end = [int(p) for p in part.split("-")]
+            useDof.extend(range(start, end + 1))
+        else:
+            useDof.append(int(part))
+    useDof = np.sort(useDof)
+
+    newCompDofIdx = dict(
+        m2HexPos=np.full(5, False, dtype=bool),  # M2 hexapod (0–4)
+        camHexPos=np.full(5, False, dtype=bool),  # Camera hexapod (5–9)
+        M1M3Bend=np.full(20, False, dtype=bool),  # M1M3 bending modes (10–29)
+        M2Bend=np.full(20, False, dtype=bool),  # M2 bending modes (30–49)
+    )
+
+    # Mark active DOFs
+    for idof in useDof:
+        if idof < 5:
+            # M2 hexapod (x, y, z, tip, tilt)
+            newCompDofIdx["m2HexPos"][idof] = True
+        elif 5 <= idof < 10:
+            # Camera hexapod (x, y, z, tip, tilt)
+            newCompDofIdx["camHexPos"][idof - 5] = True
+        elif 10 <= idof < 30:
+            # M1M3 bending modes (low-order figure control)
+            # These modes correct deformations of the
+            # primary/tertiary mirror
+            newCompDofIdx["M1M3Bend"][idof - 10] = True
+        elif 30 <= idof < 50:
+            # M2 bending modes (low-order figure control)
+            # These modes correct deformations of the secondary mirror
+            newCompDofIdx["M2Bend"][idof - 30] = True
+    return newCompDofIdx
