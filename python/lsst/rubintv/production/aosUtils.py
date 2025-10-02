@@ -178,7 +178,7 @@ def extractWavefrontData(
         "zksMeasured": zernikesPadded,
         "zksInterpolated": zksInterpolated,
         "rotatedPositions": rotatedPositions,
-        "fwhmMeasured": fwhmMeasured,
+        "fwhmMeasured": fwhmMeasured.squeeze(),
         "fwhmInterpolated": fwhmInterpolated,
     }
 
