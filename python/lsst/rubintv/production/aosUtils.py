@@ -177,12 +177,13 @@ def extractWavefrontData(
         "fwhmInterpolated": fwhmInterpolated,
     }
 
+
 def estimateTelescopeState(
-    wavefrontResults : pd.DataFrame,
-    filterName : str,
-    rotationAngle : float,
-    useDof : str = "0-9,10-16,30-34",
-    nKeep : int = 12,
+    wavefrontResults: pd.DataFrame,
+    filterName: str,
+    rotationAngle: float,
+    useDof: str = "0-9,10-16,30-34",
+    nKeep: int = 12,
 ) -> np.ndarray:
     """Estimate the telescope state from wavefront results.
 
@@ -201,14 +202,15 @@ def estimateTelescopeState(
         Number of modes to keep in the state estimation.
     """
     from lsst.ts.ofc import OFCData, StateEstimator
+
     if isinstance(useDof, str):
         newCompDofIdx = parseDofStr(useDof)
     else:
-        raise ValueError("useDof must be a string representing integer ranges.")        
+        raise ValueError("useDof must be a string representing integer ranges.")
 
-    ofc_data = OFCData("lsst", config_dir=self.config_dir)
+    ofc_data = OFCData("lsst")
     ofc_data.comp_dof_idx = newCompDofIdx
-    ofc_data.controller["truncation_index"] = nkeep
+    ofc_data.controller["truncation_index"] = nKeep
     state_estimator = StateEstimator(ofc_data)
 
     zernikesCCS = np.vstack(wavefrontResults["zernikesCCS"].to_numpy())
@@ -222,6 +224,7 @@ def estimateTelescopeState(
     )
 
     return dof_state
+
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
     """Get rotated x and y positions of the camera detectors.
@@ -251,6 +254,7 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
         rotated_positions = np.array([x_positions, y_positions]).T @ rotMat
 
     return rotated_positions
+
 
 def parseDofStr(dofStr: str) -> dict:
     """Parse a string representation of integer ranges

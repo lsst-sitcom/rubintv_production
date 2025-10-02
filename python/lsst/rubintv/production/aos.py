@@ -548,7 +548,7 @@ class DOFPredictedFWHMPlotter:
             return
 
         wavefrontResults = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
-        
+
         wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered)
 
         plotName = "dof_predicted_fwhm"
