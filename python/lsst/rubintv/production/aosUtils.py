@@ -270,6 +270,10 @@ def estimateWavefrontDataFromDofs(
         xy_outer=pupilOuter,
     )
 
+    zksEstimated = np.zeros((fieldAngles.shape[0], 29))
+    for idx in range(fieldAngles.shape[0]):
+        zksEstimated[idx, :] = doubleZernikes(fieldAngles[idx, 0], fieldAngles[idx, 1]).coef
+
     # Interpolate Zernikes at the rotated positions of the camera detectors
     zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), 29))
     for idx in range(len(rotatedPositions[:, 0])):
@@ -283,6 +287,7 @@ def estimateWavefrontDataFromDofs(
 
     return {
         "fieldAngles": fieldAngles,
+        "zksEstimated": zksEstimated,
         "zksMeasured": zernikesPadded,
         "zksInterpolated": zksInterpolated,
         "rotatedPositions": rotatedPositions,
