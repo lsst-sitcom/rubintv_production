@@ -141,7 +141,7 @@ def extractWavefrontData(
     rotatedPositions = getCameraRotatedPositions(rotMat)
 
     # Retrieve data from Dataframe
-    fwhmMeasured = wavefrontResults["aosFwhm"].to_numpy()
+    fwhmMeasured = np.vstack(wavefrontResults["aosFwhm"].to_numpy())
     fieldAngles = np.vstack(wavefrontResults["fieldAngles"].to_numpy())
     zernikes = np.vstack(wavefrontResults["zernikesDeviation"].to_numpy())
     zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
@@ -201,8 +201,8 @@ def estimateWavefrontDataFromDofs(
     import batoid
     import galsim
     from batoid_rubin import LSSTBuilder
-
     from lsst.ts.ofc import OFCData
+
     from lsst.ts.wep.utils import convertZernikesToPsfWidth
 
     # Get rotated positions of the center for each camera detector
@@ -233,8 +233,7 @@ def estimateWavefrontDataFromDofs(
         .build()
     )
 
-    # Build double Zernike model for the perturbed
-    # telescope and the fiducial one
+    # Build double Zernike model for the perturbed telescope and the fiducial one
     doubleZernikesPerturbed = (
         batoid.doubleZernike(
             telescope,
