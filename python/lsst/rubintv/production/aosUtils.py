@@ -183,6 +183,115 @@ def extractWavefrontData(
     }
 
 
+def estimateWavefrontDataFromDofs(
+    dofState: np.ndarray,
+    wavefrontResults: pd.DataFrame,
+    sourceTable: Table,
+    rotMat: np.ndarray,
+    filterName: str,
+    zMin: int = 4,
+    fieldRadius: float = 1.75,
+    kMax: int = 6,
+    jMax: int = 28,
+    obscuration: float = 0.61,
+    pupilInner: float = 2.558,
+    pupilOuter: float = 4.18,
+) -> dict:
+
+    import batoid
+    import galsim
+    from batoid_rubin import LSSTBuilder
+
+    from lsst.ts.ofc import OFCData
+    from lsst.ts.wep.utils import convertZernikesToPsfWidth
+
+    # Get rotated positions of the center for each camera detector
+    rotatedPositions = getCameraRotatedPositions(rotMat)
+
+    fwhmMeasured = np.vstack(wavefrontResults["aosFwhm"].to_numpy())
+    fieldAngles = np.vstack(wavefrontResults["fieldAngles"].to_numpy())
+    zernikes = np.vstack(wavefrontResults["zernikesDeviation"].to_numpy())
+    zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
+    zernikesPadded[:, zMin : zernikes.shape[1] + zMin] = zernikes
+
+    ofcData = OFCData("lsst")
+    wavelength = ofcData.eff_wavelength[filterName.upper()]
+
+    # Need to fix the signs and unit conversions to use batoid
+    dof = -np.array(dofState)  # Make a copy
+    dof[[3, 4, 8, 9]] *= 3600  # degrees => arcsec
+    dof[[0, 1, 3, 5, 6, 8] + list(range(30, 50))] *= -1  # coordsys
+
+    fiducial = batoid.Optic.fromYaml(f"LSST_{filterName}.yaml")
+    telescope = (
+        LSSTBuilder(
+            fiducial,
+            fea_dir="/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
+            bend_dir="/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
+        )
+        .with_aos_dof(dof)
+        .build()
+    )
+
+    # Build double Zernike model for the perturbed
+    # telescope and the fiducial one
+    doubleZernikesPerturbed = (
+        batoid.doubleZernike(
+            telescope,
+            field=np.deg2rad(fieldRadius),
+            wavelength=wavelength * 1e-6,
+            eps=obscuration,
+            jmax=jMax,
+            kmax=kMax,
+        )
+        * wavelength
+    )
+
+    doubleZernikesFiducial = (
+        batoid.doubleZernike(
+            fiducial,
+            field=np.deg2rad(fieldRadius),
+            wavelength=wavelength * 1e-6,
+            eps=obscuration,
+            jmax=jMax,
+            kmax=kMax,
+        )
+        * wavelength
+    )
+
+    # Generate double zernikes from subtraction of the two
+    # (perturbed - fiducial). The fiducial one is small compared
+    # to the perturbed one, but not zero.
+    doubleZernikeCoeffs = doubleZernikesPerturbed - doubleZernikesFiducial
+    doubleZernikes = galsim.zernike.DoubleZernike(
+        doubleZernikeCoeffs,
+        uv_inner=0,
+        uv_outer=fieldRadius,
+        xy_inner=pupilInner,
+        xy_outer=pupilOuter,
+    )
+
+    # Interpolate Zernikes at the rotated positions of the camera detectors
+    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), 29))
+    for idx in range(len(rotatedPositions[:, 0])):
+        zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
+
+    # Compute FWHM based on the interpolated Zernikes at the source positions
+    fwhmInterpolated = np.zeros(len(sourceTable["aa_x"]))
+    for idx in range(len(sourceTable["aa_x"])):
+        zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[4:]
+        fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
+
+    return {
+        "fieldAngles": fieldAngles,
+        "zksMeasured": zernikesPadded,
+        "zksInterpolated": zksInterpolated,
+        "rotatedPositions": rotatedPositions,
+        "fwhmMeasured": fwhmMeasured,
+        "fwhmInterpolated": fwhmInterpolated,
+    }
+
+
 def estimateTelescopeState(
     zernikeTable: Table,
     wavefrontResults: pd.DataFrame,
@@ -215,6 +324,7 @@ def estimateTelescopeState(
     -------
     numpy.ndarray
         Array representing the estimated telescope state.
+
     """
     from lsst.ts.ofc import OFCData, StateEstimator
 
@@ -236,12 +346,12 @@ def estimateTelescopeState(
         filterName.split("_")[0].upper(),
         zernikesCCS,
         detector_names,
-        np.rad2deg(zernikeTable.meta['rotTelPos']),
+        np.rad2deg(zernikeTable.meta["rotTelPos"]),
     )
 
     dof_state = np.zeros(50)
     dof_state[ofc_data.dof_idx] = out
-    return dof_state
+    return dof_state, ofc_data
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
