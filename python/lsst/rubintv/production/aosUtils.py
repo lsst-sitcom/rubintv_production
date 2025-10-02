@@ -226,7 +226,10 @@ def estimateTelescopeState(
         np.rad2deg(zernikeTable.meta['rotTelPos']),
     )
 
-    return dof_state
+    out = np.zeros(50)
+    out[ofc_data.dof_idx] = dof_state
+
+    return out
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
