@@ -286,7 +286,7 @@ def estimateWavefrontDataFromDofs(
         fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
 
     return {
-        "detector": wavefrontResults["detector"],
+        "detector": wavefrontResults["detector"].to_list(),
         "fieldAngles": fieldAngles,
         "zksEstimated": zksEstimated,
         "zksMeasured": zernikesPadded,
