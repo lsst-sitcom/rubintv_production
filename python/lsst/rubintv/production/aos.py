@@ -25,12 +25,12 @@ __all__ = [
     "PsfAzElPlotter",
     "FocalPlaneFWHMPlotter",
     "ZernikePredictedFWHMPlotter",
-    "DOFPredictedFWHMPlotter",
     "FocusSweepAnalysis",
     "RadialPlotter",
 ]
 
 import logging
+import os
 import subprocess
 import threading
 from time import sleep, time
@@ -402,11 +402,11 @@ class ZernikePredictedFWHMPlotter:
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
 
-    def makePlot(self, visitId: int) -> None:
-        """Make the Zernike FWHM plot for the given visit ID.
+    def makePlots(self, visitId: int) -> None:
+        """Make the Zernike FWHM plot and DOF prediction for the visit.
 
-        Makes the plot by getting the available data from the butler, saves it
-        to a temporary file, and uploads it to RubinTV.
+        Makes the plots by getting the available data from the butler, saving
+        them to temporary files, and uploading them to RubinTV.
 
         Parameters
         ----------
@@ -462,104 +462,12 @@ class ZernikePredictedFWHMPlotter:
             filename=plotFile,
         )
 
-    def run(self) -> None:
-        """Start the event loop, listening for data and launching plotting."""
-        while True:
-            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
-            if visitIdBytes is not None:
-                visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for ZernikePredictedFWHM plot for visitId {visitId}")
-                self.makePlot(visitId)
-            else:
-                sleep(0.5)
+        aosDataDir = self.locationConfig.aosDataDir
 
-
-class DOFPredictedFWHMPlotter:
-    """The DOFPredictedFWHM, for automatically predicting
-    FWHM using the DOF estimated dofs and forward-modelled
-    zernikes.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
-        The locationConfig containing the path configs.
-    instrument : `str`
-        The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
-    """
-
-    def __init__(
-        self,
-        *,
-        butler: Butler,
-        locationConfig: LocationConfig,
-        instrument: str,
-        queueName: str,
-    ) -> None:
-        self.butler = butler
-        self.efd_client = makeEfdClient()
-        self.locationConfig = locationConfig
-        self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
-        self.camera = getCameraFromInstrumentName(self.instrument)
-        self.log = logging.getLogger("lsst.rubintv.production.aos.DOFPredictedFWHMPlotter")
-        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.s3Uploader = MultiUploader()
-
-    def makePlot(self, visitId: int) -> None:
-        """Make the DOF FWHM plot for the given visit ID.
-
-        Makes the plot by getting the available data from the butler, saves it
-        to a temporary file, and uploads it to RubinTV.
-
-        Parameters
-        ----------
-        visitId : `int`
-            The visit ID for which to make the plot.
-        """
-        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
-        detectorIds = getDetectorIds(self.instrument)
-        srcDict = {}
-        for detectorId in detectorIds:
-            try:
-                srcDict[detectorId] = self.butler.get(
-                    "single_visit_star_footprints", visit=visitId, detector=detectorId
-                )
-            except DatasetNotFoundError:
-                pass
-
-        visitInfo = None
-        for detectorId in detectorIds:
-            try:
-                visitInfo = self.butler.get(
-                    "preliminary_visit_image.visitInfo", visit=visitId, detector=detectorId
-                )
-                break
-            except DatasetNotFoundError:
-                pass
-        if visitInfo is None:
-            self.log.error(f"Could not find visitInfo for visitId {visitId}")
-            return
-
-        table = makeTableFromSourceCatalogs(srcDict, visitInfo)
-        tableFiltered = randomRowsPerDetector(table, 60)
-
-        try:
-            zkAvgTable = self.butler.get("aggregateZernikesAvg", visit=visitId)
-        except DatasetNotFoundError:
-            self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
-            return
-
-        wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
         dofState = estimateTelescopeState(
             zkAvgTable,
             wavefrontResults,
-            configPath="/home/gmegias/notebooks/lsst-ts/ts_config_mttcs/MTAOS/v8/ofc/",
+            configPath=os.path.join(aosDataDir, "ts_config_mttcs/MTAOS/v8/ofc/"),
             filterName=expRecord.physical_filter,
             useDof="0-9,10-16,30-34",
             nKeep=12,
@@ -570,8 +478,8 @@ class DOFPredictedFWHMPlotter:
             tableFiltered,
             rotMat,
             expRecord.physical_filter.split("_")[0],
-            batoidFeaDir="/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
-            batoidBendDir="/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
+            batoidFeaDir=os.path.join(aosDataDir, "batoid_data/fea_legacy"),
+            batoidBendDir=os.path.join(aosDataDir, "batoid_data/bend"),
         )
 
         plotName = "dof_predicted_fwhm"
@@ -599,8 +507,8 @@ class DOFPredictedFWHMPlotter:
             visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for DOFPredictedFWHM plot for visitId {visitId}")
-                self.makePlot(visitId)
+                self.log.info(f"Making for ZernikePredictedFWHM plots for visitId {visitId}")
+                self.makePlots(visitId)
             else:
                 sleep(0.5)
 
