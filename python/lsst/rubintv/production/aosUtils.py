@@ -407,14 +407,14 @@ def parseDofStr(dofStr: str) -> dict[str, np.ndarray]:
         If the string cannot be parsed into integers or ranges of integers.
     """
     dofStr = dofStr.strip()
-    useDof = []
+    useDof: list[int] = []
     for part in dofStr.split(","):
         if "-" in part:
             start, end = [int(p) for p in part.split("-")]
             useDof.extend(range(start, end + 1))
         else:
             useDof.append(int(part))
-    useDof = np.sort(useDof)
+    useDof = sorted(set(useDof))
 
     newCompDofIdx = dict(
         m2HexPos=np.full(5, False, dtype=bool),  # M2 hexapod (0–4)
