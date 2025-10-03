@@ -163,7 +163,7 @@ def extractWavefrontData(
     )
 
     # Interpolate Zernikes at the rotated positions of the camera detectors
-    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), 29))
+    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), zernikes.shape[1]))
     for idx in range(len(rotatedPositions[:, 0])):
         zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
 
@@ -196,13 +196,15 @@ def estimateWavefrontDataFromDofs(
     obscuration: float = 0.61,
     pupilInner: float = 2.558,
     pupilOuter: float = 4.18,
+    batoidFeaDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
+    batoidBendDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
 ) -> dict:
 
     import batoid
     import galsim
     from batoid_rubin import LSSTBuilder
-    from lsst.ts.ofc import OFCData
 
+    from lsst.ts.ofc import OFCData
     from lsst.ts.wep.utils import convertZernikesToPsfWidth
 
     # Get rotated positions of the center for each camera detector
@@ -226,14 +228,15 @@ def estimateWavefrontDataFromDofs(
     telescope = (
         LSSTBuilder(
             fiducial,
-            fea_dir="/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
-            bend_dir="/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
+            fea_dir=batoidFeaDir,
+            bend_dir=batoidBendDir,
         )
         .with_aos_dof(dof)
         .build()
     )
 
-    # Build double Zernike model for the perturbed telescope and the fiducial one
+    # Build double Zernike model for the perturbed
+    # telescope and the fiducial one
     doubleZernikesPerturbed = (
         batoid.doubleZernike(
             telescope,
@@ -270,12 +273,12 @@ def estimateWavefrontDataFromDofs(
         xy_outer=pupilOuter,
     )
 
-    zksEstimated = np.zeros((fieldAngles.shape[0], 29))
+    zksEstimated = np.zeros((fieldAngles.shape[0], jMax + 1))
     for idx in range(fieldAngles.shape[0]):
         zksEstimated[idx, :] = doubleZernikes(fieldAngles[idx, 0], fieldAngles[idx, 1]).coef
 
     # Interpolate Zernikes at the rotated positions of the camera detectors
-    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), 29))
+    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), jMax + 1))
     for idx in range(len(rotatedPositions[:, 0])):
         zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
 
