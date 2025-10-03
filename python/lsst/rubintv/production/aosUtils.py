@@ -103,6 +103,7 @@ def extractWavefrontData(
     zMin: int = 4,
     fieldRadius: float = 1.75,
     kMax: int = 3,
+    jMax: int = 28,
     pupilInner: float = 2.558,
     pupilOuter: float = 4.18,
 ) -> dict:
@@ -125,6 +126,8 @@ def extractWavefrontData(
     kMax : `int`, optional
         Maximum Zernike field radial order to use for interpolation.
         By default 3.
+    jMax : `int`, optional
+        Maximum Zernike radial order to use for interpolation.
     pupilInner : `float`, optional
         Inner pupil radius in meters, by default 2.558.
     pupilOuter : `float`, optional
@@ -163,7 +166,7 @@ def extractWavefrontData(
     )
 
     # Interpolate Zernikes at the rotated positions of the camera detectors
-    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), doubleZernikeCoeffs.shape[1]))
+    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), jMax + 1))
     for idx in range(len(rotatedPositions[:, 0])):
         zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
 
