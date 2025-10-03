@@ -394,6 +394,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
                     self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
                     self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
+                    self.redisHelper.redis.lpush(
+                        f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(visitId)
+                    )
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
