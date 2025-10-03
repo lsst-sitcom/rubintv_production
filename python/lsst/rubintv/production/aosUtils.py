@@ -21,9 +21,18 @@
 
 from __future__ import annotations
 
+import batoid
+import galsim
 import numpy as np
 import pandas as pd
 from astropy.table import Table
+from batoid_rubin import LSSTBuilder
+
+from lsst.afw.cameraGeom import FIELD_ANGLE
+from lsst.obs.lsst import LsstCam
+from lsst.ts.ofc import OFCData, StateEstimator
+from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
+from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
 __all__ = [
     "makeDataframeFromZernikes",
@@ -49,10 +58,6 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFr
         DataFrame with zernikes in OCS, detector name,
         rotated field angles and aos_fwhm.
     """
-    from lsst.ts.ofc import OFCData
-    from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
-    from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
-
     ofcData = OFCData("lsst")
     ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     rotationAngle = zernikeTable.meta["rotTelPos"]
@@ -133,10 +138,6 @@ def extractWavefrontData(
         'zksInterpolated', 'rotatedPositions', 'fwhmMeasured',
         'fwhmInterpolated'.
     """
-    import galsim
-
-    from lsst.ts.wep.utils import convertZernikesToPsfWidth
-
     # Get rotated positions of the center for each camera detector
     rotatedPositions = getCameraRotatedPositions(rotMat)
 
@@ -199,14 +200,6 @@ def estimateWavefrontDataFromDofs(
     batoidFeaDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
     batoidBendDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
 ) -> dict:
-
-    import batoid
-    import galsim
-    from batoid_rubin import LSSTBuilder
-
-    from lsst.ts.ofc import OFCData
-    from lsst.ts.wep.utils import convertZernikesToPsfWidth
-
     # Get rotated positions of the center for each camera detector
     rotatedPositions = getCameraRotatedPositions(rotMat)
 
@@ -333,8 +326,6 @@ def estimateTelescopeState(
     numpy.ndarray
         Array representing the estimated telescope state.
     """
-    from lsst.ts.ofc import OFCData, StateEstimator
-
     if isinstance(useDof, str):
         newCompDofIdx = parseDofStr(useDof)
     else:
@@ -374,9 +365,6 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
     numpy.ndarray
         Array of rotated x and y positions.
     """
-    from lsst.afw.cameraGeom import FIELD_ANGLE
-    from lsst.obs.lsst import LsstCam
-
     camera = LsstCam().getCamera()
     x_positions = []
     y_positions = []
@@ -391,7 +379,7 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
     return rotated_positions
 
 
-def parseDofStr(dofStr: str) -> dict:
+def parseDofStr(dofStr: str) -> dict[str, np.ndarray]:
     """Parse a string representation of integer ranges
     into a sorted list of integers.
 
