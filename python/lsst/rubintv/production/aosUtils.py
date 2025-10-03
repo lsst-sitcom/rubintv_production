@@ -72,12 +72,11 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFr
     for row in zernikeTable:
         zernikesCCS = makeDense(row["zk_CCS"], nollIndices=zernikeTable.meta["nollIndices"])
         zernikesOCS = makeDense(row["zk_OCS"], nollIndices=zernikeTable.meta["nollIndices"])
-        zernikes = makeDense(row["zk_OCS"], nollIndices=zernikeTable.meta["nollIndices"])
         intrinsicZernikesSparse = get_intrinsic_zernikes(
             ofcData, filterName.split("_")[0].upper(), [row["detector"]], np.rad2deg(rotationAngle)
         ).squeeze()[ofcData.zn_idx]
         intrinsicZernikes = makeDense(intrinsicZernikesSparse, nollIndices=zernikeTable.meta["nollIndices"])
-        zernikesDeviation = zernikes - intrinsicZernikes
+        zernikesDeviation = zernikesOCS - intrinsicZernikes
 
         aosFwhm = 1.06 * np.log(1 + np.sqrt(np.sum(np.square(convertZernikesToPsfWidth(zernikesDeviation)))))
         fieldAngles = ofcData.sample_points[row["detector"]]
