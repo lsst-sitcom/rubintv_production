@@ -53,14 +53,22 @@ from lsst.summit.extras.plotting.psfPlotting import (
     makeTableFromSourceCatalogs,
     randomRowsPerDetector,
 )
-from lsst.summit.extras.plotting.zernikePredictedFwhm import makeZernikePredictedFWHMPlot
+from lsst.summit.extras.plotting.zernikePredictedFwhm import (
+    makeDofPredictedFWHMPlot,
+    makeZernikePredictedFWHMPlot,
+)
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 from lsst.utils.plotting.figures import make_figure
 
-from .aosUtils import extractWavefrontData, makeDataframeFromZernikes
+from .aosUtils import (
+    estimateTelescopeState,
+    estimateWavefrontDataFromDofs,
+    extractWavefrontData,
+    makeDataframeFromZernikes,
+)
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
 from .utils import getRubinTvInstrumentName, makePlotFile, writeExpRecordMetadataShard, writeMetadataShard
@@ -438,8 +446,8 @@ class ZernikePredictedFWHMPlotter:
             self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
             return
 
-        wavefrontResults = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
-        wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered)
+        wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
+        wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered, rotMat)
 
         plotName = "zernike_predicted_fwhm"
         plotFile = makePlotFile(
@@ -547,15 +555,36 @@ class DOFPredictedFWHMPlotter:
             self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
             return
 
-        wavefrontResults = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
-
-        wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered)
+        wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
+        dofState = estimateTelescopeState(
+            zkAvgTable,
+            wavefrontResults,
+            configPath="/home/gmegias/notebooks/lsst-ts/ts_config_mttcs/MTAOS/v8/ofc/",
+            filterName=expRecord.physical_filter,
+            useDof="0-9,10-16,30-34",
+            nKeep=12,
+        )
+        wavefrontData = estimateWavefrontDataFromDofs(
+            dofState,
+            wavefrontResults,
+            tableFiltered,
+            rotMat,
+            expRecord.physical_filter.split("_")[0],
+            batoidFeaDir="/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
+            batoidBendDir="/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
+        )
 
         plotName = "dof_predicted_fwhm"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
-        makeZernikePredictedFWHMPlot(tableFiltered, wavefrontData, saveAs=plotFile)
+        makeDofPredictedFWHMPlot(
+            tableFiltered,
+            wavefrontData,
+            zkAvgTable.meta["estimatorInfo"].get("fwhm"),
+            dofState,
+            saveAs=plotFile,
+        )
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument),
             plotName=plotName,

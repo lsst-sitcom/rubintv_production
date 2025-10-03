@@ -340,7 +340,7 @@ def estimateTelescopeState(
     else:
         raise ValueError("useDof must be a string representing integer ranges.")
 
-    ofc_data = OFCData("lsst", config_dir=configPath)
+    ofc_data = OFCData("lsst")  # , config_dir=configPath)
     ofc_data.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     ofc_data.comp_dof_idx = newCompDofIdx
     ofc_data.controller["truncation_index"] = nKeep
