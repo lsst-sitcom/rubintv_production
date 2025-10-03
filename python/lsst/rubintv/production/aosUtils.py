@@ -163,7 +163,7 @@ def extractWavefrontData(
     )
 
     # Interpolate Zernikes at the rotated positions of the camera detectors
-    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), zernikesPadded.shape[1]))
+    zksInterpolated = np.zeros((len(rotatedPositions[:, 0]), doubleZernikeCoeffs.shape[1]))
     for idx in range(len(rotatedPositions[:, 0])):
         zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
 
