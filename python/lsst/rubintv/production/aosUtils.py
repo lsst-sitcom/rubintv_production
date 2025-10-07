@@ -204,6 +204,8 @@ def estimateWavefrontDataFromDofs(
     sourceTable: Table,
     rotMat: np.ndarray,
     filterName: str,
+    batoidFeaDir: str,
+    batoidBendDir: str,
     zMin: int = 4,
     fieldRadius: float = 1.75,
     kMax: int = 6,
@@ -211,8 +213,6 @@ def estimateWavefrontDataFromDofs(
     obscuration: float = 0.61,
     pupilInner: float = 2.558,
     pupilOuter: float = 4.18,
-    batoidFeaDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
-    batoidBendDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
 ) -> dict:
     """
     Estimate wavefront quantities from a given DOF state using batoid models.
@@ -231,6 +231,10 @@ def estimateWavefrontDataFromDofs(
     filterName : `str`
         Filter name (e.g., 'r', 'i', or including visit info 'r_XXXX' - the
         band prefix is used).
+    batoidFeaDir : `str`
+        Path to FEA data directory for LSSTBuilder.
+    batoidBendDir : `str`
+        Path to bend data directory for LSSTBuilde.
     zMin : `int`, optional
         Minimum Zernike index (inclusive) considered when preparing measured
         arrays.
@@ -246,10 +250,6 @@ def estimateWavefrontDataFromDofs(
         Inner pupil radius in meters.
     pupilOuter : `float`, optional
         Outer pupil radius in meters.
-    batoidFeaDir : `str`, optional
-        Path to FEA data directory for LSSTBuilder.
-    batoidBendDir : `str`, optional
-        Path to bend data directory for LSSTBuilde.
 
     Returns
     -------
