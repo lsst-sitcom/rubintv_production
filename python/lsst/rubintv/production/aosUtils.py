@@ -450,13 +450,13 @@ def estimateEllipticities(
     x += rng.normal(scale=scale, size=len(x))
     y += rng.normal(scale=scale, size=len(y))
     
-    so2 = stamp_size // 2
+    so2 = stampSize // 2
     histrange = [[-so2 * pixelSize, so2 * pixelSize], [-so2 * pixelSize, so2 * pixelSize]]
     # Bin rays
     hist, _, _ = np.histogram2d(
         y[~rv.vignetted],
         x[~rv.vignetted],
-        bins=stamp_size,
+        bins=stampSize,
         range=histrange,
     )
     image = np.ascontiguousarray(hist.astype(np.float32).T)
