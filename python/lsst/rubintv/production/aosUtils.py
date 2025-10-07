@@ -207,6 +207,7 @@ def estimateWavefrontDataFromDofs(
     filterName: str,
     batoidFeaDir: str,
     batoidBendDir: str,
+    donutBlur: float,
     zMin: int = 4,
     fieldRadius: float = 1.75,
     kMax: int = 6,
@@ -235,7 +236,9 @@ def estimateWavefrontDataFromDofs(
     batoidFeaDir : `str`
         Path to FEA data directory for LSSTBuilder.
     batoidBendDir : `str`
-        Path to bend data directory for LSSTBuilde.
+        Path to bend data directory for LSSTBuilder.
+    donutBlur : `float`
+        Donut blur in arcsec for ellipticity estimation.
     zMin : `int`, optional
         Minimum Zernike index (inclusive) considered when preparing measured
         arrays.
