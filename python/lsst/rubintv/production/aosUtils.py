@@ -446,6 +446,7 @@ def estimateEllipticities(
 
     # Convolve in a Gaussian
     scale = pixelSize * donutBlur / 2.35 / 0.2
+    rng = np.random.default_rng()
     x += rng.normal(scale=scale, size=len(x))
     y += rng.normal(scale=scale, size=len(y))
     

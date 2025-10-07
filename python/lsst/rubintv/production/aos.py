@@ -480,6 +480,7 @@ class ZernikePredictedFWHMPlotter:
             expRecord.physical_filter.split("_")[0],
             batoidFeaDir=os.path.join(aosDataDir, "batoid_data/fea_legacy"),
             batoidBendDir=os.path.join(aosDataDir, "batoid_data/bend"),
+            donutBlur=zkAvgTable.meta["estimatorInfo"].get("fwhm"),
         )
 
         plotName = "dof_predicted_fwhm"
