@@ -349,6 +349,17 @@ def estimateWavefrontDataFromDofs(
     for idx in range(len(sourceTable["aa_x"])):
         zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[4:]
         fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
+    
+    e1Interpolated = np.zeros(len(sourceTable["aa_x"]))
+    e2Interpolated = np.zeros(len(sourceTable["aa_x"]))
+    for idx in range(len(sourceTable["aa_x"])):
+        e1Interpolated[idx], e2Interpolated[idx] = estimateEllpiticities(
+            telescope,
+            sourceTable["aa_x"][idx],
+            -sourceTable["aa_y"][idx],
+            donutBlur,
+            wavelength
+        )
 
     return {
         "detector": wavefrontResults["detector"].to_list(),
@@ -359,7 +370,95 @@ def estimateWavefrontDataFromDofs(
         "rotatedPositions": rotatedPositions,
         "fwhmMeasured": fwhmMeasured,
         "fwhmInterpolated": fwhmInterpolated,
+        "e1Interpolated": e1Interpolated,
+        "e2Interpolated": e2Interpolated,
     }
+
+
+def estimateEllipticities(
+    telescope : batoid.Optic,
+    thx : float,
+    thy : float,
+    donutBlur : float,
+    wavelength : float,
+    pixelSize : float = 10e-6,
+    nRad : int = 5,
+    nAz : int = 30,
+    stampSize : int = 27,
+    pupilInner: float = 2.558,
+    pupilOuter: float = 4.18,
+):
+    """Estimate ellipticities from ray tracing through the telescope.
+
+    Parameters
+    ----------
+    telescope : `batoid.Optic`
+        Batoid optic representing the telescope.
+    thx : `float`
+        Field angle in the x direction (degrees).
+    thy : `float`
+        Field angle in the y direction (degrees).
+    donutBlur : `float`
+        Donut blur in arcsec.
+    wavelength : `float`
+        Wavelength in microns.
+    pixelSize : `float`, optional
+        Pixel size in meters, by default 10e-6.
+    nRad : `int`, optional
+        Number of radial divisions for ray tracing, by default 5.
+    nAz : `int`, optional
+        Number of azimuthal divisions for ray tracing, by default 30.
+    stampSize : `int`, optional
+        Size of the stamp in pixels, by default 27.
+    pupilInner : `float`, optional
+        Inner pupil radius in meters, by default 2.558.
+    pupilOuter : `float`, optional
+        Outer pupil radius in meters, by default 4.18.
+    
+    Returns
+    -------
+    e1 : `float`
+        Estimated ellipticity component e1.
+    e2 : `float`
+        Estimated ellipticity component e2.
+    """
+    rv = batoid.RayVector.asPolar(
+        optic=telescope,
+        wavelength=wavelength * 1e-6,
+        theta_x=np.deg2rad(thx),
+        theta_y=np.deg2rad(thy),
+        nrad=nRad * 3,
+        naz=nAz * 3,
+        outer=pupilOuter*0.99,  # Avoid clipping the actual pupil
+        inner=pupilInner*1.01,
+    )
+    telescope.trace(rv)
+    xmid = np.mean(rv.x[~rv.vignetted])
+    ymid = np.mean(rv.y[~rv.vignetted])
+    
+    x, y = rv.x, rv.y
+    x -= xmid
+    y -= ymid
+
+    # Convolve in a Gaussian
+    scale = pixelSize * donutBlur / 2.35 / 0.2
+    x += rng.normal(scale=scale, size=len(x))
+    y += rng.normal(scale=scale, size=len(y))
+    
+    so2 = stamp_size // 2
+    histrange = [[-so2 * pixelSize, so2 * pixelSize], [-so2 * pixelSize, so2 * pixelSize]]
+    # Bin rays
+    hist, _, _ = np.histogram2d(
+        y[~rv.vignetted],
+        x[~rv.vignetted],
+        bins=stamp_size,
+        range=histrange,
+    )
+    image = np.ascontiguousarray(hist.astype(np.float32).T)
+    shape = galsim.hsm.FindAdaptiveMom(
+        galsim.Image(image), 
+    )
+    return shape.observed_e1, shape.observed_e2
 
 
 def estimateTelescopeState(
