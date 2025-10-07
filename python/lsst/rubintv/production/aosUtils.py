@@ -353,16 +353,12 @@ def estimateWavefrontDataFromDofs(
     for idx in range(len(sourceTable["aa_x"])):
         zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[4:]
         fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
-    
+
     e1Interpolated = np.zeros(len(sourceTable["aa_x"]))
     e2Interpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
         e1Interpolated[idx], e2Interpolated[idx] = estimateEllipticities(
-            telescope,
-            sourceTable["aa_x"][idx],
-            -sourceTable["aa_y"][idx],
-            donutBlur,
-            wavelength
+            telescope, sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx], donutBlur, wavelength
         )
 
     return {
@@ -380,15 +376,15 @@ def estimateWavefrontDataFromDofs(
 
 
 def estimateEllipticities(
-    telescope : batoid.Optic,
-    thx : float,
-    thy : float,
-    donutBlur : float,
-    wavelength : float,
-    pixelSize : float = 10e-6,
-    nRad : int = 5,
-    nAz : int = 30,
-    stampSize : int = 27,
+    telescope: batoid.Optic,
+    thx: float,
+    thy: float,
+    donutBlur: float,
+    wavelength: float,
+    pixelSize: float = 10e-6,
+    nRad: int = 5,
+    nAz: int = 30,
+    stampSize: int = 27,
     pupilInner: float = 2.558,
     pupilOuter: float = 4.18,
 ):
@@ -418,7 +414,7 @@ def estimateEllipticities(
         Inner pupil radius in meters, by default 2.558.
     pupilOuter : `float`, optional
         Outer pupil radius in meters, by default 4.18.
-    
+
     Returns
     -------
     e1 : `float`
@@ -433,13 +429,13 @@ def estimateEllipticities(
         theta_y=np.deg2rad(thy),
         nrad=nRad * 3,
         naz=nAz * 3,
-        outer=pupilOuter*0.99,  # Avoid clipping the actual pupil
-        inner=pupilInner*1.01,
+        outer=pupilOuter * 0.99,  # Avoid clipping the actual pupil
+        inner=pupilInner * 1.01,
     )
     telescope.trace(rv)
     xmid = np.mean(rv.x[~rv.vignetted])
     ymid = np.mean(rv.y[~rv.vignetted])
-    
+
     x, y = rv.x, rv.y
     x -= xmid
     y -= ymid
@@ -449,7 +445,7 @@ def estimateEllipticities(
     rng = np.random.default_rng()
     x += rng.normal(scale=scale, size=len(x))
     y += rng.normal(scale=scale, size=len(y))
-    
+
     so2 = stampSize // 2
     histrange = [[-so2 * pixelSize, so2 * pixelSize], [-so2 * pixelSize, so2 * pixelSize]]
     # Bin rays
@@ -461,7 +457,7 @@ def estimateEllipticities(
     )
     image = np.ascontiguousarray(hist.astype(np.float32).T)
     shape = galsim.hsm.FindAdaptiveMom(
-        galsim.Image(image), 
+        galsim.Image(image),
     )
     return shape.observed_e1, shape.observed_e2
 
