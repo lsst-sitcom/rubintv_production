@@ -353,7 +353,7 @@ def estimateWavefrontDataFromDofs(
     e1Interpolated = np.zeros(len(sourceTable["aa_x"]))
     e2Interpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
-        e1Interpolated[idx], e2Interpolated[idx] = estimateEllpiticities(
+        e1Interpolated[idx], e2Interpolated[idx] = estimateEllipticities(
             telescope,
             sourceTable["aa_x"][idx],
             -sourceTable["aa_y"][idx],
