@@ -492,6 +492,7 @@ class ZernikePredictedFWHMPlotter:
             wavefrontData,
             zkAvgTable.meta["estimatorInfo"].get("fwhm"),
             dofState,
+            zkAvgTable.meta["nollIndices"],
             saveAs=plotFile,
         )
         self.s3Uploader.uploadPerSeqNumPlot(
