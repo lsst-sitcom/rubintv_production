@@ -42,21 +42,26 @@ __all__ = [
 ]
 
 
-def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> pd.DataFrame:
-    """Convert a table of Zernike coefficients into a pandas DataFrame.
+def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> tuple[pd.DataFrame, np.ndarray]:
+    """
+    Convert a table of Zernike coefficients into a DataFrame and return the
+    rotation matrix.
 
     Parameters
     ----------
     zernikeTable : `astropy.table.Table`
-        Table containing Zernike coefficients.
+        Table containing Zernike coefficients with metadata fields
+        'nollIndices' and 'rotTelPos'.
     filterName : `str`
         Name of the filter used for the exposure.
 
     Returns
     -------
     df : `pandas.DataFrame`
-        DataFrame with zernikes in OCS, detector name,
-        rotated field angles and aos_fwhm.
+        DataFrame with zernikes in OCS, detector name, rotated field angles,
+        deviation, and aosFwhm.
+    rotMat : `numpy.ndarray`
+        2x2 rotation matrix applied to field angles.
     """
     ofcData = OFCData("lsst")
     ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
@@ -107,38 +112,45 @@ def extractWavefrontData(
     pupilInner: float = 2.558,
     pupilOuter: float = 4.18,
 ) -> dict:
-    """Extract Zernike coefficients and FWHM values for
-    measured and interpolated data.
+    """Extract Zernike coefficients and FWHM values for measured and
+    interpolated data.
 
     Parameters
     ----------
     wavefrontResults : `pandas.DataFrame`
-        DataFrame containing wavefront results with zernikes,
-        field angles, and aos_fwhm.
+        DataFrame containing per-detector wavefront results with
+        zernikesDeviation, fieldAngles, and aosFwhm.
     sourceTable : `astropy.table.Table`
         Table containing source catalog data.
     rotMat : `numpy.ndarray`
         Rotation matrix to convert angles.
     zMin : `int`, optional
-        Minimum Zernike index to consider, by default 4.
+        Minimum Zernike index to consider.
     fieldRadius : `float`, optional
-        Field radius, by default 1.75.
+        Field radius, in degrees.
     kMax : `int`, optional
         Maximum Zernike field radial order to use for interpolation.
-        By default 3.
     jMax : `int`, optional
         Maximum Zernike radial order to use for interpolation.
     pupilInner : `float`, optional
-        Inner pupil radius in meters, by default 2.558.
+        Inner pupil radius in meters.
     pupilOuter : `float`, optional
-        Outer pupil radius in meters, by default 4.18.
+        Outer pupil radius in meters.
 
     Returns
     -------
-    dict
-        Dictionary with keys 'fieldAngles', 'zksMeasured',
-        'zksInterpolated', 'rotatedPositions', 'fwhmMeasured',
-        'fwhmInterpolated'.
+    result : `dict`
+        Dictionary with keys:
+        - 'fieldAngles': `numpy.ndarray` measured field angles (deg).
+        - 'zksMeasured': `numpy.ndarray` measured Zernikes (padded, shape
+        [zMin, jMax+zMin]).
+        - 'zksInterpolated': `numpy.ndarray` interpolated Zernikes at rotated
+         detector centers.
+        - 'rotatedPositions': `numpy.ndarray` rotated field-angle positions of
+        detector centers.
+        - 'fwhmMeasured': `numpy.ndarray` measured AOS FWHM per detector.
+        - 'fwhmInterpolated': `numpy.ndarray` interpolated FWHM at source
+        positions.
     """
     # Get rotated positions of the center for each camera detector
     rotatedPositions = getCameraRotatedPositions(rotMat)
@@ -202,6 +214,61 @@ def estimateWavefrontDataFromDofs(
     batoidFeaDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/fea_legacy",
     batoidBendDir: str = "/home/gmegias/ts_aos_analysis/notebooks/WET/bend",
 ) -> dict:
+    """
+    Estimate wavefront quantities from a given DOF state using batoid models.
+
+    Parameters
+    ----------
+    dofState : `numpy.ndarray`
+        Array of length 50 representing the AOS DOF state.
+    wavefrontResults : `pandas.DataFrame`
+        DataFrame used to extract target field angles and detector list.
+    sourceTable : `astropy.table.Table`
+        Source catalog with fields 'aa_x' and 'aa_y' (degrees) for FWHM
+        interpolation.
+    rotMat : `numpy.ndarray`
+        2x2 rotation matrix to convert field angles.
+    filterName : `str`
+        Filter name (e.g., 'r', 'i', or including visit info 'r_XXXX' - the
+        band prefix is used).
+    zMin : `int`, optional
+        Minimum Zernike index (inclusive) considered when preparing measured
+        arrays.
+    fieldRadius : `float`, optional
+        Field radius (degrees) for the Double-Zernike model.
+    kMax : `int`, optional
+        Maximum field order for the Double-Zernike.
+    jMax : `int`, optional
+        Maximum pupil Zernike Noll index for the Double-Zernike.
+    obscuration : `float`, optional
+        Pupil obscuration ratio eps for batoid Double-Zernike.
+    pupilInner : `float`, optional
+        Inner pupil radius in meters.
+    pupilOuter : `float`, optional
+        Outer pupil radius in meters.
+    batoidFeaDir : `str`, optional
+        Path to FEA data directory for LSSTBuilder.
+    batoidBendDir : `str`, optional
+        Path to bend data directory for LSSTBuilde.
+
+    Returns
+    -------
+    result : `dict`
+        Dictionary with keys:
+        - 'detector': `list[str]` detector names.
+        - 'fieldAngles': `numpy.ndarray` field angles (deg) used for
+        evaluation.
+        - 'zksEstimated': `numpy.ndarray` estimated Zernikes at measured field
+        angles.
+        - 'zksMeasured': `numpy.ndarray` measured Zernikes (padded).
+        - 'zksInterpolated': `numpy.ndarray` estimated Zernikes at rotated
+        detector centers.
+        - 'rotatedPositions': `numpy.ndarray` rotated field-angle positions of
+        detector centers.
+        - 'fwhmMeasured': `numpy.ndarray` measured AOS FWHM per detector.
+        - 'fwhmInterpolated': `numpy.ndarray` interpolated FWHM at source
+        positions.
+    """
     # Get rotated positions of the center for each camera detector
     rotatedPositions = getCameraRotatedPositions(rotMat)
 
@@ -310,23 +377,23 @@ def estimateTelescopeState(
     zernikeTable : `astropy.table.Table`
         Table containing Zernike coefficients.
     wavefrontResults : `pandas.DataFrame`
-        DataFrame containing wavefront results with zernikes,
-        field angles, and aos_fwhm.
-    filterName : `str`
-        Name of the filter used for the exposure.
+        DataFrame containing per-detector Zernike vectors and detector names.
     configPath : `str`
         Path to the configuration directory for OFCData.
-    useDof : `str`
-        String representing integer ranges of degrees of freedom to use.
-    nKeep : `int`
-        Number of modes to keep in the state estimation.
-    zMin : `int`
-        Minimum Zernike index to consider.
+    filterName : `str`
+        Name of the filter used for the exposure.
+    useDof : `str`, optional
+        Comma-separated integers and/or ranges (e.g., '0-9,10-16,30-34')
+        selecting active DOFs, by default '0-9,10-16,30-34'.
+    nKeep : `int`, optional
+        Number of modes to keep in the state estimation truncation, by default
+        12.
 
     Returns
     -------
-    numpy.ndarray
-        Array representing the estimated telescope state.
+    dofState : `numpy.ndarray`
+        Length-50 array representing the estimated telescope state with
+        selected DOFs filled.
     """
     if isinstance(useDof, str):
         newCompDofIdx = parseDofStr(useDof)
@@ -355,7 +422,8 @@ def estimateTelescopeState(
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
-    """Get rotated x and y positions of the camera detectors.
+    """
+    Get rotated x and y field-angle positions of the camera detectors.
 
     Parameters
     ----------
@@ -364,7 +432,7 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
 
     Returns
     -------
-    numpy.ndarray
+    rotatedPositions : `numpy.ndarray`
         Array of rotated x and y positions.
     """
     camera = LsstCam().getCamera()
@@ -383,25 +451,29 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
 
 
 def parseDofStr(dofStr: str) -> dict[str, np.ndarray]:
-    """Parse a string representation of integer ranges
-    into a sorted list of integers.
+    """Parse a string representation of integer ranges into a sorted list of
+    integers.
 
-    The input string may contain comma-separated integers
-    and/or ranges of the form "start-end".
+    The input string may contain comma-separated integers and/or ranges of the
+    form "start-end".
+
     For example:
         "0-4,10-14" -> [0, 1, 2, 3, 4, 10, 11, 12, 13, 14]
         "3,7,9-11"  -> [3, 7, 9, 10, 11]
 
     Parameters
     ----------
-    dofStr : str
-        A string containing integers and/or integer ranges,
-        separated by commas.
+    dofStr : `str`
+        A string containing integers and/or integer ranges separated by commas.
 
     Returns
     -------
-    dict
-        A dictionary with boolean arrays indicating active DOFs
+    newCompDofIdx : `dict`
+        Dictionary with boolean arrays indicating active DOFs per group:
+        - 'm2HexPos': `numpy.ndarray` of shape (5,) for M2 hexapod
+        - 'camHexPos': `numpy.ndarray` of shape (5,) for Camera hexapod
+        - 'M1M3Bend': `numpy.ndarray` of shape (20,) for M1M3 bending modes
+        - 'M2Bend': `numpy.ndarray` of shape (20,) for M2 bending modes
 
     Raises
     ------
