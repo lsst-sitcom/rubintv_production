@@ -467,7 +467,6 @@ class ZernikePredictedFWHMPlotter:
         dofState = estimateTelescopeState(
             zkAvgTable,
             wavefrontResults,
-            configPath=os.path.join(aosDataDir, "ts_config_mttcs/MTAOS/v8/ofc/"),
             filterName=expRecord.physical_filter,
             useDof="0-9,10-16,30-34",
             nKeep=12,
