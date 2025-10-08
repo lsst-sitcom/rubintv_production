@@ -464,6 +464,13 @@ class ZernikePredictedFWHMPlotter:
 
         aosDataDir = self.locationConfig.aosDataDir
 
+        estimatorInfo = zkAvgTable.meta.get("estimatorInfo", None)
+        if not estimatorInfo or "fwhm" not in estimatorInfo:
+            self.log.warning("Donut blur FWHM not found in zkAvgTable estimatorInfo")
+            return
+        else:
+            donutBlur = estimatorInfo.get("fwhm")
+
         dofState = estimateTelescopeState(
             zkAvgTable,
             wavefrontResults,
@@ -479,7 +486,7 @@ class ZernikePredictedFWHMPlotter:
             expRecord.physical_filter.split("_")[0],
             batoidFeaDir=os.path.join(aosDataDir, "batoid_data/fea_legacy"),
             batoidBendDir=os.path.join(aosDataDir, "batoid_data/bend"),
-            donutBlur=zkAvgTable.meta["estimatorInfo"].get("fwhm"),
+            donutBlur=donutBlur,
         )
 
         plotName = "dof_predicted_fwhm"
@@ -489,7 +496,7 @@ class ZernikePredictedFWHMPlotter:
         makeDofPredictedFWHMPlot(
             tableFiltered,
             wavefrontData,
-            zkAvgTable.meta["estimatorInfo"].get("fwhm"),
+            donutBlur,
             dofState,
             zkAvgTable.meta["nollIndices"],
             saveAs=plotFile,
