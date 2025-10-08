@@ -46,11 +46,6 @@ sfmPipelineFile:
 # Temporary before nightly validation pipeline is ready.
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/nightly-validation.yaml
 
-aosPipelineFile:
-  LATISS: ''
-  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
-
 outputChains:
   LSSTComCam: LSSTComCam/runs/nightlyValidation
   LSSTComCamSim: LSSTComCamSim/runs/nightlyValidation
