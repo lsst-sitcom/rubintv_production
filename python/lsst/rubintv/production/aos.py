@@ -455,7 +455,7 @@ class ZernikePredictedFWHMPlotter:
         )
         makeZernikePredictedFWHMPlot(tableFiltered, wavefrontData, saveAs=plotFile)
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(self.instrument),
+            instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
             plotName=plotName,
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
@@ -495,7 +495,7 @@ class ZernikePredictedFWHMPlotter:
             saveAs=plotFile,
         )
         self.s3Uploader.uploadPerSeqNumPlot(
-            instrument=getRubinTvInstrumentName(self.instrument),
+            instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
             plotName=plotName,
             dayObs=expRecord.day_obs,
             seqNum=expRecord.seq_num,
