@@ -465,8 +465,8 @@ def estimateEllipticities(
 def estimateTelescopeState(
     zernikeTable: Table,
     wavefrontResults: pd.DataFrame,
-    configPath: str,
     filterName: str,
+    configPath: str | None = None,
     useDof: str = "0-9,10-16,30-34",
     nKeep: int = 12,
 ) -> np.ndarray:
@@ -478,10 +478,11 @@ def estimateTelescopeState(
         Table containing Zernike coefficients.
     wavefrontResults : `pandas.DataFrame`
         DataFrame containing per-detector Zernike vectors and detector names.
-    configPath : `str`
-        Path to the configuration directory for OFCData.
     filterName : `str`
         Name of the filter used for the exposure.
+    configPath : `str`, optional
+        Path to the configuration directory for OFCData. If None, the default
+        configuration is used. Note that "" will not work, None must be passed.
     useDof : `str`, optional
         Comma-separated integers and/or ranges (e.g., '0-9,10-16,30-34')
         selecting active DOFs, by default '0-9,10-16,30-34'.
