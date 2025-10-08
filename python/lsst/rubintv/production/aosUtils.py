@@ -160,7 +160,7 @@ def extractWavefrontData(
     fwhmMeasured = np.vstack(wavefrontResults["aosFwhm"].to_numpy())
     fieldAngles = np.vstack(wavefrontResults["fieldAngles"].to_numpy())
     zernikes = np.vstack(wavefrontResults["zernikesDeviation"].to_numpy())
-    zernikesPadded = np.zeros((zMin, zernikes.shape[1] + zMin))
+    zernikesPadded = np.zeros((zernikes.shape[0], zernikes.shape[1] + zMin))
     zernikesPadded[:, zMin : zernikes.shape[1] + zMin] = zernikes
 
     # Fit a double Zernike to the measured Zernikes with maximum
