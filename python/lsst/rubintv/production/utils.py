@@ -578,9 +578,6 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument) -> str:
-        return self._config["aosPipelineFile"][instrument]
-
     @cached_property
     def aosLSSTCamPipelineFileDanish(self) -> str:
         return self._config["aosLSSTCamPipelineFileDanish"]

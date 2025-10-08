@@ -86,13 +86,6 @@ sfmPipelineFile:
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
 
-aosPipelineFile:
-  LATISS: ''
-  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisDanishPipeline.yaml
-  LSSTCam_danish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
-  LSSTCam_tie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
-
 outputChains:
   LATISS: LATISS/runs/quickLook
   LSSTComCam: LSSTComCam/runs/quickLook
