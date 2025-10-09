@@ -501,25 +501,25 @@ def estimateTelescopeState(
     else:
         raise ValueError("useDof must be a string representing integer ranges.")
 
-    ofc_data = OFCData("lsst", config_dir=configPath)
-    ofc_data.zn_selected = np.array(zernikeTable.meta["nollIndices"])
-    ofc_data.comp_dof_idx = newCompDofIdx
-    ofc_data.controller["truncation_index"] = nKeep
-    state_estimator = StateEstimator(ofc_data)
+    ofcData = OFCData("lsst", config_dir=configPath)
+    ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
+    ofcData.comp_dof_idx = newCompDofIdx
+    ofcData.controller["truncation_index"] = nKeep
+    stateEstimator = StateEstimator(ofcData)
 
     zernikesCCS = np.vstack(wavefrontResults["zernikesCCS"].to_numpy())
-    detector_names = wavefrontResults["detector"].to_list()
+    detectorNames = wavefrontResults["detector"].to_list()
 
-    out = state_estimator.dof_state(
+    out = stateEstimator.dof_state(
         filterName.split("_")[0].upper(),
         zernikesCCS,
-        detector_names,
+        detectorNames,
         np.rad2deg(zernikeTable.meta["rotTelPos"]),
     )
 
-    dof_state = np.zeros(50)
-    dof_state[ofc_data.dof_idx] = out
-    return dof_state
+    dofState = np.zeros(50)
+    dofState[ofcData.dof_idx] = out
+    return dofState
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
