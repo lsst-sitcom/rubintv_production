@@ -537,18 +537,18 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
         Array of rotated x and y positions.
     """
     camera = LsstCam().getCamera()
-    x_positions: list[float] = []
-    y_positions: list[float] = []
+    xPositions: list[float] = []
+    yPositions: list[float] = []
 
     for detector in camera:
-        centers_deg = np.rad2deg(detector.getCenter(FIELD_ANGLE))
-        x_grid, y_grid = np.meshgrid(centers_deg[0], centers_deg[1])
+        centersDeg = np.rad2deg(detector.getCenter(FIELD_ANGLE))
+        xGrid, yGrid = np.meshgrid(centersDeg[0], centersDeg[1])
 
-        x_positions.extend(x_grid.flatten())
-        y_positions.extend(y_grid.flatten())
+        xPositions.extend(xGrid.flatten())
+        yPositions.extend(yGrid.flatten())
 
-    rotated_positions = np.array([x_positions, y_positions]).T @ rotMat
-    return rotated_positions
+    rotatedPositions = np.array([xPositions, yPositions]).T @ rotMat
+    return rotatedPositions
 
 
 def parseDofStr(dofStr: str) -> dict[str, np.ndarray]:
