@@ -368,8 +368,8 @@ class PsfAzElPlotter:
 
 
 class ZernikePredictedFWHMPlotter:
-    """The ZernikePredictedFWHM, for automatically predicting
-    FWHM using Zernike coefficients.
+    """The ZernikePredictedFWHM, for automatically predicting FWHM using
+    Zernike coefficients.
 
     Parameters
     ----------
@@ -416,6 +416,13 @@ class ZernikePredictedFWHMPlotter:
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"visit": visitId})
         detectorIds = getDetectorIds(self.instrument)
         srcDict = {}
+
+        try:  # try this get before the more expensive ones
+            zkAvgTable = self.butler.get("aggregateZernikesAvg", visit=visitId)
+        except DatasetNotFoundError:
+            self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
+            return
+
         for detectorId in detectorIds:
             try:
                 srcDict[detectorId] = self.butler.get(
@@ -439,12 +446,6 @@ class ZernikePredictedFWHMPlotter:
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
         tableFiltered = randomRowsPerDetector(table, 60)
-
-        try:
-            zkAvgTable = self.butler.get("aggregateZernikesAvg", visit=visitId)
-        except DatasetNotFoundError:
-            self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
-            return
 
         wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
         wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered, rotMat)

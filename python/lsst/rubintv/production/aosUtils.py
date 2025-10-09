@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import batoid
 import galsim
 import numpy as np
@@ -37,10 +39,19 @@ from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 __all__ = [
     "makeDataframeFromZernikes",
     "extractWavefrontData",
-    "estimateTelescopeState",
+    "estimateWavefrontDataFromDofs",
     "estimateEllipticities",
+    "estimateTelescopeState",
+    "getCameraRotatedPositions",
     "parseDofStr",
+    "PUPIL_INNER",
+    "PUPIL_OUTER",
+    "FIELD_RADIUS",
 ]
+
+PUPIL_INNER = 2.558
+PUPIL_OUTER = 4.18
+FIELD_RADIUS = 1.75
 
 
 def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> tuple[pd.DataFrame, np.ndarray]:
@@ -107,12 +118,12 @@ def extractWavefrontData(
     sourceTable: Table,
     rotMat: np.ndarray,
     zMin: int = 4,
-    fieldRadius: float = 1.75,
+    fieldRadius: float = FIELD_RADIUS,
     kMax: int = 3,
     jMax: int = 28,
-    pupilInner: float = 2.558,
-    pupilOuter: float = 4.18,
-) -> dict:
+    pupilInner: float = PUPIL_INNER,
+    pupilOuter: float = PUPIL_OUTER,
+) -> dict[str, Any]:
     """Extract Zernike coefficients and FWHM values for measured and
     interpolated data.
 
@@ -209,12 +220,12 @@ def estimateWavefrontDataFromDofs(
     batoidBendDir: str,
     donutBlur: float,
     zMin: int = 4,
-    fieldRadius: float = 1.75,
+    fieldRadius: float = FIELD_RADIUS,
     kMax: int = 6,
     jMax: int = 28,
     obscuration: float = 0.61,
-    pupilInner: float = 2.558,
-    pupilOuter: float = 4.18,
+    pupilInner: float = PUPIL_INNER,
+    pupilOuter: float = PUPIL_OUTER,
 ) -> dict:
     """
     Estimate wavefront quantities from a given DOF state using batoid models.
@@ -385,9 +396,9 @@ def estimateEllipticities(
     nRad: int = 5,
     nAz: int = 30,
     stampSize: int = 27,
-    pupilInner: float = 2.558,
-    pupilOuter: float = 4.18,
-):
+    pupilInner: float = PUPIL_INNER,
+    pupilOuter: float = PUPIL_OUTER,
+) -> tuple[float, float]:
     """Estimate ellipticities from ray tracing through the telescope.
 
     Parameters
@@ -403,17 +414,17 @@ def estimateEllipticities(
     wavelength : `float`
         Wavelength in microns.
     pixelSize : `float`, optional
-        Pixel size in meters, by default 10e-6.
+        Pixel size in meters.
     nRad : `int`, optional
-        Number of radial divisions for ray tracing, by default 5.
+        Number of radial divisions for ray tracing.
     nAz : `int`, optional
-        Number of azimuthal divisions for ray tracing, by default 30.
+        Number of azimuthal divisions for ray tracing.
     stampSize : `int`, optional
-        Size of the stamp in pixels, by default 27.
+        Size of the stamp in pixels.
     pupilInner : `float`, optional
-        Inner pupil radius in meters, by default 2.558.
+        Inner pupil radius in meters.
     pupilOuter : `float`, optional
-        Outer pupil radius in meters, by default 4.18.
+        Outer pupil radius in meters.
 
     Returns
     -------
@@ -481,10 +492,9 @@ def estimateTelescopeState(
         Name of the filter used for the exposure.
     useDof : `str`, optional
         Comma-separated integers and/or ranges (e.g., '0-9,10-16,30-34')
-        selecting active DOFs, by default '0-9,10-16,30-34'.
+        selecting active DOFs.
     nKeep : `int`, optional
-        Number of modes to keep in the state estimation truncation, by default
-        12.
+        Number of modes to keep in the state estimation truncation.
 
     Returns
     -------
@@ -519,8 +529,7 @@ def estimateTelescopeState(
 
 
 def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
-    """
-    Get rotated x and y field-angle positions of the camera detectors.
+    """Get rotated x and y field-angle positions of the camera detectors.
 
     Parameters
     ----------
