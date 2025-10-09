@@ -466,7 +466,6 @@ def estimateTelescopeState(
     zernikeTable: Table,
     wavefrontResults: pd.DataFrame,
     filterName: str,
-    configPath: str | None = None,
     useDof: str = "0-9,10-16,30-34",
     nKeep: int = 12,
 ) -> np.ndarray:
@@ -480,9 +479,6 @@ def estimateTelescopeState(
         DataFrame containing per-detector Zernike vectors and detector names.
     filterName : `str`
         Name of the filter used for the exposure.
-    configPath : `str`, optional
-        Path to the configuration directory for OFCData. If None, the default
-        configuration is used. Note that "" will not work, None must be passed.
     useDof : `str`, optional
         Comma-separated integers and/or ranges (e.g., '0-9,10-16,30-34')
         selecting active DOFs, by default '0-9,10-16,30-34'.
@@ -501,7 +497,7 @@ def estimateTelescopeState(
     else:
         raise ValueError("useDof must be a string representing integer ranges.")
 
-    ofcData = OFCData("lsst", config_dir=configPath)
+    ofcData = OFCData("lsst")
     ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     ofcData.comp_dof_idx = newCompDofIdx
     ofcData.controller["truncation_index"] = nKeep
