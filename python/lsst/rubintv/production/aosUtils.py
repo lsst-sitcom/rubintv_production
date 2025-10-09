@@ -32,9 +32,9 @@ from batoid_rubin import LSSTBuilder
 
 from lsst.afw.cameraGeom import FIELD_ANGLE
 from lsst.obs.lsst import LsstCam
+from lsst.summit.utils.utils import SIGMATOFWHM
 from lsst.ts.ofc import OFCData, StateEstimator
 from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
-from lsst.summit.utils.utils import SIGMATOFWHM
 from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
 __all__ = [
