@@ -34,6 +34,7 @@ from lsst.afw.cameraGeom import FIELD_ANGLE
 from lsst.obs.lsst import LsstCam
 from lsst.ts.ofc import OFCData, StateEstimator
 from lsst.ts.ofc.utils.ofc_data_helpers import get_intrinsic_zernikes
+from lsst.summit.utils.utils import SIGMATOFWHM
 from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
 __all__ = [
@@ -197,7 +198,7 @@ def extractWavefrontData(
     # Compute FWHM based on the interpolated Zernikes at the source positions
     fwhmInterpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
-        zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[4:]
+        zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[zMin:]
         fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
 
     return {
@@ -362,7 +363,7 @@ def estimateWavefrontDataFromDofs(
     # Compute FWHM based on the interpolated Zernikes at the source positions
     fwhmInterpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
-        zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[4:]
+        zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[zMin:]
         fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
 
     e1Interpolated = np.zeros(len(sourceTable["aa_x"]))
@@ -444,15 +445,16 @@ def estimateEllipticities(
         inner=pupilInner * 1.01,
     )
     telescope.trace(rv)
-    xmid = np.mean(rv.x[~rv.vignetted])
-    ymid = np.mean(rv.y[~rv.vignetted])
+    mask = np.logical_not(rv.vignetted)
+    xmid = np.mean(rv.x[mask])
+    ymid = np.mean(rv.y[mask])
 
     x, y = rv.x, rv.y
     x -= xmid
     y -= ymid
 
     # Convolve in a Gaussian
-    scale = pixelSize * donutBlur / 2.35 / 0.2
+    scale = pixelSize * donutBlur / SIGMATOFWHM / 0.2
     rng = np.random.default_rng()
     x += rng.normal(scale=scale, size=len(x))
     y += rng.normal(scale=scale, size=len(y))
@@ -461,8 +463,8 @@ def estimateEllipticities(
     histrange = [[-so2 * pixelSize, so2 * pixelSize], [-so2 * pixelSize, so2 * pixelSize]]
     # Bin rays
     hist, _, _ = np.histogram2d(
-        y[~rv.vignetted],
-        x[~rv.vignetted],
+        y[mask],
+        x[mask],
         bins=stampSize,
         range=histrange,
     )
