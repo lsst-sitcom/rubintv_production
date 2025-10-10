@@ -450,6 +450,10 @@ class ZernikePredictedFWHMPlotter:
             return
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
+        if len(table) == 0 or 'FWHM' not in table.colnames:
+            self.log.error(f"No sources with FWHM found for visitId {visitId}, skipping FWHM plots")
+            return
+
         tableFiltered = randomRowsPerDetector(table, 60)
 
         wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
