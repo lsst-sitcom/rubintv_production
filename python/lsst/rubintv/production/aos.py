@@ -430,6 +430,9 @@ class ZernikePredictedFWHMPlotter:
                 )
             except DatasetNotFoundError:
                 pass
+        if not srcDict:
+            self.log.warning(f"Could not find any source catalogs for visitId {visitId}")
+            return
 
         visitInfo = None
         for detectorId in detectorIds:
@@ -441,7 +444,9 @@ class ZernikePredictedFWHMPlotter:
             except DatasetNotFoundError:
                 pass
         if visitInfo is None:
-            self.log.error(f"Could not find visitInfo for visitId {visitId}")
+            self.log.error(
+                f"Could not find visitInfo for {visitId=} - this should be impossible if srcDict not empty"
+            )
             return
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
