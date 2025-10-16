@@ -450,7 +450,7 @@ class ZernikePredictedFWHMPlotter:
             return
 
         table = makeTableFromSourceCatalogs(srcDict, visitInfo)
-        if len(table) == 0 or 'FWHM' not in table.colnames:
+        if len(table) == 0 or "FWHM" not in table.colnames:
             self.log.error(f"No sources with FWHM found for visitId {visitId}, skipping FWHM plots")
             return
 

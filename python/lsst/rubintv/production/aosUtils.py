@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 from astropy.table import Table
 from batoid_rubin import LSSTBuilder
+from galsim.errors import GalSimHSMError
 
 from lsst.afw.cameraGeom import FIELD_ANGLE
 from lsst.obs.lsst import LsstCam
@@ -369,9 +370,12 @@ def estimateWavefrontDataFromDofs(
     e1Interpolated = np.zeros(len(sourceTable["aa_x"]))
     e2Interpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
-        e1Interpolated[idx], e2Interpolated[idx] = estimateEllipticities(
-            telescope, sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx], donutBlur, wavelength
-        )
+        try:
+            e1Interpolated[idx], e2Interpolated[idx] = estimateEllipticities(
+                telescope, sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx], donutBlur, wavelength
+            )
+        except GalSimHSMError:
+            e1Interpolated[idx], e2Interpolated[idx] = np.nan, np.nan
 
     return {
         "detector": wavefrontResults["detector"].to_list(),
