@@ -60,6 +60,9 @@ consDBURL: "http://consdb-pq.consdb:8080/consdb"
 
 aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
 aosLSSTCamPipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_TIE.yaml
+aosLSSTCamRefitWcsPipelineFile: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_RefitWcsDanish.yaml
+aosLSSTCamAiDonutPipelineFile: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_AiDonut.yaml
+aosLSSTCamTartsPipelineFile: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisTartsPipeline.yaml
 
 aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
 aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
@@ -71,11 +74,6 @@ sfmPipelineFile:
   LSSTComCamSim: $DRP_PIPE_DIR/pipelines/LSSTComCamSim/quickLook.yaml
   LSSTComCam: $DRP_PIPE_DIR/pipelines/LSSTComCam/quickLook.yaml
   LSSTCam: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLook.yaml
-
-aosPipelineFile:
-  LATISS: ''
-  LSSTComCamSim: $DONUT_VIZ_DIR/pipelines/production/comCamSimRapidAnalysisPipeline.yaml
-  LSSTComCam: $DONUT_VIZ_DIR/pipelines/production/comCamRapidAnalysisPipeline.yaml
 
 outputChains:
   LATISS: LATISS/runs/quickLook
