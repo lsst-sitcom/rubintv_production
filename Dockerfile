@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_38"
+ARG STACK_TAG="w_2025_41"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -61,13 +61,17 @@ USER lsst
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     conda config --set solver libmamba && \
-    conda install -y -c conda-forge \
+    conda install -y \
+    -c conda-forge \
+    # lsstts channel required for ts-ofc
+    -c lsstts \
     rubin-env-rsp \
     astrometry \
     redis-py \
     batoid \
     danish \
     rubin-libradtran \
+    ts-ofc \
     && conda clean -afy
 
 USER saluser
