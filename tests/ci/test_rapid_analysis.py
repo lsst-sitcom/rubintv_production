@@ -233,6 +233,12 @@ class TestConfig:
                 tee_output=False,
             ),
             TestScript(
+                "scripts/LSSTCam/runZernikePredictionPlotting.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+                tee_output=True,
+            ),
+            TestScript(
                 "scripts/LSSTCam/runRadialPlotting.py",
                 ["usdf_testing"],
                 display_on_pass=False,
@@ -1013,6 +1019,9 @@ class ResultCollector:
             # Donut pairing plot for regular image
             ("LSSTCam/20250415/LSSTCam_fp_pairing_plot_dayObs_20250415_seqNum_000088.png", 5000),
             ("LSSTCam/20250415/LSSTCam_donut_fits_dayObs_20250415_seqNum_000088.png", 5000),
+            # Zernike and DOF FWHM prediction plots
+            ("LSSTCam/20250415/LSSTCam_zernike_predicted_fwhm_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20250415/LSSTCam_dof_predicted_fwhm_dayObs_20250415_seqNum_000088.png", 5000),
             # Guider plots and movies
             ("LSSTCam/20250629/LSSTCam_full_movie_dayObs_20250629_seqNum_000340.mp4", 200_000),
             ("LSSTCam/20250629/LSSTCam_star_movie_dayObs_20250629_seqNum_000340.mp4", 100_000),
