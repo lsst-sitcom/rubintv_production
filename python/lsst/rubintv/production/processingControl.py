@@ -467,9 +467,9 @@ def buildPipelines(
         pipelines["AOS_AI_DONUT"] = PipelineComponents(
             butler.registry, aiDonutFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
-        pipelines["AOS_TARTS"] = PipelineComponents(
-            butler.registry, tartsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
-        )
+        # pipelines["AOS_TARTS"] = PipelineComponents(
+        #     butler.registry, tartsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        # )
 
         pipelines["AOS_FAM_TIE"] = PipelineComponents(
             butler.registry, aosFileTIEFam, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
