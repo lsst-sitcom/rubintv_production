@@ -184,7 +184,10 @@ class OneOffProcessor(BaseButlerChannel):
         dimmSeeing = header.get("SEEING", None)
         if dimmSeeing:
             # why doesn't mypy flag this without the float() call?
-            md[seqNum].update({"DIMM Seeing": f"{float(dimmSeeing):.3f}"})
+            try:
+                md[seqNum].update({"DIMM Seeing": f"{float(dimmSeeing):.3f}"})
+            except Exception:
+                self.log.warning(f"Failed to parse DIMM seeing value '{dimmSeeing}' as float")
 
         vignMin = header.get("VIGN_MIN", None)
         if vignMin:
