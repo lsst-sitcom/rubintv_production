@@ -476,7 +476,6 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         mountErrors: dict[str, float] | MountErrors,
         instrument: str,
-        allowUpdate: bool = False,
     ) -> None:
         values: dict[str, float] = {}
         if isinstance(mountErrors, MountErrors):  # LSSTCam code path
@@ -516,13 +515,15 @@ class ConsDBPopulator:
 
         table = f"cdb_{instrument.lower()}.exposure_quicklook"
 
-        if allowUpdate and "exposure_id" not in values:
+        if "exposure_id" not in values:
             values["exposure_id"] = expRecord.id
 
         self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obsId=(expRecord.day_obs, expRecord.seq_num),
+            obs_id=expRecord.id,
             values=values,
-            allowUpdate=allowUpdate,
+            # this should always be an update as it's going in the exposure
+            # table which will always already be populated
+            allowUpdate=True,
         )
