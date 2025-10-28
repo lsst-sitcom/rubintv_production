@@ -646,7 +646,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            self.consDBPopulator.populateVisitRow(vs, self.instrument)  # consDBPopulator validates location
+            # always write, as consDBPopulator validates location
+            self.consDBPopulator.populateVisitRow(vs, self.instrument, allowUpdate=True)
             self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
