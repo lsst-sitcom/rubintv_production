@@ -355,8 +355,9 @@ class ConsDBPopulator:
         self.populateVisitRow(visitSummary, instrument, allowUpdate=allowUpdate)
 
     def populateVisitRow(
-        self, visitSummary: ExposureCatalog, instrument: str, allowUpdate: bool = False
+        self, visitSummary: ExposureCatalog, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
+        instrument = expRecord.instrument
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
             location = self.locationConfig.location
             logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
@@ -405,7 +406,7 @@ class ConsDBPopulator:
         inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obsId=(visit // 100000, visit % 100000),  # This is gross
+            obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             allowUpdate=allowUpdate,
         )
