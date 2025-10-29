@@ -647,7 +647,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # it know where this is running and stop attempting this write at
             # USDF.
             # always write, as consDBPopulator validates location
-            self.consDBPopulator.populateVisitRow(vs, self.instrument, allowUpdate=True)
+            self.consDBPopulator.populateVisitRow(vs, expRecord, allowUpdate=True)
             self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
