@@ -291,7 +291,7 @@ class ConsDBPopulator:
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
-            obsId=(expRecord.day_obs, expRecord.seq_num),
+            obsId=obsId,
             values=values,
             allowUpdate=allowUpdate,
         )
@@ -399,12 +399,13 @@ class ConsDBPopulator:
             raise RuntimeError("preliminary_visit_summary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
+        values["visit_id"] = visit
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
 
         inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obsId=visit,
+            obsId=(visit // 100000, visit % 100000),  # This is gross
             values=values,
             allowUpdate=allowUpdate,
         )
@@ -521,7 +522,7 @@ class ConsDBPopulator:
         self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obs_id=expRecord.id,
+            obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             # this should always be an update as it's going in the exposure
             # table which will always already be populated
