@@ -29,7 +29,9 @@ __all__ = [
 ]
 
 import itertools
-from typing import Callable, cast
+import logging
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Callable, cast
 
 import numpy as np
 from requests import HTTPError
@@ -42,6 +44,11 @@ from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
 from .redisUtils import RedisHelper
+
+if TYPE_CHECKING:
+    from .utils import LocationConfig
+
+logger = logging.getLogger(__name__)
 
 # The mapping from ExposureSummaryStats columns to consDB columns
 CCD_VISIT_MAPPING = {
@@ -107,14 +114,113 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _removeNans(d: dict[str, float | int]) -> dict[str, float | int]:
-    return {k: v for k, v in d.items() if not np.isnan(v)}
+def _removeNans(values: Mapping[str, float | int | str]) -> dict[str, float | int | str]:
+    out: dict[str, float | int | str] = {}
+    for k, v in values.items():
+        if isinstance(v, (float, np.floating)) and np.isnan(v):
+            continue
+        out[k] = v
+    return out
+
+
+def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float], int | float]:
+    """Return a function to convert to the appropriate type for a ConsDB column
+
+    Parameters
+    ----------
+    key : `str`
+        The ConsDB column name.
+    typeMapping : `dict` [`str`, `str`]
+        A mapping of ConsDB column names to their database types.
+
+    Returns
+    -------
+    typeFunc : `Callable` [[`int` or `float`], `int` or `float`]
+        A function that converts a value to the appropriate type for the
+        ConsDB column.
+    """
+    dbType = typeMapping[key]
+    if dbType in ("BIGINT", "INTEGER"):
+        return int
+    elif dbType == "DOUBLE PRECISION":
+        return float
+    else:
+        raise ValueError(f"Got unknown database type {dbType}")
 
 
 class ConsDBPopulator:
-    def __init__(self, client: ConsDbClient, redisHelper: RedisHelper) -> None:
+    def __init__(
+        self, client: ConsDbClient, redisHelper: RedisHelper, locationConfig: LocationConfig
+    ) -> None:
         self.client = client
         self.redisHelper = redisHelper
+        self.locationConfig = locationConfig
+
+    def _shouldInsert(self) -> bool:
+        """Check whether inserts to consDB are allowed at the current location.
+
+        Returns
+        -------
+        allowed : `bool`
+            True if location is one of "summit", "bts", or "tts".
+        """
+        location = self.locationConfig.location
+        if location is None:
+            logger.warning("LocationConfig.location is None; skipping consDB insert.")
+            return False
+        return str(location).lower() in ("summit", "bts", "tts")
+
+    def _insertIfAllowed(
+        self,
+        instrument: str,
+        table: str,
+        obsId: int | tuple[int, int],
+        values: Mapping[str, int | float | str],
+        allowUpdate: bool,
+    ) -> bool:
+        """
+        Conditionally call self.client.insert() based on location.
+
+        Parameters
+        ----------
+        instrument : `str`
+            Instrument name for the consDB schema.
+        table : `str`
+            Table name within the instrument schema.
+        obsId : `int` or `tuple[int, int]`
+            The primary key used by consDB for the row (visit/exposure id or
+            (day_obs, seq_num)).
+        values : `dict[str, int | float | str]`
+            Column values to write; NaN values are removed.
+        allowUpdate : `bool`
+            Whether to allow updates to existing rows.
+
+        Returns
+        -------
+        inserted : `bool`
+            ``True`` if an insert/update was attempted and succeeded; ``False``
+            if skipped due to location.
+        """
+        if not self._shouldInsert():  # called here again for safety
+            location = self.locationConfig.location
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.{table} for {obsId}")
+            return False
+
+        try:
+            self.client.insert(
+                instrument=instrument,
+                table=table,
+                obs_id=obsId,
+                values=_removeNans(values),
+                allow_update=allowUpdate,
+            )
+            return True
+        except HTTPError as e:
+            try:
+                print(e.response.json())
+            except Exception:
+                logger.exception("HTTPError during consDB insert and response JSON parse failed.")
+            raise RuntimeError from e
 
     def _createExposureRow(self, expRecord: DimensionRecord, allowUpdate: bool = False) -> None:
         """Create a row for the exp in the cdb_<instrument>.exposure table.
@@ -123,24 +229,21 @@ class ConsDBPopulator:
         therefore not a user-facing method.
         """
         exposureValues: dict[str, str | int] = {
-            "exposure_id": expRecord.id,
+            "exposure_id": expRecord.id,  # required key if updating
             "exposure_name": expRecord.obs_id,
             "controller": expRecord.obs_id.split("_")[1],
             "day_obs": expRecord.day_obs,
             "seq_num": expRecord.seq_num,
         }
 
-        try:
-            self.client.insert(
-                instrument=expRecord.instrument,
-                table=f"cdb_{expRecord.instrument.lower()}.exposure",
-                obs_id=expRecord.id,
-                values=exposureValues,
-                allow_update=allowUpdate,
-            )
-        except HTTPError as e:
-            print(e.response.json())
-            raise RuntimeError from e
+        self._insertIfAllowed(
+            instrument=expRecord.instrument,
+            table=f"cdb_{expRecord.instrument.lower()}.exposure",
+            # tuple-form for obsId required for updating non ccd-type tables
+            obsId=(expRecord.day_obs, expRecord.seq_num),
+            values=exposureValues,
+            allowUpdate=allowUpdate,
+        )
 
     def _createCcdExposureRows(
         self, expRecord: DimensionRecord, detectorNum: int | None = None, allowUpdate: bool = False
@@ -167,17 +270,13 @@ class ConsDBPopulator:
 
         for detNum in detectorNums:
             obsId = computeCcdExposureId(expRecord.instrument, expRecord.id, detNum)
-            try:
-                self.client.insert(
-                    instrument=expRecord.instrument,
-                    table=f"cdb_{expRecord.instrument.lower()}.ccdexposure",
-                    obs_id=obsId,
-                    values={"detector": detNum, "exposure_id": expRecord.id},
-                    allow_update=allowUpdate,
-                )
-            except HTTPError as e:
-                print(e.response.json())
-                raise RuntimeError from e
+            self._insertIfAllowed(
+                instrument=expRecord.instrument,
+                table=f"cdb_{expRecord.instrument.lower()}.ccdexposure",
+                obsId=obsId,  # integer form required for ccd-type tables
+                values={"detector": detNum, "exposure_id": expRecord.id},
+                allowUpdate=allowUpdate,
+            )
 
     def populateCcdVisitRowWithButler(
         self,
@@ -202,18 +301,18 @@ class ConsDBPopulator:
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        try:
-            self.client.insert(
-                instrument=expRecord.instrument,
-                table=table,
-                obs_id=obsId,
-                values=_removeNans(values),
-                allow_update=allowUpdate,
-            )
+        if allowUpdate and "visit_id" not in values:  # required key if updating
+            values["visit_id"] = expRecord.id
+
+        inserted = self._insertIfAllowed(
+            instrument=expRecord.instrument,
+            table=table,
+            obsId=obsId,  # integer form required for ccd-type tables
+            values=values,
+            allowUpdate=allowUpdate,
+        )
+        if inserted:
             self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
-        except HTTPError as e:
-            print(e.response.json())
-            raise RuntimeError from e
 
     def populateCcdVisitRowZernikes(
         self,
@@ -241,17 +340,16 @@ class ConsDBPopulator:
         obsId = computeCcdExposureId(visitRecord.instrument, visitRecord.id, detectorNum)
         table = f"cdb_{visitRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        try:
-            self.client.insert(
-                instrument=visitRecord.instrument,
-                table=table,
-                obs_id=obsId,
-                values=_removeNans(zernikeValues),
-                allow_update=allowUpdate,
-            )
-        except HTTPError as e:
-            print(e.response.json())
-            raise RuntimeError from e
+        if allowUpdate and "visit_id" not in zernikeValues:  # required key if updating
+            zernikeValues["visit_id"] = visitRecord.id
+
+        self._insertIfAllowed(
+            instrument=visitRecord.instrument,
+            table=table,
+            obsId=obsId,  # integer form required for ccd-type tables
+            values=zernikeValues,
+            allowUpdate=allowUpdate,
+        )
 
     def populateAllCcdVisitRowsWithButler(
         self, butler: Butler, expRecord: DimensionRecord, createRows: bool = False, allowUpdate: bool = False
@@ -273,20 +371,17 @@ class ConsDBPopulator:
         self.populateVisitRow(visitSummary, instrument, allowUpdate=allowUpdate)
 
     def populateVisitRow(
-        self, visitSummary: ExposureCatalog, instrument: str, allowUpdate: bool = False
+        self, visitSummary: ExposureCatalog, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
+        instrument = expRecord.instrument
+        if not self._shouldInsert():  # ugly but need to check this before accessing the schema
+            location = self.locationConfig.location
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
+            return
+
         schema = self.client.schema(instrument.lower(), "visit1_quicklook")
         schema = cast(dict[str, tuple[str, str]], schema)
         typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
-
-        def changeType(key: str) -> Callable[[int | float], int | float]:
-            dbType = typeMapping[key]
-            if dbType in ("BIGINT", "INTEGER"):
-                return int
-            elif dbType == "DOUBLE PRECISION":
-                return float
-            else:
-                raise ValueError(f"Got unknown database type {dbType}")
 
         visitSummary = visitSummary.asAstropy()
         visits = visitSummary["visit"]
@@ -300,19 +395,19 @@ class ConsDBPopulator:
             VISIT_MIN_MED_MAX_TOTAL_MAPPING.items(),
         ):
             consDbKey = consDbKeyNoSuffix + "_min"
-            typeFunc = changeType(consDbKey)
+            typeFunc = changeType(consDbKey, typeMapping)
             values[consDbKey] = typeFunc(np.nanmin(visitSummary[summaryKey]))
 
             consDbKey = consDbKeyNoSuffix + "_max"
-            typeFunc = changeType(consDbKey)
+            typeFunc = changeType(consDbKey, typeMapping)
             values[consDbKey] = typeFunc(np.nanmax(visitSummary[summaryKey]))
 
             consDbKey = consDbKeyNoSuffix + "_median"
-            typeFunc = changeType(consDbKey)
+            typeFunc = changeType(consDbKey, typeMapping)
             values[consDbKey] = typeFunc(np.nanmedian(visitSummary[summaryKey]))
 
         for summaryKey, consDbKey in VISIT_MIN_MED_MAX_TOTAL_MAPPING.items():
-            typeFunc = changeType(consDbKey + "_total")
+            typeFunc = changeType(consDbKey + "_total", typeMapping)
             values[consDbKey + "_total"] = typeFunc(np.nansum(visitSummary[summaryKey]))
 
         nInputs = max([len(visitSummary[col]) for col in visitSummary.columns])
@@ -321,41 +416,105 @@ class ConsDBPopulator:
             raise RuntimeError("preliminary_visit_summary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
+        values["visit_id"] = visit  # required key if updating
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
-        self.client.insert(
+
+        inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obs_id=visit,
-            values=_removeNans(values),
-            allow_update=allowUpdate,
+            # tuple-form for obsId required for updating non ccd-type tables
+            obsId=(expRecord.day_obs, expRecord.seq_num),
+            values=values,
+            allowUpdate=allowUpdate,
         )
-        self.redisHelper.announceResultInConsDb(instrument, table, visit)
+        if inserted:
+            self.redisHelper.announceResultInConsDb(instrument, table, visit)
+
+    def populateArbitrary(
+        self,
+        instrument: str,
+        table: str,
+        values: dict[str, int | float],
+        dayObs: int,
+        seqNum: int,
+        allowUpdate: bool = False,
+    ) -> None:
+        """Populate an arbitrary consDB table for a given visit or exposure.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name, used to resolve the schema namespace (e.g.,
+            "LATISS" or "lsstcam", case-insensitive).
+        table : `str`
+            The table name within the instrument schema (e.g.,
+            "visit1_quicklook").
+        values : `dict[str, int | float | str]`
+            Mapping of consDB column names to values to write. Values are
+            coerced to the database column types using the table schema; NaN
+            values are dropped.
+        visitOrExposureId : `int`
+            The visit or exposure identifier, i.e. the row in the table.
+        allowUpdate : `bool`, optional
+            If True, allow updating existing rows in the table. An error is
+            raised if False and a value exists.
+        """
+        # validate before checking _shouldInsert() for better CI coverage
+        if allowUpdate and "exposure" in table.lower() and "exposure_id" not in values:
+            raise ValueError("When updating an exposure table, exposure_id must be in values")
+        if allowUpdate and "visit" in table.lower() and "visit_id" not in values:
+            raise ValueError("When updating a visit table, visit must be in values")
+
+        if not self._shouldInsert():  # ugly but need to check this before accessing the schema
+            location = self.locationConfig.location
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
+            return
+
+        schema = self.client.schema(instrument.lower(), table)
+        schema = cast(dict[str, tuple[str, str]], schema)
+        typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+
+        toSend: dict[str, int | float] = {}
+        for consDbKey, value in values.items():
+            if consDbKey not in typeMapping:
+                raise ValueError(f"Key {consDbKey} not in consDB table {table}")
+
+            typeFunc = changeType(consDbKey, typeMapping)
+            toSend[consDbKey] = typeFunc(value)
+
+        self._insertIfAllowed(
+            instrument=instrument,
+            table=table,
+            # tuple-form for obsId required for updating non ccd-type tables
+            obsId=(dayObs, seqNum),
+            values=toSend,
+            allowUpdate=allowUpdate,
+        )
 
     def populateMountErrors(
         self,
         expRecord: DimensionRecord,
         mountErrors: dict[str, float] | MountErrors,
         instrument: str,
-        allowUpdate: bool = False,
     ) -> None:
         values: dict[str, float] = {}
-        if isinstance(mountErrors, MountErrors):
-            image_az_rms = mountErrors.imageAzRms
-            image_el_rms = mountErrors.imageElRms
-            imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
-
+        if isinstance(mountErrors, MountErrors):  # LSSTCam code path
+            # image impact measurements
+            imageError = (mountErrors.imageAzRms**2 + mountErrors.imageElRms**2) ** 0.5
             values["mount_motion_image_degradation"] = imageError
-            values["mount_motion_image_degradation_az"] = image_az_rms
-            values["mount_motion_image_degradation_el"] = image_el_rms
+            values["mount_motion_image_degradation_az"] = mountErrors.imageAzRms
+            values["mount_motion_image_degradation_el"] = mountErrors.imageElRms
+            values["mount_motion_image_degradation_rot"] = mountErrors.imageRotRms
 
-            az_rms = mountErrors.azRms
-            el_rms = mountErrors.elRms
-            mountError = (az_rms**2 + el_rms**2) ** 0.5
+            # raw axis jitter values
+            mountError = (mountErrors.azRms**2 + mountErrors.elRms**2) ** 0.5
             values["mount_jitter_rms"] = mountError
-            values["mount_jitter_rms_az"] = az_rms
-            values["mount_jitter_rms_el"] = el_rms
+            values["mount_jitter_rms_az"] = mountErrors.azRms
+            values["mount_jitter_rms_el"] = mountErrors.elRms
             values["mount_jitter_rms_rot"] = mountErrors.rotRms
-        elif isinstance(mountErrors, dict):
+            values["mount_jitter_rms_cam_hexapod"] = mountErrors.camHexRms
+            values["mount_jitter_rms_m2_hexapod"] = mountErrors.m2HexRms
+        elif isinstance(mountErrors, dict):  # LATISS code path until unified
             image_az_rms = mountErrors["image_az_rms"]
             image_el_rms = mountErrors["image_el_rms"]
             imageError = (image_az_rms**2 + image_el_rms**2) ** 0.5
@@ -375,10 +534,17 @@ class ConsDBPopulator:
             raise TypeError(f"Expected MountErrors or dict, got {type(mountErrors)}")
 
         table = f"cdb_{instrument.lower()}.exposure_quicklook"
-        self.client.insert(
+
+        if "exposure_id" not in values:  # required key if updating
+            values["exposure_id"] = expRecord.id
+
+        self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obs_id=expRecord.id,
-            values=_removeNans(values),
-            allow_update=allowUpdate,
+            # tuple-form for obsId required for updating non ccd-type tables
+            obsId=(expRecord.day_obs, expRecord.seq_num),
+            values=values,
+            # this should always be an update as it's going in the exposure
+            # table which will always already be populated
+            allowUpdate=True,
         )

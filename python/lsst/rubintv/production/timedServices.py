@@ -183,7 +183,7 @@ class TimedMetadataServer:
             os.remove(shardFile)
 
             with open(mainFile, "w") as f:
-                json.dump(data, f)
+                json.dump(data, f, indent=2)
             if not isFileWorldWritable(mainFile):
                 os.chmod(mainFile, 0o777)  # file may be amended by another process
 

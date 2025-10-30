@@ -173,7 +173,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
 
     @cached_property
     def efdClient(self) -> EfdClient:
@@ -552,11 +552,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
-                summaryStats = exp.getInfo().getSummaryStats()
-                detectorNum = exp.getDetector().getId()
-                self.consDBPopulator.populateCcdVisitRow(visitRecord, detectorNum, summaryStats)
-                self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
+            summaryStats = exp.getInfo().getSummaryStats()
+            detectorNum = exp.getDetector().getId()
+            # consDBPopulator validates the location and only inserts if it's
+            # summit-like (summit, bts, tts)
+            self.consDBPopulator.populateCcdVisitRow(visitRecord, detectorNum, summaryStats)
+            self.log.info(f"Populated consDB ccd-visit row for {dRef.dataId} for {detectorNum}")
         except Exception:
             if self.locationConfig.location == "summit":
                 self.log.exception("Failed to populate ccd-visit row in ConsDB")
@@ -645,9 +646,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: DM-45438 either have NV write to a different table or have
             # it know where this is running and stop attempting this write at
             # USDF.
-            if self.locationConfig.location in ["summit", "bts", "tts"]:
-                self.consDBPopulator.populateVisitRow(vs, self.instrument)
-                self.log.info(f"Populated consDB visit row for {expRecord.id}")
+            # always write, as consDBPopulator validates location
+            self.consDBPopulator.populateVisitRow(vs, expRecord, allowUpdate=True)
+            self.log.info(f"Populated consDB visit row for {expRecord.id}")
         except Exception:
             self.log.exception("Failed to populate visit row in ConsDB")
 
@@ -704,14 +705,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 continue
             consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
 
-        # don't fill ConsDB at USDF, but put this at the very bottom so that CI
-        # still exercises all the code right up until filling the data
-        if self.locationConfig.location not in ["summit", "bts", "tts"]:
-            self.log.info(
-                f"Skipping sending postProcessCalcZernikes result to ConsDB at {self.locationConfig.location}"
-            )
-            return
-
+        # consDB validates the location and only inserts if it's summit-like
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
@@ -759,3 +753,25 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)
+
+        consDbValues: dict[str, int | float] = {}
+        try:
+            self.log.info(f"Sending donut blur {donutBlurFwhm:.2f} for {expRecord.id} to consDB")
+            # visit_id is required for updates
+            consDbValues = {"aos_fwhm": residual, "visit_id": expRecord.id}
+            if donutBlurFwhm:
+                consDbValues["donut_blur_fwhm"] = donutBlurFwhm
+            self.consDBPopulator.populateArbitrary(
+                expRecord.instrument,
+                "visit1_quicklook",
+                consDbValues,
+                expRecord.day_obs,
+                expRecord.seq_num,
+                True,  # insert into existing an row requires allowUpdate
+            )
+        except Exception as e:
+            self.log.error(
+                f"Failed to write donut blur and/or AOS residual for {expRecord.id} with {consDbValues} {e}"
+            )
+            raiseIf(self.doRaise, e, self.log)
+            return

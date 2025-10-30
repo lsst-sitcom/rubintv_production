@@ -157,7 +157,7 @@ class OneOffProcessor(BaseButlerChannel):
         self.redisHelper = RedisHelper(butler, self.locationConfig)
         self.efdClient = makeEfdClient()
         self.consdbClient = ConsDbClient(self.locationConfig.consDBURL)
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
         self.camera = getCameraFromInstrumentName(self.instrument)
 
     def writeHeaderOrVisitInfoBasedQuantities(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
@@ -184,7 +184,10 @@ class OneOffProcessor(BaseButlerChannel):
         dimmSeeing = header.get("SEEING", None)
         if dimmSeeing:
             # why doesn't mypy flag this without the float() call?
-            md[seqNum].update({"DIMM Seeing": f"{float(dimmSeeing):.3f}"})
+            try:
+                md[seqNum].update({"DIMM Seeing": f"{float(dimmSeeing):.3f}"})
+            except Exception:
+                self.log.warning(f"Failed to parse DIMM seeing value '{dimmSeeing}' as float")
 
         vignMin = header.get("VIGN_MIN", None)
         if vignMin:
@@ -193,17 +196,42 @@ class OneOffProcessor(BaseButlerChannel):
         writeMetadataShard(self.shardsDirectory, dayObs, md)
 
     def writePhysicalRotation(self, expRecord: DimensionRecord) -> None:
+        # TODO: DM-52351 work out how to do this for LATISS and make it work
+        # for both
+        if expRecord.instrument.lower() != "lsstcam":  # topic queried is specifically LSSTCam
+            return
+
         data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=expRecord)
         if data.empty:
             self.log.warning(f"Failed to get physical rotation data for {expRecord.id} - EFD data was empty")
             return
 
-        outputDict = {"Rotator physical position": f"{np.mean(data['actualPosition']):.3f}"}
+        physicalRotation = np.nanmean(data["actualPosition"])
+        outputDict = {"Rotator physical position": f"{physicalRotation:.3f}"}
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
         rowData = {seqNum: outputDict}
 
         writeMetadataShard(self.shardsDirectory, dayObs, rowData)
+
+        try:  # TODO: DM-52351 remove the try block if this is known to work for off-sky images consistently
+            self.log.info(
+                f"Writing physical rotator angle {physicalRotation:.3f} for {expRecord.id} to consDB"
+            )
+            # visit_id is required for updates
+            consDbValues = {"physical_rotator_angle": physicalRotation, "visit_id": expRecord.id}
+            self.consDBPopulator.populateArbitrary(
+                expRecord.instrument,
+                "visit1_quicklook",
+                consDbValues,
+                expRecord.day_obs,
+                expRecord.seq_num,
+                True,
+            )
+        except Exception as e:
+            self.log.error(f"Failed to write physical rotator angle for {expRecord.id} to consDB: {e}")
+            raiseIf(self.doRaise, e, self.log)
+            return
 
     def writeObservationAnnotation(self, exp: Exposure, dayObs: int, seqNum: int) -> None:
         headerMetadata = exp.metadata.toDict()
