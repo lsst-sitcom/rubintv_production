@@ -124,6 +124,21 @@ def _removeNans(values: Mapping[str, float | int | str]) -> dict[str, float | in
 
 
 def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float], int | float]:
+    """Return a function to convert to the appropriate type for a ConsDB column
+
+    Parameters
+    ----------
+    key : `str`
+        The ConsDB column name.
+    typeMapping : `dict` [`str`, `str`]
+        A mapping of ConsDB column names to their database types.
+
+    Returns
+    -------
+    typeFunc : `Callable` [[`int` or `float`], `int` or `float`]
+        A function that converts a value to the appropriate type for the
+        ConsDB column.
+    """
     dbType = typeMapping[key]
     if dbType in ("BIGINT", "INTEGER"):
         return int
