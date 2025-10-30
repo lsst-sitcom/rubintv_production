@@ -214,7 +214,7 @@ class ConsDBPopulator:
         therefore not a user-facing method.
         """
         exposureValues: dict[str, str | int] = {
-            "exposure_id": expRecord.id,
+            "exposure_id": expRecord.id,  # required key if updating
             "exposure_name": expRecord.obs_id,
             "controller": expRecord.obs_id.split("_")[1],
             "day_obs": expRecord.day_obs,
@@ -224,6 +224,7 @@ class ConsDBPopulator:
         self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=f"cdb_{expRecord.instrument.lower()}.exposure",
+            # tuple-form for obsId required for updating non ccd-type tables
             obsId=(expRecord.day_obs, expRecord.seq_num),
             values=exposureValues,
             allowUpdate=allowUpdate,
@@ -257,7 +258,7 @@ class ConsDBPopulator:
             self._insertIfAllowed(
                 instrument=expRecord.instrument,
                 table=f"cdb_{expRecord.instrument.lower()}.ccdexposure",
-                obsId=obsId,
+                obsId=obsId,  # integer form required for ccd-type tables
                 values={"detector": detNum, "exposure_id": expRecord.id},
                 allowUpdate=allowUpdate,
             )
@@ -285,13 +286,13 @@ class ConsDBPopulator:
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        if allowUpdate and "visit_id" not in values:
+        if allowUpdate and "visit_id" not in values:  # required key if updating
             values["visit_id"] = expRecord.id
 
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
-            obsId=obsId,
+            obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
         )
@@ -324,13 +325,13 @@ class ConsDBPopulator:
         obsId = computeCcdExposureId(visitRecord.instrument, visitRecord.id, detectorNum)
         table = f"cdb_{visitRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        if allowUpdate and "visit_id" not in zernikeValues:
+        if allowUpdate and "visit_id" not in zernikeValues:  # required key if updating
             zernikeValues["visit_id"] = visitRecord.id
 
         self._insertIfAllowed(
             instrument=visitRecord.instrument,
             table=table,
-            obsId=obsId,
+            obsId=obsId,  # integer form required for ccd-type tables
             values=zernikeValues,
             allowUpdate=allowUpdate,
         )
@@ -400,12 +401,13 @@ class ConsDBPopulator:
             raise RuntimeError("preliminary_visit_summary is jagged - this should be impossible")
 
         values["n_inputs"] = nInputs
-        values["visit_id"] = visit
+        values["visit_id"] = visit  # required key if updating
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
 
         inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
+            # tuple-form for obsId required for updating non ccd-type tables
             obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             allowUpdate=allowUpdate,
@@ -468,7 +470,8 @@ class ConsDBPopulator:
         self._insertIfAllowed(
             instrument=instrument,
             table=table,
-            obsId=(dayObs, seqNum),  # tuple is required when doing an update so always require it
+            # tuple-form for obsId required for updating non ccd-type tables
+            obsId=(dayObs, seqNum),
             values=toSend,
             allowUpdate=allowUpdate,
         )
@@ -517,12 +520,13 @@ class ConsDBPopulator:
 
         table = f"cdb_{instrument.lower()}.exposure_quicklook"
 
-        if "exposure_id" not in values:
+        if "exposure_id" not in values:  # required key if updating
             values["exposure_id"] = expRecord.id
 
         self._insertIfAllowed(
             instrument=instrument,
             table=table,
+            # tuple-form for obsId required for updating non ccd-type tables
             obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             # this should always be an update as it's going in the exposure
