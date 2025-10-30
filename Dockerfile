@@ -72,6 +72,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     danish \
     rubin-libradtran \
     ts-ofc \
+    timm \
+    peft \
     && conda clean -afy
 
 USER saluser
