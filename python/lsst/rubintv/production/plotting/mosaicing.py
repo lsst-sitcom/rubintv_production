@@ -448,7 +448,7 @@ def getDetectorNamesWithDataAndPrefetch(
                 destination = ResourcePath(os.path.join(tempDir, resourcePath.basename()))
                 transfers.append((resourcePath, destination))
 
-    with logDuration(_LOG, "Prefetching existing binned images"):
+    with logDuration(_LOG, f"Prefetching {len(transfers)} existing binned images"):
         ResourcePath.mtransfer("copy", transfers)
     return existingNames
 
