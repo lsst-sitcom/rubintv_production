@@ -29,13 +29,14 @@ from lsst.summit.utils.utils import setupLogging
 setupLogging()
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 log.info("Starting butlerCanary")
-print("Wrote a log message")
 
 locationConfig = getAutomaticLocationConfig()
+repo = locationConfig.lsstCamButlerPath
 butler = Butler.from_config(
-    locationConfig.lsstCamButlerPath, collections=["LSSTCam/defaults"], instrument="LSSTCam"
+    repo, collections=["LSSTCam/defaults"], instrument="LSSTCam"
 )
 
 while True:
@@ -45,7 +46,6 @@ while True:
         (exposure_dataId,) = query.data_ids(["exposure"]).order_by(_x.exposure.timespan.end.desc).limit(1)
 
     log.info(f"Using exposure {exposure_dataId}")
-    print("Started loop")
 
     for detector in range(189):
         dataId = DataCoordinate.standardize(exposure_dataId, detector=detector)
@@ -53,7 +53,7 @@ while True:
         raw = butler.get("raw", dataId=dataId)
         end = time.time()
         duration = end - start
-        log.info(f"Butler get duration: {duration}")
+        log.info(f"Butler get duration: {duration} from repo {repo}")
 
         del raw
 
