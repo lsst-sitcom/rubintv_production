@@ -1529,6 +1529,7 @@ class CameraControlConfig:
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
+        self.IMAGING_IDS: tuple[int, ...] = tuple(detId for detId in self._imagingIds)
         self.GUIDER_IDS: tuple[int, ...] = tuple(detId for detId in self._guiderIds)
         self.CWFS_IDS: tuple[int, ...] = tuple(detId for detId in self._wavefrontIds)
         self.INTRA_FOCAL_IDS = (192, 196, 200, 204)
