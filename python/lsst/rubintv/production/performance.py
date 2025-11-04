@@ -33,22 +33,40 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
 from lsst.rubintv.production.baseChannels import BaseButlerChannel
 
 # TODO Change these back to relative imports
 from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
 from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
+from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
 if TYPE_CHECKING:
+    from lsst_efd_client import EfdClient
+    from pandas import DataFrame
+
     from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
 
     from .payloads import Payload
     from .podDefinition import PodDetails
+    from .processingControl import CameraControlConfig
+
+
+AOS_DEFAULT_TASKS: dict[str, str] = {
+    "isr": "k",
+    "generateDonutDirectDetectTask": "r",
+    "cutOutDonutsCwfsPairTask": "g",
+    "reassignCwfsCutoutsPairTask": "orange",
+    "calcZernikesTask": "y",
+}
 
 
 def isVisitType(task: TaskNode) -> bool:
@@ -690,6 +708,8 @@ class PerformanceMonitor(BaseButlerChannel):
         self.perf = PerformanceBrowser(butler, instrument, locationConfig)
         self.shardsDirectory = locationConfig.raPerformanceShardsDirectory
         self.instrument = instrument  # why isn't this being set in the base class?!
+        self.efdClient = makeEfdClient()
+        self.cameraControl = CameraControlConfig()
 
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
@@ -786,6 +806,218 @@ class PerformanceMonitor(BaseButlerChannel):
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
+        self.makeAosPlot(record)
+
         # callback() is only called for the long-running RA process, so clear
         # the cache so we don't have ever increasing memory usage
         self.perf.data = {}
+
+    def makeAosPlot(self, expRecord: DimensionRecord):
+        oodsData = getIngestTimesForDay(self.efdClient, expRecord.day_obs)
+        cwfsDetNums = sorted(self.cameraControl.CWFS_IDS)
+        imagingDetNums = sorted(self.cameraControl.IMAGING_IDS)
+        wfTimes, sciTimes = getIngestTimes(expRecord, oodsData, cwfsDetNums, imagingDetNums)
+
+        timings = {
+            "Shutter close = readout start": 0,
+            "End readout": 3.07,
+            "WFS ingest start": min(wfTimes.values()),
+            "WFS ingest finished": max(wfTimes.values()),
+            "Imaging ingest start": min(sciTimes.values()),
+            "Imaging ingest finished": max(sciTimes.values()),
+        }
+
+        fig, axTop, axBottom = plotAosTaskTimings(
+            detectorList=cwfsDetNums,
+            taskColors=AOS_DEFAULT_TASKS,
+            results=self.perf.data[expRecord],
+            expRecord=expRecord,
+            timings=timings,
+            legendExtraLines=[
+                "Observation window",
+                "Telemetry update",
+                "Operator intervention",
+            ],
+        )
+        plt.show()
+
+
+def addEventStaircase(
+    axTop: Axes, axBottom: Axes, timings: dict[str, float], *, yMax: float = 1.0, yMin: float = 0.08
+) -> None:
+    """Top panel: dashed verticals that step down; full-height lines drawn in
+    bottom panel. Labels on arrows show the *later* event name and +Δt.
+    """
+    if not timings:
+        axTop.set_axis_off()
+        return
+
+    items: list[tuple[str, float]] = sorted(timings.items(), key=lambda kv: kv[1])
+    names: list[str] = [k for k, _ in items]
+    times: list[float] = [v for _, v in items]
+    n = len(times)
+
+    heights = np.linspace(yMax, yMin, n, dtype=float)
+
+    # top: staircase heights; bottom: full-height guides
+    for i, t in enumerate(times):
+        axTop.vlines(t, 0.0, float(heights[i]), linestyles="--", linewidth=1.2)
+        axBottom.axvline(t, color="black", linestyle="--", linewidth=1.2, ymin=0, ymax=1)
+
+    # arrows + labels between consecutive events
+    for i in range(n - 1):
+        t0, t1 = times[i], times[i + 1]
+        y0, y1 = float(heights[i]), float(heights[i + 1])
+        dt = t1 - t0
+
+        axTop.annotate(
+            "",
+            xy=(t1, y1),
+            xytext=(t0, y0),
+            arrowprops=dict(arrowstyle="->", linewidth=1.2),
+        )
+
+        midX = (t0 + t1) / 2.0
+        midY = (y0 + y1) / 2.0
+        axTop.text(
+            midX,
+            midY,
+            f"{names[i + 1]} (+{dt:.2f}s)",
+            rotation=45,
+            rotation_mode="anchor",
+            ha="left",
+            va="bottom",
+        )
+
+    axTop.set_ylim(0.0, yMax * 1.05)
+    axTop.set_yticks([])
+    axTop.set_ylabel("Events", labelpad=6)
+    axTop.grid(False)
+
+
+def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str] | None = None) -> None:
+    """Two figure-level legends at the bottom: left = colored tasks, right =
+    free text.
+    """
+    # Left: colored task entries (single vertical column)
+    colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
+    fig.legend(
+        handles=colorHandles,
+        loc="lower left",
+        bbox_to_anchor=(0.03, 0.02),  # figure coords
+        frameon=False,
+        ncol=1,
+        borderaxespad=0.0,
+    )
+
+    # Right: text-only entries
+    if extraLines:
+        textHandles = [Patch(facecolor="none", edgecolor="none", label=line) for line in extraLines]
+        fig.legend(
+            handles=textHandles,
+            loc="lower right",
+            bbox_to_anchor=(0.97, 0.02),  # figure coords
+            frameon=False,
+            ncol=1,
+            borderaxespad=0.0,
+            handlelength=0.0,
+            handletextpad=0.0,
+        )
+
+
+def getIngestTimes(
+    expRecord: DimensionRecord,
+    oodsData: DataFrame,
+    cwfsDetNums: list[int],
+    imagingDetNums: list[int],
+    key="private_kafkaStamp",
+) -> tuple[dict[str, float], dict[str, float]]:
+    endExposure = expRecord.timespan.end.unix_tai
+    thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
+
+    wavefronts = thisImageData[thisImageData["sensor"].isin(cwfsDetNums)]
+    sciences = thisImageData[thisImageData["sensor"].isin(imagingDetNums)]
+
+    wfTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in wavefronts.iterrows()}
+    sciTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in sciences.iterrows()}
+
+    return wfTimes, sciTimes
+
+
+def getIngestTimesForDay(client: EfdClient, dayObs: int) -> DataFrame:
+    return getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", dayObs=dayObs)
+
+
+def plotAosTaskTimings(
+    detectorList: list[int],
+    taskColors: dict[str, str],
+    results: dict[str, TaskResult],
+    expRecord: DimensionRecord,
+    timings: dict[str, float],
+    *,
+    barHalf: float = 0.3,
+    touchHalf: float = 0.5,
+    figsize: tuple[float, float] = (12, 5.0),
+    heightRatios: tuple[float, float] = (1, 2.5),
+    legendExtraLines: list[str] | None = None,
+) -> tuple[Figure, Axes, Axes]:
+    """Render the AOS task timing plot with an event staircase panel.
+
+    Returns (fig, axTop, axBottom).
+    """
+    fig, (axTop, axBottom) = plt.subplots(
+        2,
+        1,
+        sharex=True,
+        figsize=figsize,
+        gridspec_kw={"height_ratios": list(heightRatios), "hspace": 0.0},
+    )
+
+    t0 = expRecord.timespan.end.utc.to_datetime().astimezone(timezone.utc)
+
+    detMap = {det: i for i, det in enumerate(detectorList)}
+    bottoms: list[float] = [i - barHalf for i in range(len(detectorList))]
+    tops: list[float] = [i + barHalf for i in range(len(detectorList))]
+
+    # make consecutive detectors touch
+    for i in range(len(detectorList) - 1):
+        if detectorList[i + 1] == detectorList[i] + 1:
+            tops[i] = i + touchHalf  # raise earlier one
+            bottoms[i + 1] = i + touchHalf  # lower later one
+
+    taskMins: dict[str, float] = {}
+    taskMaxs: dict[str, float] = {}
+
+    for task, color in taskColors.items():
+        taskResults = results[task]
+        taskMins[task] = 999.0
+        taskMaxs[task] = -1.0
+
+        for detNum in detectorList:
+            if detNum not in taskResults.logs:
+                continue
+            start = (taskResults.logs[detNum][0].asctime - t0).total_seconds()
+            end = (taskResults.logs[detNum][-1].asctime - t0).total_seconds()
+
+            taskMins[task] = min(taskMins[task], start)
+            taskMaxs[task] = max(taskMaxs[task], end)
+
+            idx = detMap[detNum]
+            axBottom.fill_between([start, end], bottoms[idx], tops[idx], color=taskColors[task])
+
+    # legends beneath plot: left colored tasks, right free text
+    createLegendBoxes(fig, taskColors, extraLines=legendExtraLines)
+
+    axBottom.set_xlim(0, None)
+    axBottom.set_yticks(list(detMap.values()))
+    axBottom.set_yticklabels(list(detMap.keys()))
+    axBottom.set_xlabel("Time since end integration (s)")
+    axBottom.set_ylabel("Detector number #")
+    axBottom.set_title(f"Task timings for AOS pipeline for {expRecord.id}")
+
+    addEventStaircase(axTop, axBottom, timings)
+
+    # leave space at the bottom for the figure-level legends
+    plt.tight_layout(rect=(0, 0.08, 1, 0.94))
+    plt.subplots_adjust(bottom=0.28)
+    return fig, axTop, axBottom
