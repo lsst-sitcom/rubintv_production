@@ -837,7 +837,7 @@ def makeAosPlot(
 
     fig, axTop, axBottom = plotAosTaskTimings(
         detectorList=cwfsDetNums,
-        taskColors=AOS_DEFAULT_TASKS,
+        taskMap=AOS_DEFAULT_TASKS,
         results=taskResults,
         expRecord=expRecord,
         timings=timings,
@@ -956,7 +956,7 @@ def getIngestTimesForDay(client: EfdClient, dayObs: int) -> DataFrame:
 
 def plotAosTaskTimings(
     detectorList: list[int],
-    taskColors: dict[str, str],
+    taskMap: dict[str, str],
     results: dict[str, TaskResult],
     expRecord: DimensionRecord,
     timings: dict[str, float],
@@ -994,7 +994,7 @@ def plotAosTaskTimings(
     taskMins: dict[str, float] = {}
     taskMaxs: dict[str, float] = {}
 
-    for task, color in taskColors.items():
+    for task, color in taskMap.items():
         taskResults = results[task]
         taskMins[task] = 999.0
         taskMaxs[task] = -1.0
@@ -1009,17 +1009,20 @@ def plotAosTaskTimings(
             taskMaxs[task] = max(taskMaxs[task], end)
 
             idx = detMap[detNum]
-            axBottom.fill_between([start, end], bottoms[idx], tops[idx], color=taskColors[task])
+            axBottom.fill_between([start, end], bottoms[idx], tops[idx], color=color)
+
+    if taskMins.get("isr", None) is not None:
+        timings["ISR Start"] = taskMins["isr"]
 
     # legends beneath plot: left colored tasks, right free text
-    createLegendBoxes(fig, taskColors, extraLines=legendExtraLines)
+    createLegendBoxes(fig, taskMap, extraLines=legendExtraLines)
 
     axBottom.set_xlim(0, None)
     axBottom.set_yticks(list(detMap.values()))
     axBottom.set_yticklabels(list(detMap.keys()))
     axBottom.set_xlabel("Time since end integration (s)")
     axBottom.set_ylabel("Detector number #")
-    dayObsStr = dayObsIntToString(expRecord.dayObs)
+    dayObsStr = dayObsIntToString(expRecord.day_obs)
     axBottom.set_title(f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}")
 
     addEventStaircase(axTop, axBottom, timings)
