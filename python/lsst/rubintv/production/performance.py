@@ -45,7 +45,7 @@ from lsst.rubintv.production.baseChannels import BaseButlerChannel
 from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
 from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
-from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.summit.utils.utils import dayObsIntToString, getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
 if TYPE_CHECKING:
@@ -1019,7 +1019,8 @@ def plotAosTaskTimings(
     axBottom.set_yticklabels(list(detMap.keys()))
     axBottom.set_xlabel("Time since end integration (s)")
     axBottom.set_ylabel("Detector number #")
-    axBottom.set_title(f"Task timings for AOS pipeline for {expRecord.id}")
+    dayObsStr = dayObsIntToString(expRecord.dayObs)
+    axBottom.set_title(f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}")
 
     addEventStaircase(axTop, axBottom, timings)
 
