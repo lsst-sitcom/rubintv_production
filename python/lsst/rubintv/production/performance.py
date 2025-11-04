@@ -892,7 +892,9 @@ def addEventStaircase(
             t1,
             yRight + labelDy,
             f"{names[i + 1]} (+{dt:.2f}s)",
-            ha="center",
+            rotation=45,
+            rotation_mode="anchor",
+            ha="left",
             va="bottom",
         )
 
