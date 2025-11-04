@@ -873,31 +873,30 @@ def addEventStaircase(
         axBottom.axvline(t, color="black", linestyle="--", linewidth=1.2, ymin=0, ymax=1)
 
     # arrows + labels between consecutive events
+    labelDy = 0.03 * (yMax - yMin)
     for i in range(n - 1):
         t0, t1 = times[i], times[i + 1]
-        y0, y1 = float(heights[i]), float(heights[i + 1])
+        yRight = float(heights[i + 1])
         dt = t1 - t0
 
+        # Horizontal arrow pointing to the top of the right event line
         axTop.annotate(
             "",
-            xy=(t1, y1),
-            xytext=(t0, y0),
+            xy=(t1, yRight),
+            xytext=(t0, yRight),
             arrowprops=dict(arrowstyle="->", linewidth=1.2),
         )
 
-        midX = (t0 + t1) / 2.0
-        midY = (y0 + y1) / 2.0
+        # Place the label above the right event point (not at the midpoint)
         axTop.text(
-            midX,
-            midY,
+            t1,
+            yRight + labelDy,
             f"{names[i + 1]} (+{dt:.2f}s)",
-            rotation=45,
-            rotation_mode="anchor",
-            ha="left",
+            ha="center",
             va="bottom",
         )
 
-    axTop.set_ylim(0.0, yMax * 1.05)
+    axTop.set_ylim(0.0, yMax + 2 * labelDy)
     axTop.set_yticks([])
     axTop.set_ylabel("Events", labelpad=6)
     axTop.grid(False)
