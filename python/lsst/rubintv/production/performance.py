@@ -68,6 +68,10 @@ AOS_DEFAULT_TASKS: dict[str, str] = {
     "calcZernikesTask": "y",
 }
 
+READOUT_TIME = 3.071  # seconds
+CWFS_SENSOR_NAMES = ("SW0", "SW1")  # these exclude the raft prefix so can't easily come from the camera
+IMAGING_SENSOR_NAMES = ("S00", "S01", "S02", "S10", "S11", "S12", "S20", "S21", "S22")
+
 
 def isVisitType(task: TaskNode) -> bool:
     return "visit" in task.dimensions
@@ -806,40 +810,44 @@ class PerformanceMonitor(BaseButlerChannel):
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
-        self.makeAosPlot(record)
+        # self.makeAosPlot(record)
 
         # callback() is only called for the long-running RA process, so clear
         # the cache so we don't have ever increasing memory usage
         self.perf.data = {}
 
-    def makeAosPlot(self, expRecord: DimensionRecord):
-        oodsData = getIngestTimesForDay(self.efdClient, expRecord.day_obs)
-        cwfsDetNums = sorted(self.cameraControl.CWFS_IDS)
-        imagingDetNums = sorted(self.cameraControl.IMAGING_IDS)
-        wfTimes, sciTimes = getIngestTimes(expRecord, oodsData, cwfsDetNums, imagingDetNums)
 
-        timings = {
-            "Shutter close = readout start": 0,
-            "End readout": 3.07,
-            "WFS ingest start": min(wfTimes.values()),
-            "WFS ingest finished": max(wfTimes.values()),
-            "Imaging ingest start": min(sciTimes.values()),
-            "Imaging ingest finished": max(sciTimes.values()),
-        }
+def makeAosPlot(
+    efdClient: EfdClient,
+    expRecord: DimensionRecord,
+    taskResults: dict[str, TaskResult],
+    cwfsDetNums: list[int],
+) -> None:
+    oodsData = getIngestTimesForDay(efdClient, expRecord.day_obs)
+    wfTimes, sciTimes = getIngestTimes(expRecord, oodsData)
 
-        fig, axTop, axBottom = plotAosTaskTimings(
-            detectorList=cwfsDetNums,
-            taskColors=AOS_DEFAULT_TASKS,
-            results=self.perf.data[expRecord],
-            expRecord=expRecord,
-            timings=timings,
-            legendExtraLines=[
-                "Observation window",
-                "Telemetry update",
-                "Operator intervention",
-            ],
-        )
-        plt.show()
+    timings = {
+        "Shutter close = readout start": 0,
+        "End readout": READOUT_TIME,
+        "WFS ingest start": min(wfTimes.values()),
+        "WFS ingest finished": max(wfTimes.values()),
+        "Imaging ingest start": min(sciTimes.values()),
+        "Imaging ingest finished": max(sciTimes.values()),
+    }
+
+    fig, axTop, axBottom = plotAosTaskTimings(
+        detectorList=cwfsDetNums,
+        taskColors=AOS_DEFAULT_TASKS,
+        results=taskResults,
+        expRecord=expRecord,
+        timings=timings,
+        legendExtraLines=[
+            "Observation window",
+            "Telemetry update",
+            "Operator intervention",
+        ],
+    )
+    plt.show()
 
 
 def addEventStaircase(
@@ -928,15 +936,13 @@ def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str]
 def getIngestTimes(
     expRecord: DimensionRecord,
     oodsData: DataFrame,
-    cwfsDetNums: list[int],
-    imagingDetNums: list[int],
     key="private_kafkaStamp",
 ) -> tuple[dict[str, float], dict[str, float]]:
     endExposure = expRecord.timespan.end.unix_tai
     thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
 
-    wavefronts = thisImageData[thisImageData["sensor"].isin(cwfsDetNums)]
-    sciences = thisImageData[thisImageData["sensor"].isin(imagingDetNums)]
+    wavefronts = thisImageData[thisImageData["sensor"].isin(CWFS_SENSOR_NAMES)]
+    sciences = thisImageData[thisImageData["sensor"].isin(IMAGING_SENSOR_NAMES)]
 
     wfTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in wavefronts.iterrows()}
     sciTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in sciences.iterrows()}
