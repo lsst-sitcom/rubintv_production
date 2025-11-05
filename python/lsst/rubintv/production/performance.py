@@ -889,6 +889,16 @@ def addEventStaircase(
         axTop.vlines(t, 0.0, float(heights[i]), linestyles="--", linewidth=1.2)
         axBottom.axvline(t, color="black", linestyle="--", linewidth=1.2, ymin=0, ymax=1)
 
+    axTop.text(
+        times[0],
+        1,
+        f"{names[0]} (+{times[0]:.2f}s)",
+        rotation=45,
+        rotation_mode="anchor",
+        ha="left",
+        va="bottom",
+    )
+
     # arrows + labels between consecutive events
     labelDy = 0.03 * (yMax - yMin)
     for i in range(n - 1):
