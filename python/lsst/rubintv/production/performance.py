@@ -817,6 +817,23 @@ class PerformanceMonitor(BaseButlerChannel):
         self.perf.data = {}
 
 
+def getIngestTimes(
+    expRecord: DimensionRecord,
+    oodsData: DataFrame,
+    key="private_kafkaStamp",
+) -> tuple[dict[str, float], dict[str, float]]:
+    endExposure = expRecord.timespan.end.unix_tai
+    thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
+
+    wavefronts = thisImageData[thisImageData["sensor"].isin(CWFS_SENSOR_NAMES)]
+    sciences = thisImageData[thisImageData["sensor"].isin(IMAGING_SENSOR_NAMES)]
+
+    wfTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in wavefronts.iterrows()}
+    sciTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in sciences.iterrows()}
+
+    return wfTimes, sciTimes
+
+
 def makeAosPlot(
     efdClient: EfdClient,
     expRecord: DimensionRecord,
@@ -884,7 +901,7 @@ def addEventStaircase(
             "",
             xy=(t1, yRight),
             xytext=(t0, yRight),
-            arrowprops=dict(arrowstyle="->", linewidth=1.2),
+            arrowprops=dict(arrowstyle="<->", linewidth=1.2),
         )
 
         # Place the label above the right event point (not at the midpoint)
@@ -937,23 +954,6 @@ def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str]
             handlelength=0.0,
             handletextpad=0.0,
         )
-
-
-def getIngestTimes(
-    expRecord: DimensionRecord,
-    oodsData: DataFrame,
-    key="private_kafkaStamp",
-) -> tuple[dict[str, float], dict[str, float]]:
-    endExposure = expRecord.timespan.end.unix_tai
-    thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
-
-    wavefronts = thisImageData[thisImageData["sensor"].isin(CWFS_SENSOR_NAMES)]
-    sciences = thisImageData[thisImageData["sensor"].isin(IMAGING_SENSOR_NAMES)]
-
-    wfTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in wavefronts.iterrows()}
-    sciTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in sciences.iterrows()}
-
-    return wfTimes, sciTimes
 
 
 def getIngestTimesForDay(client: EfdClient, dayObs: int) -> DataFrame:
