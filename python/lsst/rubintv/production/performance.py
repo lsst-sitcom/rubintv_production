@@ -67,7 +67,6 @@ AOS_DEFAULT_TASKS: dict[str, str] = {
     "calcZernikesTask": "y",
 }
 
-READOUT_TIME = 3.071  # seconds
 CWFS_SENSOR_NAMES = ("SW0", "SW1")  # these exclude the raft prefix so can't easily come from the camera
 IMAGING_SENSOR_NAMES = ("S00", "S01", "S02", "S10", "S11", "S12", "S20", "S21", "S22")
 
@@ -863,14 +862,34 @@ def makeAosPlot(
 ) -> None:
     wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
 
-    timings = {
-        "Shutter close = readout start": 0,
-        "End readout": READOUT_TIME,
+    readoutDelay = getEndReadoutTime(efdClient, expRecord)
+    zernikeDelivery = taskResults["calcZernikesTask"].endTimeAfterShutterClose
+    isrStart = taskResults["isr"].startTimeAfterShutterClose
+    wfIngestStart = min(wfTimes.values())
+    wfIngestEnd = max(wfTimes.values())
+    calcZernMean = np.nanmedian(list(taskResults["calcZernikesTask"].detectorTimings.values()))
+    isrTimes = taskResults["isr"].detectorTimings  # this includes the imaging chips
+    cwfsIsrTimes = [isrTimes[detNum] for detNum in cwfsDetNums]
+    isrMean = np.nanmedian(cwfsIsrTimes)
+
+    timings = {  # for the staircase plot
+        "Readout start": 0,
+        "Readout (effective)": readoutDelay,
         "WFS ingest start": min(wfTimes.values()),
         "WFS ingest finished": max(wfTimes.values()),
-        "Imaging ingest start": min(sciTimes.values()),
         "Imaging ingest finished": max(sciTimes.values()),
     }
+
+    legendItems = {  # for the legend box
+        "Readout (effective)": readoutDelay,
+        "WF ingestion duration": (wfIngestEnd - wfIngestStart),
+        "First WF available to isr start": (isrStart - wfIngestStart),
+        "Mean isr runtime": isrMean,
+        "Mean calcZernikes runtime": calcZernMean,
+        "Readout end to isr start": (isrStart - readoutDelay),
+        "Shutter close to zernikes": zernikeDelivery,
+    }
+    legendExtraLines = [f"{k}: {v:.2f}s" for k, v in legendItems.items()]
 
     fig, axTop, axBottom = plotAosTaskTimings(
         detectorList=cwfsDetNums,
@@ -878,11 +897,9 @@ def makeAosPlot(
         results=taskResults,
         expRecord=expRecord,
         timings=timings,
-        legendExtraLines=[
-            "Observation window",
-            "Telemetry update",
-            "Operator intervention",
-        ],
+        legendExtraLines=legendExtraLines,
+        figsize=(12, 8),
+        heightRatios=(1, 2.5),
     )
     plt.show()
 
