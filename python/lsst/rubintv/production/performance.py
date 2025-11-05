@@ -926,34 +926,42 @@ def addEventStaircase(
     axTop.tick_params(axis="x", top=False)
 
 
-def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str] | None = None) -> None:
-    """Two figure-level legends at the bottom: left = colored tasks, right =
-    free text.
-    """
-    # Left: colored task entries (single vertical column)
-    colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
-    fig.legend(
-        handles=colorHandles,
-        loc="upper right",
-        bbox_to_anchor=(0.97, 0.95),  # figure coords
-        frameon=False,
-        ncol=1,
-        borderaxespad=0.0,
-    )
+def createLegendBoxes(
+    axTop: Axes,
+    colors: dict[str, str],
+    extraLines: list[str] | None = None,
+) -> None:
+    """Two axis-anchored legends at the bottom-right of *axTop*.
 
-    # Right: text-only entries
+    Left block = colored task entries; right block = free-text lines.
+    Both are placed relative to axTop's axes coordinates (0..1).
+    """
+    # Right: text-only entries (anchored exactly at bottom-right)
     if extraLines:
         textHandles = [Patch(facecolor="none", edgecolor="none", label=line) for line in extraLines]
-        fig.legend(
+        axTop.legend(
             handles=textHandles,
-            loc="upper right",
-            bbox_to_anchor=(0.8, 0.95),  # figure coords
+            loc="lower right",
+            bbox_to_anchor=(1.0, 0.0),  # bottom-right corner of axTop
+            bbox_transform=axTop.transAxes,
             frameon=False,
             ncol=1,
             borderaxespad=0.0,
             handlelength=0.0,
             handletextpad=0.0,
         )
+
+    # Left: colored task entries (placed just to the *left* of the text legend)
+    colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
+    axTop.legend(
+        handles=colorHandles,
+        loc="lower right",
+        bbox_to_anchor=(0.80, 0.0),  # shift left so it doesn't overlap the text block
+        bbox_transform=axTop.transAxes,
+        frameon=False,
+        ncol=1,
+        borderaxespad=0.0,
+    )
 
 
 def getIngestTimesForDay(client: EfdClient, dayObs: int) -> DataFrame:
@@ -1020,20 +1028,27 @@ def plotAosTaskTimings(
     if taskMins.get("isr", None) is not None:
         timings["ISR Start"] = taskMins["isr"]
 
-    # legends beneath plot: left colored tasks, right free text
-    createLegendBoxes(fig, taskMap, extraLines=legendExtraLines)
+    # legends anchored to bottom-right of the TOP axis
+    createLegendBoxes(axTop, taskMap, extraLines=legendExtraLines)
 
     axBottom.set_xlim(0, None)
     axBottom.set_yticks(list(detMap.values()))
     axBottom.set_yticklabels(list(detMap.keys()))
     axBottom.set_xlabel("Time since end integration (s)")
     axBottom.set_ylabel("Detector number #")
+
+    # move title to very bottom, centered under the x-axis of the bottom plot
     dayObsStr = dayObsIntToString(expRecord.day_obs)
-    axBottom.set_title(f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}")
+    bottomTitle = f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}"
+
+    # Clear any axes titles and draw a figure-level bottom title
+    axBottom.set_title("")
+    axTop.set_title("")
+    fig.text(0.5, 0.02, bottomTitle, ha="center", va="bottom")
 
     addEventStaircase(axTop, axBottom, timings)
 
-    # leave space at the bottom for the figure-level legends
-    plt.tight_layout(rect=(0, 0.08, 1, 0.94))
-    plt.subplots_adjust(bottom=0.28)
+    # Layout: no extra bottom legend space needed; keep room for bottom title
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+    fig.subplots_adjust(bottom=0.14)
     return fig, axTop, axBottom
