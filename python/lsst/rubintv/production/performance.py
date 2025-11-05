@@ -497,6 +497,20 @@ class TaskResult:
             return None
         return max(log[-1].asctime for log in self.logs.values())
 
+    @property
+    def endTimeAfterShutterClose(self) -> float | None:
+        """Elapsed time of the end of the last quantum in the set of logs since
+        shutter close
+        """
+        return calcTimeSinceShutterClose(self.record, self, startOrEnd="end")
+
+    @property
+    def startTimeAfterShutterClose(self) -> float | None:
+        """Elapsed time of the start of the first quantum in the set of logs
+        since shutter close
+        """
+        return calcTimeSinceShutterClose(self.record, self, startOrEnd="start")
+
     def printLog(self, detector: int | None, differentialMode: bool = True) -> None:
         """Print the per-line log times for a task.
 
