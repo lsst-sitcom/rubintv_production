@@ -946,21 +946,34 @@ def createLegendBoxes(
         frameon=False,
         ncol=1,
         borderaxespad=0.0,
+        fontsize="medium",
     )
 
-    # Left (middle of ax): text-only entries (anchored exactly at bottom-right)
     if extraLines:
+        # Force a draw so we can compute the first legend's bbox.
+        fig = axTop.figure
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        bboxDisplay = tasksLegend.get_window_extent(renderer=renderer)
+        bboxAxes = bboxDisplay.transformed(axTop.transAxes.inverted())
+
+        # Anchor the right edge of the text legend to the left edge of the
+        # tasks legend.
+        gapAxes = 0.02  # small horizontal gap in axes coords to avoid touching
+        anchorX = max(bboxAxes.x0 - gapAxes, 0.0)
+
         textHandles = [Patch(facecolor="none", edgecolor="none", label=line) for line in extraLines]
         axTop.legend(
             handles=textHandles,
             loc="lower right",
-            bbox_to_anchor=(0.80, 0.0),  # shift left so it doesn't overlap the legend
+            bbox_to_anchor=(anchorX, 0.0),
             bbox_transform=axTop.transAxes,
             frameon=False,
             ncol=1,
             borderaxespad=0.0,
             handlelength=0.0,
             handletextpad=0.0,
+            fontsize="medium",
         )
         # Re-add the first legend so both legends are visible.
         axTop.add_artist(tasksLegend)
