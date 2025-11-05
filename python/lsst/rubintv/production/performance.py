@@ -903,6 +903,11 @@ def addEventStaircase(
     axTop.set_ylabel("Events", labelpad=6)
     axTop.grid(False)
 
+    # Remove top x-axis and side axis lines
+    for spine in ("top", "left", "right"):
+        axTop.spines[spine].set_visible(False)
+    axTop.tick_params(axis="x", top=False)
+
 
 def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str] | None = None) -> None:
     """Two figure-level legends at the bottom: left = colored tasks, right =
