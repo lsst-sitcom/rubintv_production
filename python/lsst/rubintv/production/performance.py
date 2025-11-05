@@ -936,13 +936,25 @@ def createLegendBoxes(
     Left block = colored task entries; right block = free-text lines.
     Both are placed relative to axTop's axes coordinates (0..1).
     """
-    # Right: text-only entries (anchored exactly at bottom-right)
+    # Left: colored task entries (placed just to the *left* of the text legend)
+    colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
+    tasksLegend = axTop.legend(
+        handles=colorHandles,
+        loc="lower right",
+        bbox_to_anchor=(1.0, 0.0),  # bottom-right corner of axTop
+        bbox_transform=axTop.transAxes,
+        frameon=False,
+        ncol=1,
+        borderaxespad=0.0,
+    )
+
+    # Left (middle of ax): text-only entries (anchored exactly at bottom-right)
     if extraLines:
         textHandles = [Patch(facecolor="none", edgecolor="none", label=line) for line in extraLines]
         axTop.legend(
             handles=textHandles,
             loc="lower right",
-            bbox_to_anchor=(1.0, 0.0),  # bottom-right corner of axTop
+            bbox_to_anchor=(0.80, 0.0),  # shift left so it doesn't overlap the legend
             bbox_transform=axTop.transAxes,
             frameon=False,
             ncol=1,
@@ -950,18 +962,8 @@ def createLegendBoxes(
             handlelength=0.0,
             handletextpad=0.0,
         )
-
-    # Left: colored task entries (placed just to the *left* of the text legend)
-    colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
-    axTop.legend(
-        handles=colorHandles,
-        loc="lower right",
-        bbox_to_anchor=(0.80, 0.0),  # shift left so it doesn't overlap the text block
-        bbox_transform=axTop.transAxes,
-        frameon=False,
-        ncol=1,
-        borderaxespad=0.0,
-    )
+        # Re-add the first legend so both legends are visible.
+        axTop.add_artist(tasksLegend)
 
 
 def getIngestTimesForDay(client: EfdClient, dayObs: int) -> DataFrame:
