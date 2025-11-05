@@ -880,6 +880,8 @@ def makeAosPlot(
         "Imaging ingest finished": max(sciTimes.values()),
     }
 
+    assert isrStart is not None, "isrStart should not be None"
+
     legendItems = {  # for the legend box
         "Readout (effective)": readoutDelay,
         "WF ingestion duration": (wfIngestEnd - wfIngestStart),
