@@ -912,8 +912,8 @@ def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str]
     colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
     fig.legend(
         handles=colorHandles,
-        loc="lower left",
-        bbox_to_anchor=(0.03, 0.02),  # figure coords
+        loc="upper right",
+        bbox_to_anchor=(0.97, 0.95),  # figure coords
         frameon=False,
         ncol=1,
         borderaxespad=0.0,
@@ -924,8 +924,8 @@ def createLegendBoxes(fig: Figure, colors: dict[str, str], extraLines: list[str]
         textHandles = [Patch(facecolor="none", edgecolor="none", label=line) for line in extraLines]
         fig.legend(
             handles=textHandles,
-            loc="lower right",
-            bbox_to_anchor=(0.97, 0.02),  # figure coords
+            loc="upper right",
+            bbox_to_anchor=(0.8, 0.95),  # figure coords
             frameon=False,
             ncol=1,
             borderaxespad=0.0,
