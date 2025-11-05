@@ -50,7 +50,6 @@ from lsst.utils.plotting.figures import make_figure
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
-    from pandas import DataFrame
 
     from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
@@ -831,11 +830,19 @@ class PerformanceMonitor(BaseButlerChannel):
         self.perf.data = {}
 
 
+def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
+    data = getEfdData(client, "lsst.sal.MTCamera.logevent_endReadout", expRecord=expRecord, postPadding=30)
+    timestamp = data[data["imageName"] == expRecord.obs_id]["timestampEndOfReadout"].iloc[0]
+    return timestamp - expRecord.timespan.end.unix_tai
+
+
 def getIngestTimes(
+    client: EfdClient,
     expRecord: DimensionRecord,
-    oodsData: DataFrame,
     key="private_kafkaStamp",
 ) -> tuple[dict[str, float], dict[str, float]]:
+    oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
+
     endExposure = expRecord.timespan.end.unix_tai
     thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
 
@@ -854,8 +861,7 @@ def makeAosPlot(
     taskResults: dict[str, TaskResult],
     cwfsDetNums: list[int],
 ) -> None:
-    oodsData = getIngestTimesForDay(efdClient, expRecord.day_obs)
-    wfTimes, sciTimes = getIngestTimes(expRecord, oodsData)
+    wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
 
     timings = {
         "Shutter close = readout start": 0,
@@ -977,7 +983,8 @@ def createLegendBoxes(
         # Force a draw so we can compute the first legend's bbox.
         fig = axTop.figure
         fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
+        # type ignore because get_renderer() only exists with Agg backend
+        renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]
         bboxDisplay = tasksLegend.get_window_extent(renderer=renderer)
         bboxAxes = bboxDisplay.transformed(axTop.transAxes.inverted())
 
@@ -1001,10 +1008,6 @@ def createLegendBoxes(
         )
         # Re-add the first legend so both legends are visible.
         axTop.add_artist(tasksLegend)
-
-
-def getIngestTimesForDay(client: EfdClient, dayObs: int) -> DataFrame:
-    return getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", dayObs=dayObs)
 
 
 def plotAosTaskTimings(
