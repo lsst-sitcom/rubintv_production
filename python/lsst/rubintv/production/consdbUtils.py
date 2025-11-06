@@ -306,9 +306,6 @@ class ConsDBPopulator:
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        if allowUpdate and "visit_id" not in values:  # required key if updating
-            values["visit_id"] = expRecord.id
-
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
