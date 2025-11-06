@@ -38,7 +38,7 @@ from requests import HTTPError
 
 from lsst.afw.image import ExposureSummaryStats  # type: ignore
 from lsst.afw.table import ExposureCatalog  # type: ignore
-from lsst.daf.butler import Butler, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
@@ -289,11 +289,15 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         detectorNum: int,
         allowUpdate: bool = False,
-    ) -> None:
-        summaryStats = butler.get(
-            "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
-        )
+    ) -> bool:
+        try:
+            summaryStats = butler.get(
+                "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
+            )
+        except DatasetNotFoundError:
+            return False
         self.populateCcdVisitRow(expRecord, detectorNum, summaryStats, allowUpdate=allowUpdate)
+        return True
 
     def populateCcdVisitRow(
         self,
@@ -355,15 +359,19 @@ class ConsDBPopulator:
 
     def populateAllCcdVisitRowsWithButler(
         self, butler: Butler, expRecord: DimensionRecord, createRows: bool = False, allowUpdate: bool = False
-    ) -> None:
+    ) -> int:
         if createRows:
             self._createExposureRow(expRecord, allowUpdate=allowUpdate)
             self._createCcdExposureRows(expRecord, allowUpdate=allowUpdate)
             print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id})")
 
         detectorNums = getDetectorIds(expRecord.instrument)
+        nFillled = 0
         for detectorNum in detectorNums:
-            self.populateCcdVisitRowWithButler(butler, expRecord, detectorNum, allowUpdate=allowUpdate)
+            nFillled += self.populateCcdVisitRowWithButler(
+                butler, expRecord, detectorNum, allowUpdate=allowUpdate
+            )
+        return nFillled
 
     def populateVisitRowWithButler(
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False
