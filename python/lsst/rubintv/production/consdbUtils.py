@@ -372,13 +372,12 @@ class ConsDBPopulator:
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
         visitSummary = butler.get("preliminary_visit_summary", visit=expRecord.id)
-        instrument = expRecord.instrument
-        self.populateVisitRow(visitSummary, instrument, allowUpdate=allowUpdate)
+        self.populateVisitRow(visitSummary, expRecord, allowUpdate=allowUpdate)
 
     def populateVisitRow(
         self, visitSummary: ExposureCatalog, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
-        instrument = expRecord.instrument
+        instrument: str = expRecord.instrument
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
             location = self.locationConfig.location
             logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
