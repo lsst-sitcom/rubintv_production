@@ -423,7 +423,7 @@ def buildPipelines(
     aosFileTIE = locationConfig.aosLSSTCamPipelineFileTie
     aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
     aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
-    aoRefitWcsFile = locationConfig.aosLSSTCamRefitWcsPipelineFile
+    aosRefitWcsFile = locationConfig.aosLSSTCamRefitWcsPipelineFile
     aiDonutFile = locationConfig.aosLSSTCamAiDonutPipelineFile
     tartsFile = locationConfig.aosLSSTCamTartsPipelineFile
 
@@ -462,7 +462,7 @@ def buildPipelines(
             butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_REFIT_WCS"] = PipelineComponents(
-            butler.registry, aoRefitWcsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+            butler.registry, aosRefitWcsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_AI_DONUT"] = PipelineComponents(
             butler.registry, aiDonutFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
