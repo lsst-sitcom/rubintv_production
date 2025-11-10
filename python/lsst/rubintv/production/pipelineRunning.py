@@ -29,6 +29,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
+from astropy.time import Time
 from galsim.zernike import zernikeRotMatrix
 
 from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph, TaskFactory
@@ -724,6 +725,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dRef.dataId)
+
+        if zernikes.meta is None:
+            zernikes.meta = {}
+        zernikes.meta["shutter_to_zernike_time"] = float((Time.now() - expRecord.timespan.end).sec)
 
         rowSums = []
         zkOcs = zernikes["zk_OCS"]
