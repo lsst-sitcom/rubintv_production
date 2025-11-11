@@ -682,6 +682,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # unnecessary race condition, so it's better to recalculate it here.
         visitRecord = dRef.dataId.records["visit"]
         assert visitRecord is not None, "visitRecord is None, this shouldn't be possible"
+        if zkTable.meta is None:  # do the timing before the EFD query
+            zkTable.meta = {}
+        zkTable.meta["shutter_to_zernike_time"] = float((Time.now() - visitRecord.timespan.end).sec)
+
         data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=visitRecord)
         physicalRotation = np.nanmean(data["actualPosition"])
 
