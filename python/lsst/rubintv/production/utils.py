@@ -578,9 +578,6 @@ class LocationConfig:
     def getSfmPipelineFile(self, instrument: str) -> str:
         return self._config["sfmPipelineFile"][instrument]
 
-    def getAosPipelineFile(self, instrument) -> str:
-        return self._config["aosPipelineFile"][instrument]
-
     @cached_property
     def aosLSSTCamPipelineFileDanish(self) -> str:
         return self._config["aosLSSTCamPipelineFileDanish"]
@@ -600,6 +597,18 @@ class LocationConfig:
     @cached_property
     def aosDataDir(self) -> str:
         return self._config["aosDataDir"]
+
+    @cached_property
+    def aosLSSTCamRefitWcsPipelineFile(self) -> str:
+        return self._config["aosLSSTCamRefitWcsPipelineFile"]
+
+    @cached_property
+    def aosLSSTCamAiDonutPipelineFile(self) -> str:
+        return self._config["aosLSSTCamAiDonutPipelineFile"]
+
+    @cached_property
+    def aosLSSTCamTartsPipelineFile(self) -> str:
+        return self._config["aosLSSTCamTartsPipelineFile"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:
