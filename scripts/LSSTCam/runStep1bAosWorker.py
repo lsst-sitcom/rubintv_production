@@ -46,6 +46,7 @@ butler = Butler.from_config(
     collections=[
         f"{instrument}/defaults",
         locationConfig.getOutputChain(instrument),
+        "u/gmegias/intrinsic_aberrations_collection_temp",
     ],
     writeable=True,
 )
