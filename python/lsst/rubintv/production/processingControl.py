@@ -604,6 +604,7 @@ class HeadProcessController:
             if self.locationConfig.location == "bts":
                 # five on a dice pattern in the middle, plus AOS chips
                 self.focalPlaneControl.setWavefrontOn()
+                self.focalPlaneControl.setAllImagingOff()
                 self.focalPlaneControl.setRaftOn("R22")
                 self.focalPlaneControl.setRaftOn("R33")
                 self.focalPlaneControl.setRaftOn("R11")
