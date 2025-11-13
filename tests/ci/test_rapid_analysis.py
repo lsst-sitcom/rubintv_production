@@ -223,7 +223,7 @@ class TestConfig:
             TestScript(
                 "scripts/LSSTCam/runPlotter.py",
                 ["usdf_testing"],
-                display_on_pass=True,
+                display_on_pass=False,
                 tee_output=False,
             ),
             TestScript(
@@ -236,7 +236,7 @@ class TestConfig:
                 "scripts/LSSTCam/runZernikePredictionPlotting.py",
                 ["usdf_testing"],
                 display_on_pass=True,
-                tee_output=True,
+                tee_output=False,
             ),
             TestScript(
                 "scripts/LSSTCam/runRadialPlotting.py",
@@ -325,7 +325,7 @@ class TestConfig:
                 "scripts/LSSTCam/runOneOffExpRecord.py",
                 ["usdf_testing"],
                 tee_output=False,
-                display_on_pass=True,
+                display_on_pass=False,
             ),
             TestScript(
                 "scripts/LSSTCam/runOneOffPostIsr.py",
