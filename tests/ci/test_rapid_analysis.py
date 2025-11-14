@@ -1170,6 +1170,7 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
         os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
+        os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
 
         # Verify environment settings
         if getDoRaise() is not True:
