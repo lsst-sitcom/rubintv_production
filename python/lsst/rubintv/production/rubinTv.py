@@ -48,7 +48,7 @@ except ImportError:
 
 from lsst.atmospec.utils import isDispersedExp
 from lsst.summit.utils import NightReport
-from lsst.summit.utils.utils import getCurrentDayObs_int
+from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 from .baseChannels import BaseButlerChannel
 from .plotting import latissNightReportPlots
@@ -445,7 +445,7 @@ class NightReportChannel(BaseButlerChannel):
         # easily achieved as we need to reinstantiate a report as each day
         # rolls over anyway.
 
-        self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
+        self.dayObs = dayObs if dayObs else getCurrentDayObsInt()
 
         # always attempt to resume on init
         saveFile = self.getSaveFile()
@@ -467,7 +467,7 @@ class NightReportChannel(BaseButlerChannel):
         # TODO: add final plotting of plots which live in the night reporter
         # class here somehow, perhaps by moving them to their own plot classes.
 
-        self.dayObs = getCurrentDayObs_int()
+        self.dayObs = getCurrentDayObsInt()
         self.saveFile = self.getSaveFile()
         self.log.info(f"Starting new report for dayObs {self.dayObs}")
         self.report = NightReport(self.butler, self.dayObs)

@@ -32,7 +32,7 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.daf.butler.registry import ConflictingDefinitionError
 from lsst.summit.extras.animation import animateDay
 from lsst.summit.utils.bestEffort import BestEffortIsr
-from lsst.summit.utils.utils import getCurrentDayObs_int
+from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
@@ -294,7 +294,7 @@ class RubinTvBackgroundService:
             raiseIf(self.doRaise, e, self.log)
 
         finally:
-            self.dayObs = getCurrentDayObs_int()
+            self.dayObs = getCurrentDayObsInt()
 
     def runEndOfDayManual(self, dayObs: int) -> None:
         """Manually run the end of day routine for a specific dayObs by hand.
@@ -323,7 +323,7 @@ class RubinTvBackgroundService:
             True.
         """
         lastRun = time.time()
-        self.dayObs = getCurrentDayObs_int()
+        self.dayObs = getCurrentDayObsInt()
 
         while True:
             try:

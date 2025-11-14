@@ -32,7 +32,7 @@ import matplotlib.font_manager
 from PIL import Image
 from PIL.ExifTags import TAGS
 
-from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_datetime, getCurrentDayObs_int
+from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsDatetime, getCurrentDayObsInt
 from lsst.utils.iteration import ensure_iterable
 
 from .uploaders import MultiUploader, Uploader
@@ -708,7 +708,7 @@ class AllSkyMovieChannel:
             The raw data dir for today.
         """
         # NB lower case %y as dates are like YYMMDD
-        today = getCurrentDayObs_datetime().strftime("%y%m%d")
+        today = getCurrentDayObsDatetime().strftime("%y%m%d")
         return os.path.join(self.rootDataPath, f"ut{today}")
 
     def runDay(self, dayObsInt: int, todaysDataDir: str) -> None:
@@ -750,7 +750,7 @@ class AllSkyMovieChannel:
                 dirs = _getSortedSubDirs(self.rootDataPath)
                 mostRecentDir = dirs[-1]
                 todaysDataDir = self.getCurrentRawDataDir()
-                dayObsInt = getCurrentDayObs_int()
+                dayObsInt = getCurrentDayObsInt()
                 self.log.debug(f"mostRecentDir={mostRecentDir}, todaysDataDir={todaysDataDir}")
                 if mostRecentDir == todaysDataDir:
                     self.log.info(f"Starting day's animation for {todaysDataDir}.")

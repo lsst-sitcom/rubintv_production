@@ -29,7 +29,7 @@ import numpy as np
 from astro_metadata_translator import ObservationInfo
 from astropy.time import Time
 
-from lsst.summit.utils.utils import dayObsIntToString
+from lsst.summit.utils.dateTime import dayObsIntToString
 
 try:
     from lsst_efd_client import merge_packed_time_series as mpts

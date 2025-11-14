@@ -715,7 +715,7 @@ class ProcessManager:
 
         try:
             with conditional_redirect(test_script.tee_output, f_stdout, f_stderr, log_handler, root_logger):
-                with patch("lsst.summit.utils.utils.getCurrentDayObs_int", return_value=20240101):
+                with patch("lsst.summit.utils.dateTime.getCurrentDayObsInt", return_value=20240101):
                     with open(script_path, "r") as script_file:
                         script_content = script_file.read()
                     exec_globals = {

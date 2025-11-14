@@ -1,10 +1,10 @@
-from lsst.summit.utils.utils import getCurrentDayObs_int
+from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 
 def main():
     # Check if the function is patched correctly
-    mocked_value = getCurrentDayObs_int()
-    print(f"Mock function output via patched getCurrentDayObs_int: {mocked_value}")
+    mocked_value = getCurrentDayObsInt()
+    print(f"Mock function output via patched getCurrentDayObsInt: {mocked_value}")
 
     expected = 20240101
     if mocked_value != expected:

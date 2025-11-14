@@ -30,11 +30,12 @@ from functools import partial
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, Callable
 
+from lsst.summit.utils.dateTime import getCurrentDayObsInt
 from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
 from lsst.summit.utils.guiders.plotting import GuiderPlotter
 from lsst.summit.utils.guiders.reading import GuiderReader
 from lsst.summit.utils.guiders.tracking import GuiderStarTracker
-from lsst.summit.utils.utils import getCameraFromInstrumentName, getCurrentDayObs_int
+from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
 from .utils import (
@@ -254,7 +255,7 @@ class GuiderWorker(BaseButlerChannel):
         dayObs: int = record.day_obs
         seqNum: int = record.seq_num
 
-        timeout = 30 if abs(getCurrentDayObs_int() - dayObs) <= 1 else 0  # don't wait for historical data
+        timeout = 30 if abs(getCurrentDayObsInt() - dayObs) <= 1 else 0  # don't wait for historical data
         nIngested = waitForIngest(len(self.detectorIds), timeout, record, self.butler)
         if nIngested == 0:
             self.log.warning(f"No guider raws ingested for {dataId=}, skipping")

@@ -45,7 +45,7 @@ import yaml
 from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
-from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int
+from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsInt
 from lsst.utils import getPackageDir
 
 from .channels import PREFIXES
@@ -786,7 +786,7 @@ def hasDayRolledOver(dayObs: int, logger: Logger | None = None) -> bool:
     """
     if not logger:
         logger = logging.getLogger(__name__)
-    currentDay = getCurrentDayObs_int()
+    currentDay = getCurrentDayObsInt()
     if currentDay == dayObs:
         return False
     elif currentDay == dayObs + 1:
