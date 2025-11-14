@@ -721,12 +721,10 @@ class HeadProcessController:
             aosOverride = _aosPipeline.decode()
             if aosOverride != self.currentAosPipeline:
                 # comes as 'tie' or 'danish'
-                aosOverride = f"AOS_{aosOverride.upper()}"
-                aosFamOverride = f"AOS_FAM_{aosOverride.upper()}"
                 # Note: always keep currentAosPipeline and
                 # currentAosFamPipeline as the same flavour
-                self.currentAosPipeline = aosOverride
-                self.currentAosFamPipeline = aosFamOverride
+                self.currentAosPipeline = f"AOS_{aosOverride.upper()}"
+                self.currentAosFamPipeline = f"AOS_FAM_{aosOverride.upper()}"
                 self.log.info(f"Now running AOS: {self.currentAosPipeline}")
             else:
                 self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
