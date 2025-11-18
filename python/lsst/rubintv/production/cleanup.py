@@ -28,6 +28,7 @@ from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 
+from lsst.daf.butler import Butler
 from lsst.summit.utils.dateTime import getCurrentDayObsInt, offsetDayObs
 
 from .highLevelTools import deleteAllSkyStills, deleteNonFinalAllSkyMovies, syncBuckets
@@ -59,14 +60,59 @@ class TempFileCleaner:
             "LSSTCamPlots": Path(locationConfig.plotPath) / "LSSTCam",
         }
         self.s3DirsToDelete = ("binnedImages/",)  # NB: must end in the trailing backslash
-        self.keepDays = 2  # 2 means curent dayObs and the day before
+        self.keepDaysS3temp = 2  # 2 means curent dayObs and the day before
+        self.keepDaysPixelProducts = 14  # keep the last two weeks for pixel products for now
+
+        self.butler = Butler.from_config(
+            locationConfig.lsstCamButlerPath,
+            instrument="LSSTCam",
+            collections=[
+                "LSSTCam/defaults",
+                locationConfig.getOutputChain("LSSTCam"),
+            ],
+            writeable=True,
+        )
+
+    def deletePixelProducts(self) -> None:
+        """Delete old pixel data products for LSSTCam."""
+        currentDayObs = getCurrentDayObsInt()
+        deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysPixelProducts)
+
+        where = f"exposure.day_obs<={deleteBefore} AND instrument='LSSTCam'"
+        for product in [
+            "post_isr_image",
+        ]:
+            self.log.info(f"Querying for {product}s to delete before {deleteBefore}...")
+            allDRefs = self.butler.query_datasets(
+                product,
+                where=where,
+                limit=1_000_000_000,
+                collections=self.locationConfig.getOutputChain("LSSTCam"),
+            )
+            days = sorted(set(int(d.dataId["day_obs"]) for d in allDRefs))
+            self.log.info(f"Found {len(allDRefs)} {product}s across {len(days)} days to delete")
+            dayMap: dict[int, list] = {d: [] for d in days}
+            for d in allDRefs:
+                dayMap[int(d.dataId["day_obs"])].append(d)
+
+            total = 0
+            for dayObs, refs in dayMap.items():
+                self.log.info(f"Removing {len(refs)} {product}s for {dayObs=}...")
+                self.butler.pruneDatasets(
+                    refs,
+                    disassociate=True,
+                    unstore=True,
+                    purge=True,
+                )
+                total += len(refs)
+                self.log.info(f"Deletion for {product} {100 * (total / len(allDRefs)):.1f}% complete")
 
     def deleteDirectories(self) -> None:
-        """Delete all specified NFS directories that are older than `keepDays`
-        days.
+        """Delete all specified NFS directories that are older than
+        `keepDaysS3temp` days.
         """
         currentDayObs = getCurrentDayObsInt()
-        deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
+        deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysS3temp)
 
         for locationName, dirPath in self.nfsDirsToDelete.items():
             self.log.info(f"Deleting old data from subdirectories in {dirPath}:")
@@ -93,11 +139,11 @@ class TempFileCleaner:
                 raiseIf(self.doRaise, e, self.log, msg)
 
     def deleteS3Directories(self) -> None:
-        """Delete all specified S3 directories that are older than `keepDays`
-        days.
+        """Delete all specified S3 directories that are older than
+        `keepDaysS3temp` days.
         """
         currentDayObs = getCurrentDayObsInt()
-        deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
+        deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysS3temp)
 
         basePath = getBasePath(self.locationConfig)
         for locationName in self.s3DirsToDelete:
@@ -158,6 +204,7 @@ class TempFileCleaner:
 
     def runEndOfDay(self) -> None:
         """Run all the functions at the end of the day to clean up."""
+        self.deletePixelProducts()
         self.deleteDirectories()
         self.deleteS3Directories()
         self.cleanupBuckets()
