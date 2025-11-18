@@ -79,7 +79,9 @@ class TempFileCleaner:
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysPixelProducts)
 
         where = f"exposure.day_obs<={deleteBefore} AND instrument='LSSTCam'"
-        for product in ["post_isr_image", "preliminary_visit_image"]:
+        for product in [
+            "post_isr_image",
+        ]:  # "preliminary_visit_image"]:
             self.log.info(f"Querying for {product}s to delete before {deleteBefore}...")
             allDRefs = self.butler.query_datasets(
                 product,
