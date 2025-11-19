@@ -694,8 +694,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         detectorId: int = detector.id  # hence .id rather than .getId()
 
         zkTable = zkTable[zkTable["label"] == "average"]
-        zkColsHere = [col for col in zkTable.colnames if col.startswith("Z")]
-        nollIndicesHere = np.asarray([int(col.removeprefix("Z")) for col in zkColsHere], dtype=int)
+        zkColsHere = zkTable.meta["opd_columns"]
+        nollIndicesHere = np.asarray(zkTable.meta["noll_indices"])
         # Grab Zernike values, convert to dense array, save
         zkSparse = zkTable[zkColsHere].to_pandas().values[0]
         zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
