@@ -75,6 +75,11 @@ class TempFileCleaner:
 
     def deletePixelProducts(self) -> None:
         """Delete old pixel data products for LSSTCam."""
+        site = self.locationConfig.location
+        if site.lower() not in ("summit", "bts", "tts"):
+            self.log.info(f"Pixel products are only deleted at summit/BTS/TTS sites, not {site}, skipping")
+            return
+
         currentDayObs = getCurrentDayObsInt()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysPixelProducts)
 
