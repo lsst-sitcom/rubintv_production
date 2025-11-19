@@ -29,7 +29,6 @@ import numpy as np
 import pandas as pd
 from astropy.table import Table
 from batoid_rubin import LSSTBuilder
-from galsim.errors import GalSimHSMError
 
 from lsst.afw.cameraGeom import FIELD_ANGLE
 from lsst.obs.lsst import LsstCam
@@ -361,21 +360,13 @@ def estimateWavefrontDataFromDofs(
     for idx in range(len(rotatedPositions[:, 0])):
         zksInterpolated[idx, :] = doubleZernikes(rotatedPositions[idx, 0], rotatedPositions[idx, 1]).coef
 
-    # Compute FWHM based on the interpolated Zernikes at the source positions
     fwhmInterpolated = np.zeros(len(sourceTable["aa_x"]))
-    for idx in range(len(sourceTable["aa_x"])):
-        zks_vec = doubleZernikes(sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx]).coef[zMin:]
-        fwhmInterpolated[idx] = np.sqrt(np.sum(convertZernikesToPsfWidth(zks_vec) ** 2))
-
     e1Interpolated = np.zeros(len(sourceTable["aa_x"]))
     e2Interpolated = np.zeros(len(sourceTable["aa_x"]))
     for idx in range(len(sourceTable["aa_x"])):
-        try:
-            e1Interpolated[idx], e2Interpolated[idx] = estimateEllipticities(
-                telescope, sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx], donutBlur, wavelength
-            )
-        except GalSimHSMError:
-            e1Interpolated[idx], e2Interpolated[idx] = np.nan, np.nan
+        fwhmInterpolated[idx], e1Interpolated[idx], e2Interpolated[idx] = estimateEllipticities(
+            telescope, sourceTable["aa_x"][idx], -sourceTable["aa_y"][idx], donutBlur, wavelength
+        )
 
     return {
         "detector": wavefrontResults["detector"].to_list(),
@@ -403,7 +394,7 @@ def estimateEllipticities(
     stampSize: int = 27,
     pupilInner: float = PUPIL_INNER,
     pupilOuter: float = PUPIL_OUTER,
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
     """Estimate ellipticities from ray tracing through the telescope.
 
     Parameters
@@ -433,6 +424,8 @@ def estimateEllipticities(
 
     Returns
     -------
+    fwhm : `float`
+        Estimated FWHM in arcsec.
     e1 : `float`
         Estimated ellipticity component e1.
     e2 : `float`
@@ -459,24 +452,22 @@ def estimateEllipticities(
 
     # Convolve in a Gaussian
     scale = pixelSize * donutBlur / SIGMATOFWHM / 0.2
-    rng = np.random.default_rng()
-    x += rng.normal(scale=scale, size=len(x))
-    y += rng.normal(scale=scale, size=len(y))
+    gaussian_var = scale**2
 
-    so2 = stampSize // 2
-    histrange = [[-so2 * pixelSize, so2 * pixelSize], [-so2 * pixelSize, so2 * pixelSize]]
-    # Bin rays
-    hist, _, _ = np.histogram2d(
-        y[mask],
-        x[mask],
-        bins=stampSize,
-        range=histrange,
-    )
-    image = np.ascontiguousarray(hist.astype(np.float32).T)
-    shape = galsim.hsm.FindAdaptiveMom(
-        galsim.Image(image),
-    )
-    return shape.observed_e1, shape.observed_e2
+    Ixx = np.nanvar(x) + gaussian_var
+    Iyy = np.nanvar(y) + gaussian_var
+    Ixy = np.nanmean(x * y) - np.nanmean(x) * np.nanmean(y)
+
+    Ixx *= (1e6 * 0.02) ** 2
+    Iyy *= (1e6 * 0.02) ** 2
+    Ixy *= (1e6 * 0.02) ** 2
+
+    T = Ixx + Iyy
+    e1 = (Ixx - Iyy) / T
+    e2 = 2 * Ixy / T
+
+    fwhm = np.sqrt(T / 2 * np.log(256))
+    return fwhm, e1, e2
 
 
 def estimateTelescopeState(
