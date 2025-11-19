@@ -45,6 +45,7 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
+from lsst.summit.utils.dateTime import getCurrentDayObsInt
 from lsst.summit.utils.efdUtils import clipDataToEvent, makeEfdClient
 from lsst.summit.utils.m1m3.inertia_compensation_system import M1M3ICSAnalysis
 from lsst.summit.utils.m1m3.plots.plot_ics import plot_hp_measured_data
@@ -54,7 +55,6 @@ from lsst.summit.utils.tmaUtils import (
     getCommandsDuringEvent,
     plotEvent,
 )
-from lsst.summit.utils.utils import getCurrentDayObs_int
 
 if TYPE_CHECKING:
     from lsst.summit.utils.tmaUtils import TMAEvent
@@ -559,11 +559,11 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
     def run(self) -> None:
         """Run continuously, updating the plots and uploading the shards."""
-        dayObs = getCurrentDayObs_int()
+        dayObs = getCurrentDayObsInt()
         while True:
             try:
                 if hasDayRolledOver(dayObs):
-                    dayObs = getCurrentDayObs_int()
+                    dayObs = getCurrentDayObsInt()
                     self.resetPlotsMade()
 
                 # TODO: need to work out a better way of dealing with pod
@@ -641,12 +641,12 @@ class AllNightAnimator:
 
     def run(self) -> None:
         """Run continuously, updating the plots and uploading the shards."""
-        dayObs = getCurrentDayObs_int()
+        dayObs = getCurrentDayObsInt()
         lastAnimatedCount = 0
         while True:
             try:
                 if hasDayRolledOver(dayObs):
-                    dayObs = getCurrentDayObs_int()
+                    dayObs = getCurrentDayObsInt()
                     lastAnimatedCount = 0
 
                 # TODO DM-49948: currently this pattern is hard-coded in the

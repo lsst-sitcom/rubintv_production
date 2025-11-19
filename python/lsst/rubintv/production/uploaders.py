@@ -35,7 +35,8 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from typing_extensions import override
 
-from lsst.summit.utils.utils import dayObsIntToString, getSite
+from lsst.summit.utils.dateTime import dayObsIntToString
+from lsst.summit.utils.utils import getSite
 
 from .channels import CHANNELS, KNOWN_INSTRUMENTS, getCameraAndPlotName
 

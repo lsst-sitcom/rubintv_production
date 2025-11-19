@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 from lsst.summit.utils.butlerUtils import getExpRecordFromDataId, getSeqNumsForDayObs, makeDefaultLatissButler
-from lsst.summit.utils.efdUtils import calcPreviousDay
-from lsst.summit.utils.utils import dayObsIntToString, getCurrentDayObs_int, setupLogging
+from lsst.summit.utils.dateTime import calcPreviousDay, dayObsIntToString, getCurrentDayObsInt
+from lsst.summit.utils.utils import setupLogging
 from lsst.utils import getPackageDir
 
 from .channels import CHANNELS, PREFIXES
@@ -581,7 +581,7 @@ def syncBuckets(multiUploader: MultiUploader, locationConfig: LocationConfig) ->
 def deleteAllSkyStills(bucket: Any) -> None:
     log = logging.getLogger(__name__)
 
-    today = getCurrentDayObs_int()
+    today = getCurrentDayObsInt()
     yesterday = calcPreviousDay(today)
     todayStr = dayObsIntToString(today)
     yesterdayStr = dayObsIntToString(yesterday)
@@ -602,7 +602,7 @@ def deleteAllSkyStills(bucket: Any) -> None:
 def deleteNonFinalAllSkyMovies(bucket: Any) -> None:
     log = logging.getLogger(__name__)
 
-    today = getCurrentDayObs_int()
+    today = getCurrentDayObsInt()
     yesterday = calcPreviousDay(today)
     todayStr = dayObsIntToString(today)
     yesterdayStr = dayObsIntToString(yesterday)

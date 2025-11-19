@@ -42,6 +42,7 @@ from lsst.summit.utils.astrometry.utils import (
     getAverageElFromHeader,
     runCharactierizeImage,
 )
+from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsInt
 from lsst.summit.utils.starTracker import (
     KNOWN_CAMERAS,
     dayObsSeqNumFromFilename,
@@ -51,12 +52,7 @@ from lsst.summit.utils.starTracker import (
     narrowCam,
     wideCam,
 )
-from lsst.summit.utils.utils import (
-    dayObsIntToString,
-    getAltAzFromSkyPosition,
-    getCurrentDayObs_int,
-    starTrackerFileToExposure,
-)
+from lsst.summit.utils.utils import getAltAzFromSkyPosition, starTrackerFileToExposure
 
 from .baseChannels import BaseChannel
 from .plotting import starTrackerNightReportPlots
@@ -100,7 +96,7 @@ def getCurrentRawDataDir(rootDataPath: str, camera: StarTrackerCamera) -> str:
     dataPath : `str`
         The path to the data for the current day.
     """
-    todayInt = getCurrentDayObs_int()
+    todayInt = getCurrentDayObsInt()
     return getRawDataDirForDayObs(rootDataPath, camera, todayInt)
 
 
@@ -563,7 +559,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
         super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
 
-        self.dayObs = dayObs if dayObs else getCurrentDayObs_int()
+        self.dayObs = dayObs if dayObs else getCurrentDayObsInt()
 
     def getMetadataTableContents(self) -> DataFrame | None:
         """Get the measured data for the current night.
@@ -636,7 +632,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         self.log.info(f"Creating final plots for {self.dayObs}")
         self.createPlotsAndUpload()
         self.log.info(f"Starting new star tracker night report for dayObs {self.dayObs}")
-        self.dayObs = getCurrentDayObs_int()
+        self.dayObs = getCurrentDayObsInt()
         return
 
     def callback(self, filename: str, doCheckDay: bool = True) -> None:
@@ -809,7 +805,7 @@ class StarTrackerCatchup:
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
         finally:
-            self.dayObs = getCurrentDayObs_int()
+            self.dayObs = getCurrentDayObsInt()
 
     def run(self) -> None:
         """Runs forever, running the catchup services during the night, and
@@ -822,7 +818,7 @@ class StarTrackerCatchup:
             True.
         """
         lastRun = time.time()
-        self.dayObs = getCurrentDayObs_int()
+        self.dayObs = getCurrentDayObsInt()
 
         while True:
             try:

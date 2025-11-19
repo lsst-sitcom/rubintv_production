@@ -28,8 +28,7 @@ from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 
-from lsst.summit.utils.efdUtils import offsetDayObs
-from lsst.summit.utils.utils import getCurrentDayObs_int
+from lsst.summit.utils.dateTime import getCurrentDayObsInt, offsetDayObs
 
 from .highLevelTools import deleteAllSkyStills, deleteNonFinalAllSkyMovies, syncBuckets
 from .resources import getBasePath, getSubDirs, rmtree
@@ -66,7 +65,7 @@ class TempFileCleaner:
         """Delete all specified NFS directories that are older than `keepDays`
         days.
         """
-        currentDayObs = getCurrentDayObs_int()
+        currentDayObs = getCurrentDayObsInt()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
 
         for locationName, dirPath in self.nfsDirsToDelete.items():
@@ -97,7 +96,7 @@ class TempFileCleaner:
         """Delete all specified S3 directories that are older than `keepDays`
         days.
         """
-        currentDayObs = getCurrentDayObs_int()
+        currentDayObs = getCurrentDayObsInt()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDays)
 
         basePath = getBasePath(self.locationConfig)
@@ -170,11 +169,11 @@ class TempFileCleaner:
         """
         self.runEndOfDay()  # always run once on startup
 
-        currentDayObs = getCurrentDayObs_int()
+        currentDayObs = getCurrentDayObsInt()
         while True:
             if hasDayRolledOver(currentDayObs):
                 self.log.info("Day has rolled over, running cleanup")
-                currentDayObs = getCurrentDayObs_int()
+                currentDayObs = getCurrentDayObsInt()
                 self.runEndOfDay()
 
             sleep(60)
