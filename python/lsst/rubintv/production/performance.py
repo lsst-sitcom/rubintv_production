@@ -30,7 +30,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Iterable
 
 import matplotlib.dates as mdates
 import numpy as np
@@ -867,8 +867,8 @@ class PerformanceMonitor(BaseButlerChannel):
 
         legendExtraLines = [f"{k}: {v:.2f}s" for k, v in metrics.legendItems.items()]
 
-        md = {record.seq_num: metrics.legendItems}
-        md.update(metrics.staircaseTimings.items())
+        md: dict[int, dict[str, Any]] = {record.seq_num: metrics.legendItems}
+        md[record.seq_num].update(metrics.staircaseTimings.items())
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
         fig = plotAosTaskTimings(
@@ -878,8 +878,6 @@ class PerformanceMonitor(BaseButlerChannel):
             expRecord=record,
             timings=metrics.staircaseTimings,
             legendExtraLines=legendExtraLines,
-            figsize=(12, 8),
-            heightRatios=(1, 2.5),
         )
 
         plotName = "aos_timing"
@@ -926,7 +924,7 @@ def calculateAosMetrics(
     efdClient: EfdClient,
     expRecord: DimensionRecord,
     taskResults: dict[str, TaskResult],
-    cwfsDetNums: list[int],
+    cwfsDetNums: Iterable[int],
 ) -> AosMetrics:
     """Calculate metrics for the AOS performance plot.
 
@@ -1106,7 +1104,7 @@ def createLegendBoxes(
 
 
 def plotAosTaskTimings(
-    detectorList: list[int],
+    detectorList: list[int] | tuple[int, ...],
     taskMap: dict[str, str],
     results: dict[str, TaskResult],
     expRecord: DimensionRecord,
@@ -1114,7 +1112,7 @@ def plotAosTaskTimings(
     *,
     barHalf: float = 0.3,
     touchHalf: float = 0.5,
-    figsize: tuple[float, float] = (12, 5.0),
+    figsize: tuple[float, float] = (12, 8),
     heightRatios: tuple[float, float] = (1, 2.5),
     legendExtraLines: list[str] | None = None,
 ) -> Figure:
