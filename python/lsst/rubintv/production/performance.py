@@ -41,7 +41,7 @@ from matplotlib.patches import Patch
 from lsst.rubintv.production.baseChannels import BaseButlerChannel
 
 # TODO Change these back to relative imports
-from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
+from lsst.rubintv.production.processingControl import CameraControlConfig, PipelineComponents, buildPipelines
 from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
@@ -56,7 +56,6 @@ if TYPE_CHECKING:
 
     from .payloads import Payload
     from .podDefinition import PodDetails
-    from .processingControl import CameraControlConfig
 
 
 AOS_DEFAULT_TASKS: dict[str, str] = {
