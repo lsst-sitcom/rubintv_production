@@ -43,8 +43,9 @@ from lsst.rubintv.production.baseChannels import BaseButlerChannel
 # TODO Change these back to relative imports
 from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
 from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
+from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
-from lsst.summit.utils.utils import dayObsIntToString, getCameraFromInstrumentName
+from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
 if TYPE_CHECKING:
