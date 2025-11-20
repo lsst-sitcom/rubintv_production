@@ -33,7 +33,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -903,7 +902,7 @@ def makeAosPlot(
         figsize=(12, 8),
         heightRatios=(1, 2.5),
     )
-    plt.show()
+    return fig
 
 
 def addEventStaircase(
@@ -1046,11 +1045,11 @@ def plotAosTaskTimings(
 
     Returns (fig, axTop, axBottom).
     """
-    fig, (axTop, axBottom) = plt.subplots(
+    fig = make_figure(figsize=figsize)
+    axTop, axBottom = fig.subplots(
         2,
         1,
         sharex=True,
-        figsize=figsize,
         gridspec_kw={"height_ratios": list(heightRatios), "hspace": 0.0},
     )
 
