@@ -549,6 +549,22 @@ class TaskResult:
             print(f"{timestamp} {line.message}")
 
 
+@dataclass
+class AosMetrics:
+    """Metrics calculated for the AOS performance plot.
+
+    Parameters
+    ----------
+    staircaseTimings : `dict[str, float]`
+        Timings for the staircase plot events.
+    legendItems : `dict[str, float]`
+        Items to display in the legend box.
+    """
+
+    staircaseTimings: dict[str, float]
+    legendItems: dict[str, float]
+
+
 class PerformanceBrowser:
     def __init__(
         self,
@@ -822,11 +838,63 @@ class PerformanceMonitor(BaseButlerChannel):
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
-        # self.makeAosPlot(record)
+        self.uploadAosPlot(record, data)
 
         # callback() is only called for the long-running RA process, so clear
         # the cache so we don't have ever increasing memory usage
         self.perf.data = {}
+
+    def uploadAosPlot(self, record: DimensionRecord, taskResults: dict[str, TaskResult]) -> None:
+        """Create and upload the AOS task timing plot.
+
+        Parameters
+        ----------
+        record : `DimensionRecord`
+            The exposure record.
+        taskResults : `dict[str, TaskResult]`
+            The task results.
+        """
+        # Check we have the necessary tasks
+        required = {"isr", "calcZernikesTask"}
+        if not required.issubset(taskResults.keys()):
+            self.log.warning(
+                f"Skipping AOS plot for {record.id}: missing tasks {required - taskResults.keys()}"
+            )
+            return
+
+        cwfsDetNums = self.cameraControl.CWFS_IDS
+        metrics = calculateAosMetrics(self.efdClient, record, taskResults, cwfsDetNums)
+
+        legendExtraLines = [f"{k}: {v:.2f}s" for k, v in metrics.legendItems.items()]
+
+        md = {record.seq_num: metrics.legendItems}
+        md.update(metrics.staircaseTimings.items())
+        writeMetadataShard(self.shardsDirectory, record.day_obs, md)
+
+        fig = plotAosTaskTimings(
+            detectorList=cwfsDetNums,
+            taskMap=AOS_DEFAULT_TASKS,
+            results=taskResults,
+            expRecord=record,
+            timings=metrics.staircaseTimings,
+            legendExtraLines=legendExtraLines,
+            figsize=(12, 8),
+            heightRatios=(1, 2.5),
+        )
+
+        plotName = "aos_timing"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, record.day_obs, record.seq_num, plotName, "jpg"
+        )
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument="ra_performance",
+            plotName=plotName,
+            dayObs=record.day_obs,
+            seqNum=record.seq_num,
+            filename=plotFile,
+        )
 
 
 def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
@@ -854,12 +922,30 @@ def getIngestTimes(
     return wfTimes, sciTimes
 
 
-def makeAosPlot(
+def calculateAosMetrics(
     efdClient: EfdClient,
     expRecord: DimensionRecord,
     taskResults: dict[str, TaskResult],
     cwfsDetNums: list[int],
-) -> None:
+) -> AosMetrics:
+    """Calculate metrics for the AOS performance plot.
+
+    Parameters
+    ----------
+    efdClient : `EfdClient`
+        The EFD client.
+    expRecord : `DimensionRecord`
+        The exposure record.
+    taskResults : `dict[str, TaskResult]`
+        The task results.
+    cwfsDetNums : `list[int]`
+        The list of CWFS detector numbers.
+
+    Returns
+    -------
+    metrics : `AosMetrics`
+        The calculated metrics.
+    """
     wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
 
     readoutDelay = getEndReadoutTime(efdClient, expRecord)
@@ -869,11 +955,11 @@ def makeAosPlot(
     wfIngestEnd = max(wfTimes.values())
     calcZernMean = np.nanmedian(list(taskResults["calcZernikesTask"].detectorTimings.values()))
     isrTimes = taskResults["isr"].detectorTimings  # this includes the imaging chips
-    cwfsIsrTimes = [isrTimes[detNum] for detNum in cwfsDetNums]
-    isrMean = np.nanmedian(cwfsIsrTimes)
+    cwfsIsrTimes = [isrTimes[detNum] for detNum in cwfsDetNums if detNum in isrTimes]
+    isrMean = np.nanmedian(cwfsIsrTimes) if cwfsIsrTimes else float("nan")
 
     timings = {  # for the staircase plot
-        "Readout start": 0,
+        "Readout start": 0.0,
         "Readout (effective)": readoutDelay,
         "WFS ingest start": min(wfTimes.values()),
         "WFS ingest finished": max(wfTimes.values()),
@@ -881,29 +967,19 @@ def makeAosPlot(
     }
 
     assert isrStart is not None, "isrStart should not be None"
+    assert zernikeDelivery is not None, "zernikeDelivery should not be None"
 
     legendItems = {  # for the legend box
         "Readout (effective)": readoutDelay,
         "WF ingestion duration": (wfIngestEnd - wfIngestStart),
         "First WF available to isr start": (isrStart - wfIngestStart),
-        "Mean isr runtime": isrMean,
-        "Mean calcZernikes runtime": calcZernMean,
+        "Mean isr runtime": float(isrMean),
+        "Mean calcZernikes runtime": float(calcZernMean),
         "Readout end to isr start": (isrStart - readoutDelay),
         "Shutter close to zernikes": zernikeDelivery,
     }
-    legendExtraLines = [f"{k}: {v:.2f}s" for k, v in legendItems.items()]
 
-    fig, axTop, axBottom = plotAosTaskTimings(
-        detectorList=cwfsDetNums,
-        taskMap=AOS_DEFAULT_TASKS,
-        results=taskResults,
-        expRecord=expRecord,
-        timings=timings,
-        legendExtraLines=legendExtraLines,
-        figsize=(12, 8),
-        heightRatios=(1, 2.5),
-    )
-    return fig
+    return AosMetrics(staircaseTimings=timings, legendItems=legendItems)
 
 
 def addEventStaircase(
@@ -1041,7 +1117,7 @@ def plotAosTaskTimings(
     figsize: tuple[float, float] = (12, 5.0),
     heightRatios: tuple[float, float] = (1, 2.5),
     legendExtraLines: list[str] | None = None,
-) -> tuple[Figure, Axes, Axes]:
+) -> Figure:
     """Render the AOS task timing plot with an event staircase panel.
 
     Returns (fig, axTop, axBottom).
@@ -1112,4 +1188,4 @@ def plotAosTaskTimings(
     # Layout: no extra bottom legend space needed; keep room for bottom title
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
     fig.subplots_adjust(bottom=0.14)
-    return fig, axTop, axBottom
+    return fig
