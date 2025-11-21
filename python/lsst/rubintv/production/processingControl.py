@@ -1541,6 +1541,20 @@ class CameraControlConfig:
 
         self.currentNamedPattern = ""
 
+    def getCwfsCornerByName(self, corner: str) -> tuple[int, int]:
+        pairs = list(zip(self.EXTRA_FOCAL_IDS, self.INTRA_FOCAL_IDS))
+        match corner.lower():
+            case "bl":
+                return pairs[0]
+            case "br":
+                return pairs[1]
+            case "tl":
+                return pairs[2]
+            case "tr":
+                return pairs[3]
+            case _:
+                raise ValueError(f"Unknown corner name {corner=}")
+
     def getIntraExtraFocalPairs(self) -> list[tuple[int, int]]:
         """Get the intra-focal and extra-focal pairs.
 
