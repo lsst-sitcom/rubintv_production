@@ -547,7 +547,7 @@ class PipelineComponents:
 
         self.steps = steps
 
-    def getTasks(self) -> dict[str, TaskNode]:
+    def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
 
         Returns
@@ -557,6 +557,8 @@ class PipelineComponents:
         """
         tasks: dict[str, TaskNode] = {}
         for stepAlias in self.stepAliases:
+            if steps is not None and stepAlias not in steps:
+                continue
             tasks.update(self.graphs[stepAlias].tasks)
         return tasks
 
