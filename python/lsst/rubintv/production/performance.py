@@ -57,16 +57,21 @@ if TYPE_CHECKING:
     from .podDefinition import PodDetails
 
 
-AOS_DEFAULT_TASKS: dict[str, str] = {
-    "isr": "k",
-    "generateDonutDirectDetectTask": "r",
-    "cutOutDonutsCwfsPairTask": "g",
-    "reassignCwfsCutoutsPairTask": "orange",
-    "calcZernikesTask": "y",
-}
-
 CWFS_SENSOR_NAMES = ("SW0", "SW1")  # these exclude the raft prefix so can't easily come from the camera
 IMAGING_SENSOR_NAMES = ("S00", "S01", "S02", "S10", "S11", "S12", "S20", "S21", "S22")
+
+AOS_TASK_COLORS = [
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+]
 
 
 def isVisitType(task: TaskNode) -> bool:
@@ -869,9 +874,20 @@ class PerformanceMonitor(BaseButlerChannel):
         md[record.seq_num].update(metrics.staircaseTimings.items())
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
+        aosTasks = set()
+        pipelines = self.perf.pipelines
+        aosPipelines = [p for p in pipelines.keys() if "aos" in p.lower()]
+        for who in aosPipelines:
+            step1aTasks = set(pipelines[who].getTasks(["step1a"]).keys())
+            aosTasks |= step1aTasks
+
+        taskMap = {
+            taskName: AOS_TASK_COLORS[i % len(AOS_TASK_COLORS)] for i, taskName in enumerate(sorted(aosTasks))
+        }
+
         fig = plotAosTaskTimings(
             detectorList=cwfsDetNums,
-            taskMap=AOS_DEFAULT_TASKS,
+            taskMap=taskMap,
             results=taskResults,
             expRecord=record,
             timings=metrics.staircaseTimings,
