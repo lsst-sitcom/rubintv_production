@@ -710,6 +710,67 @@ class PerformanceBrowser:
                 for detector, failMessage in taskResult.failures.items():
                     print(f"    {detector}: {failMessage}")
 
+    def createAosPlot(
+        self,
+        record: DimensionRecord,
+        taskResults: dict[str, TaskResult],
+        efdClient: EfdClient,
+        cwfsDetNums: Iterable[int],
+        metrics: AosMetrics | None = None,
+    ) -> Figure | None:
+        """Create the AOS task timing plot.
+
+        Parameters
+        ----------
+        record : `DimensionRecord`
+            The exposure record.
+        taskResults : `dict[str, TaskResult]`
+            The task results.
+        efdClient : `EfdClient`
+            The EFD client.
+        cwfsDetNums : `Iterable[int]`
+            The list of CWFS detector numbers.
+        metrics : `AosMetrics`, optional
+            The calculated metrics. If None, they will be calculated.
+
+        Returns
+        -------
+        fig : `matplotlib.figure.Figure` or `None`
+            The figure object, or None if required tasks are missing.
+        """
+        # Check we have the necessary tasks
+        required = {"isr", "calcZernikesTask"}
+        if not required.issubset(taskResults.keys()):
+            log = logging.getLogger(__name__)
+            log.warning(f"Skipping AOS plot for {record.id}: missing tasks {required - taskResults.keys()}")
+            return None
+
+        if metrics is None:
+            metrics = calculateAosMetrics(efdClient, record, taskResults, cwfsDetNums)
+
+        legendExtraLines = [f"{k}: {v:.2f}s" for k, v in metrics.legendItems.items()]
+
+        aosTasks = set()
+        pipelines = self.pipelines
+        aosPipelines = [p for p in pipelines.keys() if "aos" in p.lower()]
+        for who in aosPipelines:
+            step1aTasks = set(pipelines[who].getTasks(["step1a"]).keys())
+            aosTasks |= step1aTasks
+
+        taskMap = {
+            taskName: AOS_TASK_COLORS[i % len(AOS_TASK_COLORS)] for i, taskName in enumerate(sorted(aosTasks))
+        }
+
+        fig = plotAosTaskTimings(
+            detectorList=list(cwfsDetNums),
+            taskMap=taskMap,
+            results=taskResults,
+            expRecord=record,
+            timings=metrics.staircaseTimings,
+            legendExtraLines=legendExtraLines,
+        )
+        return fig
+
 
 class PerformanceMonitor(BaseButlerChannel):
     def __init__(
@@ -847,63 +908,6 @@ class PerformanceMonitor(BaseButlerChannel):
         # the cache so we don't have ever increasing memory usage
         self.perf.data = {}
 
-    def createAosPlot(
-        self,
-        record: DimensionRecord,
-        taskResults: dict[str, TaskResult],
-        metrics: AosMetrics | None = None,
-    ) -> Figure | None:
-        """Create the AOS task timing plot.
-
-        Parameters
-        ----------
-        record : `DimensionRecord`
-            The exposure record.
-        taskResults : `dict[str, TaskResult]`
-            The task results.
-        metrics : `AosMetrics`, optional
-            The calculated metrics. If None, they will be calculated.
-
-        Returns
-        -------
-        fig : `matplotlib.figure.Figure` or `None`
-            The figure object, or None if required tasks are missing.
-        """
-        # Check we have the necessary tasks
-        required = {"isr", "calcZernikesTask"}
-        if not required.issubset(taskResults.keys()):
-            self.log.warning(
-                f"Skipping AOS plot for {record.id}: missing tasks {required - taskResults.keys()}"
-            )
-            return None
-
-        cwfsDetNums = self.cameraControl.CWFS_IDS
-        if metrics is None:
-            metrics = calculateAosMetrics(self.efdClient, record, taskResults, cwfsDetNums)
-
-        legendExtraLines = [f"{k}: {v:.2f}s" for k, v in metrics.legendItems.items()]
-
-        aosTasks = set()
-        pipelines = self.perf.pipelines
-        aosPipelines = [p for p in pipelines.keys() if "aos" in p.lower()]
-        for who in aosPipelines:
-            step1aTasks = set(pipelines[who].getTasks(["step1a"]).keys())
-            aosTasks |= step1aTasks
-
-        taskMap = {
-            taskName: AOS_TASK_COLORS[i % len(AOS_TASK_COLORS)] for i, taskName in enumerate(sorted(aosTasks))
-        }
-
-        fig = plotAosTaskTimings(
-            detectorList=cwfsDetNums,
-            taskMap=taskMap,
-            results=taskResults,
-            expRecord=record,
-            timings=metrics.staircaseTimings,
-            legendExtraLines=legendExtraLines,
-        )
-        return fig
-
     def uploadAosPlot(self, record: DimensionRecord, taskResults: dict[str, TaskResult]) -> None:
         """Create and upload the AOS task timing plot.
 
@@ -929,7 +933,7 @@ class PerformanceMonitor(BaseButlerChannel):
         md[record.seq_num].update(metrics.staircaseTimings.items())
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
-        fig = self.createAosPlot(record, taskResults, metrics=metrics)
+        fig = self.perf.createAosPlot(record, taskResults, self.efdClient, cwfsDetNums, metrics=metrics)
         if fig is None:
             return
 
