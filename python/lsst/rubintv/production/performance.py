@@ -38,15 +38,14 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
-from lsst.rubintv.production.baseChannels import BaseButlerChannel
-
-# TODO Change these back to relative imports
-from lsst.rubintv.production.processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
+
+from .baseChannels import BaseButlerChannel
+from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
+from .utils import LocationConfig, makePlotFile, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
