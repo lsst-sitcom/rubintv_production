@@ -1200,6 +1200,7 @@ def plotAosTaskTimings(
     taskMins: dict[str, float] = {}
     taskMaxs: dict[str, float] = {}
 
+    tasksPlotted: dict[str, str] = {}  # only put these in the legend
     for task, color in taskMap.items():
         taskResults = results[task]
         taskMins[task] = 999.0
@@ -1208,6 +1209,7 @@ def plotAosTaskTimings(
         for detNum in detectorList:
             if detNum not in taskResults.logs:
                 continue
+            tasksPlotted[task] = color
             start = (taskResults.logs[detNum][0].asctime - t0).total_seconds()
             end = (taskResults.logs[detNum][-1].asctime - t0).total_seconds()
 
@@ -1221,7 +1223,7 @@ def plotAosTaskTimings(
         timings["ISR Start"] = taskMins["isr"]
 
     # legends anchored to bottom-right of the TOP axis
-    createLegendBoxes(axTop, taskMap, extraLines=legendExtraLines)
+    createLegendBoxes(axTop, tasksPlotted, extraLines=legendExtraLines)
 
     axBottom.set_xlim(0, None)
     axBottom.set_yticks(list(detMap.values()))
