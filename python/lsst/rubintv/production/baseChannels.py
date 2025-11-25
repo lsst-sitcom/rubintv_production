@@ -143,11 +143,13 @@ class BaseButlerChannel(BaseChannel):
         # for now
         podDetails: PodDetails,
         addUploader: bool = True,
+        concurrency: int = 1,
     ) -> None:
         watcher = RedisWatcher(
             butler=butler,
             locationConfig=locationConfig,
             podDetails=podDetails,
+            concurrency=concurrency,
         )
         log = logging.getLogger(f"lsst.rubintv.production.{channelName}")
         super().__init__(

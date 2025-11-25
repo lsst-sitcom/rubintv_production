@@ -797,6 +797,7 @@ class PerformanceMonitor(BaseButlerChannel):
             podDetails=podDetails,
             doRaise=doRaise,
             addUploader=True,
+            concurrency=10,
         )
         assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
@@ -906,7 +907,8 @@ class PerformanceMonitor(BaseButlerChannel):
 
         # callback() is only called for the long-running RA process, so clear
         # the cache so we don't have ever increasing memory usage
-        self.perf.data = {}
+        if record in self.perf.data:
+            del self.perf.data[record]
 
     def uploadAosPlot(self, record: DimensionRecord, taskResults: dict[str, TaskResult]) -> None:
         """Create and upload the AOS task timing plot.

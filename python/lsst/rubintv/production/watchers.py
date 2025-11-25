@@ -24,6 +24,7 @@ __all__ = ("RedisWatcher", "ButlerWatcher")
 
 import logging
 import sys
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from time import sleep
 from typing import TYPE_CHECKING
 
@@ -53,12 +54,19 @@ class RedisWatcher:
         The detector, or detectors, to process data for.
     """
 
-    def __init__(self, butler: Butler, locationConfig: LocationConfig, podDetails: PodDetails) -> None:
+    def __init__(
+        self,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        podDetails: PodDetails,
+        concurrency: int = 1,
+    ) -> None:
         self.redisHelper = RedisHelper(butler, locationConfig)
         self.podDetails = podDetails
         self.cadence = 0.2  # seconds - there's 400+ workers, don't go too high!
         self.log = _LOG.getChild("redisWatcher")
         self.payload: Payload | None = None  # XXX that is this for?
+        self.concurrency = concurrency
 
     def run(self, callback, **kwargs) -> None:
         """Run forever, calling ``callback`` on each most recent Payload.
@@ -69,6 +77,12 @@ class RedisWatcher:
             The callback to run, with the most recent ``Payload`` as the
             argument.
         """
+        if self.concurrency > 1:
+            self._runConcurrent(callback)
+        else:
+            self._runSequential(callback)
+
+    def _runSequential(self, callback) -> None:
         while True:
             self.redisHelper.announceFree(self.podDetails)
             payload = self.redisHelper.dequeuePayload(self.podDetails)  # blocks for up to DEQUE_TIMEOUT sec
@@ -91,6 +105,41 @@ class RedisWatcher:
             else:  # only sleep when no work is found
                 self.redisHelper.clearPodSecondaryStatus(self.podDetails)
                 sleep(self.cadence)  # probably unnecessary now we use a blocking dequeue but it doesn't hurt
+
+    def _runConcurrent(self, callback) -> None:
+        def _callbackWrapper(payload):
+            try:
+                callback(payload)
+            except Exception as e:
+                self.log.exception(f"Error processing payload {payload}: {e}")
+
+        with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
+            futures: set[Future] = set()
+            while True:
+                # Clean up finished tasks
+                done, _ = wait(futures, timeout=0)
+                futures -= done
+
+                if len(futures) < self.concurrency:
+                    self.redisHelper.announceFree(self.podDetails)
+                    payload = self.redisHelper.dequeuePayload(self.podDetails)
+                    if payload is not None:
+                        if isRestartPayload(payload):
+                            self.log.warning("Received RESTART_SIGNAL, exiting")
+                            self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
+                            sys.exit(0)
+
+                        self.redisHelper.announceBusy(self.podDetails)
+                        self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
+                        futures.add(executor.submit(_callbackWrapper, payload))
+                    else:
+                        self.redisHelper.clearPodSecondaryStatus(self.podDetails)
+                        # dequeuePayload blocks, so we don't need to sleep here
+                        # if it timed out
+                else:
+                    # Wait for at least one task to complete before trying to
+                    # get more work
+                    wait(futures, return_when=FIRST_COMPLETED)
 
 
 class ButlerWatcher:
