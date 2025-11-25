@@ -27,6 +27,7 @@ __all__ = [
 
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -810,6 +811,8 @@ class PerformanceMonitor(BaseButlerChannel):
 
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
+        if threading.current_thread() is not threading.main_thread():
+            self.butler = self.butler.clone()
         dataId = payload.dataIds[0]
         record = None
         if "exposure" in dataId.dimensions:
