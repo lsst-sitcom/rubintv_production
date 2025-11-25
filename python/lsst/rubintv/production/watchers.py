@@ -24,6 +24,7 @@ __all__ = ("RedisWatcher", "ButlerWatcher")
 
 import logging
 import sys
+import threading
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from time import sleep
 from typing import TYPE_CHECKING
@@ -61,6 +62,7 @@ class RedisWatcher:
         podDetails: PodDetails,
         concurrency: int = 1,
     ) -> None:
+        self.butler = butler
         self.redisHelper = RedisHelper(butler, locationConfig)
         self.podDetails = podDetails
         self.cadence = 0.2  # seconds - there's 400+ workers, don't go too high!
@@ -109,6 +111,8 @@ class RedisWatcher:
     def _runConcurrent(self, callback) -> None:
         def _callbackWrapper(payload):
             try:
+                if threading.current_thread() is not threading.main_thread():
+                    self.butler = self.butler.clone()
                 callback(payload)
             except Exception as e:
                 self.log.exception(f"Error processing payload {payload}: {e}")
