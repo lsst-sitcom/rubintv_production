@@ -93,6 +93,7 @@ class TempFileCleaner:
                 where=where,
                 limit=1_000_000_000,
                 collections=self.locationConfig.getOutputChain("LSSTCam"),
+                explain=False,  # sometimes there's nothing and this is expected
             )
             days = sorted(set(int(d.dataId["day_obs"]) for d in allDRefs))
             self.log.info(f"Found {len(allDRefs)} {product}s across {len(days)} days to delete")
