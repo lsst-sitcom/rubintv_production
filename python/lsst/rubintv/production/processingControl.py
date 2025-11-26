@@ -674,9 +674,9 @@ class HeadProcessController:
             return newCollection
 
         allRunNums = [
-            int(re.match(f"{self.outputChain}/(\\d+)$", run).group(1))
+            int(re.match(self.outputChain + r"/(\d{1,3})$", run).group(1))
             for run in allRuns
-            if re.match(f"{self.outputChain}/(\\d+)$", run)
+            if re.match(self.outputChain + r"/(\d{1,3})$", run)
         ]
         lastRunNum = max(allRunNums) if allRunNums else 0
         latestRun = f"{self.outputChain}/{lastRunNum}"
