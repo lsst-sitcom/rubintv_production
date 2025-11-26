@@ -191,10 +191,10 @@ class GuiderWorker(BaseButlerChannel):
         """
         rubinTVtableItems: dict[str, str] = {}
         for key, value in KEY_MAP.items():
-            if key in metrics:
+            try:
                 rubinTVtableItems[value] = f"{metrics[key].values[0]}"
-            else:
-                self.log.warning(f"Key {key} not found in metrics DataFrame columns")
+            except (KeyError, IndexError):
+                self.log.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
         return rubinTVtableItems
 
