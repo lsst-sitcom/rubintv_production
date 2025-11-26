@@ -20,6 +20,7 @@ ENV ts_wep_branch="v14.7.0"
 ENV donut_viz_branch="5de0465"
 # no tags for TARTS yet, so default to main if not using deployment branch
 ENV tarts_branch="main"
+ENV ts_ofc_branch="main"
 
 ENV USER=${USER:-saluser}
 ENV WORKDIR=/opt/lsst/software/stack
@@ -71,7 +72,6 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     batoid \
     danish \
     rubin-libradtran \
-    ts-ofc \
     timm \
     peft \
     && conda clean -afy
@@ -95,6 +95,7 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-sitcom/rubintv_production.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
     git clone https://github.com/lsst-ts/ts_wep.git && \
+    git clone https://github.com/lsst-ts/ts_ofc.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
     git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst-camera-dh/eo_pipe.git
@@ -205,11 +206,19 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup ts_wep -t saluser && \
     scons version
 
+WORKDIR /repos/ts_ofc
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${ts_ofc_branch} && \
+    eups declare -r . ts_ofc ${ts_ofc} -t saluser && \
+    setup ts_ofc -t saluser && \
+    scons version
+
 WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${donut_viz_branch} && \
-    eups declare -r . donut_viz ${ts_wep} -t saluser && \
+    eups declare -r . donut_viz ${donut_viz} -t saluser && \
     setup donut_viz -t saluser && \
     scons version
 
@@ -278,6 +287,7 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/eo_pipe && \
     git config --system --add safe.directory /repos/rubintv_analysis_service && \
     git config --system --add safe.directory /repos/ts_wep && \
+    git config --system --add safe.directory /repos/ts_ofc && \
     git config --system --add safe.directory /repos/donut_viz && \
     git config --system --add safe.directory /repos/TARTS
 
