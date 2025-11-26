@@ -38,7 +38,7 @@ from requests import HTTPError
 
 from lsst.afw.image import ExposureSummaryStats  # type: ignore
 from lsst.afw.table import ExposureCatalog  # type: ignore
-from lsst.daf.butler import Butler, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
@@ -289,11 +289,15 @@ class ConsDBPopulator:
         expRecord: DimensionRecord,
         detectorNum: int,
         allowUpdate: bool = False,
-    ) -> None:
-        summaryStats = butler.get(
-            "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
-        )
+    ) -> bool:
+        try:
+            summaryStats = butler.get(
+                "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
+            )
+        except DatasetNotFoundError:
+            return False
         self.populateCcdVisitRow(expRecord, detectorNum, summaryStats, allowUpdate=allowUpdate)
+        return True
 
     def populateCcdVisitRow(
         self,
@@ -305,9 +309,6 @@ class ConsDBPopulator:
         obsId = computeCcdExposureId(expRecord.instrument, expRecord.id, detectorNum)
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
-
-        if allowUpdate and "visit_id" not in values:  # required key if updating
-            values["visit_id"] = expRecord.id
 
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
@@ -358,27 +359,30 @@ class ConsDBPopulator:
 
     def populateAllCcdVisitRowsWithButler(
         self, butler: Butler, expRecord: DimensionRecord, createRows: bool = False, allowUpdate: bool = False
-    ) -> None:
+    ) -> int:
         if createRows:
             self._createExposureRow(expRecord, allowUpdate=allowUpdate)
             self._createCcdExposureRows(expRecord, allowUpdate=allowUpdate)
             print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id})")
 
         detectorNums = getDetectorIds(expRecord.instrument)
+        nFillled = 0
         for detectorNum in detectorNums:
-            self.populateCcdVisitRowWithButler(butler, expRecord, detectorNum, allowUpdate=allowUpdate)
+            nFillled += self.populateCcdVisitRowWithButler(
+                butler, expRecord, detectorNum, allowUpdate=allowUpdate
+            )
+        return nFillled
 
     def populateVisitRowWithButler(
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
         visitSummary = butler.get("preliminary_visit_summary", visit=expRecord.id)
-        instrument = expRecord.instrument
-        self.populateVisitRow(visitSummary, instrument, allowUpdate=allowUpdate)
+        self.populateVisitRow(visitSummary, expRecord, allowUpdate=allowUpdate)
 
     def populateVisitRow(
         self, visitSummary: ExposureCatalog, expRecord: DimensionRecord, allowUpdate: bool = False
     ) -> None:
-        instrument = expRecord.instrument
+        instrument: str = expRecord.instrument
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
             location = self.locationConfig.location
             logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
