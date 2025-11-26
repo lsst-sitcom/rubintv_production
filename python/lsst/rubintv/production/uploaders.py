@@ -79,7 +79,9 @@ def createLocalS3UploaderForSite(proxyUrl=""):
                 endPoint=EndPoint.SUMMIT, bucket=Bucket.SUMMIT, proxyUrl=proxyUrl
             )
         case site if site in ["usdf-k8s", "rubin-devl", "staff-rsp"]:
-            return S3Uploader.from_information(endPoint=EndPoint.USDF, bucket=Bucket.USDF, proxyUrl=proxyUrl)
+            return S3Uploader.from_information(
+                endPoint=EndPoint.USDF_EMBARGO, bucket=Bucket.USDF, proxyUrl=proxyUrl
+            )
         case "tucson":
             return S3Uploader.from_information(endPoint=EndPoint.TUCSON, bucket=Bucket.TTS, proxyUrl=proxyUrl)
         case _:
@@ -99,7 +101,7 @@ def createRemoteS3UploaderForSite():
     match site:
         case "base":
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF,
+                endPoint=EndPoint.USDF_MAIN,
                 bucket=Bucket.BTS,
                 proxyUrl="http://squid-service:3128/",
                 retries=0,
@@ -108,7 +110,7 @@ def createRemoteS3UploaderForSite():
             )
         case "summit":
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF,
+                endPoint=EndPoint.USDF_EMBARGO,
                 bucket=Bucket.SUMMIT,
                 proxyUrl="http://squid-service:3128/",
                 retries=0,
@@ -120,7 +122,7 @@ def createRemoteS3UploaderForSite():
             return None
         case "tucson":
             return S3Uploader.from_information(
-                endPoint=EndPoint.USDF,
+                endPoint=EndPoint.USDF_MAIN,
                 bucket=Bucket.TTS,
                 retries=0,
                 connectTimeout=10,
@@ -149,13 +151,18 @@ class BucketInformation:
 
 
 class EndPoint(Enum):
-    USDF = {
+    USDF_EMBARGO = {
         "end_point": "https://sdfembs3.sdf.slac.stanford.edu/",
         "buckets_available": {
             Bucket.SUMMIT: BucketInformation(
                 "rubin-rubintv-data-summit-embargo", "rubin-rubintv-data-summit"
             ),
             Bucket.USDF: BucketInformation("rubin-rubintv-data-usdf-embargo", "rubin-rubintv-data-usdf"),
+        },
+    }
+    USDF_MAIN = {
+        "end_point": "https://s3dfrgw.slac.stanford.edu",
+        "buckets_available": {
             Bucket.BTS: BucketInformation("rubin-rubintv-data-bts", "rubin-rubintv-data-bts"),
             Bucket.TTS: BucketInformation("rubin-rubintv-data-tts", "rubin-rubintv-data-tts"),
         },
@@ -406,7 +413,7 @@ class S3Uploader(IUploader):
     @classmethod
     def from_information(
         cls,
-        endPoint: EndPoint = EndPoint.USDF,
+        endPoint: EndPoint = EndPoint.USDF_EMBARGO,
         bucket: Bucket = Bucket.USDF,
         proxyUrl: str = "",
         retries: int = None,
