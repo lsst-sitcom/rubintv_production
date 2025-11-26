@@ -287,6 +287,7 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/eo_pipe && \
     git config --system --add safe.directory /repos/rubintv_analysis_service && \
     git config --system --add safe.directory /repos/ts_wep && \
+    git config --system --add safe.directory /repos/ts_ofc && \
     git config --system --add safe.directory /repos/donut_viz && \
     git config --system --add safe.directory /repos/TARTS
 
