@@ -212,7 +212,7 @@ WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${donut_viz_branch} && \
-    eups declare -r . donut_viz -t saluser && \
+    eups declare -r . donut_viz ${donut_viz} -t saluser && \
     setup donut_viz -t saluser && \
     scons version
 
