@@ -28,21 +28,28 @@ import logging
 import os
 from functools import partial
 from time import monotonic, sleep
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, cast
 
+import numpy as np
+
+from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.dateTime import getCurrentDayObsInt
 from lsst.summit.utils.guiders.metrics import GuiderMetricsBuilder
 from lsst.summit.utils.guiders.plotting import GuiderPlotter
-from lsst.summit.utils.guiders.reading import GuiderReader
+from lsst.summit.utils.guiders.reading import GuiderData, GuiderReader
+from lsst.summit.utils.guiders.seeing import CorrelationAnalysis
 from lsst.summit.utils.guiders.tracking import GuiderStarTracker
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
+from .consdbUtils import ConsDBPopulator
+from .redisUtils import RedisHelper
 from .utils import (
     LocationConfig,
     getRubinTvInstrumentName,
     logDuration,
     makePlotFile,
+    raiseIf,
     writeExpRecordMetadataShard,
     writeMetadataShard,
 )
@@ -56,32 +63,62 @@ if TYPE_CHECKING:
     from .podDefinition import PodDetails
 
 
-KEY_MAP: dict[str, str] = {
+_LOG = logging.getLogger("lsst.rubintv.production.guiders")
+
+
+RUBINTV_KEY_MAP: dict[str, str] = {
     "n_stars": "Number of tracked stars",
     "n_measurements": "Number of tracked stars measurements",
     "fraction_possible_measurements": "Possible measurement fraction",
     "exptime": "Guider exposure time",
-    "az_drift_slope": "Az drift (arcsec total)",
     "az_slope_significance": "Az drift significance (sigma)",
     "az_drift_trend_rmse": "Az RMS (detrended)",
     "az_drift_global_std": "Az drift standard deviation",
-    "alt_drift_slope": "Alt drift (arcsec total)",
     "alt_slope_significance": "Alt drift significance (sigma)",
     "alt_drift_trend_rmse": "Alt RMS (detrended)",
     "alt_drift_global_std": "Alt drift standard deviation",
-    "rotator_slope": "Rotator drift (arcsec total)",
     "rotator_slope_significance": "Rotator drift significance (sigma)",
     "rotator_trend_rmse": "Rotator RMS (detrended)",
     "rotator_global_std": "Rotator drift standard deviation",
-    "mag_slope": "Magnitude drift per exposure",
     "mag_slope_significance": "Significance of the magnitude drift (sigma)",
     "mag_trend_rmse": "Magnitude RMS (detrended)",
     "mag_global_std": "Magnitude standard deviation",
     "psf_intercept": "PSF FWHM at start of image sequence",
-    "psf_slope": "PSF FWHM drift per exposure",
     "psf_slope_significance": "Significance of the PSF drift (sigma)",
     "psf_trend_rmse": "PSF RMS (detrended)",
     "psf_global_std": "PSF standard deviation",
+}
+
+RUBINTV_KEY_MAP_EXPTIME_SCALED: dict[str, str] = {
+    "az_drift_slope": "Az drift (arcsec total)",
+    "alt_drift_slope": "Alt drift (arcsec total)",
+    "rotator_slope": "Rotator drift (arcsec total)",
+    "mag_slope": "Magnitude drift per exposure",
+    "psf_slope": "PSF FWHM drift per exposure",
+}
+
+CONSDB_KEY_MAP: dict[str, str] = {
+    "guider_n_tracked_stars": "n_stars",
+    "guider_n_measurements": "n_measurements",
+    "guider_altitude_standard_deviation": "alt_drift_global_std",
+    "guider_altitude_rms_detrended": "alt_drift_trend_rmse",
+    "guider_azimuth_standard_deviation": "az_drift_global_std",
+    "guider_azimuth_rms_detrended": "az_drift_trend_rmse",
+    "guider_focalplane_theta_standard_deviation": "rotator_global_std",
+    "guider_focalplane_theta_rms_detrended": "rotator_trend_rmse",
+    "guider_magnitude_standard_deviation": "mag_global_std",
+    "guider_magnitude_rms_detrended": "mag_trend_rmse",
+    "guider_psf_fwhm_start": "psf_intercept",
+    "guider_psf_fwhm_standard_deviation": "psf_global_std",
+    "guider_psf_fwhm_rms_detrended": "psf_trend_rmse",
+}
+
+CONSDB_KEY_MAP_EXPTIME_SCALED: dict[str, str] = {
+    "guider_altitude_drift": "alt_drift_slope",
+    "guider_azimuth_drift": "az_drift_slope",
+    "guider_focalplane_theta_drift": "rotator_slope",
+    "guider_magnitude_drift": "mag_slope",
+    "guider_psf_fwhm_drift": "psf_slope",
 }
 
 
@@ -131,6 +168,53 @@ def waitForIngest(nExpected: int, timeout: float, expRecord: DimensionRecord, bu
         sleep(cadence)
 
 
+def getConsDbValues(guiderData: GuiderData, metrics: DataFrame, stars: DataFrame | None) -> dict[str, float]:
+    """Map the metrics to the ConsDB values.
+
+    Parameters
+    ----------
+    metrics : `pandas.DataFrame`
+        DataFrame containing the metrics.
+
+    Returns
+    -------
+    consDbValues : `dict` [`str`, `float`]
+        Dictionary mapping the ConsDB value names to their values.
+    """
+    consDbValues: dict[str, float | int] = {}
+
+    totalExpTime = cast(float, guiderData.header["guider_duration"])
+    stampExpTime = 1.0 / cast(float, guiderData.header["freq"])
+    cols = cast(int, guiderData.header["roi_cols"])
+    rows = cast(int, guiderData.header["roi_rows"])
+
+    consDbValues["guider_exp_time"] = totalExpTime
+    consDbValues["guider_stamp_exp_time"] = stampExpTime
+    consDbValues["guider_roi_cols"] = cols
+    consDbValues["guider_roi_rows"] = rows
+
+    for key, value in CONSDB_KEY_MAP.items():
+        try:
+            consDbValues[key] = float(metrics[value].values[0])
+        except (KeyError, IndexError):
+            _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
+
+    expTime = float(metrics["exptime"].values[0])
+    for key, value in CONSDB_KEY_MAP_EXPTIME_SCALED.items():
+        try:
+            scaledValue = float(metrics[value].values[0]) * expTime
+            consDbValues[key] = scaledValue
+        except (KeyError, IndexError):
+            _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
+
+    if stars is not None and not stars.empty:
+        consDbValues["guider_t_mean"] = np.nanmedian(stars["e1_altaz"])
+        consDbValues["guider_e1_mean"] = np.nanmedian(stars["e1_altaz"])
+        consDbValues["guider_e2_mean"] = np.nanmedian(stars["e2_altaz"])
+
+    return consDbValues
+
+
 class GuiderWorker(BaseButlerChannel):
     def __init__(
         self,
@@ -161,6 +245,9 @@ class GuiderWorker(BaseButlerChannel):
         assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
         self.log.info(f"Guider worker running, consuming from {self.podDetails.queueName}")
         self.shardsDirectory = locationConfig.guiderShardsDirectory
+        self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        self.redisHelper = RedisHelper(butler, self.locationConfig)
+        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
         self.instrument = instrument  # why isn't this being set in the base class?!
         self.reader = GuiderReader(self.butler, view="dvcs")
         camera = getCameraFromInstrumentName(self.instrument)
@@ -190,9 +277,17 @@ class GuiderWorker(BaseButlerChannel):
             Dictionary mapping the RubinTV table entry names to their values.
         """
         rubinTVtableItems: dict[str, str] = {}
-        for key, value in KEY_MAP.items():
+        for key, value in RUBINTV_KEY_MAP.items():
             try:
                 rubinTVtableItems[value] = f"{metrics[key].values[0]}"
+            except (KeyError, IndexError):
+                self.log.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
+
+        expTime = float(metrics["exptime"].values[0])
+        for key, value in RUBINTV_KEY_MAP_EXPTIME_SCALED.items():
+            try:
+                scaledValue = float(metrics[key].values[0]) * expTime
+                rubinTVtableItems[value] = f"{scaledValue}"
             except (KeyError, IndexError):
                 self.log.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
@@ -301,3 +396,28 @@ class GuiderWorker(BaseButlerChannel):
 
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
+
+        consDbValues = getConsDbValues(guiderData, metrics, stars)
+
+        try:
+            correlationAnalysis = CorrelationAnalysis(stars, guiderData.expid)
+            seeing = correlationAnalysis.measureTomographicSeeing()
+            seeingData = {
+                "guider_ground_layer_seeing": seeing.low,
+                "guider_mid_layer_seeing": seeing.mid,
+                "guider_free_seeing": seeing.high,
+                "guider_total_seeing": seeing.total,
+            }
+            consDbValues.update(seeingData)
+        except Exception as e:
+            msg = f"Error measuring tomographic seeing for {dataId=}: {e}"
+            raiseIf(self.doRaise, e, self.log, msg)
+
+        self.consDBPopulator.populateArbitrary(
+            instrument=record.instrument,
+            table="visit1_quicklook",
+            values=consDbValues,
+            dayObs=dayObs,
+            seqNum=seqNum,
+            allowUpdate=True,  # insert into existing an row requires allowUpdate
+        )
