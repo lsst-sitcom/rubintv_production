@@ -97,28 +97,28 @@ RUBINTV_KEY_MAP_EXPTIME_SCALED: dict[str, str] = {
     "psf_slope": "PSF FWHM drift per exposure",
 }
 
-CONSDB_KEY_MAP: dict[str, str] = {
-    "guider_n_tracked_stars": "n_stars",
-    "guider_n_measurements": "n_measurements",
-    "guider_altitude_standard_deviation": "alt_drift_global_std",
-    "guider_altitude_rms_detrended": "alt_drift_trend_rmse",
-    "guider_azimuth_standard_deviation": "az_drift_global_std",
-    "guider_azimuth_rms_detrended": "az_drift_trend_rmse",
-    "guider_focalplane_theta_standard_deviation": "rotator_global_std",
-    "guider_focalplane_theta_rms_detrended": "rotator_trend_rmse",
-    "guider_magnitude_standard_deviation": "mag_global_std",
-    "guider_magnitude_rms_detrended": "mag_trend_rmse",
-    "guider_psf_fwhm_start": "psf_intercept",
-    "guider_psf_fwhm_standard_deviation": "psf_global_std",
-    "guider_psf_fwhm_rms_detrended": "psf_trend_rmse",
+CONSDB_KEY_MAP: dict[str, tuple[str, type]] = {
+    "guider_n_tracked_stars": ("n_stars", int),
+    "guider_n_measurements": ("n_measurements", int),
+    "guider_altitude_standard_deviation": ("alt_drift_global_std", float),
+    "guider_altitude_rms_detrended": ("alt_drift_trend_rmse", float),
+    "guider_azimuth_standard_deviation": ("az_drift_global_std", float),
+    "guider_azimuth_rms_detrended": ("az_drift_trend_rmse", float),
+    "guider_focalplane_theta_standard_deviation": ("rotator_global_std", float),
+    "guider_focalplane_theta_rms_detrended": ("rotator_trend_rmse", float),
+    "guider_magnitude_standard_deviation": ("mag_global_std", float),
+    "guider_magnitude_rms_detrended": ("mag_trend_rmse", float),
+    "guider_psf_fwhm_start": ("psf_intercept", float),
+    "guider_psf_fwhm_standard_deviation": ("psf_global_std", float),
+    "guider_psf_fwhm_rms_detrended": ("psf_trend_rmse", float),
 }
 
-CONSDB_KEY_MAP_EXPTIME_SCALED: dict[str, str] = {
-    "guider_altitude_drift": "alt_drift_slope",
-    "guider_azimuth_drift": "az_drift_slope",
-    "guider_focalplane_theta_drift": "rotator_slope",
-    "guider_magnitude_drift": "mag_slope",
-    "guider_psf_fwhm_drift": "psf_slope",
+CONSDB_KEY_MAP_EXPTIME_SCALED: dict[str, tuple[str, type]] = {
+    "guider_altitude_drift": ("alt_drift_slope", float),
+    "guider_azimuth_drift": ("az_drift_slope", float),
+    "guider_focalplane_theta_drift": ("rotator_slope", float),
+    "guider_magnitude_drift": ("mag_slope", float),
+    "guider_psf_fwhm_drift": ("psf_slope", float),
 }
 
 
@@ -188,29 +188,30 @@ def getConsDbValues(guiderData: GuiderData, metrics: DataFrame, stars: DataFrame
     cols = cast(int, guiderData.header["roi_cols"])
     rows = cast(int, guiderData.header["roi_rows"])
 
+    consDbValues["visit_id"] = guiderData.expid  # require for table updates
     consDbValues["guider_exp_time"] = totalExpTime
     consDbValues["guider_stamp_exp_time"] = stampExpTime
-    consDbValues["guider_roi_cols"] = cols
-    consDbValues["guider_roi_rows"] = rows
+    consDbValues["guider_roi_cols"] = int(cols)
+    consDbValues["guider_roi_rows"] = int(rows)
 
-    for key, value in CONSDB_KEY_MAP.items():
+    for key, (value, _type) in CONSDB_KEY_MAP.items():
         try:
-            consDbValues[key] = float(metrics[value].values[0])
+            consDbValues[key] = _type(metrics[value].values[0])
         except (KeyError, IndexError):
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
     expTime = float(metrics["exptime"].values[0])
-    for key, value in CONSDB_KEY_MAP_EXPTIME_SCALED.items():
+    for key, (value, _type) in CONSDB_KEY_MAP_EXPTIME_SCALED.items():
         try:
-            scaledValue = float(metrics[value].values[0]) * expTime
+            scaledValue = _type(metrics[value].values[0]) * expTime
             consDbValues[key] = scaledValue
         except (KeyError, IndexError):
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
     if stars is not None and not stars.empty:
-        consDbValues["guider_t_mean"] = np.nanmedian(stars["e1_altaz"])
-        consDbValues["guider_e1_mean"] = np.nanmedian(stars["e1_altaz"])
-        consDbValues["guider_e2_mean"] = np.nanmedian(stars["e2_altaz"])
+        consDbValues["guider_t_mean"] = float(np.nanmedian(stars["e1_altaz"]))
+        consDbValues["guider_e1_mean"] = float(np.nanmedian(stars["e1_altaz"]))
+        consDbValues["guider_e2_mean"] = float(np.nanmedian(stars["e2_altaz"]))
 
     return consDbValues
 
