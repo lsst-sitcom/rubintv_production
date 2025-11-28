@@ -491,7 +491,7 @@ class ConsDBPopulator:
             typeFunc = changeType(consDbKey, typeMapping)
             toSend[consDbKey] = typeFunc(value)
 
-        self._insertIfAllowed(
+        inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
             # tuple-form for obsId required for updating non ccd-type tables
@@ -499,6 +499,8 @@ class ConsDBPopulator:
             values=toSend,
             allowUpdate=allowUpdate,
         )
+        if inserted:
+            logger.info(f"Inserted consDB values into {instrument}.{table} for ({dayObs=}, {seqNum=})")
 
     def populateMountErrors(
         self,
