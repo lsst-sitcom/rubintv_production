@@ -676,9 +676,11 @@ class PerformanceBrowser:
         isrDt = calcTimeSinceShutterClose(expRecord, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
 
-        if "calcZernikesTask" in resultsDict:
+        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict.keys())
+
+        if calcZernikesTaskName in resultsDict:
             zernikeDt = calcTimeSinceShutterClose(
-                expRecord, resultsDict["calcZernikesTask"], startOrEnd="end"
+                expRecord, resultsDict[calcZernikesTaskName], startOrEnd="end"
             )
             textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
 
@@ -739,10 +741,10 @@ class PerformanceBrowser:
             The figure object, or None if required tasks are missing.
         """
         # Check we have the necessary tasks
-        required = {"isr", "calcZernikesTask"}
-        if not required.issubset(taskResults.keys()):
+        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults.keys())
+        if calcZernikesTaskName is None or "isr" not in taskResults:
             log = logging.getLogger(__name__)
-            log.warning(f"Skipping AOS plot for {record.id}: missing tasks {required - taskResults.keys()}")
+            log.warning(f"Skipping AOS plot for {record.id}: missing isr and/or zernike-calculating task")
             return None
 
         if metrics is None:
@@ -848,8 +850,10 @@ class PerformanceMonitor(BaseButlerChannel):
             textItems.append(f"Shutter close to isr start: {minTime:.1f} s")
             rubinTVtableItems["ISR start time (shutter)"] = f"{minTime:.2f}"
 
-        if "calcZernikesTask" in resultsDict:
-            zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
+        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict.keys())
+
+        if calcZernikesTaskName in resultsDict:
+            zernikeDt = calcTimeSinceShutterClose(record, resultsDict[calcZernikesTaskName], startOrEnd="end")
             textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
             rubinTVtableItems["Zernike delivery time (shutter)"] = f"{zernikeDt:.2f}"
 
@@ -919,10 +923,10 @@ class PerformanceMonitor(BaseButlerChannel):
             The task results.
         """
         # Check we have the necessary tasks
-        required = {"isr", "calcZernikesTask"}
-        if not required.issubset(taskResults.keys()):
+        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults.keys())
+        if calcZernikesTaskName is None or "isr" not in taskResults:
             self.log.warning(
-                f"Skipping AOS plot for {record.id}: missing tasks {required - taskResults.keys()}"
+                f"Skipping AOS plot for {record.id}: missing isr and/or zernike-calculating task"
             )
             return
 
@@ -977,6 +981,25 @@ def getIngestTimes(
     return wfTimes, sciTimes
 
 
+def getZernikeCalculatingTaskName(candidates: Iterable[str]) -> str | None:
+    """Get the name of the Zernike calculating task from a list of candidates.
+
+    Parameters
+    ----------
+    candidates : `list[str]`
+        The list of candidate task names.
+
+    Returns
+    -------
+    taskName : `str` or `None`
+        The name of the Zernike calculating task, or None if not found.
+    """
+    for name in candidates:
+        if "calcZernikes" in name:
+            return name
+    return None
+
+
 def calculateAosMetrics(
     efdClient: EfdClient,
     expRecord: DimensionRecord,
@@ -1003,12 +1026,16 @@ def calculateAosMetrics(
     """
     wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
 
+    calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults.keys())
+    if calcZernikesTaskName is None:
+        raise ValueError("No Zernike calculating task found in task results")
+
     readoutDelay = getEndReadoutTime(efdClient, expRecord)
-    zernikeDelivery = taskResults["calcZernikesTask"].endTimeAfterShutterClose
+    zernikeDelivery = taskResults[calcZernikesTaskName].endTimeAfterShutterClose
     isrStart = taskResults["isr"].startTimeAfterShutterClose
     wfIngestStart = min(wfTimes.values())
     wfIngestEnd = max(wfTimes.values())
-    calcZernMean = np.nanmedian(list(taskResults["calcZernikesTask"].detectorTimings.values()))
+    calcZernMean = np.nanmedian(list(taskResults[calcZernikesTaskName].detectorTimings.values()))
     isrTimes = taskResults["isr"].detectorTimings  # this includes the imaging chips
     cwfsIsrTimes = [isrTimes[detNum] for detNum in cwfsDetNums if detNum in isrTimes]
     isrMean = np.nanmedian(cwfsIsrTimes) if cwfsIsrTimes else float("nan")
