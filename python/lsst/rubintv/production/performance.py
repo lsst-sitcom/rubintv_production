@@ -676,7 +676,7 @@ class PerformanceBrowser:
         isrDt = calcTimeSinceShutterClose(expRecord, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
 
-        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict.keys())
+        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict)
 
         if calcZernikesTaskName in resultsDict:
             zernikeDt = calcTimeSinceShutterClose(
@@ -741,7 +741,7 @@ class PerformanceBrowser:
             The figure object, or None if required tasks are missing.
         """
         # Check we have the necessary tasks
-        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults.keys())
+        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
         if calcZernikesTaskName is None or "isr" not in taskResults:
             log = logging.getLogger(__name__)
             log.warning(f"Skipping AOS plot for {record.id}: missing isr and/or zernike-calculating task")
@@ -850,7 +850,7 @@ class PerformanceMonitor(BaseButlerChannel):
             textItems.append(f"Shutter close to isr start: {minTime:.1f} s")
             rubinTVtableItems["ISR start time (shutter)"] = f"{minTime:.2f}"
 
-        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict.keys())
+        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict)
 
         if calcZernikesTaskName in resultsDict:
             zernikeDt = calcTimeSinceShutterClose(record, resultsDict[calcZernikesTaskName], startOrEnd="end")
@@ -923,7 +923,7 @@ class PerformanceMonitor(BaseButlerChannel):
             The task results.
         """
         # Check we have the necessary tasks
-        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults.keys())
+        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
         if calcZernikesTaskName is None or "isr" not in taskResults:
             self.log.warning(
                 f"Skipping AOS plot for {record.id}: missing isr and/or zernike-calculating task"
@@ -981,8 +981,8 @@ def getIngestTimes(
     return wfTimes, sciTimes
 
 
-def getZernikeCalculatingTaskName(candidates: Iterable[str]) -> str | None:
-    """Get the name of the Zernike calculating task from a list of candidates.
+def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
+    """Get the name of the Zernike calculating task data.
 
     Parameters
     ----------
@@ -994,9 +994,9 @@ def getZernikeCalculatingTaskName(candidates: Iterable[str]) -> str | None:
     taskName : `str` or `None`
         The name of the Zernike calculating task, or None if not found.
     """
-    for name in candidates:
-        if "calcZernikes" in name:
-            return name
+    for taskName, taskResults in data.items():
+        if "calczernikes" not in taskName.lower() or len(taskResults.logs) == 0:
+            continue
     return None
 
 
@@ -1026,7 +1026,7 @@ def calculateAosMetrics(
     """
     wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
 
-    calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults.keys())
+    calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
     if calcZernikesTaskName is None:
         raise ValueError("No Zernike calculating task found in task results")
 
