@@ -426,6 +426,7 @@ def buildPipelines(
     aosRefitWcsFile = locationConfig.aosLSSTCamRefitWcsPipelineFile
     aiDonutFile = locationConfig.aosLSSTCamAiDonutPipelineFile
     tartsFile = locationConfig.aosLSSTCamTartsPipelineFile
+    unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
 
     drpPipeDir = getPackageDir("drp_pipe")
     biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
@@ -476,6 +477,9 @@ def buildPipelines(
         )
         pipelines["AOS_FAM_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanishFam, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_UNPAIRED_DANISH"] = PipelineComponents(
+            butler.registry, unpairedDanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
 
     allGraphs: list[PipelineGraph] = []
