@@ -1056,7 +1056,7 @@ def calculateAosMetrics(
         "WF ingestion duration": (wfIngestEnd - wfIngestStart),
         "First WF available to isr start": (isrStart - wfIngestStart),
         "Mean isr runtime": float(isrMean),
-        "Mean calcZernikes runtime": float(calcZernMean),
+        f"Mean {calcZernikesTaskName} runtime": float(calcZernMean),
         "Readout end to isr start": (isrStart - readoutDelay),
         "Shutter close to zernikes": zernikeDelivery,
     }
