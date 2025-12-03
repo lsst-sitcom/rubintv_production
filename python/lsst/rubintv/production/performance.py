@@ -994,10 +994,13 @@ def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
     taskName : `str` or `None`
         The name of the Zernike calculating task, or None if not found.
     """
-    for taskName, taskResults in data.items():
-        if "calczernikes" not in taskName.lower() or len(taskResults.logs) == 0:
-            continue
-    return None
+    lengths = {taskName: len(taskResults.logs) for taskName, taskResults in data.items()}
+    zernikeLengths = {k: v for k, v in lengths.items() if "calczernikes" in k.lower() and v > 0}
+    if len(zernikeLengths) == 0:
+        return None
+    if len(zernikeLengths) > 1:
+        raise ValueError(f"Multiple Zernike calculating tasks were run: task log lengths={zernikeLengths}")
+    return next(iter(zernikeLengths.keys()))
 
 
 def calculateAosMetrics(
