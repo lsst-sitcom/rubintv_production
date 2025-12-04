@@ -222,6 +222,20 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.runCollection = payload.run
         who = payload.who  # who are we running this for?
 
+        # XXX all the code on the headnode that deals with pairing stuff goes
+        # away - every dataid comes as a single one, and this just hard-codes
+        # pairing them up for aos (this is necessary for the QGG to have all
+        #  the quanta needed for calcZenikes to run paired). Then, inside the
+        # `for node in qg` loop, if the task name contains 'unpaired' we drop
+        # the quantum (make sure to log it as finished though or step1b won't
+        # start) This re-insertion only happens if the task is a paired task,
+        # i.e. if we're running AOS, and unpaired is not in any of the task
+        # names this way the unpaired task run all the way through completion
+        # of calcZenikes normally.
+
+        # XXX remove all this, and just hard-code putting back in the pairs
+        # for the extra focal dataids
+
         compoundId = ""
         sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
         if "exposure" in sampleDataId:
