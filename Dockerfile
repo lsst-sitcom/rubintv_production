@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_41"
+ARG STACK_TAG="w_2025_48"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,15 +9,15 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2025.41"
-ENV drp_pipe_branch="w.2025.41"
-ENV spectractor_branch="w.2025.41"
-ENV atmospec_branch="w.2025.41"
-ENV summit_utils_branch="w.2025.41"
-ENV summit_extras_branch="w.2025.41"
+ENV obs_lsst_branch="w.2025.48"
+ENV drp_pipe_branch="w.2025.48"
+ENV spectractor_branch="w.2025.48"
+ENV atmospec_branch="w.2025.48"
+ENV summit_utils_branch="w.2025.48"
+ENV summit_extras_branch="w.2025.48"
 ENV eo_pipe_branch="w_2025_12"
-ENV ts_wep_branch="v14.7.0"
-ENV donut_viz_branch="5de0465"
+ENV ts_wep_branch="5107292b"
+ENV donut_viz_branch="18ea94d"
 # no tags for TARTS yet, so default to main if not using deployment branch
 ENV tarts_branch="main"
 ENV ts_ofc_branch="main"
@@ -55,6 +55,7 @@ RUN yum install -y \
       nano \
       mesa-libGL-devel \
       rsync \
+      tmux \
   && yum clean all \
   && rm -rf /var/cache/yum
 
