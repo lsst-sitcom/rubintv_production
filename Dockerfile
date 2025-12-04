@@ -55,6 +55,7 @@ RUN yum install -y \
       nano \
       mesa-libGL-devel \
       rsync \
+      tmux \
   && yum clean all \
   && rm -rf /var/cache/yum
 
