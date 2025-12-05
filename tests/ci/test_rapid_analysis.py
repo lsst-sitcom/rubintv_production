@@ -172,7 +172,8 @@ class TestConfig:
 
         # Test durations
         self.meta_test_duration = 30
-        self.test_duration = 600
+        self.test_duration_round_1 = 600
+        self.test_duration_round_2 = 200  # spin-up + plotting needed
 
         # Date for testing
         self.today = 20240101
@@ -361,8 +362,13 @@ class TestConfig:
         )
 
         # Scripts to run after processing pods are torn down
-        self.test_scripts_round_3 = [
-            TestScript("scripts/LSSTCam/runButlerWatcher.py", ["usdf_testing"]),
+        self.test_scripts_round_2 = [
+            TestScript(
+                "scripts/LSSTCam/runPerformanceMonitor.py",
+                ["usdf_testing"],
+                tee_output=True,
+                display_on_pass=True,
+            )
         ]
 
         # Meta tests that are expected to fail
@@ -392,9 +398,9 @@ class TestConfig:
             for script in self.test_scripts_round_1
         ]
 
-        self.test_scripts_round_3 = [
+        self.test_scripts_round_2 = [
             TestScript.from_existing(script, os.path.join(self.package_dir, script.path))
-            for script in self.test_scripts_round_3
+            for script in self.test_scripts_round_2
         ]
 
         self.meta_tests_fail_expected = [
@@ -1024,10 +1030,19 @@ class ResultCollector:
             ("LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
             # Guider plots and movies
             ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4", 200_000),
+            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4", 200_000),
+            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4", 200_000),
             ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4", 100_000),
+            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4", 100_000),
+            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4", 100_000),
             ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
+            # Performance analysis plots
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
@@ -1073,7 +1088,7 @@ class ResultCollector:
         actualPlotPaths = set()
         for root, _, files in os.walk(locationConfig.plotPath):
             for file in files:
-                if file.endswith((".png", ".jpg", ".jpeg", ".gif")):
+                if file.endswith((".png", ".jpg", ".jpeg", ".gif", ".mp4")):
                     relPath = os.path.relpath(os.path.join(root, file), locationConfig.plotPath)
                     actualPlotPaths.add(relPath)
 
@@ -1187,6 +1202,7 @@ class TestRunner:
         """Ensure all test scripts exist."""
         all_scripts = itertools.chain(
             self.config.test_scripts_round_1,
+            self.config.test_scripts_round_2,
             self.config.meta_tests_fail_expected,
             self.config.meta_tests_pass_expected,
         )
@@ -1269,7 +1285,13 @@ class TestRunner:
             self.delete_output_files()
 
             # Run the main test scripts
-            self.process_manager.run_test_scripts(self.config.test_scripts_round_1, self.config.test_duration)
+            self.process_manager.run_test_scripts(
+                self.config.test_scripts_round_1, self.config.test_duration_round_1
+            )
+
+            self.process_manager.run_test_scripts(
+                self.config.test_scripts_round_2, self.config.test_duration_round_2
+            )
 
             # Verify all scripts reported results
             self._verify_all_scripts_reported()
@@ -1277,6 +1299,7 @@ class TestRunner:
             # Check test results
             print("\nTest Results:")
             self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
+            self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_2)
 
             # Check for plots and Redis results
             self.result_collector.check_plots(self.config)
@@ -1298,6 +1321,7 @@ class TestRunner:
             expected.extend(self.config.meta_tests_fail_expected)
             expected.extend(self.config.meta_tests_pass_expected)
         expected.extend(self.config.test_scripts_round_1)
+        expected.extend(self.config.test_scripts_round_2)
 
         exit_codes_keys = set(self.process_manager.exit_codes.keys())
         outputs_keys = set(self.process_manager.outputs.keys())

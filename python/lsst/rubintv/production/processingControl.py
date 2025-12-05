@@ -61,6 +61,7 @@ from .utils import (
     isCalibration,
     isWepImage,
     raiseIf,
+    runningCI,
     writeExpRecordMetadataShard,
     writeMetadataShard,
 )
@@ -657,6 +658,10 @@ class HeadProcessController:
         )
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
+        if runningCI():  # always need a new run for CI for timing plots
+            self.log.warning("Forcing new run because this is running in CI")  # check we don't see in prod
+            forceNewRun = True
+
         packages = Packages.fromSystem()
 
         allRuns: Sequence[str] = []
