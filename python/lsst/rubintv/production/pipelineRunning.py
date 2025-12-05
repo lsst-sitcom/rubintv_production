@@ -599,6 +599,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 else nominalPlateScale
             )
         pixToArcseconds = np.nanmedian(scales)
+        # check if pixToArcseconds is within 10% of nominalPlateScale
+        if not (0.9 * nominalPlateScale < pixToArcseconds < 1.1 * nominalPlateScale):
+            self.log.warning(f"Unusual pixel scale {pixToArcseconds=} not within 10% of nominal")
 
         e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
         e2 = 2 * vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
