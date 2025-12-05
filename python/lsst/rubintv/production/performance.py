@@ -29,7 +29,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Iterable
 
 import matplotlib.dates as mdates
@@ -38,6 +38,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
+from lsst.daf.butler import MissingDatasetTypeError
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
@@ -45,12 +46,12 @@ from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, makePlotFile, writeMetadataShard
+from .utils import LocationConfig, makePlotFile, runningCI, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
-    from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
+    from lsst.daf.butler import Butler, ButlerLogRecords, DatasetRef, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
 
     from .payloads import Payload
@@ -340,6 +341,9 @@ def plotGantt(
         and tr.taskName not in ignoreTasks
     ]
     shutterClose: datetime = expRecord.timespan.end.utc.to_datetime()
+    if runningCI():
+        shutterClose = min(tr.startTimeOverall for tr in valid if tr.startTimeOverall is not None)
+        shutterClose = shutterClose - timedelta(seconds=10)  # to make the plots legible in CI
     shutterCloseNum = mdates.date2num(shutterClose)
 
     for i, tr in enumerate(valid):
@@ -455,6 +459,9 @@ def calcTimeSinceShutterClose(
     if startOrEnd not in ["start", "end"]:
         raise ValueError(f"Invalid option {startOrEnd=}")
 
+    if runningCI():  # pretend old data is recent for CI so plots are legible
+        return 10.0
+
     if taskResult.startTimeOverall is None:  # if it has a start it has an end, and vice versa
         log = logging.getLogger("lsst.rubintv.production.performance.calcTimeSinceShutterClose")
         log.warning(f"Task {taskResult.taskName} has no {startOrEnd} time")
@@ -513,11 +520,18 @@ class TaskResult:
         self.logs: dict[int | None, ButlerLogRecords] = {}
 
         where = makeWhere(task, record)
-        dRefs = butler.query_datasets(
-            f"{self.taskName}_log",
-            find_first=True,
-            where=where,
-        )
+        dRefs: list[DatasetRef] = []
+        try:
+            dRefs = butler.query_datasets(
+                f"{self.taskName}_log",
+                find_first=True,
+                where=where,
+                explain=False,
+            )
+        except MissingDatasetTypeError:
+            # this should only happen in CI or if a task has *never* been run
+            # in the repo (otherwise it's just an empty query result)
+            return
 
         if debug:
             print(f"Loading logs for {self.taskName=} with {where=} from {len(dRefs)=} dRefs")

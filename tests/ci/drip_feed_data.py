@@ -4,6 +4,8 @@ import time
 t0 = time.time()
 
 from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
+from lsst.rubintv.production.payloads import Payload  # noqa: E402
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.utils import getAutomaticLocationConfig  # noqa: E402
 
@@ -37,10 +39,20 @@ where = (
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 4, f"Expected 4 records, got {len(records)}"
 
+performancePod = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None
+)
+
 for record in records:
     assert isinstance(record, DimensionRecord)
     redisHelper.pushNewExposureToHeadNode(record)  # let the SFM go first
     redisHelper.pushToButlerWatcherList(instrument, record)
+
+    # queue everything up for performance monitoring once that spins up
+    # that comes as a 2nd round, so only starts once everything else is over
+    # so it's fine to just enqueue it all right now
+    payload = Payload([record.dataId], b"", "", who="")
+    redisHelper.enqueuePayload(payload, performancePod)
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
