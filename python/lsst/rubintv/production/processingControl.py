@@ -166,6 +166,11 @@ def ensureRunCollection(
                     datasetTypeName,
                     run=run,
                 )
+            initRefs[taskNode.init.config_output.dataset_type_name] = butler.put(
+                taskNode.config,
+                taskNode.init.config_output.dataset_type_name,
+                run=run,
+            )
     return run
 
 
