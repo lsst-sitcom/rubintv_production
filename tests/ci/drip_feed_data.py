@@ -45,12 +45,6 @@ for record in records:
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
 
-# assert isinstance(toPush, DimensionRecord)
-# print(f"Pushing expId={toPush.id} for {toPush.instrument} for processing")
-# # this is what the butlerWatcher does for each new record
-# redisHelper.pushNewExposureToHeadNode(toPush)  # let the SFM go first
-# redisHelper.pushToButlerWatcherList(instrument, toPush)
-
 time.sleep(2)  # make sure the head node has done the dispatch of the SFM image
 
 print("Pushing pair announcement signal to redis (simulating OCS signal)")
