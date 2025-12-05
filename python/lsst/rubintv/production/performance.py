@@ -513,12 +513,10 @@ class TaskResult:
         self.logs: dict[int | None, ButlerLogRecords] = {}
 
         where = makeWhere(task, record)
-        dRefs = list(
-            butler.registry.queryDatasets(
-                f"{self.taskName}_log",
-                findFirst=True,
-                where=where,
-            )
+        dRefs = butler.query_datasets(
+            f"{self.taskName}_log",
+            find_first=True,
+            where=where,
         )
 
         if debug:
