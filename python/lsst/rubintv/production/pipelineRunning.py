@@ -587,13 +587,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # 0.2"/pix is virtually exact - the detector median on an image gave
         # 0.2000821, so round that off for the fallback value.
         nominalPlateScale = 0.2
-        pixToArcseconds = np.nanmean(
-            [
-                row.wcs.getPixelScale().asArcseconds() if row.wcs is not None else nominalPlateScale
-                for row in vs
-            ]
-        )
         SIGMA2FWHM = np.sqrt(8 * np.log(2))
+
+        scales: list[float] = []
+        camera = getCameraFromInstrumentName(self.instrument)
+        for row in vs:
+            detector = camera[row["id"]]
+            scales.append(
+                row.wcs.getPixelScale(detector.getBBox().getCenter()).asArcseconds()
+                if row.wcs is not None
+                else nominalPlateScale
+            )
+        pixToArcseconds = np.nanmedian(scales)
+        # check if pixToArcseconds is within 10% of nominalPlateScale
+        if not (0.9 * nominalPlateScale < pixToArcseconds < 1.1 * nominalPlateScale):
+            self.log.warning(f"Unusual pixel scale {pixToArcseconds=} not within 10% of nominal")
 
         e1 = (vs["psfIxx"] - vs["psfIyy"]) / (vs["psfIxx"] + vs["psfIyy"])
         e2 = 2 * vs["psfIxy"] / (vs["psfIxx"] + vs["psfIyy"])
