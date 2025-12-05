@@ -526,8 +526,8 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm = [2025041500088]
-        visits_aos = ["2025041500088", "20250415000086+20250415000087"]
+        visits_sfm = [2025111500226]
+        visits_aos = ["2025111500226", "2025111500227+2025111500228"]
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -562,15 +562,15 @@ class RedisManager:
             checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
 
         # check zernike announcement for MTAOS
-        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025041500088) == 4:
-            checks.append(Check(True, "MTAOS Zernike count for non-FAM image 2025041500088 is 4"))
+        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226) == 4:
+            checks.append(Check(True, "MTAOS Zernike count for non-FAM image 2025111500226 is 4"))
         else:
-            checks.append(Check(False, "MTAOS Zernike count for non-FAM image 2025041500088 is not 4"))
+            checks.append(Check(False, "MTAOS Zernike count for non-FAM image 2025111500226 is not 4"))
 
-        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025041500086) == 18:
-            checks.append(Check(True, "MTAOS Zernike count for FAM image 2025041500086 is 18"))
+        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500227) == 18:
+            checks.append(Check(True, "MTAOS Zernike count for FAM image 2025111500227 is 18"))
         else:
-            checks.append(Check(False, "MTAOS Zernike count for FAM image 2025041500086 is not 18"))
+            checks.append(Check(False, "MTAOS Zernike count for FAM image 2025111500227 is not 18"))
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
@@ -977,57 +977,57 @@ class ResultCollector:
         expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
             # Regular LSSTCam plots -------
             # event timelines for all images
-            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000086.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000087.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_event_timeline_dayObs_20250415_seqNum_000311.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000227.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png", 5000),
             # post ISR mosaics for all images
-            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000086.jpg", 5000),
-            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000087.jpg", 5000),
-            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
-            ("LSSTCam/20250415/LSSTCam_focal_plane_mosaic_dayObs_20250415_seqNum_000311.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg", 5000),
             # witness detector images for all with postISR that aren't CWFS
-            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000088.jpg", 5000),
-            ("LSSTCam/20250415/LSSTCam_witness_detector_dayObs_20250415_seqNum_000311.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg", 5000),
             # calexp mosaic for the only in-focus image
-            ("LSSTCam/20250415/LSSTCam_calexp_mosaic_dayObs_20250415_seqNum_000088.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
             # mount plots for the three on-sky images
-            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000086.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000087.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_mount_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000227.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000228.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000226.png", 5000),
             # all the other plots for the on-sky image: fwhm, imexam
             # TODO: DM-51391 add psfAzEl plot
-            ("LSSTCam/20250415/LSSTCam_fwhm_focal_plane_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_imexam_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_psf_shape_azel_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000226.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_imexam_dayObs_20251115_seqNum_000226.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000226.png", 5000),
             # AOS plots -------
             # FAM donut galleries
-            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000086.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000087.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_fp_donut_gallery_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000227.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000228.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000226.png", 5000),
             # Extrafocal id for FAM plot
-            ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
             # CWFS plot
-            ("LSSTCam/20250415/LSSTCam_zk_measurement_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
             # Extrafocal id for FAM plot
-            ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000087.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
             # CWFS plot
-            ("LSSTCam/20250415/LSSTCam_zk_residual_pyramid_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
             # PSF zernike panels FAM extra-focal and regular image
-            ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000087.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_psf_zk_panel_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000228.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000226.png", 5000),
             # Donut pairing plot for regular image
-            ("LSSTCam/20250415/LSSTCam_fp_pairing_plot_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_donut_fits_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fp_pairing_plot_dayObs_20251115_seqNum_000226.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000226.png", 5000),
             # Zernike and DOF FWHM prediction plots
-            ("LSSTCam/20250415/LSSTCam_zernike_predicted_fwhm_dayObs_20250415_seqNum_000088.png", 5000),
-            ("LSSTCam/20250415/LSSTCam_dof_predicted_fwhm_dayObs_20250415_seqNum_000088.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_zernike_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
             # Guider plots and movies
-            ("LSSTCam/20250629/LSSTCam_full_movie_dayObs_20250629_seqNum_000340.mp4", 200_000),
-            ("LSSTCam/20250629/LSSTCam_star_movie_dayObs_20250629_seqNum_000340.mp4", 100_000),
-            ("LSSTCam/20250629/LSSTCam_centroid_alt_az_dayObs_20250629_seqNum_000340.jpg", 5000),
-            ("LSSTCam/20250629/LSSTCam_flux_trend_dayObs_20250629_seqNum_000340.jpg", 5000),
-            ("LSSTCam/20250629/LSSTCam_psf_trend_dayObs_20250629_seqNum_000340.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4", 200_000),
+            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4", 100_000),
+            ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
