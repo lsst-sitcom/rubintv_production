@@ -550,6 +550,11 @@ class PipelineComponents:
     def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
 
+        Parameters
+        ----------
+        steps : `list` [`str`], optional
+            The steps to get tasks for. If `None`, get tasks for all steps.
+
         Returns
         -------
         tasks : `dict` [`str`, `PipelineGraph`]
