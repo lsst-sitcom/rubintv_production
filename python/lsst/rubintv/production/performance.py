@@ -75,22 +75,87 @@ AOS_TASK_COLORS = [
 
 
 def isVisitType(task: TaskNode) -> bool:
+    """
+    Check if the task is a visit type.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isVisit : `bool`
+        True if the task is a visit type, False otherwise.
+    """
     return "visit" in task.dimensions
 
 
 def isExposureType(task: TaskNode) -> bool:
+    """
+    Check if the task is an exposure type.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isExposure : `bool`
+        True if the task is an exposure type, False otherwise.
+    """
     return "exposure" in task.dimensions
 
 
 def isDetectorLevel(task: TaskNode) -> bool:
+    """
+    Check if the task is detector level.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isDetector : `bool`
+        True if the task is detector level, False otherwise.
+    """
     return "detector" in task.dimensions
 
 
 def isFocalPlaneLevel(task: TaskNode) -> bool:
+    """
+    Check if the task is focal plane level.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isFocalPlane : `bool`
+        True if the task is focal plane level, False otherwise.
+    """
     return not isDetectorLevel(task)
 
 
 def getFail(log: ButlerLogRecords) -> str | None:
+    """
+    Get the failure message from the log records.
+
+    Parameters
+    ----------
+    log : `ButlerLogRecords`
+        The log records.
+
+    Returns
+    -------
+    message : `str` or `None`
+        The failure message if found, None otherwise.
+    """
     for line in log:
         if line.levelname == "ERROR":
             return line.message
@@ -98,6 +163,23 @@ def getFail(log: ButlerLogRecords) -> str | None:
 
 
 def getExpRecord(butler: Butler, dayObs: int, seqNum: int) -> DimensionRecord | None:
+    """
+    Get the exposure record for a given day and sequence number.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    dayObs : `int`
+        The day of observation.
+    seqNum : `int`
+        The sequence number.
+
+    Returns
+    -------
+    expRecord : `DimensionRecord` or `None`
+        The exposure record if found, None otherwise.
+    """
     try:
         (expRecord,) = butler.registry.queryDimensionRecords(
             "exposure", where=f"exposure.day_obs={dayObs} and exposure.seq_num={seqNum}"
@@ -108,6 +190,21 @@ def getExpRecord(butler: Butler, dayObs: int, seqNum: int) -> DimensionRecord | 
 
 
 def getVisitRecord(butler: Butler, expRecord: DimensionRecord) -> DimensionRecord | None:
+    """
+    Get the visit record for a given exposure record.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    expRecord : `DimensionRecord`
+        The exposure record.
+
+    Returns
+    -------
+    visitRecord : `DimensionRecord` or `None`
+        The visit record if found, None otherwise.
+    """
     try:
         (visitRecord,) = butler.registry.queryDimensionRecords("visit", where=f"visit={expRecord.id}")
         return visitRecord
@@ -116,6 +213,21 @@ def getVisitRecord(butler: Butler, expRecord: DimensionRecord) -> DimensionRecor
 
 
 def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
+    """
+    Make a where clause for querying datasets.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+    record : `DimensionRecord`
+        The dimension record.
+
+    Returns
+    -------
+    where : `str`
+        The where clause.
+    """
     isVisit = isExposureType(task)
 
     if isVisit == "isr":
@@ -125,6 +237,22 @@ def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
 
 
 def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
+    """
+    Calculate the time taken by a task from its logs.
+
+    Parameters
+    ----------
+    logs : `ButlerLogRecords`
+        The log records.
+    method : `str`, optional
+        The method to use for calculating time. Options are "first-last"
+        (default) or "parse".
+
+    Returns
+    -------
+    time : `float`
+        The time taken by the task in seconds.
+    """
     if method == "first-last":
         return (logs[-1].asctime - logs[0].asctime).total_seconds()
     elif method == "parse":
@@ -139,11 +267,12 @@ def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
 
 
 def makeTitle(record: DimensionRecord) -> str:
-    """Make a title for a plot based on the exp/visit record and detector.
+    """
+    Make a title for a plot based on the exp/visit record and detector.
 
     Parameters
     ----------
-    record : `lsst.daf.butler.DimensionRecord`
+    record : `DimensionRecord`
         The exposure or visit record.
 
     Returns
@@ -167,7 +296,8 @@ def plotGantt(
     figsize=(10, 6),
     barHeight=0.6,
 ):
-    """Plot a Gantt chart of task results.
+    """
+    Plot a Gantt chart of task results.
 
     For each task, puts a vertical mark at the absolute start and end time,
     and a horizontal bar in the middle of that region, with a width of the
@@ -177,16 +307,15 @@ def plotGantt(
     ----------
     expRecord : `DimensionRecord`
         The exposure or visit record.
-    taskResults : `list[TaskResult]`
+    taskResults : `list` of `TaskResult`
         The list of task results to plot.
-    ignoreTasks : `list[str]`, optional
+    ignoreTasks : `list` of `str`, optional
         A list of task names to exclude from the plot.
-    timings : `list[(datetime, str)]`, optional
-        A list of tuples containing a datetime and a string to plot as
-        vertical lines on the Gantt chart and text in the textbox.
-    figsize : `tuple`
+    timings : `list` of `str`, optional
+        A list of strings to display in a text box on the plot.
+    figsize : `tuple`, optional
         The size of the figure.
-    barHeight : `float`
+    barHeight : `float`, optional
         The height of the bars in the Gantt chart.
 
     Returns
@@ -304,7 +433,8 @@ def calcTimeSinceShutterClose(
     taskResult: TaskResult,
     startOrEnd: str = "start",
 ) -> float:
-    """Calculate the time since shutter close for a task result.
+    """
+    Calculate the time since shutter close for a task result.
 
     Parameters
     ----------
@@ -312,11 +442,15 @@ def calcTimeSinceShutterClose(
         The exposure record.
     taskResult : `TaskResult`
         The task result.
+    startOrEnd : `str`, optional
+        Whether to use the "start" or "end" time of the task. Default is
+        "start".
 
     Returns
     -------
-    timeSinceShutterClose : `float` or `None`
-        The time since shutter close in seconds, or None if not applicable.
+    timeSinceShutterClose : `float`
+        The time since shutter close in seconds. Returns NaN if time is
+        missing.
     """
     if startOrEnd not in ["start", "end"]:
         raise ValueError(f"Invalid option {startOrEnd=}")
@@ -338,20 +472,25 @@ def calcTimeSinceShutterClose(
 
 @dataclass
 class TaskResult:
-    """Details about task performance.
+    """
+    Details about task performance.
 
     Parameters
     ----------
+    record : `DimensionRecord`
+        The dimension record.
     task : `TaskNode`
         The task node.
     taskName : `str`
         The name of the task.
-    detectors : `list[int]`
+    detectors : `list` of `int` or `None`
         The list of detectors for which the task ran.
-    detectorTimings : `dict[int, float]`
+    detectorTimings : `dict`
         The timings for each detector on the task.
-    failures : `dict[int, str]`
+    failures : `dict`
         The failures for each detector, if present.
+    logs : `dict`
+        The logs for each detector.
     """
 
     record: DimensionRecord
@@ -513,11 +652,20 @@ class TaskResult:
         return calcTimeSinceShutterClose(self.record, self, startOrEnd="start")
 
     def printLog(self, detector: int | None, differentialMode: bool = True) -> None:
-        """Print the per-line log times for a task.
+        """
+        Print the per-line log times for a task.
 
         Prints the log for a given detector (if it's a detector level) task,
         with the associated time for each line. This is useful for debugging
         and understanding the time taken by each step.
+
+        Parameters
+        ----------
+        detector : `int` or `None`
+            The detector ID, or None for focal-plane tasks.
+        differentialMode : `bool`, optional
+            If True, print time since previous log message. If False, print
+            ISO timestamp. Default is True.
         """
         if not self.logs:
             return
@@ -554,13 +702,14 @@ class TaskResult:
 
 @dataclass
 class AosMetrics:
-    """Metrics calculated for the AOS performance plot.
+    """
+    Metrics calculated for the AOS performance plot.
 
     Parameters
     ----------
-    staircaseTimings : `dict[str, float]`
+    staircaseTimings : `dict`
         Timings for the staircase plot events.
-    legendItems : `dict[str, float]`
+    legendItems : `dict`
         Items to display in the legend box.
     """
 
@@ -569,6 +718,21 @@ class AosMetrics:
 
 
 class PerformanceBrowser:
+    """
+    Class for browsing performance data.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    instrument : `str`
+        The instrument name.
+    locationConfig : `LocationConfig`
+        The location configuration.
+    debug : `bool`, optional
+        Whether to enable debug mode. Default is False.
+    """
+
     def __init__(
         self,
         butler,
@@ -599,14 +763,15 @@ class PerformanceBrowser:
             self.taskDict.update(self.pipelines[who].getTasks())
 
     def loadData(self, expRecord: DimensionRecord, reload=False) -> None:
-        """Load data for the given day and sequence number.
+        """
+        Load data for the given exposure record.
 
         Parameters
         ----------
-        dayObs : `int`
-            The day of observation.
-        seqNum : `int`
-            The sequence number.
+        expRecord : `DimensionRecord`
+            The exposure record.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
         """
         # have data and not reloading
         if expRecord in self.data and not reload:
@@ -639,7 +804,8 @@ class PerformanceBrowser:
         self.data[expRecord] = data
 
     def getResults(self, expRecord: DimensionRecord, taskName: str, reload: bool = False) -> TaskResult:
-        """Get the results for a specific task.
+        """
+        Get the results for a specific task.
 
         Parameters
         ----------
@@ -647,10 +813,12 @@ class PerformanceBrowser:
             The exposure record.
         taskName : `str`
             The name of the task.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
 
         Returns
         -------
-        TaskResult
+        result : `TaskResult`
             The results for the specified task.
         """
         self.loadData(expRecord, reload=reload)
@@ -662,7 +830,18 @@ class PerformanceBrowser:
     def plot(
         self, expRecord: DimensionRecord, reload: bool = False, ignoreTasks: list[str] | None = None
     ) -> None:
-        """Plot the results for all tasks."""
+        """
+        Plot the results for all tasks.
+
+        Parameters
+        ----------
+        expRecord : `DimensionRecord`
+            The exposure record.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
+        ignoreTasks : `list` of `str`, optional
+            List of task names to ignore.
+        """
         self.loadData(expRecord, reload=reload)
         data = self.data[expRecord]
         if not data:
@@ -688,6 +867,18 @@ class PerformanceBrowser:
         return fig
 
     def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
+        """
+        Print logs for the given exposure record.
+
+        Parameters
+        ----------
+        expRecord : `DimensionRecord`
+            The exposure record.
+        full : `bool`, optional
+            Whether to print full logs. Default is False.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
+        """
         self.loadData(expRecord, reload)
         data = self.data[expRecord]
 
@@ -720,17 +911,18 @@ class PerformanceBrowser:
         cwfsDetNums: Iterable[int],
         metrics: AosMetrics | None = None,
     ) -> Figure | None:
-        """Create the AOS task timing plot.
+        """
+        Create the AOS task timing plot.
 
         Parameters
         ----------
         record : `DimensionRecord`
             The exposure record.
-        taskResults : `dict[str, TaskResult]`
+        taskResults : `dict`
             The task results.
         efdClient : `EfdClient`
             The EFD client.
-        cwfsDetNums : `Iterable[int]`
+        cwfsDetNums : `Iterable` of `int`
             The list of CWFS detector numbers.
         metrics : `AosMetrics`, optional
             The calculated metrics. If None, they will be calculated.
@@ -775,6 +967,23 @@ class PerformanceBrowser:
 
 
 class PerformanceMonitor(BaseButlerChannel):
+    """
+    Monitor for performance metrics.
+
+    Parameters
+    ----------
+    locationConfig : `LocationConfig`
+        The location configuration.
+    butler : `Butler`
+        The butler instance.
+    instrument : `str`
+        The instrument name.
+    podDetails : `PodDetails`
+        The pod details.
+    doRaise : `bool`, optional
+        Whether to raise exceptions. Default is False.
+    """
+
     def __init__(
         self,
         locationConfig: LocationConfig,
@@ -810,7 +1019,14 @@ class PerformanceMonitor(BaseButlerChannel):
         self.cameraControl = CameraControlConfig()
 
     def callback(self, payload: Payload) -> None:
-        """Callback function to be called when a new exposure is available."""
+        """
+        Callback function to be called when a new exposure is available.
+
+        Parameters
+        ----------
+        payload : `Payload`
+            The payload containing the exposure information.
+        """
         dataId = payload.dataIds[0]
         record = None
         if "exposure" in dataId.dimensions:
@@ -913,7 +1129,8 @@ class PerformanceMonitor(BaseButlerChannel):
         self.perf.data = {}
 
     def uploadAosPlot(self, record: DimensionRecord, taskResults: dict[str, TaskResult]) -> None:
-        """Create and upload the AOS task timing plot.
+        """
+        Create and upload the AOS task timing plot.
 
         Parameters
         ----------
@@ -957,6 +1174,21 @@ class PerformanceMonitor(BaseButlerChannel):
 
 
 def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
+    """
+    Get the end readout time for an exposure.
+
+    Parameters
+    ----------
+    client : `EfdClient`
+        The EFD client.
+    expRecord : `DimensionRecord`
+        The exposure record.
+
+    Returns
+    -------
+    timestamp : `float`
+        The end readout timestamp (seconds since end of exposure).
+    """
     data = getEfdData(client, "lsst.sal.MTCamera.logevent_endReadout", expRecord=expRecord, postPadding=30)
     timestamp = data[data["imageName"] == expRecord.obs_id]["timestampEndOfReadout"].iloc[0]
     return timestamp - expRecord.timespan.end.unix_tai
@@ -967,6 +1199,25 @@ def getIngestTimes(
     expRecord: DimensionRecord,
     key="private_kafkaStamp",
 ) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    Get ingestion times for wavefront and science sensors.
+
+    Parameters
+    ----------
+    client : `EfdClient`
+        The EFD client.
+    expRecord : `DimensionRecord`
+        The exposure record.
+    key : `str`, optional
+        The key to use for timestamp. Default is "private_kafkaStamp".
+
+    Returns
+    -------
+    wfTimes : `dict`
+        Dictionary of wavefront sensor ingestion times.
+    sciTimes : `dict`
+        Dictionary of science sensor ingestion times.
+    """
     oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
 
     endExposure = expRecord.timespan.end.unix_tai
@@ -982,12 +1233,13 @@ def getIngestTimes(
 
 
 def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
-    """Get the name of the Zernike calculating task data.
+    """
+    Get the name of the Zernike calculating task data.
 
     Parameters
     ----------
-    candidates : `list[str]`
-        The list of candidate task names.
+    data : `dict[str, TaskResult]`
+        The dictionary of task results.
 
     Returns
     -------
@@ -1009,7 +1261,8 @@ def calculateAosMetrics(
     taskResults: dict[str, TaskResult],
     cwfsDetNums: Iterable[int],
 ) -> AosMetrics:
-    """Calculate metrics for the AOS performance plot.
+    """
+    Calculate metrics for the AOS performance plot.
 
     Parameters
     ----------
@@ -1019,7 +1272,7 @@ def calculateAosMetrics(
         The exposure record.
     taskResults : `dict[str, TaskResult]`
         The task results.
-    cwfsDetNums : `list[int]`
+    cwfsDetNums : `Iterable` of `int`
         The list of CWFS detector numbers.
 
     Returns
@@ -1070,8 +1323,24 @@ def calculateAosMetrics(
 def addEventStaircase(
     axTop: Axes, axBottom: Axes, timings: dict[str, float], *, yMax: float = 1.0, yMin: float = 0.08
 ) -> None:
-    """Top panel: dashed verticals that step down; full-height lines drawn in
+    """
+    Add an event staircase to the plot.
+
+    Top panel: dashed verticals that step down; full-height lines drawn in
     bottom panel. Labels on arrows show the *later* event name and +Δt.
+
+    Parameters
+    ----------
+    axTop : `matplotlib.axes.Axes`
+        The top axes.
+    axBottom : `matplotlib.axes.Axes`
+        The bottom axes.
+    timings : `dict`
+        The timings for the events.
+    yMax : `float`, optional
+        The maximum y value. Default is 1.0.
+    yMin : `float`, optional
+        The minimum y value. Default is 0.08.
     """
     if not timings:
         axTop.set_axis_off()
@@ -1141,10 +1410,21 @@ def createLegendBoxes(
     colors: dict[str, str],
     extraLines: list[str] | None = None,
 ) -> None:
-    """Two axis-anchored legends at the bottom-right of *axTop*.
+    """
+    Create legend boxes for the plot.
 
+    Two axis-anchored legends at the bottom-right of *axTop*.
     Left block = colored task entries; right block = free-text lines.
     Both are placed relative to axTop's axes coordinates (0..1).
+
+    Parameters
+    ----------
+    axTop : `matplotlib.axes.Axes`
+        The top axes.
+    colors : `dict`
+        The dictionary of task colors.
+    extraLines : `list` of `str`, optional
+        Extra lines to add to the legend.
     """
     # Left: colored task entries (placed just to the *left* of the text legend)
     colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
@@ -1203,9 +1483,36 @@ def plotAosTaskTimings(
     heightRatios: tuple[float, float] = (1, 2.5),
     legendExtraLines: list[str] | None = None,
 ) -> Figure:
-    """Render the AOS task timing plot with an event staircase panel.
+    """
+    Render the AOS task timing plot with an event staircase panel.
 
-    Returns (fig, axTop, axBottom).
+    Parameters
+    ----------
+    detectorList : `list` or `tuple` of `int`
+        The list of detectors.
+    taskMap : `dict`
+        The map of task names to colors.
+    results : `dict`
+        The task results.
+    expRecord : `DimensionRecord`
+        The exposure record.
+    timings : `dict`
+        The timings for the events.
+    barHalf : `float`, optional
+        Half the height of the bars. Default is 0.3.
+    touchHalf : `float`, optional
+        Half the height of the touching bars. Default is 0.5.
+    figsize : `tuple`, optional
+        The size of the figure. Default is (12, 8).
+    heightRatios : `tuple`, optional
+        The height ratios for the subplots. Default is (1, 2.5).
+    legendExtraLines : `list` of `str`, optional
+        Extra lines to add to the legend.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure`
+        The figure object.
     """
     fig = make_figure(figsize=figsize)
     axTop, axBottom = fig.subplots(
