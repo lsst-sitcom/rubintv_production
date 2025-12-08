@@ -1246,7 +1246,7 @@ def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
     taskName : `str` or `None`
         The name of the Zernike calculating task, or None if not found.
     """
-    lengths = {taskName: len(taskResults.logs) for taskName, taskResults in data.items()}
+    lengths = {taskName: len(taskResult.logs) for taskName, taskResult in data.items()}
     zernikeLengths = {k: v for k, v in lengths.items() if "calczernikes" in k.lower() and v > 0}
     if len(zernikeLengths) == 0:
         return None
