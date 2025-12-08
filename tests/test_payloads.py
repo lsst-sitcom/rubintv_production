@@ -41,11 +41,10 @@ class TestPayload(unittest.TestCase):
 
         # this got harder because we now need a butler as well
         self.expRecord = getSampleExpRecord()
-        self.expRecord2 = getSampleExpRecord()  # TODO get a different expRecord
         self.pipelineBytes = "test".encode("utf-8")
         self.differentPipelineBytes = "different test".encode("utf-8")
         self.payload = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            dataId=self.expRecord.dataId,
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
             who="SFM",
@@ -54,17 +53,17 @@ class TestPayload(unittest.TestCase):
 
     def test_constructor(self) -> None:
         payload = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            dataId=self.expRecord.dataId,
             run="test run",
             pipelineGraphBytes=self.pipelineBytes,
             who="SFM",
         )
-        self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
+        self.assertEqual(payload.dataId, self.expRecord.dataId)
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
         with self.assertRaises(TypeError):
             payload = Payload(
-                dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+                dataId=self.expRecord.dataId,
                 run="test run",
                 pipelineGraphBytes=self.pipelineBytes,
                 who="SFM",
@@ -73,25 +72,25 @@ class TestPayload(unittest.TestCase):
 
     def test_equality(self) -> None:
         payload1 = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            dataId=self.expRecord.dataId,
             run="test run",
             who="SFM",
             pipelineGraphBytes=self.pipelineBytes,
         )
         payload2 = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            dataId=self.expRecord.dataId,
             run="test run",
             who="SFM",
             pipelineGraphBytes=self.pipelineBytes,
         )
         payloadDiffRun = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            dataId=self.expRecord.dataId,
             run="other run",
             who="SFM",
             pipelineGraphBytes=self.pipelineBytes,
         )
         payloadDiffPipeline = Payload(
-            dataIds=[self.expRecord.dataId, self.expRecord2.dataId],
+            dataId=self.expRecord.dataId,
             run="test run",
             who="SFM",
             pipelineGraphBytes=self.differentPipelineBytes,
@@ -114,7 +113,7 @@ class TestPayload(unittest.TestCase):
     def test_from_json(self) -> None:
         # remove the ignore[arg-type] everywhere once there is a butler
         payload = Payload.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
-        self.assertEqual(payload.dataIds, [self.expRecord.dataId, self.expRecord2.dataId])
+        self.assertEqual(payload.dataId, self.expRecord.dataId)
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
 
 
