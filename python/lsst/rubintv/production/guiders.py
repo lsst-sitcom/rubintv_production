@@ -237,7 +237,7 @@ class GuiderWorker(BaseButlerChannel):
 
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
-        dataId = payload.dataIds[0]
+        dataId = payload.dataId
         record: DimensionRecord | None = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]

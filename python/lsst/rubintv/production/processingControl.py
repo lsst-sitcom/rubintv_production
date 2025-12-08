@@ -864,17 +864,14 @@ class HeadProcessController:
             targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
             who = "ISR"
 
-        detectorPairs = self.focalPlaneControl.getIntraExtraFocalPairs()
+        detectorIds = self.focalPlaneControl.EXTRA_FOCAL_IDS
 
         payloads: dict[int, Payload] = {}
-        for det1, det2 in detectorPairs:
-            dataId1 = DataCoordinate.standardize(expRecord.dataId, detector=det1)
-            dataId2 = DataCoordinate.standardize(expRecord.dataId, detector=det2)
+        for detId in detectorIds:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=detId)
             self.log.debug("AOS paired dispatch:")
-            self.log.debug(f"{dataId1=}")
-            self.log.debug(f"{dataId2=}")
             payload = Payload(
-                dataIds=[dataId1, dataId2],
+                dataId,
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
@@ -882,15 +879,9 @@ class HeadProcessController:
             # TODO: indexing payloads by only det1 wastes half the worker pool
             # the way it's currently done. If this stays the way we do things,
             # fix this.
-            payloads[det1] = payload
+            payloads[detId] = payload
 
-        # TODO: Again just key on the first of the pair for downstream - the
-        # count needs to be the number of processings which will finish so
-        # that's 4 not 8 and there's no need to compoundify them as they're
-        # only counted in dispatchGatherSteps
-        self.redisHelper.writeDetectorsToExpect(
-            self.instrument, expRecord.id, list(d[0] for d in detectorPairs), "AOS"
-        )
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
         # AOS is running ISR (for now, at least) so we need to write that we
         # expected the detectors from that processing too.
         cwfsDets = list(self.focalPlaneControl.CWFS_IDS)
@@ -947,7 +938,7 @@ class HeadProcessController:
         for detectorId in detectorIds:
             dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
             payload = Payload(
-                dataIds=[dataId],
+                dataId=dataId,
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
@@ -993,7 +984,9 @@ class HeadProcessController:
         instruments = list(set([expRecord.instrument for expRecord in expRecords]))
         assert len(instruments) == 1, f"Expected all expRecords to have same instrument, got {instruments=}"
         instrument = instruments[0]
-        assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
+        assert (
+            instrument == self.instrument
+        ), f"Expected only {self.instrument} expRecords to make this head node instrument, got {instrument=}"
 
         self.log.info(f"Sending {[r.id for r in expRecords]} to {self.currentAosFamPipeline} pipeline")
         targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
@@ -1001,7 +994,7 @@ class HeadProcessController:
         # record pipeline config via the first id for interoperability with
         # CWFS processing. This is just so the step1b dispatch knows what the
         # active pipeline was
-        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosFamPipeline)
+        self.redisHelper.recordAosPipelineConfig(self.instrument, record2.id, self.currentAosFamPipeline)
 
         # deliberately do NOT set isAos=True here because we want this written
         # to the main table, not the AOS page on RubinTV
@@ -1013,31 +1006,24 @@ class HeadProcessController:
         # excludeCwfs because they get normal fanout to CWFS pipelines
         detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
 
-        identifier = "+".join(str(r.id) for r in expRecords)
-        self.redisHelper.writeDetectorsToExpect(self.instrument, identifier, detectorIds, "AOS")
+        self.redisHelper.writeDetectorsToExpect(self.instrument, record2.id, detectorIds, "AOS")
         for expRecord in expRecords:
             # send expect signal with who=ISR for single expIds as these are
             # for the focal plane mosaicing, and send above with who=AOS as
-            # + joined above, as this is the real dispatch
+            # for just the extra-focal id
             self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
-
-        dataIds: dict[int, list[DataCoordinate]] = {}
-        for detectorId in detectorIds:
-            dataIds[detectorId] = []
-            for expRecord in expRecords:
-                dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
-                dataIds[detectorId].append(dataId)
 
         payloads: dict[int, Payload] = {}
         for detectorId in detectorIds:
+            dataId = DataCoordinate.standardize(record2.dataId, detector=detectorId)
             payloads[detectorId] = Payload(
-                dataIds=dataIds[detectorId],
+                dataId=dataId,
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who="AOS",
             )
 
-        dayObs = expRecords[0].day_obs
+        dayObs = record2.day_obs
         self.log.info(
             f"Fanning out {instrument}-{dayObs}-{[r.seq_num for r in expRecords]} for"
             f" {len(detectorIds)} detectors"
@@ -1140,7 +1126,7 @@ class HeadProcessController:
             return
 
         # who value doesn't matter for one-off processing, maybe SFM instead?
-        payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="", who="ONE_OFF")
+        payload = Payload(dataId=expRecord.dataId, pipelineGraphBytes=b"", run="", who="ONE_OFF")
         self.redisHelper.enqueuePayload(payload, worker)
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
@@ -1190,7 +1176,7 @@ class HeadProcessController:
         )
 
         # TODO: this abuse of Payload really needs improving
-        payload = Payload([dataCoord], b"", dataProduct, who="SFM")
+        payload = Payload(dataCoord, b"", dataProduct, who="SFM")
         worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
         if worker is None:
             self.log.warning(f"No workers AT ALL for {dataProduct} mosaic - should be impossible, check k8s")
@@ -1215,16 +1201,15 @@ class HeadProcessController:
         if not processedIds:
             return False
 
-        completeIds: list[str] = []
-        for idStr in processedIds:
-            # idStr is "<int>" or "<int>+<int"> for AOS pairs
-            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, idStr)
-            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, idStr, who))
+        completeIds: list[int] = []
+        for expId in processedIds:
+            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, expId)
+            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expId, who))
             if nFinished >= nExpected:
-                completeIds.append(idStr)
+                completeIds.append(expId)
             if nFinished > nExpected:
                 self.log.warning(
-                    f"Found {nFinished} step1as finished for {idStr=}, but expected {nExpected} for {who=}"
+                    f"Found {nFinished} step1as finished for {expId=}, but expected {nExpected} for {who=}"
                 )
 
         if not completeIds:
@@ -1236,26 +1221,19 @@ class HeadProcessController:
 
         self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
 
-        for idStr in completeIds:
-            # idStr is a list of visitIds as a string with a + separator if AOS
-            # else idStr is a visit int as a string
-            intIds = [int(_id) for _id in idStr.split("+")]
-            self.log.debug(f"Found {len(intIds)} complete visits for {who} dispatch {intIds=}, {idStr}")
-            dataCoords = [
-                DataCoordinate.standardize(
-                    instrument=self.instrument, visit=intId, universe=self.butler.dimensions
-                )
-                for intId in intIds
-            ]
+        for expId in completeIds:
+            dataCoord = DataCoordinate.standardize(
+                instrument=self.instrument, visit=expId, universe=self.butler.dimensions
+            )
 
             if who == "AOS":  # get the full AOS_XXX name for this exposure
                 # Note: does not break the paired-processing because we always
                 # record the config via the first id. Therefore always retrieve
                 # the config for the first id.
-                whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, intIds[0])
+                whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, expId)
                 # whoToUse takes values like "AOS_DANISH" or "AOS_FAM_TIE"
                 if whoToUse is None:
-                    self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
+                    self.log.warning(f"Failed to dispatch {who} for {expId=}! This shouldn't happen")
                     continue
             else:
                 whoToUse = who
@@ -1263,16 +1241,16 @@ class HeadProcessController:
             if self.pipelines[whoToUse].graphBytes.get("step1b") is not None:  # no step1b dispatch for ISR
                 visitRecord = None
                 try:  # not used, but checks whether this payload is even usable downstream
-                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoords[0])
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoord)
                 except ValueError:
                     # note: do not ``continue`` here, because there's other
                     # bits that still need to run later on - this is why we use
                     # a visitRecord=None sentinel instead
-                    self.log.info(f"Skipping doomed step1b dispatch for {idStr=} due to lack of visit record")
+                    self.log.info(f"Skipping doomed step1b dispatch for {expId=} due to lack of visit record")
 
                 if visitRecord is not None:
                     payload = Payload(
-                        dataIds=dataCoords,
+                        dataId=dataCoord,
                         pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
                         run=self.outputRun,
                         who=who,
@@ -1282,20 +1260,20 @@ class HeadProcessController:
                         self.log.warning(f"No worker available for {who} step1b")
                         return False
                     self.log.info(
-                        f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}"
+                        f"Dispatching step1b for {who} with complete inputs: {dataCoord} to {worker}"
                     )
                     self.redisHelper.enqueuePayload(payload, worker)
                     if who == "AOS":
                         intraId = visitRecord.id  # got from dataCoords[0] above so is intra
                         numZernikesFinished = self.redisHelper.getNumDetectorLevelFinished(
-                            self.instrument, "step1a", who, idStr
+                            self.instrument, "step1a", who, expId
                         )
                         self.redisHelper.sendZernikeCountToMTAOS(
                             self.instrument, intraId, numZernikesFinished
                         )
 
-            self.log.debug(f"Removing step1a finished counter for {idStr=}")
-            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
+            self.log.debug(f"Removing step1a finished counter for {expId=}")
+            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, expId)
 
             # never dispatch this incomplete because it relies on a specific
             # detector having finished. It might have failed, but that's OK
@@ -1306,7 +1284,7 @@ class HeadProcessController:
                 # images, and if you used dataId=dataCoords[0] that will fail
                 # if the visit isn't defined.
                 (expRecord,) = self.butler.registry.queryDimensionRecords(
-                    "exposure", exposure=dataCoords[0]["visit"]
+                    "exposure", exposure=dataCoord["visit"]
                 )
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS" and who != "ISR":
@@ -1319,9 +1297,8 @@ class HeadProcessController:
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
             if who == "AOS":
-                for dataCoord in dataCoords:
-                    (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
-                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
+                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 
         return True  # we sent something out
 
@@ -1398,7 +1375,7 @@ class HeadProcessController:
 
         for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
             # TODO: this abuse of Payload really needs improving
-            payload = Payload([dataId], b"", dataProduct, who="SFM")
+            payload = Payload(dataId, b"", dataProduct, who="SFM")
             worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
             if worker is None:
                 self.log.error(f"No free workers available for {dataProduct} mosaic")
