@@ -115,7 +115,7 @@ SHARDED_DATA_TEMPLATE = os.path.join(
     "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
 )
 
-AOS_CCDS = [191, 192, 195, 196, 199, 200, 203, 204]
+AOS_CCDS = (191, 192, 195, 196, 199, 200, 203, 204)
 AOS_WORKER_MAPPING = {n: (depth, ccd) for n, (depth, ccd) in enumerate(itertools.product(range(9), AOS_CCDS))}
 
 # this file is for low level tools and should therefore not import
