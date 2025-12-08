@@ -1537,6 +1537,10 @@ def plotAosTaskTimings(
     )
 
     t0 = expRecord.timespan.end.utc.to_datetime().astimezone(timezone.utc)
+    if runningCI():  # to make the plots legible in CI
+        # pretend that the shutter closed 10s before the earliest task start
+        t0 = min(tr.startTimeOverall for tr in results.values() if tr.startTimeOverall is not None)
+        t0 = t0 - timedelta(seconds=10)  # to make the plots legible in CI
 
     detMap = {det: i for i, det in enumerate(detectorList)}
     bottoms: list[float] = [i - barHalf for i in range(len(detectorList))]
