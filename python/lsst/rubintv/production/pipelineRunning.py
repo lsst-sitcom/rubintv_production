@@ -32,6 +32,7 @@ import numpy as np
 from astropy.time import Time
 from galsim.zernike import zernikeRotMatrix
 
+from lsst.daf.butler import DataCoordinate
 from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
@@ -43,17 +44,24 @@ from lsst.ts.ofc import OFCData
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
-from .payloads import pipelineGraphFromBytes
+from .payloads import getDetectorId, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
-from .utils import getShardPath, logDuration, raiseIf, writeMetadataShard
+from .utils import (
+    getExpIdOrVisitId,
+    getExpRecordFromId,
+    getShardPath,
+    logDuration,
+    raiseIf,
+    writeMetadataShard,
+)
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
     from lsst.afw.image import ExposureSummaryStats
-    from lsst.daf.butler import Butler, DataCoordinate, Quantum
+    from lsst.daf.butler import Butler, Quantum
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -82,6 +90,9 @@ TASK_ENDPOINTS_TO_TRACK = (
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera", "astrometry_camera"}
 PSF_GRADIENT_WARNING = 0.65
 PSF_GRADIENT_BAD = 0.85
+
+INTRA_IDS = (192, 196, 200, 204)
+EXTRA_IDS = (191, 195, 199, 203)
 
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
@@ -208,6 +219,63 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # add any necessary data-driven logic here to choose if we process
         return True
 
+    def getExtraDataCoordinate(self, payload: Payload) -> DataCoordinate | None:
+        """Get the extra data coordinate (if any) for AOS pipelines.
+
+        AOS pipelines are always dispatched via their extra-focal id. For the
+        initial steps, and for normal images, group this with the corner pair.
+        For FAM images, pair with the intra-focal image, rather than detector.
+        For step1b, which doesn't have a detector, pair with nothing for normal
+        images, with the intra-focal image for FAM images.
+
+        Parameters
+        ----------
+        dataId : `lsst.daf.butler.DataCoordinate`
+            The data coordinate.
+
+        Returns
+        -------
+        extraDataId : `dict` [`str`, `str` or `int`]
+            Any extra dataId components needed for this runner.
+        """
+        # TODO: need make this aware of whether we're running pair or unpaired
+        # also need to make a sister-function called dropExtraDataCoordinate
+        # for used in the main loop so we drop the intra-id for paired running.
+
+        if payload.who != "AOS":  # keep things simple for other pipelines
+            return None
+
+        expId = getExpIdOrVisitId(payload.dataId)
+        expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
+        isFamImage = expRecord.observation_type.lower() == "cwfs"
+        if isFamImage:
+            # For FAM images we want to pair with the previous visit,
+            # regardless of whether we're step1a or step1b. Detector as-is
+            previousVisit = expRecord.id - 1  # intra is always taken first, and we always key on extra
+            extraCoordNoRecords = DataCoordinate.standardize(
+                visit=previousVisit, universe=self.butler.dimensions, instrument=self.instrument
+            )
+            extraCoord = self.butler.registry.expandDataId(extraCoordNoRecords)
+            return extraCoord
+
+        # for non-FAM images, for step1a we pair with the intra-focal detector,
+        # for step1b things are already visit-level so don't pair with anything
+        detectorId = getDetectorId(payload)
+        if detectorId is None:  # deals with non-FAM step1b
+            return None
+
+        if detectorId in EXTRA_IDS:  # intra-focal IDs hard-coded for now
+            extraCoordNoRecords = DataCoordinate.standardize(
+                visit=expRecord.id,
+                detector=detectorId + 1,
+                universe=self.butler.dimensions,
+                instrument=self.instrument,
+            )
+            extraCoord = self.butler.registry.expandDataId(extraCoordNoRecords)
+            return extraCoord
+
+        assert False, "This should be unreachable, detectorId should be in EXTRA_IDS for AOS non-FAM images"
+
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
@@ -219,10 +287,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        dataIds: list[DataCoordinate] = payload.dataIds
-        pipelineGraphBytes: bytes = payload.pipelineGraphBytes
+        dataId = payload.dataId
+        expId = getExpIdOrVisitId(payload.dataId)  # for keying all the redis stuff by
+        pipelineGraphBytes = payload.pipelineGraphBytes
         self.runCollection = payload.run
         who = payload.who  # who are we running this for?
+
+        extraCoord = self.getExtraDataCoordinate(payload)
+        dataIds = [dataId, extraCoord] if extraCoord is not None else [dataId]
+        del dataId
 
         # XXX all the code on the headnode that deals with pairing stuff goes
         # away - every dataid comes as a single one, and this just hard-codes
@@ -234,28 +307,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # i.e. if we're running AOS, and unpaired is not in any of the task
         # names this way the unpaired task run all the way through completion
         # of calcZenikes normally.
-
-        # XXX remove all this, and just hard-code putting back in the pairs
-        # for the extra focal dataids
-
-        compoundId = ""
-        sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
-        if "exposure" in sampleDataId:
-            # the sorted(set()) is to make sure that, when we have a repeated
-            # dataId, we don't end up with a compoundId of exposure+exposure
-            # and downstream can treat this as a regular visit-level dispatch.
-            # this is the case for regular corner CWFS images, and NOT the case
-            # for when the pair is coming from a full-focal plane pistoning,
-            # where the two ids will be different, and need to be passed to
-            # step1b together.
-            compoundId = "+".join(sorted(set(f"{dataId['exposure']}" for dataId in dataIds)))
-        elif "visit" in sampleDataId:
-            compoundId = "+".join(sorted(set(f"{dataId['visit']}" for dataId in dataIds)))
-        else:  # for day_obs or instrument level dataIds.
-            compoundId = "+".join(sorted(set(f"{dataId}" for dataId in dataIds)))
-
-        self.log.debug(f"Processing {compoundId=}")
-        self.log.debug(f"{self.step=} {self.dataProduct=}")
 
         try:
             # NOTE: if someone sends a pipelineGraphBytes that's so different
@@ -272,7 +323,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             bind = {}
             for i, dataId in enumerate(dataIds):
                 idString = f"dataId_{i}_"
-                where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+                where += " AND ".join(
+                    f"{k}={idString}{k}" for k in dataId.mapping
+                )  # XXX Add instrument to the query here
                 bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
                 where += " OR "
             if where.endswith(" OR "):
@@ -317,6 +370,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     if "exposure" in dataId.dimensions:
                         record = dataId.records["exposure"]
                     elif "visit" in dataId.dimensions:
+                        # XXX is this ever true? Do we need this? How do visit
+                        # records ever get in here? Maybe for step1b?
                         record = dataId.records["visit"]
 
                     if record is None:  # not an else block because mypy
@@ -337,7 +392,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " (should be ~1s per id)"
             )
 
-            with logDuration(self.log, f"Building quantum graph for {compoundId} for {who}"):
+            with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
                 qg: QuantumGraph = builder.build(
                     metadata={
                         "input": list(self.butler.collections.defaults) + [self.runCollection],
@@ -389,38 +444,36 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         self.postProcessQuantum(quantum)
                     raise e  # still raise the error once we've logged the quantum as finishing
 
-            self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
+            self.log.debug(f"Finished iterating over nodes in QG for {expId} for {who}")
 
             # finished looping over nodes
             if self.step == "step1a":
-                self.log.debug(f"Announcing completion of step1a for {compoundId} for {who}")
+                self.log.debug(f"Announcing completion of step1a for {expId} for {who}")
                 self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=compoundId
+                    self.instrument, "step1a", who=who, processingId=expId
                 )
             if self.step == "step1b":
-                self.log.debug(f"Announcing completion of step1b for {compoundId} for {who}")
+                self.log.debug(f"Announcing completion of step1b for {expId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
                 if who == "SFM":
-                    visitId = int(compoundId)  # in SFM this is never compound
-                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(visitId))
+                    # in SFM this is never compound
+                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(expId))
 
                     # required the visitSummary so needs to be post-step1b
-                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=expId)
                     self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
                     self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
-                    self.redisHelper.redis.lpush(
-                        f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(visitId)
-                    )
+                    self.redisHelper.redis.lpush(f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(expId))
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
             if self.step == "step1a":
                 self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=compoundId, failed=True
+                    self.instrument, "step1a", who=who, processingId=expId, failed=True
                 )
             if self.step == "step1b":
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who, failed=True)

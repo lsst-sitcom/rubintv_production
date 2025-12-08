@@ -795,9 +795,7 @@ class OneOffProcessor(BaseButlerChannel):
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, expRecord.day_obs, md)
 
     def callback(self, payload: Payload) -> None:
-        dataId: DataCoordinate = payload.dataIds[0]
-        if len(payload.dataIds) > 1:
-            raise ValueError(f"Expected only one dataId, got {len(payload.dataIds)}")
+        dataId = payload.dataId
 
         match self.processingStage:
             case "expRecord":
