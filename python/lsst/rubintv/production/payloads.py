@@ -85,23 +85,10 @@ def getDetectorId(payload: Payload) -> int | None:
     -------
     detectorId : `int`
         The detector ID, or None if there is no detector ID in the payload.
-
-    Raises
-    ------
-    ValueError
-        If there are multiple detector IDs in the payload.
     """
-    if len(payload.dataIds) == 0:
-        return None
-    detectors = set()
-    for dataId in payload.dataIds:
-        if "detector" in dataId:
-            detectors.add(dataId["detector"])
-    if len(detectors) == 0:
-        return None
-    if len(detectors) > 1:
-        raise ValueError(f"Payload contains multiple detectors: {detectors}. ")
-    return int(detectors.pop())
+    if "detector" in payload.dataId:
+        return int(payload.dataId["detector"])
+    return None
 
 
 @dataclass(frozen=True)
@@ -112,7 +99,7 @@ class Payload:
     These go in minimal, but come out full, by using the butler.
     """
 
-    dataIds: list[DataCoordinate]
+    dataId: DataCoordinate
     pipelineGraphBytes: bytes
     run: str
     who: str
@@ -125,13 +112,11 @@ class Payload:
         butler: Butler,
     ) -> Self:
         json_dict = json.loads(json_str)
-        dataIds = []
-        for dataId in json_dict["dataIds"]:
-            dataIds.append(butler.registry.expandDataId(dataId))
+        dataId = butler.registry.expandDataId(json_dict["dataId"])
 
         pipelineGraphBytes = base64.b64decode(json_dict["pipelineGraphBytes"].encode())
         return cls(
-            dataIds=dataIds,
+            dataId=dataId,
             pipelineGraphBytes=pipelineGraphBytes,
             run=json_dict["run"],
             who=json_dict["who"],
@@ -145,14 +130,12 @@ class Payload:
             "who": self.who,
             "specialMessage": self.specialMessage,
         }
-        json_dict["dataIds"] = []
-        for dataId in self.dataIds:
-            json_dict["dataIds"].append(dict(dataId.required))
+        json_dict["dataId"] = dict(self.dataId.required)
         return json.dumps(json_dict)
 
     def __repr__(self):
         return (
-            f"Payload(dataIds={[d for d in self.dataIds]}, run={self.run}, who={self.who},"
+            f"Payload(dataId={[self.dataId]}, run={self.run}, who={self.who},"
             " pipelineGraphBytes=<the bytes>)"
         )
 
@@ -170,7 +153,7 @@ class RestartPayload(Payload):
 
     def __init__(self) -> None:
         super().__init__(
-            dataIds=[],
+            dataId=DataCoordinate(),  # type: ignore[abstract]
             # these are all unused, but set them to something to be clear if
             # they end up elsewhere somehow. Can repurose them later if needed.
             pipelineGraphBytes=b"{RESTART_SIGNAL}",
