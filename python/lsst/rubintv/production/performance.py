@@ -30,20 +30,26 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Iterable
 
 import matplotlib.dates as mdates
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
-from lsst.rubintv.production.baseChannels import BaseButlerChannel
-
-# TODO Change these back to relative imports
-from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
-from lsst.rubintv.production.utils import LocationConfig, makePlotFile, writeMetadataShard
+from lsst.summit.utils.dateTime import dayObsIntToString
+from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
+from .baseChannels import BaseButlerChannel
+from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
+from .utils import LocationConfig, makePlotFile, writeMetadataShard
+
 if TYPE_CHECKING:
+    from lsst_efd_client import EfdClient
+
     from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
 
@@ -51,23 +57,105 @@ if TYPE_CHECKING:
     from .podDefinition import PodDetails
 
 
+CWFS_SENSOR_NAMES = ("SW0", "SW1")  # these exclude the raft prefix so can't easily come from the camera
+IMAGING_SENSOR_NAMES = ("S00", "S01", "S02", "S10", "S11", "S12", "S20", "S21", "S22")
+
+AOS_TASK_COLORS = [
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+]
+
+
 def isVisitType(task: TaskNode) -> bool:
+    """
+    Check if the task is a visit type.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isVisit : `bool`
+        True if the task is a visit type, False otherwise.
+    """
     return "visit" in task.dimensions
 
 
 def isExposureType(task: TaskNode) -> bool:
+    """
+    Check if the task is an exposure type.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isExposure : `bool`
+        True if the task is an exposure type, False otherwise.
+    """
     return "exposure" in task.dimensions
 
 
 def isDetectorLevel(task: TaskNode) -> bool:
+    """
+    Check if the task is detector level.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isDetector : `bool`
+        True if the task is detector level, False otherwise.
+    """
     return "detector" in task.dimensions
 
 
 def isFocalPlaneLevel(task: TaskNode) -> bool:
+    """
+    Check if the task is focal plane level.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+
+    Returns
+    -------
+    isFocalPlane : `bool`
+        True if the task is focal plane level, False otherwise.
+    """
     return not isDetectorLevel(task)
 
 
 def getFail(log: ButlerLogRecords) -> str | None:
+    """
+    Get the failure message from the log records.
+
+    Parameters
+    ----------
+    log : `ButlerLogRecords`
+        The log records.
+
+    Returns
+    -------
+    message : `str` or `None`
+        The failure message if found, None otherwise.
+    """
     for line in log:
         if line.levelname == "ERROR":
             return line.message
@@ -75,6 +163,23 @@ def getFail(log: ButlerLogRecords) -> str | None:
 
 
 def getExpRecord(butler: Butler, dayObs: int, seqNum: int) -> DimensionRecord | None:
+    """
+    Get the exposure record for a given day and sequence number.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    dayObs : `int`
+        The day of observation.
+    seqNum : `int`
+        The sequence number.
+
+    Returns
+    -------
+    expRecord : `DimensionRecord` or `None`
+        The exposure record if found, None otherwise.
+    """
     try:
         (expRecord,) = butler.registry.queryDimensionRecords(
             "exposure", where=f"exposure.day_obs={dayObs} and exposure.seq_num={seqNum}"
@@ -85,6 +190,21 @@ def getExpRecord(butler: Butler, dayObs: int, seqNum: int) -> DimensionRecord | 
 
 
 def getVisitRecord(butler: Butler, expRecord: DimensionRecord) -> DimensionRecord | None:
+    """
+    Get the visit record for a given exposure record.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    expRecord : `DimensionRecord`
+        The exposure record.
+
+    Returns
+    -------
+    visitRecord : `DimensionRecord` or `None`
+        The visit record if found, None otherwise.
+    """
     try:
         (visitRecord,) = butler.registry.queryDimensionRecords("visit", where=f"visit={expRecord.id}")
         return visitRecord
@@ -93,6 +213,21 @@ def getVisitRecord(butler: Butler, expRecord: DimensionRecord) -> DimensionRecor
 
 
 def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
+    """
+    Make a where clause for querying datasets.
+
+    Parameters
+    ----------
+    task : `TaskNode`
+        The task node.
+    record : `DimensionRecord`
+        The dimension record.
+
+    Returns
+    -------
+    where : `str`
+        The where clause.
+    """
     isVisit = isExposureType(task)
 
     if isVisit == "isr":
@@ -102,6 +237,22 @@ def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
 
 
 def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
+    """
+    Calculate the time taken by a task from its logs.
+
+    Parameters
+    ----------
+    logs : `ButlerLogRecords`
+        The log records.
+    method : `str`, optional
+        The method to use for calculating time. Options are "first-last"
+        (default) or "parse".
+
+    Returns
+    -------
+    time : `float`
+        The time taken by the task in seconds.
+    """
     if method == "first-last":
         return (logs[-1].asctime - logs[0].asctime).total_seconds()
     elif method == "parse":
@@ -116,11 +267,12 @@ def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
 
 
 def makeTitle(record: DimensionRecord) -> str:
-    """Make a title for a plot based on the exp/visit record and detector.
+    """
+    Make a title for a plot based on the exp/visit record and detector.
 
     Parameters
     ----------
-    record : `lsst.daf.butler.DimensionRecord`
+    record : `DimensionRecord`
         The exposure or visit record.
 
     Returns
@@ -144,7 +296,8 @@ def plotGantt(
     figsize=(10, 6),
     barHeight=0.6,
 ):
-    """Plot a Gantt chart of task results.
+    """
+    Plot a Gantt chart of task results.
 
     For each task, puts a vertical mark at the absolute start and end time,
     and a horizontal bar in the middle of that region, with a width of the
@@ -154,16 +307,15 @@ def plotGantt(
     ----------
     expRecord : `DimensionRecord`
         The exposure or visit record.
-    taskResults : `list[TaskResult]`
+    taskResults : `list` of `TaskResult`
         The list of task results to plot.
-    ignoreTasks : `list[str]`, optional
+    ignoreTasks : `list` of `str`, optional
         A list of task names to exclude from the plot.
-    timings : `list[(datetime, str)]`, optional
-        A list of tuples containing a datetime and a string to plot as
-        vertical lines on the Gantt chart and text in the textbox.
-    figsize : `tuple`
+    timings : `list` of `str`, optional
+        A list of strings to display in a text box on the plot.
+    figsize : `tuple`, optional
         The size of the figure.
-    barHeight : `float`
+    barHeight : `float`, optional
         The height of the bars in the Gantt chart.
 
     Returns
@@ -281,7 +433,8 @@ def calcTimeSinceShutterClose(
     taskResult: TaskResult,
     startOrEnd: str = "start",
 ) -> float:
-    """Calculate the time since shutter close for a task result.
+    """
+    Calculate the time since shutter close for a task result.
 
     Parameters
     ----------
@@ -289,11 +442,15 @@ def calcTimeSinceShutterClose(
         The exposure record.
     taskResult : `TaskResult`
         The task result.
+    startOrEnd : `str`, optional
+        Whether to use the "start" or "end" time of the task. Default is
+        "start".
 
     Returns
     -------
-    timeSinceShutterClose : `float` or `None`
-        The time since shutter close in seconds, or None if not applicable.
+    timeSinceShutterClose : `float`
+        The time since shutter close in seconds. Returns NaN if time is
+        missing.
     """
     if startOrEnd not in ["start", "end"]:
         raise ValueError(f"Invalid option {startOrEnd=}")
@@ -315,20 +472,25 @@ def calcTimeSinceShutterClose(
 
 @dataclass
 class TaskResult:
-    """Details about task performance.
+    """
+    Details about task performance.
 
     Parameters
     ----------
+    record : `DimensionRecord`
+        The dimension record.
     task : `TaskNode`
         The task node.
     taskName : `str`
         The name of the task.
-    detectors : `list[int]`
+    detectors : `list` of `int` or `None`
         The list of detectors for which the task ran.
-    detectorTimings : `dict[int, float]`
+    detectorTimings : `dict`
         The timings for each detector on the task.
-    failures : `dict[int, str]`
+    failures : `dict`
         The failures for each detector, if present.
+    logs : `dict`
+        The logs for each detector.
     """
 
     record: DimensionRecord
@@ -475,12 +637,35 @@ class TaskResult:
             return None
         return max(log[-1].asctime for log in self.logs.values())
 
+    @property
+    def endTimeAfterShutterClose(self) -> float | None:
+        """Elapsed time of the end of the last quantum in the set of logs since
+        shutter close
+        """
+        return calcTimeSinceShutterClose(self.record, self, startOrEnd="end")
+
+    @property
+    def startTimeAfterShutterClose(self) -> float | None:
+        """Elapsed time of the start of the first quantum in the set of logs
+        since shutter close
+        """
+        return calcTimeSinceShutterClose(self.record, self, startOrEnd="start")
+
     def printLog(self, detector: int | None, differentialMode: bool = True) -> None:
-        """Print the per-line log times for a task.
+        """
+        Print the per-line log times for a task.
 
         Prints the log for a given detector (if it's a detector level) task,
         with the associated time for each line. This is useful for debugging
         and understanding the time taken by each step.
+
+        Parameters
+        ----------
+        detector : `int` or `None`
+            The detector ID, or None for focal-plane tasks.
+        differentialMode : `bool`, optional
+            If True, print time since previous log message. If False, print
+            ISO timestamp. Default is True.
         """
         if not self.logs:
             return
@@ -515,7 +700,39 @@ class TaskResult:
             print(f"{timestamp} {line.message}")
 
 
+@dataclass
+class AosMetrics:
+    """
+    Metrics calculated for the AOS performance plot.
+
+    Parameters
+    ----------
+    staircaseTimings : `dict`
+        Timings for the staircase plot events.
+    legendItems : `dict`
+        Items to display in the legend box.
+    """
+
+    staircaseTimings: dict[str, float]
+    legendItems: dict[str, float]
+
+
 class PerformanceBrowser:
+    """
+    Class for browsing performance data.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    instrument : `str`
+        The instrument name.
+    locationConfig : `LocationConfig`
+        The location configuration.
+    debug : `bool`, optional
+        Whether to enable debug mode. Default is False.
+    """
+
     def __init__(
         self,
         butler,
@@ -546,14 +763,15 @@ class PerformanceBrowser:
             self.taskDict.update(self.pipelines[who].getTasks())
 
     def loadData(self, expRecord: DimensionRecord, reload=False) -> None:
-        """Load data for the given day and sequence number.
+        """
+        Load data for the given exposure record.
 
         Parameters
         ----------
-        dayObs : `int`
-            The day of observation.
-        seqNum : `int`
-            The sequence number.
+        expRecord : `DimensionRecord`
+            The exposure record.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
         """
         # have data and not reloading
         if expRecord in self.data and not reload:
@@ -586,7 +804,8 @@ class PerformanceBrowser:
         self.data[expRecord] = data
 
     def getResults(self, expRecord: DimensionRecord, taskName: str, reload: bool = False) -> TaskResult:
-        """Get the results for a specific task.
+        """
+        Get the results for a specific task.
 
         Parameters
         ----------
@@ -594,10 +813,12 @@ class PerformanceBrowser:
             The exposure record.
         taskName : `str`
             The name of the task.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
 
         Returns
         -------
-        TaskResult
+        result : `TaskResult`
             The results for the specified task.
         """
         self.loadData(expRecord, reload=reload)
@@ -609,7 +830,18 @@ class PerformanceBrowser:
     def plot(
         self, expRecord: DimensionRecord, reload: bool = False, ignoreTasks: list[str] | None = None
     ) -> None:
-        """Plot the results for all tasks."""
+        """
+        Plot the results for all tasks.
+
+        Parameters
+        ----------
+        expRecord : `DimensionRecord`
+            The exposure record.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
+        ignoreTasks : `list` of `str`, optional
+            List of task names to ignore.
+        """
         self.loadData(expRecord, reload=reload)
         data = self.data[expRecord]
         if not data:
@@ -623,9 +855,11 @@ class PerformanceBrowser:
         isrDt = calcTimeSinceShutterClose(expRecord, resultsDict["isr"], startOrEnd="start")
         textItems.append(f"Shutter close to isr start: {isrDt:.1f} s")
 
-        if "calcZernikesTask" in resultsDict:
+        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict)
+
+        if calcZernikesTaskName in resultsDict:
             zernikeDt = calcTimeSinceShutterClose(
-                expRecord, resultsDict["calcZernikesTask"], startOrEnd="end"
+                expRecord, resultsDict[calcZernikesTaskName], startOrEnd="end"
             )
             textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
 
@@ -633,6 +867,18 @@ class PerformanceBrowser:
         return fig
 
     def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
+        """
+        Print logs for the given exposure record.
+
+        Parameters
+        ----------
+        expRecord : `DimensionRecord`
+            The exposure record.
+        full : `bool`, optional
+            Whether to print full logs. Default is False.
+        reload : `bool`, optional
+            Whether to force reload data. Default is False.
+        """
         self.loadData(expRecord, reload)
         data = self.data[expRecord]
 
@@ -657,8 +903,87 @@ class PerformanceBrowser:
                 for detector, failMessage in taskResult.failures.items():
                     print(f"    {detector}: {failMessage}")
 
+    def createAosPlot(
+        self,
+        record: DimensionRecord,
+        taskResults: dict[str, TaskResult],
+        efdClient: EfdClient,
+        cwfsDetNums: Iterable[int],
+        metrics: AosMetrics | None = None,
+    ) -> Figure | None:
+        """
+        Create the AOS task timing plot.
+
+        Parameters
+        ----------
+        record : `DimensionRecord`
+            The exposure record.
+        taskResults : `dict`
+            The task results.
+        efdClient : `EfdClient`
+            The EFD client.
+        cwfsDetNums : `Iterable` of `int`
+            The list of CWFS detector numbers.
+        metrics : `AosMetrics`, optional
+            The calculated metrics. If None, they will be calculated.
+
+        Returns
+        -------
+        fig : `matplotlib.figure.Figure` or `None`
+            The figure object, or None if required tasks are missing.
+        """
+        # Check we have the necessary tasks
+        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
+        if calcZernikesTaskName is None or "isr" not in taskResults:
+            log = logging.getLogger(__name__)
+            log.warning(f"Skipping AOS plot for {record.id}: missing isr and/or zernike-calculating task")
+            return None
+
+        if metrics is None:
+            metrics = calculateAosMetrics(efdClient, record, taskResults, cwfsDetNums)
+
+        legendExtraLines = [f"{k}: {v:.2f}s" for k, v in metrics.legendItems.items()]
+
+        aosTasks = set()
+        pipelines = self.pipelines
+        aosPipelines = [p for p in pipelines.keys() if "aos" in p.lower()]
+        for who in aosPipelines:
+            step1aTasks = set(pipelines[who].getTasks(["step1a"]).keys())
+            aosTasks |= step1aTasks
+
+        taskMap = {
+            taskName: AOS_TASK_COLORS[i % len(AOS_TASK_COLORS)] for i, taskName in enumerate(sorted(aosTasks))
+        }
+
+        fig = plotAosTaskTimings(
+            detectorList=list(cwfsDetNums),
+            taskMap=taskMap,
+            results=taskResults,
+            expRecord=record,
+            timings=metrics.staircaseTimings,
+            legendExtraLines=legendExtraLines,
+        )
+        return fig
+
 
 class PerformanceMonitor(BaseButlerChannel):
+    """
+    Monitor for performance metrics.
+
+    Parameters
+    ----------
+    locationConfig : `LocationConfig`
+        The location configuration.
+    butler : `Butler`
+        The butler instance.
+    instrument : `str`
+        The instrument name.
+    podDetails : `PodDetails`
+        The pod details.
+    doRaise : `bool`, optional
+        Whether to raise exceptions. Default is False.
+    """
+
     def __init__(
         self,
         locationConfig: LocationConfig,
@@ -690,9 +1015,18 @@ class PerformanceMonitor(BaseButlerChannel):
         self.perf = PerformanceBrowser(butler, instrument, locationConfig)
         self.shardsDirectory = locationConfig.raPerformanceShardsDirectory
         self.instrument = instrument  # why isn't this being set in the base class?!
+        self.efdClient = makeEfdClient()
+        self.cameraControl = CameraControlConfig()
 
     def callback(self, payload: Payload) -> None:
-        """Callback function to be called when a new exposure is available."""
+        """
+        Callback function to be called when a new exposure is available.
+
+        Parameters
+        ----------
+        payload : `Payload`
+            The payload containing the exposure information.
+        """
         dataId = payload.dataIds[0]
         record = None
         if "exposure" in dataId.dimensions:
@@ -732,8 +1066,10 @@ class PerformanceMonitor(BaseButlerChannel):
             textItems.append(f"Shutter close to isr start: {minTime:.1f} s")
             rubinTVtableItems["ISR start time (shutter)"] = f"{minTime:.2f}"
 
-        if "calcZernikesTask" in resultsDict:
-            zernikeDt = calcTimeSinceShutterClose(record, resultsDict["calcZernikesTask"], startOrEnd="end")
+        calcZernikesTaskName = getZernikeCalculatingTaskName(resultsDict)
+
+        if calcZernikesTaskName in resultsDict:
+            zernikeDt = calcTimeSinceShutterClose(record, resultsDict[calcZernikesTaskName], startOrEnd="end")
             textItems.append(f"Shutter close to zernike end: {zernikeDt:.1f} s")
             rubinTVtableItems["Zernike delivery time (shutter)"] = f"{zernikeDt:.2f}"
 
@@ -786,6 +1122,464 @@ class PerformanceMonitor(BaseButlerChannel):
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
 
+        self.uploadAosPlot(record, data)
+
         # callback() is only called for the long-running RA process, so clear
         # the cache so we don't have ever increasing memory usage
         self.perf.data = {}
+
+    def uploadAosPlot(self, record: DimensionRecord, taskResults: dict[str, TaskResult]) -> None:
+        """
+        Create and upload the AOS task timing plot.
+
+        Parameters
+        ----------
+        record : `DimensionRecord`
+            The exposure record.
+        taskResults : `dict[str, TaskResult]`
+            The task results.
+        """
+        # Check we have the necessary tasks
+        calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
+        if calcZernikesTaskName is None or "isr" not in taskResults:
+            self.log.warning(
+                f"Skipping AOS plot for {record.id}: missing isr and/or zernike-calculating task"
+            )
+            return
+
+        cwfsDetNums = self.cameraControl.CWFS_IDS
+        metrics = calculateAosMetrics(self.efdClient, record, taskResults, cwfsDetNums)
+
+        md: dict[int, dict[str, Any]] = {record.seq_num: metrics.legendItems}
+        md[record.seq_num].update(metrics.staircaseTimings.items())
+        writeMetadataShard(self.shardsDirectory, record.day_obs, md)
+
+        fig = self.perf.createAosPlot(record, taskResults, self.efdClient, cwfsDetNums, metrics=metrics)
+        if fig is None:
+            return
+
+        plotName = "aos_timing"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, record.day_obs, record.seq_num, plotName, "jpg"
+        )
+        fig.savefig(plotFile)
+        assert self.s3Uploader is not None
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument="ra_performance",
+            plotName=plotName,
+            dayObs=record.day_obs,
+            seqNum=record.seq_num,
+            filename=plotFile,
+        )
+
+
+def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
+    """
+    Get the end readout time for an exposure.
+
+    Parameters
+    ----------
+    client : `EfdClient`
+        The EFD client.
+    expRecord : `DimensionRecord`
+        The exposure record.
+
+    Returns
+    -------
+    timestamp : `float`
+        The end readout timestamp (seconds since end of exposure).
+    """
+    data = getEfdData(client, "lsst.sal.MTCamera.logevent_endReadout", expRecord=expRecord, postPadding=30)
+    timestamp = data[data["imageName"] == expRecord.obs_id]["timestampEndOfReadout"].iloc[0]
+    return timestamp - expRecord.timespan.end.unix_tai
+
+
+def getIngestTimes(
+    client: EfdClient,
+    expRecord: DimensionRecord,
+    key="private_kafkaStamp",
+) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    Get ingestion times for wavefront and science sensors.
+
+    Parameters
+    ----------
+    client : `EfdClient`
+        The EFD client.
+    expRecord : `DimensionRecord`
+        The exposure record.
+    key : `str`, optional
+        The key to use for timestamp. Default is "private_kafkaStamp".
+
+    Returns
+    -------
+    wfTimes : `dict`
+        Dictionary of wavefront sensor ingestion times.
+    sciTimes : `dict`
+        Dictionary of science sensor ingestion times.
+    """
+    oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
+
+    endExposure = expRecord.timespan.end.unix_tai
+    thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
+
+    wavefronts = thisImageData[thisImageData["sensor"].isin(CWFS_SENSOR_NAMES)]
+    sciences = thisImageData[thisImageData["sensor"].isin(IMAGING_SENSOR_NAMES)]
+
+    wfTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in wavefronts.iterrows()}
+    sciTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in sciences.iterrows()}
+
+    return wfTimes, sciTimes
+
+
+def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
+    """
+    Get the name of the Zernike calculating task data.
+
+    Parameters
+    ----------
+    data : `dict[str, TaskResult]`
+        The dictionary of task results.
+
+    Returns
+    -------
+    taskName : `str` or `None`
+        The name of the Zernike calculating task, or None if not found.
+    """
+    lengths = {taskName: len(taskResults.logs) for taskName, taskResults in data.items()}
+    zernikeLengths = {k: v for k, v in lengths.items() if "calczernikes" in k.lower() and v > 0}
+    if len(zernikeLengths) == 0:
+        return None
+    if len(zernikeLengths) > 1:
+        raise ValueError(f"Multiple Zernike calculating tasks were run: task log lengths={zernikeLengths}")
+    return next(iter(zernikeLengths.keys()))
+
+
+def calculateAosMetrics(
+    efdClient: EfdClient,
+    expRecord: DimensionRecord,
+    taskResults: dict[str, TaskResult],
+    cwfsDetNums: Iterable[int],
+) -> AosMetrics:
+    """
+    Calculate metrics for the AOS performance plot.
+
+    Parameters
+    ----------
+    efdClient : `EfdClient`
+        The EFD client.
+    expRecord : `DimensionRecord`
+        The exposure record.
+    taskResults : `dict[str, TaskResult]`
+        The task results.
+    cwfsDetNums : `Iterable` of `int`
+        The list of CWFS detector numbers.
+
+    Returns
+    -------
+    metrics : `AosMetrics`
+        The calculated metrics.
+    """
+    wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
+
+    calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
+    if calcZernikesTaskName is None:
+        raise ValueError("No Zernike calculating task found in task results")
+
+    readoutDelay = getEndReadoutTime(efdClient, expRecord)
+    zernikeDelivery = taskResults[calcZernikesTaskName].endTimeAfterShutterClose
+    isrStart = taskResults["isr"].startTimeAfterShutterClose
+    wfIngestStart = min(wfTimes.values())
+    wfIngestEnd = max(wfTimes.values())
+    calcZernMean = np.nanmedian(list(taskResults[calcZernikesTaskName].detectorTimings.values()))
+    isrTimes = taskResults["isr"].detectorTimings  # this includes the imaging chips
+    cwfsIsrTimes = [isrTimes[detNum] for detNum in cwfsDetNums if detNum in isrTimes]
+    isrMean = np.nanmedian(cwfsIsrTimes) if cwfsIsrTimes else float("nan")
+
+    timings = {  # for the staircase plot
+        "Readout start": 0.0,
+        "Readout (effective)": readoutDelay,
+        "WFS ingest start": min(wfTimes.values()),
+        "WFS ingest finished": max(wfTimes.values()),
+        "Imaging ingest finished": max(sciTimes.values()),
+    }
+
+    assert isrStart is not None, "isrStart should not be None"
+    assert zernikeDelivery is not None, "zernikeDelivery should not be None"
+
+    legendItems = {  # for the legend box
+        "Readout (effective)": readoutDelay,
+        "WF ingestion duration": (wfIngestEnd - wfIngestStart),
+        "First WF available to isr start": (isrStart - wfIngestStart),
+        "Mean isr runtime": float(isrMean),
+        f"Mean {calcZernikesTaskName} runtime": float(calcZernMean),
+        "Readout end to isr start": (isrStart - readoutDelay),
+        "Shutter close to zernikes": zernikeDelivery,
+    }
+
+    return AosMetrics(staircaseTimings=timings, legendItems=legendItems)
+
+
+def addEventStaircase(
+    axTop: Axes, axBottom: Axes, timings: dict[str, float], *, yMax: float = 1.0, yMin: float = 0.08
+) -> None:
+    """
+    Add an event staircase to the plot.
+
+    Top panel: dashed verticals that step down; full-height lines drawn in
+    bottom panel. Labels on arrows show the *later* event name and +Δt.
+
+    Parameters
+    ----------
+    axTop : `matplotlib.axes.Axes`
+        The top axes.
+    axBottom : `matplotlib.axes.Axes`
+        The bottom axes.
+    timings : `dict`
+        The timings for the events.
+    yMax : `float`, optional
+        The maximum y value. Default is 1.0.
+    yMin : `float`, optional
+        The minimum y value. Default is 0.08.
+    """
+    if not timings:
+        axTop.set_axis_off()
+        return
+
+    items: list[tuple[str, float]] = sorted(timings.items(), key=lambda kv: kv[1])
+    names: list[str] = [k for k, _ in items]
+    times: list[float] = [v for _, v in items]
+    n = len(times)
+
+    heights = np.linspace(yMax, yMin, n, dtype=float)
+
+    # top: staircase heights; bottom: full-height guides
+    for i, t in enumerate(times):
+        axTop.vlines(t, 0.0, float(heights[i]), linestyles="--", linewidth=1.2)
+        axBottom.axvline(t, color="black", linestyle="--", linewidth=1.2, ymin=0, ymax=1)
+
+    axTop.text(
+        times[0],
+        1,
+        f"{names[0]} (+{times[0]:.2f}s)",
+        rotation=45,
+        rotation_mode="anchor",
+        ha="left",
+        va="bottom",
+    )
+
+    # arrows + labels between consecutive events
+    labelDy = 0.03 * (yMax - yMin)
+    for i in range(n - 1):
+        t0, t1 = times[i], times[i + 1]
+        yRight = float(heights[i + 1])
+        dt = t1 - t0
+
+        # Horizontal arrow pointing to the top of the right event line
+        axTop.annotate(
+            "",
+            xy=(t1, yRight),
+            xytext=(t0, yRight),
+            arrowprops=dict(arrowstyle="<->", linewidth=1.2),
+        )
+
+        # Place the label above the right event point (not at the midpoint)
+        axTop.text(
+            t1,
+            yRight + labelDy,
+            f"{names[i + 1]} (+{dt:.2f}s)",
+            rotation=45,
+            rotation_mode="anchor",
+            ha="left",
+            va="bottom",
+        )
+
+    axTop.set_ylim(0.0, yMax + 2 * labelDy)
+    axTop.set_yticks([])
+    axTop.set_ylabel("Events", labelpad=6)
+    axTop.grid(False)
+
+    # Remove top x-axis and side axis lines
+    for spine in ("top", "left", "right"):
+        axTop.spines[spine].set_visible(False)
+    axTop.tick_params(axis="x", top=False)
+
+
+def createLegendBoxes(
+    axTop: Axes,
+    colors: dict[str, str],
+    extraLines: list[str] | None = None,
+) -> None:
+    """
+    Create legend boxes for the plot.
+
+    Two axis-anchored legends at the bottom-right of *axTop*.
+    Left block = colored task entries; right block = free-text lines.
+    Both are placed relative to axTop's axes coordinates (0..1).
+
+    Parameters
+    ----------
+    axTop : `matplotlib.axes.Axes`
+        The top axes.
+    colors : `dict`
+        The dictionary of task colors.
+    extraLines : `list` of `str`, optional
+        Extra lines to add to the legend.
+    """
+    # Left: colored task entries (placed just to the *left* of the text legend)
+    colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
+    tasksLegend = axTop.legend(
+        handles=colorHandles,
+        loc="lower right",
+        bbox_to_anchor=(1.0, 0.0),  # bottom-right corner of axTop
+        bbox_transform=axTop.transAxes,
+        frameon=False,
+        ncol=1,
+        borderaxespad=0.0,
+        fontsize="medium",
+    )
+
+    if extraLines:
+        # Force a draw so we can compute the first legend's bbox.
+        fig = axTop.figure
+        fig.canvas.draw()
+        # type ignore because get_renderer() only exists with Agg backend
+        renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]
+        bboxDisplay = tasksLegend.get_window_extent(renderer=renderer)
+        bboxAxes = bboxDisplay.transformed(axTop.transAxes.inverted())
+
+        # Anchor the right edge of the text legend to the left edge of the
+        # tasks legend.
+        gapAxes = 0.02  # small horizontal gap in axes coords to avoid touching
+        anchorX = max(bboxAxes.x0 - gapAxes, 0.0)
+
+        textHandles = [Patch(facecolor="none", edgecolor="none", label=line) for line in extraLines]
+        axTop.legend(
+            handles=textHandles,
+            loc="lower right",
+            bbox_to_anchor=(anchorX, 0.0),
+            bbox_transform=axTop.transAxes,
+            frameon=False,
+            ncol=1,
+            borderaxespad=0.0,
+            handlelength=0.0,
+            handletextpad=0.0,
+            fontsize="medium",
+        )
+        # Re-add the first legend so both legends are visible.
+        axTop.add_artist(tasksLegend)
+
+
+def plotAosTaskTimings(
+    detectorList: list[int] | tuple[int, ...],
+    taskMap: dict[str, str],
+    results: dict[str, TaskResult],
+    expRecord: DimensionRecord,
+    timings: dict[str, float],
+    *,
+    barHalf: float = 0.3,
+    touchHalf: float = 0.5,
+    figsize: tuple[float, float] = (12, 8),
+    heightRatios: tuple[float, float] = (1, 2.5),
+    legendExtraLines: list[str] | None = None,
+) -> Figure:
+    """
+    Render the AOS task timing plot with an event staircase panel.
+
+    Parameters
+    ----------
+    detectorList : `list` or `tuple` of `int`
+        The list of detectors.
+    taskMap : `dict`
+        The map of task names to colors.
+    results : `dict`
+        The task results.
+    expRecord : `DimensionRecord`
+        The exposure record.
+    timings : `dict`
+        The timings for the events.
+    barHalf : `float`, optional
+        Half the height of the bars. Default is 0.3.
+    touchHalf : `float`, optional
+        Half the height of the touching bars. Default is 0.5.
+    figsize : `tuple`, optional
+        The size of the figure. Default is (12, 8).
+    heightRatios : `tuple`, optional
+        The height ratios for the subplots. Default is (1, 2.5).
+    legendExtraLines : `list` of `str`, optional
+        Extra lines to add to the legend.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure`
+        The figure object.
+    """
+    fig = make_figure(figsize=figsize)
+    axTop, axBottom = fig.subplots(
+        2,
+        1,
+        sharex=True,
+        gridspec_kw={"height_ratios": list(heightRatios), "hspace": 0.0},
+    )
+
+    t0 = expRecord.timespan.end.utc.to_datetime().astimezone(timezone.utc)
+
+    detMap = {det: i for i, det in enumerate(detectorList)}
+    bottoms: list[float] = [i - barHalf for i in range(len(detectorList))]
+    tops: list[float] = [i + barHalf for i in range(len(detectorList))]
+
+    # make consecutive detectors touch
+    for i in range(len(detectorList) - 1):
+        if detectorList[i + 1] == detectorList[i] + 1:
+            tops[i] = i + touchHalf  # raise earlier one
+            bottoms[i + 1] = i + touchHalf  # lower later one
+
+    taskMins: dict[str, float] = {}
+    taskMaxs: dict[str, float] = {}
+
+    tasksPlotted: dict[str, str] = {}  # only put these in the legend
+    for task, color in taskMap.items():
+        taskResults = results[task]
+        taskMins[task] = 999.0
+        taskMaxs[task] = -1.0
+
+        for detNum in detectorList:
+            if detNum not in taskResults.logs:
+                continue
+            tasksPlotted[task] = color
+            start = (taskResults.logs[detNum][0].asctime - t0).total_seconds()
+            end = (taskResults.logs[detNum][-1].asctime - t0).total_seconds()
+
+            taskMins[task] = min(taskMins[task], start)
+            taskMaxs[task] = max(taskMaxs[task], end)
+
+            idx = detMap[detNum]
+            axBottom.fill_between([start, end], bottoms[idx], tops[idx], color=color)
+
+    if taskMins.get("isr", None) is not None:
+        timings["ISR Start"] = taskMins["isr"]
+
+    # legends anchored to bottom-right of the TOP axis
+    createLegendBoxes(axTop, tasksPlotted, extraLines=legendExtraLines)
+
+    axBottom.set_xlim(0, None)
+    axBottom.set_yticks(list(detMap.values()))
+    axBottom.set_yticklabels(list(detMap.keys()))
+    axBottom.set_xlabel("Time since end integration (s)")
+    axBottom.set_ylabel("Detector number #")
+
+    # move title to very bottom, centered under the x-axis of the bottom plot
+    dayObsStr = dayObsIntToString(expRecord.day_obs)
+    bottomTitle = f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}"
+
+    # Clear any axes titles and draw a figure-level bottom title
+    axBottom.set_title("")
+    axTop.set_title("")
+    fig.text(0.5, 0.02, bottomTitle, ha="center", va="bottom")
+
+    addEventStaircase(axTop, axBottom, timings)
+
+    # Layout: no extra bottom legend space needed; keep room for bottom title
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+    fig.subplots_adjust(bottom=0.14)
+    return fig

@@ -547,7 +547,7 @@ class PipelineComponents:
 
         self.steps = steps
 
-    def getTasks(self) -> dict[str, TaskNode]:
+    def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
 
         Returns
@@ -557,6 +557,8 @@ class PipelineComponents:
         """
         tasks: dict[str, TaskNode] = {}
         for stepAlias in self.stepAliases:
+            if steps is not None and stepAlias not in steps:
+                continue
             tasks.update(self.graphs[stepAlias].tasks)
         return tasks
 
@@ -1529,6 +1531,7 @@ class CameraControlConfig:
         self._focalPlanePlot.showStats = False
         self._focalPlanePlot.plotMin = 0
         self._focalPlanePlot.plotMax = 1
+        self.IMAGING_IDS: tuple[int, ...] = tuple(detId for detId in self._imagingIds)
         self.GUIDER_IDS: tuple[int, ...] = tuple(detId for detId in self._guiderIds)
         self.CWFS_IDS: tuple[int, ...] = tuple(detId for detId in self._wavefrontIds)
         self.INTRA_FOCAL_IDS = (192, 196, 200, 204)
@@ -1539,6 +1542,20 @@ class CameraControlConfig:
         self.VERTICAL_IDS = (10, 13, 16, 46, 49, 52, 91, 94, 97, 136, 139, 142, 172, 175, 178)
 
         self.currentNamedPattern = ""
+
+    def getCwfsCornerByName(self, corner: str) -> tuple[int, int]:
+        pairs = list(zip(self.EXTRA_FOCAL_IDS, self.INTRA_FOCAL_IDS))
+        match corner.lower():
+            case "bl":
+                return pairs[0]
+            case "br":
+                return pairs[1]
+            case "tl":
+                return pairs[2]
+            case "tr":
+                return pairs[3]
+            case _:
+                raise ValueError(f"Unknown corner name {corner=}")
 
     def getIntraExtraFocalPairs(self) -> list[tuple[int, int]]:
         """Get the intra-focal and extra-focal pairs.
