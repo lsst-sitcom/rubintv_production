@@ -1185,9 +1185,10 @@ class PerformanceMonitor(BaseButlerChannel):
         )
 
 
-def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
+def getEffectiveReadoutDuration(client: EfdClient, expRecord: DimensionRecord) -> float:
     """
-    Get the end readout time for an exposure.
+    Get the time taken to read out the exposure, as seconds since end of
+    exposure.
 
     Parameters
     ----------
@@ -1206,13 +1207,14 @@ def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
     return timestamp - expRecord.timespan.end.unix_tai
 
 
-def getIngestTimes(
+def getIngestTiming(
     client: EfdClient,
     expRecord: DimensionRecord,
     key="private_kafkaStamp",
 ) -> tuple[dict[str, float], dict[str, float]]:
     """
-    Get ingestion times for wavefront and science sensors.
+    Get ingestion times for wavefront and science sensors, as seconds since the
+    end of the exposure.
 
     Parameters
     ----------
@@ -1226,9 +1228,9 @@ def getIngestTimes(
     Returns
     -------
     wfTimes : `dict`
-        Dictionary of wavefront sensor ingestion times.
+        Dictionary of wavefront sensor ingestion times since shutter close.
     sciTimes : `dict`
-        Dictionary of science sensor ingestion times.
+        Dictionary of science sensor ingestion times since shutter close.
     """
     oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
 
@@ -1292,13 +1294,13 @@ def calculateAosMetrics(
     metrics : `AosMetrics`
         The calculated metrics.
     """
-    wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
+    wfTimes, sciTimes = getIngestTiming(efdClient, expRecord)
 
     calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
     if calcZernikesTaskName is None:
         raise ValueError("No Zernike calculating task found in task results")
 
-    readoutDelay = getEndReadoutTime(efdClient, expRecord)
+    readoutDelay = getEffectiveReadoutDuration(efdClient, expRecord)
     zernikeDelivery = taskResults[calcZernikesTaskName].endTimeAfterShutterClose
     isrStart = taskResults["isr"].startTimeAfterShutterClose
     wfIngestStart = min(wfTimes.values())
