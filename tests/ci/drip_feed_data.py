@@ -51,7 +51,7 @@ for record in records:
     # queue everything up for performance monitoring once that spins up
     # that comes as a 2nd round, so only starts once everything else is over
     # so it's fine to just enqueue it all right now
-    payload = Payload([record.dataId], b"", "", who="")
+    payload = Payload(record.dataId, b"", "", who="")
     redisHelper.enqueuePayload(payload, performancePod)
 
 t1 = time.time()
