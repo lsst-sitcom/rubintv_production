@@ -1629,3 +1629,100 @@ def getAirmass(exp: Exposure) -> float | None:
     if airmass is not None and np.isfinite(airmass):
         return float(airmass)
     return None
+
+
+def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
+    """Get the exposure ID or visit ID from an exposure record.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to get the ID from.
+
+    Returns
+    -------
+    id : `int`
+        The exposure ID if available, else the visit ID.
+    """
+    if isinstance(obj, DimensionRecord):
+        return obj.id
+
+    if obj.hasRecords():
+        if "exposure" in obj.records:
+            record = obj.records["exposure"]
+            assert record is not None
+            return record.id
+        if "visit" in obj.records:
+            record = obj.records["visit"]
+            assert record is not None
+            return record.id
+    else:
+        if "visit" in obj:
+            return int(obj["visit"])
+        elif "exposure" in obj:
+            return int(obj["exposure"])
+    raise ValueError(f"{obj} does not contain an exposure or visit ID")
+
+
+def getExpRecordFromVisitRecord(visitRecord: DimensionRecord, butler: Butler) -> DimensionRecord:
+    """Get the exposure record corresponding to a visit record.
+
+    Parameters
+    ----------
+    visitRecord : `lsst.daf.butler.DimensionRecord`
+        The visit record to get the exposure record for.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the exposure record.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record corresponding to the visit record.
+    """
+    (expRecord,) = butler.registry.queryDimensionRecords("exposure", dataId=visitRecord.dataId)
+    return expRecord
+
+
+def getVisitRecordFromExpRecord(expRecord: DimensionRecord, butler: Butler) -> DimensionRecord:
+    """Get the exposure record corresponding to a visit record.
+
+    Parameters
+    ----------
+    visitRecord : `lsst.daf.butler.DimensionRecord`
+        The visit record to get the exposure record for.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the exposure record.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record corresponding to the visit record.
+    """
+    if expRecord.can_see_sky is not True:
+        raise ValueError("Cannot get visit record from non-sky exposure record")
+
+    # this line *could* still fail if visits haven't been defined, but it now
+    # never *should* as we've checked that it's on sky, so let that raise
+    (visitRecord,) = butler.registry.queryDimensionRecords("visit", dataId=expRecord.dataId)
+    return visitRecord
+
+
+def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> DimensionRecord:
+    """Get the exposure record corresponding to a visit record.
+
+    Parameters
+    ----------
+    expOrVisitId : `int``
+        The exposure ID or visit ID to get the exposure record for.
+    instrument : `str`
+        The instrument name.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the exposure record.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record corresponding to the visit record.
+    """
+    (expR,) = butler.registry.queryDimensionRecords("exposure", exposure=expOrVisitId, instrument=instrument)
+    return expR

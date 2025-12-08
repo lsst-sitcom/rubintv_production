@@ -187,21 +187,20 @@ class ClusterManager:
 
             try:
                 payload = Payload.from_json(item, self.butler)
-                dataIds = payload.dataIds
+                dataId = payload.dataId
 
                 # Extract the most relevant ID info from each dataId
                 id_parts = []
-                for dataId in dataIds:
-                    # Try different dimension identifiers in order of
-                    # preference
-                    for dim in ["exposure", "visit"]:
-                        if dim in dataId.required:
-                            id_parts.append(str(dataId.required[dim]))
-                            break
-                    else:
-                        # If none of the preferred dimensions exist, use the
-                        # string representation
-                        id_parts.append(str(dataId))
+                # Try different dimension identifiers in order of
+                # preference
+                for dim in ["exposure", "visit"]:
+                    if dim in dataId.required:
+                        id_parts.append(str(dataId.required[dim]))
+                        break
+                else:
+                    # If none of the preferred dimensions exist, use the
+                    # string representation
+                    id_parts.append(str(dataId))
 
                 dataIdInfo = "+".join(id_parts)
                 who = payload.who

@@ -1039,7 +1039,7 @@ class PerformanceMonitor(BaseButlerChannel):
         payload : `Payload`
             The payload containing the exposure information.
         """
-        dataId = payload.dataIds[0]
+        dataId = payload.dataId
         record = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]
