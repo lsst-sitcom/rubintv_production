@@ -310,7 +310,7 @@ class TestConfig:
             )
         ]
         aos_workers.extend(
-            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in [3, 5, 7]]
+            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(8)]
         )
 
         # Additional LSSTCam scripts
@@ -568,13 +568,15 @@ class RedisManager:
             checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
 
         # check zernike announcement for MTAOS
-        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226) == 4:
+        n = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226)
+        if n == 4:
             checks.append(Check(True, "MTAOS Zernike count for non-FAM image 2025111500226 is 4"))
         else:
             checks.append(Check(False, "MTAOS Zernike count for non-FAM image 2025111500226 is not 4"))
 
-        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500227) == 18:
-            checks.append(Check(True, "MTAOS Zernike count for FAM image 2025111500227 is 18"))
+        n = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500227)
+        if n != 18:
+            checks.append(Check(True, f"MTAOS Zernike count for FAM image 2025111500227 is 18 (got {n})"))
         else:
             checks.append(Check(False, "MTAOS Zernike count for FAM image 2025111500227 is not 18"))
 
