@@ -548,6 +548,11 @@ class PipelineComponents:
 
         self.steps = steps
 
+    @property
+    def isUnpaired(self) -> bool:
+        """Is this an unpaired AOS pipeline?"""
+        return "unpaired" in self.pipelineFile.lower()
+
     def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
 
