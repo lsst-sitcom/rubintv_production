@@ -61,6 +61,7 @@ if TYPE_CHECKING:
 
     from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import Butler, Quantum
+    from lsst.pipe.base.graph.quantumNode import QuantumNode
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -274,6 +275,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         assert False, "This should be unreachable, detectorId should be in EXTRA_IDS for AOS non-FAM images"
 
+    def doDropQuantum(self, node: QuantumNode) -> bool:
+        taskName = node.task_node.label
+        dataCoord = node.quantum.dataId
+        assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"  # for mypy
+        if "calczernikes" in taskName.lower():
+            if "detector" in node.quantum.dataId and node.quantum.dataId["detector"] in INTRA_IDS:
+                # TODO: need to not drop this for unpaired runs
+                self.log.info(f"Dropping unpaired calcZernikes quantum for {dataCoord}")
+                return True
+
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
@@ -417,6 +428,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
 
             for node in qg:
+                if self.doDropQuantum(node):
+                    # XXX Can we just do this?! 😅 At minimum we'll need to
+                    # report it as finished below
+                    continue
                 # just to make sure taskName is defined, so if this shows
                 # up anywhere something is very wrong
                 dataCoord = node.quantum.dataId  # pull this out before the try so you can use in except block
