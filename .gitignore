@@ -25,3 +25,6 @@ pytest_session.txt
 #jupyter
 .ipynb_checkpoints/
 *.ipynb
+
+# temporary log files from running CI
+ci_logs/*
