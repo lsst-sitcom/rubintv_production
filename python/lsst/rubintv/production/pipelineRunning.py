@@ -33,9 +33,10 @@ from astropy.time import Time
 from galsim.zernike import zernikeRotMatrix
 
 from lsst.daf.butler import Butler, DataCoordinate, DatasetIdGenEnum, DatasetRef, DimensionRecord, Quantum
-from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph, TaskFactory
+from lsst.pipe.base import ExecutionResources, PipelineGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
+from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.pipe.base.trivial_quantum_graph_builder import TrivialQuantumGraphBuilder
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
@@ -504,15 +505,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             builder, where, bind = self.getQuantumGraphBuiler(payload, pipelineGraph)
 
             with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
-                qg: QuantumGraph = builder.build(
+                qg: PredictedQuantumGraph = builder.finish(
                     metadata={
-                        "input": list(self.butler.collections.defaults) + [self.runCollection],
-                        "output_run": self.runCollection,
                         "data_query": where,
                         "bind": bind,
                         "time": f"{datetime.datetime.now()}",
                     }
-                )
+                ).assemble()
 
             if not qg:
                 raise RuntimeError(f"No work found for {dataIds}")
@@ -529,35 +528,38 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 resources=ExecutionResources(num_cores=nCpus),
             )
 
-            for node in qg:
-                if self.doDropQuantum(node):
-                    # XXX Can we just do this?! 😅 At minimum we'll need to
-                    # report it as finished below
-                    continue
-                # just to make sure taskName is defined, so if this shows
-                # up anywhere something is very wrong
-                dataCoord = node.quantum.dataId  # pull this out before the try so you can use in except block
-                assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
-                self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
-                taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
-                self.log.info(f"Starting to process {taskName}")
+            quanta = qg.build_execution_quanta()
+            for taskLabel, quantaForTask in qg.quanta_by_task.items():
+                postQuantum = None  # reset inside the loop so it can't be stale inside except block
+                for quantumId in quantaForTask.values():
+                    preQuantum = quanta[quantumId]
+                    # just to make sure taskName is defined, so if this shows
+                    # up anywhere something is very wrong
+                    dataCoord = (
+                        preQuantum.dataId
+                    )  # pull this out before the try so you can use in except block
+                    assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                    self.log.debug(f"Executing {taskLabel} for {dataCoord}")
+                    self.log.info(f"Starting to process {taskLabel}")
 
-                quantum = None  # reset inside the loop so it can't be stale inside except block
-                try:
-                    # TODO: add per-quantum timing info here and return in
-                    # PayloadResult
-                    quantum, _ = executor.execute(node.task_node, node.quantum)
-                    self.postProcessQuantum(quantum)
-                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
+                    try:
+                        # TODO: add per-quantum timing info here and return in
+                        # PayloadResult
+                        postQuantum, _ = executor.execute(qg.pipeline_graph.tasks[taskLabel], preQuantum)
+                        self.postProcessQuantum(postQuantum)
+                        self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
 
-                except Exception as e:
-                    # Track when the tasks finish, regardless of whether they
-                    # succeeded.
-                    self.log.exception(f"Task {taskName} failed: {e}")
-                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
-                    if quantum is not None:
-                        self.postProcessQuantum(quantum)
-                    raise e  # still raise the error once we've logged the quantum as finishing
+                    except Exception as e:
+                        # Track when the tasks finish, regardless of whether
+                        # they succeeded.
+                        self.log.exception(f"Task {taskLabel} failed: {e}")
+                        self.redisHelper.reportTaskFinished(
+                            self.instrument, taskLabel, dataCoord, failed=True
+                        )
+                        assert (postQuantum is None) or (postQuantum is preQuantum), "This must be true"
+                        if postQuantum is not None:
+                            self.postProcessQuantum(postQuantum)
+                        raise e  # still raise the error once we've logged the quantum as finishing
 
             self.log.debug(f"Finished iterating over nodes in QG for {expId} for {who}")
 
