@@ -32,9 +32,18 @@ import numpy as np
 from astropy.time import Time
 from galsim.zernike import zernikeRotMatrix
 
-from lsst.daf.butler import Butler, DataCoordinate, DatasetIdGenEnum, DatasetRef, DimensionRecord, Quantum
+from lsst.daf.butler import (
+    Butler,
+    DataCoordinate,
+    DatasetIdGenEnum,
+    DatasetRef,
+    DimensionRecord,
+    LimitedButler,
+    Quantum,
+)
 from lsst.pipe.base import ExecutionResources, PipelineGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
+from lsst.pipe.base.blocking_limited_butler import BlockingLimitedButler
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
@@ -363,7 +372,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def getQuantumGraphBuiler(
         self, payload: Payload, pipelineGraph: PipelineGraph
-    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any]]:
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
         expId = getExpIdOrVisitId(payload.dataId)
         expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
         # isFamImage = expRecord.observation_type.lower() == "cwfs"
@@ -390,7 +399,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 input_collections=list(self.butler.collections.defaults) + [self.runCollection],
                 output_run=self.runCollection,
             )
-            return builder, where, bind
+            return builder, where, bind, self.cachingButler
 
         else:  # all step1as
             dataIds: list[DataCoordinate] = [dataId]
@@ -398,20 +407,34 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             # this is not for the extra quanta, this is making sure the visit
             # record stuff makes it into the QGG
-            if "visit" in pipelineGraph.get_all_dimensions():
+            allDimensions = pipelineGraph.get_all_dimensions()
+            if "visit" in allDimensions:
                 visitDataCoord = self.butler.registry.expandDataId(
                     visit=expId, instrument=self.instrument, detector=payload.dataId["detector"]
                 )
                 dataIds.append(visitDataCoord)
+            if "group" in allDimensions:
+                groupDataCoord = self.butler.registry.expandDataId(
+                    instrument=self.instrument, detector=payload.dataId["detector"], group=expRecord.group
+                )
+                dataIds.append(groupDataCoord)
 
             inputRefs: dict[str, list[DatasetRef]] = {  # all step1as have a raw as an input
                 "raw": [cast(DatasetRef, self.butler.find_dataset("raw", payload.dataId))],
             }
 
             intraFocalInputs: dict[str, list[DatasetRef]] = {}
+            butlerToReturn: LimitedButler = self.cachingButler
             if payload.who == "AOS":
                 intraFocalInputs = self.getIntraFocalInputs(payload, pipelineGraph, expRecord)
                 inputRefs.update(intraFocalInputs)
+
+                # TODO: need to think about whether we need to know about FAM
+                # mode and increase timeout there (can use None for infinite)
+                butlerToReturn = BlockingLimitedButler(
+                    self.cachingButler,
+                    timeouts={datasetTypeName: 30.0 for datasetTypeName in inputRefs.keys()},
+                )
 
             builder = TrivialQuantumGraphBuilder(
                 pipeline_graph=pipelineGraph,
@@ -423,7 +446,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 output_run=self.runCollection,
                 dataset_id_modes=dict.fromkeys(intraFocalInputs.keys(), DatasetIdGenEnum.DATAID_TYPE_RUN),
             )
-            return builder, "", {}
+            return builder, "", {}, butlerToReturn
 
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
@@ -502,7 +525,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " (should be ~1s per id)"
             )
 
-            builder, where, bind = self.getQuantumGraphBuiler(payload, pipelineGraph)
+            builder, where, bind, butlerToUse = self.getQuantumGraphBuiler(payload, pipelineGraph)
 
             with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
                 qg: PredictedQuantumGraph = builder.finish(
@@ -522,7 +545,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             executor = SingleQuantumExecutor(
                 butler=None,
                 task_factory=TaskFactory(),
-                limited_butler_factory=lambda _: self.cachingButler,
+                limited_butler_factory=lambda _: butlerToUse,
                 clobber_outputs=True,  # check with Jim if this is how we should handle clobbering
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
