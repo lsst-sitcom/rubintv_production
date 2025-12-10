@@ -319,42 +319,50 @@ class TestConfig:
         additional_lsstcam_scripts = [
             TestScript(
                 "scripts/LSSTCam/runStep1bAosWorker.py",
-                ["usdf_testing", "0", "1", "2"],
-                display_on_pass=True,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runOneOffExpRecord.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runOneOffPostIsr.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runOneOffVisitImage.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runHeadNode.py",
-                ["usdf_testing"],
-                delay=5,
+                ["usdf_testing", "0"],
                 tee_output=True,
                 display_on_pass=True,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runGuiderAnalysis.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
+            )
         ]
+        additional_lsstcam_scripts.extend(
+            [TestScript("scripts/LSSTCam/runStep1bAosWorker.py", ["usdf_testing", str(i)]) for i in (1, 2)]
+        )
+        additional_lsstcam_scripts.extend(
+            [
+                TestScript(
+                    "scripts/LSSTCam/runOneOffExpRecord.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runOneOffPostIsr.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runOneOffVisitImage.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runHeadNode.py",
+                    ["usdf_testing"],
+                    delay=5,
+                    tee_output=True,
+                    display_on_pass=True,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runGuiderAnalysis.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
+            ]
+        )
 
         # Combine all test scripts
         self.test_scripts_round_1 = (
