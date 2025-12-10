@@ -365,26 +365,20 @@ class SingleCorePipelineRunner(BaseButlerChannel):
     ) -> tuple[QuantumGraphBuilder, str, dict[str, Any]]:
         expId = getExpIdOrVisitId(payload.dataId)
         expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
-        isFamImage = expRecord.observation_type.lower() == "cwfs"
+        # isFamImage = expRecord.observation_type.lower() == "cwfs"
+        dataId = payload.dataId
 
-        dataIds: list[DataCoordinate] = []
         builder: QuantumGraphBuilder
         if self.step == "step1b":
             self.log.info(f"Making AllDimensionQGBuilder for {self.step} for expId {expId} for {payload.who}")
-            if self.step == "step1b" and not isFamImage:
-                dataIds = [payload.dataId]
-            else:
-                raise NotImplementedError("Coming soon")
 
             where = ""
             bind = {}
-            for i, dataId in enumerate(dataIds):
-                idString = f"dataId_{i}_"
-                where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
-                bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
-                where += " OR "
-            if where.endswith(" OR "):
-                where = where[:-4]
+
+            # TODO: tidy this up
+            idString = f"dataId_{0}_"
+            where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+            bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
 
             builder = AllDimensionsQuantumGraphBuilder(
                 pipelineGraph,
@@ -398,8 +392,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return builder, where, bind
 
         else:  # all step1as
+            dataIds: list[DataCoordinate] = [dataId]
             self.log.info(f"Making TrivialQG builder for {self.step} for expId {expId} for {payload.who}")
-            dataIds = [payload.dataId]
+
             # this is not for the extra quanta, this is making sure the visit
             # record stuff makes it into the QGG
             if "visit" in pipelineGraph.get_all_dimensions():
@@ -443,7 +438,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         dataId = payload.dataId
         expId = getExpIdOrVisitId(payload.dataId)  # for keying all the redis stuff by
         pipelineGraphBytes = payload.pipelineGraphBytes
-        self.runCollection = payload.run
+        self.runCollection = payload.run  # TODO: remove this from being on the class at all
         who = payload.who  # who are we running this for?
 
         extraCoord = self.getExtraDataCoordinate(payload)
