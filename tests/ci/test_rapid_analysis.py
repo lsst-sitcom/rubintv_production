@@ -181,6 +181,7 @@ class TestConfig:
         # File paths
         self.ci_dir = os.path.dirname(os.path.abspath(__file__))
         self.package_dir = os.path.abspath(os.path.join(self.ci_dir, "../../"))
+        self.log_dir = os.path.join(self.package_dir, "ci_logs")
 
         # Initialize test scripts and yaml files
         self._init_test_scripts()
@@ -623,14 +624,64 @@ class RedisManager:
             print("Terminated Redis process")
 
 
+class LogManager:
+    """Manages log file operations for test scripts."""
+
+    def __init__(self, log_dir: str) -> None:
+        self.log_dir = log_dir
+
+    def setup_log_directory(self) -> None:
+        """Create or clear the log directory."""
+        if os.path.exists(self.log_dir):
+            shutil.rmtree(self.log_dir)
+            print(f"✅ Cleared existing log directory: {self.log_dir}")
+
+        os.makedirs(self.log_dir, exist_ok=True)
+        print(f"✅ Created log directory: {self.log_dir}")
+
+    def get_log_filename(self, test_script: TestScript, pid: int) -> str:
+        """Generate a log filename for a test script and process ID."""
+        script_name = os.path.basename(test_script.path).replace(".py", "")
+        args_suffix = "_".join(test_script.args) if test_script.args else "no_args"
+        return os.path.join(self.log_dir, f"{script_name}_{args_suffix}_pid_{pid}.log")
+
+    def write_log(
+        self, filename: str, stdout: str, stderr: str, logs: str, exit_code: int | str | None
+    ) -> None:
+        """Write captured output to a log file."""
+        with open(filename, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write(f"Exit Code: {exit_code}\n")
+            f.write("=" * 80 + "\n\n")
+
+            if stdout:
+                f.write("STDOUT:\n")
+                f.write("-" * 80 + "\n")
+                f.write(stdout)
+                f.write("\n" + "-" * 80 + "\n\n")
+
+            if stderr:
+                f.write("STDERR:\n")
+                f.write("-" * 80 + "\n")
+                f.write(stderr)
+                f.write("\n" + "-" * 80 + "\n\n")
+
+            if logs:
+                f.write("LOGS:\n")
+                f.write("-" * 80 + "\n")
+                f.write(logs)
+                f.write("\n" + "-" * 80 + "\n")
+
+
 class ProcessManager:
     """Manages test script processes and output collection."""
 
-    def __init__(self) -> None:
+    def __init__(self, log_manager: LogManager | None = None) -> None:
         self.manager = Manager()
         self.exit_codes = self.manager.dict()
         self.outputs = self.manager.dict()
         self.processes: dict[Process, TestScript] = {}
+        self.log_manager = log_manager
 
     def run_test_scripts(self, scripts: list[TestScript], timeout: int, is_meta_tests: bool = False) -> None:
         """Run test scripts with timeout and collect results."""
@@ -700,6 +751,7 @@ class ProcessManager:
 
         script_path = test_script.path
         script_args = test_script.args
+        current_pid = os.getpid()
 
         f_stdout = io.StringIO()
         f_stderr = io.StringIO()
@@ -759,8 +811,16 @@ class ProcessManager:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
 
+            stdout_output = f_stdout.getvalue()
+            stderr_output = f_stderr.getvalue()
             log_output = log_stream.getvalue()
-            output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue(), log_output))
+
+            # Write log to file if log manager is available
+            if self.log_manager:
+                log_filename = self.log_manager.get_log_filename(test_script, current_pid)
+                self.log_manager.write_log(log_filename, stdout_output, stderr_output, log_output, exit_code)
+
+            output_queue.put((test_script, exit_code, stdout_output, stderr_output, log_output))
 
             # Clean up logger handlers
             root_logger.removeHandler(log_handler)
@@ -1164,7 +1224,8 @@ class TestRunner:
     def __init__(self) -> None:
         self.config = TestConfig()
         self.redis_manager = RedisManager(self.config)
-        self.process_manager = ProcessManager()
+        self.log_manager = LogManager(self.config.log_dir)
+        self.process_manager = ProcessManager(self.log_manager)
         self.result_collector = ResultCollector()
         self.patches: Any = []  # not sure what type to use here
 
@@ -1276,6 +1337,9 @@ class TestRunner:
 
             # Setup testing environment
             self.setup_environment()
+
+            # Setup log directory
+            self.log_manager.setup_log_directory()
 
             # Check YAML files if configured
             if self.config.do_check_yaml_files:
