@@ -26,17 +26,18 @@ import logging
 import os
 import time
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from astropy.time import Time
 from galsim.zernike import zernikeRotMatrix
 
-from lsst.daf.butler import DataCoordinate
+from lsst.daf.butler import Butler, DataCoordinate, DatasetIdGenEnum, DatasetRef, DimensionRecord, Quantum
 from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
+from lsst.pipe.base.trivial_quantum_graph_builder import TrivialQuantumGraphBuilder
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
@@ -61,8 +62,8 @@ if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
     from lsst.afw.image import ExposureSummaryStats
-    from lsst.daf.butler import Butler, Quantum
     from lsst.pipe.base.graph.quantumNode import QuantumNode
+    from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -180,7 +181,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.podDetails = podDetails
 
-        self.runCollection: str | None = None
+        self.runCollection: str = "uninitialized!"
         self.cachingButler = makeCachingLimitedButler(butler, self.allGraphs)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
@@ -282,10 +283,153 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         dataCoord = node.quantum.dataId
         assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"  # for mypy
         if "calczernikes" in taskName.lower():
-            if "detector" in node.quantum.dataId and node.quantum.dataId["detector"] in INTRA_IDS:
+            if "detector" in dataCoord and dataCoord["detector"] in INTRA_IDS:
                 # TODO: need to not drop this for unpaired runs
                 self.log.info(f"Dropping unpaired calcZernikes quantum for {dataCoord}")
                 return True
+        return False
+
+    def getIntraFocalInputs(
+        self,
+        payload: Payload,
+        pipelineGraph: PipelineGraph,
+        expRecord: DimensionRecord,
+    ) -> dict[str, list[DatasetRef]]:
+        """Get any subset inputs needed for the TrivialQuantumGraphBuilder.
+
+        This MUST only be called for step1a non-FAM images.
+        TODO: add protection for this.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process.
+        pipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+
+        Returns
+        -------
+        inputRefs : `dict` [`str`, `list` [`lsst.daf.butler.DatasetRef`]]
+            The input dataset references needed for the builder.
+        """
+        inputRefs: dict[str, list[DatasetRef]] = {}
+        if subset := pipelineGraph.task_subsets.get("detector-pair-merge-task"):
+            if payload.dataId["detector"] not in EXTRA_IDS:
+                return inputRefs  # no-op for the intras
+            if payload.dataId["detector"] not in EXTRA_IDS and payload.dataId["detector"] not in INTRA_IDS:
+                # guard against madness
+                raise ValueError("pair-merge-task should only be defined for AOS step1a non-FAM pipelines")
+
+            for taskLabel in subset:
+                taskNode = pipelineGraph.tasks[taskLabel]
+                for readEdge in taskNode.iter_all_inputs():
+                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                    dataId = self.butler.registry.expandDataId(
+                        visit=getExpIdOrVisitId(payload.dataId),
+                        detector=int(payload.dataId["detector"]) + 1,
+                        instrument=self.instrument,
+                    )
+                    inputRefs[readEdge.parent_dataset_type_name] = [
+                        DatasetRef(
+                            datasetTypeNode.dataset_type,
+                            dataId,
+                            run=self.runCollection,
+                            id_generation_mode=DatasetIdGenEnum.DATAID_TYPE_RUN,
+                        )
+                    ]
+        elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):
+            if expRecord.observation_type.lower() != "cwfs":
+                raise ValueError("visit-pair-merge-task should only be defined for AOS step1a FAM pipelines")
+            if "intra" in expRecord.observation_reason.lower():
+                return inputRefs  # no-op for the intras
+
+            for taskLabel in subset:
+                taskNode = pipelineGraph.tasks[taskLabel]
+                for readEdge in taskNode.iter_all_inputs():
+                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                    dataId = self.butler.registry.expandDataId(
+                        visit=getExpIdOrVisitId(payload.dataId) - 1,
+                        detector=payload.dataId["detector"],
+                        instrument=self.instrument,
+                    )
+                    inputRefs[readEdge.parent_dataset_type_name] = [
+                        DatasetRef(
+                            datasetTypeNode.dataset_type,
+                            dataId,
+                            run=self.runCollection,
+                            id_generation_mode=DatasetIdGenEnum.DATAID_TYPE_RUN,
+                        )
+                    ]
+        return inputRefs
+
+    def getQuantumGraphBuiler(
+        self, payload: Payload, pipelineGraph: PipelineGraph
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any]]:
+        expId = getExpIdOrVisitId(payload.dataId)
+        expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
+        isFamImage = expRecord.observation_type.lower() == "cwfs"
+
+        dataIds: list[DataCoordinate] = []
+        builder: QuantumGraphBuilder
+        if self.step == "step1b":
+            self.log.info(f"Making AllDimensionQGBuilder for {self.step} for expId {expId} for {payload.who}")
+            if self.step == "step1b" and not isFamImage:
+                dataIds = [payload.dataId]
+            else:
+                raise NotImplementedError("Coming soon")
+
+            where = ""
+            bind = {}
+            for i, dataId in enumerate(dataIds):
+                idString = f"dataId_{i}_"
+                where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+                bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
+                where += " OR "
+            if where.endswith(" OR "):
+                where = where[:-4]
+
+            builder = AllDimensionsQuantumGraphBuilder(
+                pipelineGraph,
+                self.butler,
+                where=where,
+                bind=bind,
+                clobber=True,
+                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+                output_run=self.runCollection,
+            )
+            return builder, where, bind
+
+        else:  # all step1as
+            self.log.info(f"Making TrivialQG builder for {self.step} for expId {expId} for {payload.who}")
+            dataIds = [payload.dataId]
+            # this is not for the extra quanta, this is making sure the visit
+            # record stuff makes it into the QGG
+            if "visit" in pipelineGraph.get_all_dimensions():
+                visitDataCoord = self.butler.registry.expandDataId(
+                    visit=expId, instrument=self.instrument, detector=payload.dataId["detector"]
+                )
+                dataIds.append(visitDataCoord)
+
+            inputRefs: dict[str, list[DatasetRef]] = {  # all step1as have a raw as an input
+                "raw": [cast(DatasetRef, self.butler.find_dataset("raw", payload.dataId))],
+            }
+
+            intraFocalInputs: dict[str, list[DatasetRef]] = {}
+            if payload.who == "AOS":
+                intraFocalInputs = self.getIntraFocalInputs(payload, pipelineGraph, expRecord)
+                inputRefs.update(intraFocalInputs)
+
+            builder = TrivialQuantumGraphBuilder(
+                pipeline_graph=pipelineGraph,
+                butler=self.butler,
+                data_ids=dataIds,
+                input_refs=inputRefs,
+                clobber=True,  # TBD by Jim as to whether this should be removed
+                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+                output_run=self.runCollection,
+                dataset_id_modes=dict.fromkeys(intraFocalInputs.keys(), DatasetIdGenEnum.DATAID_TYPE_RUN),
+            )
+            return builder, "", {}
 
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
@@ -308,17 +452,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         dataIds = [dataId, extraCoord] if extraCoord is not None else [dataId]
         del dataId
 
-        # XXX all the code on the headnode that deals with pairing stuff goes
-        # away - every dataid comes as a single one, and this just hard-codes
-        # pairing them up for aos (this is necessary for the QGG to have all
-        #  the quanta needed for calcZenikes to run paired). Then, inside the
-        # `for node in qg` loop, if the task name contains 'unpaired' we drop
-        # the quantum (make sure to log it as finished though or step1b won't
-        # start) This re-insertion only happens if the task is a paired task,
-        # i.e. if we're running AOS, and unpaired is not in any of the task
-        # names this way the unpaired task run all the way through completion
-        # of calcZenikes normally.
-
         try:
             # NOTE: if someone sends a pipelineGraphBytes that's so different
             # from the pipelines built by buildPipelines that it consumes
@@ -326,34 +459,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # that's not the case this should be OK. Otherwise, remake the
             # CachingLimitedButler with the new pipelineGraph here.
             pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
-
-            # chain all the dataId components together with AND, and an OR
-            # between each dataId. Make sure to bind the dataId components
-            # correctly by using a unique string for each dataId.
-            where = ""
-            bind = {}
-            for i, dataId in enumerate(dataIds):
-                idString = f"dataId_{i}_"
-                where += " AND ".join(
-                    f"{k}={idString}{k}" for k in dataId.mapping
-                )  # XXX Add instrument to the query here
-                bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
-                where += " OR "
-            if where.endswith(" OR "):
-                where = where[:-4]
-            del dataId
-
-            self.log.debug(f"{where=}\n{bind=}")
-
-            builder = AllDimensionsQuantumGraphBuilder(
-                pipelineGraph,
-                self.butler,
-                where=where,
-                bind=bind,
-                clobber=True,
-                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
-                output_run=self.runCollection,
-            )
 
             self.log.info(f"Running pipeline for {dataIds}")
 
@@ -363,7 +468,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # to RubinTV. If it doesn't arrive the qg will be empty
             t0 = time.time()
             for dataId in dataIds:
-                self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
+                self.log.info(f"Waiting for {self.dataProduct} for {dataId}")
                 if self.locationConfig.location == "bts":
                     # TODO : Find something better when we're not about to go
                     # on sky.
@@ -402,6 +507,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 f"Spent {(time.time() - t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
                 " (should be ~1s per id)"
             )
+
+            builder, where, bind = self.getQuantumGraphBuiler(payload, pipelineGraph)
 
             with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
                 qg: QuantumGraph = builder.build(
