@@ -42,7 +42,14 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 import numpy as np
 import yaml
 
-from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.daf.butler import (
+    Butler,
+    DataCoordinate,
+    DimensionConfig,
+    DimensionGroup,
+    DimensionRecord,
+    DimensionUniverse,
+)
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
 from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsInt
@@ -1726,3 +1733,36 @@ def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> Di
     """
     (expR,) = butler.registry.queryDimensionRecords("exposure", exposure=expOrVisitId, instrument=instrument)
     return expR
+
+
+def getEquivalentDataId(
+    butler: Butler,
+    exposureDataId: DataCoordinate,
+    dimensions: list[str] | DimensionGroup,
+) -> DataCoordinate:
+    """
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the dimension records.
+    exposureDataId : `lsst.daf.butler.DataCoordinate`
+        The exposure data ID to get an equivalent data ID for.
+    dimensions : `list` of `str` or `lsst.daf.butler.DimensionGroup`
+        The dimensions to use to get the equivalent data ID.
+
+    Returns
+    -------
+    equivalentDataId : `lsst.daf.butler.DataCoordinate`
+        A data ID that is equivalent to the given exposure data ID.
+    """
+    if "exposure" not in exposureDataId:
+        raise ValueError("Input data ID must contain an 'exposure' dimension")
+
+    exposureDataId = butler.registry.expandDataId(exposureDataId)  # no-op if already expanded
+    return butler.registry.expandDataId(
+        exposureDataId,
+        dimensions=dimensions,
+        visit=exposureDataId["exposure"],
+        group=exposureDataId["group"],
+    )
