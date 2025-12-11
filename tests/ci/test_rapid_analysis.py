@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import traceback
+from datetime import datetime
 from multiprocessing import Manager, Process
 from pathlib import Path
 from queue import Empty
@@ -644,16 +645,104 @@ class LogManager:
     """Manages log file operations for test scripts."""
 
     def __init__(self, log_dir: str) -> None:
-        self.log_dir = log_dir
+        self.base_log_dir = log_dir
+        self.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.log_dir = os.path.join(self.base_log_dir, self.run_timestamp)
 
     def setup_log_directory(self) -> None:
-        """Create or clear the log directory."""
-        if os.path.exists(self.log_dir):
-            shutil.rmtree(self.log_dir)
-            print(f"✅ Cleared existing log directory: {self.log_dir}")
-
+        """Create the timestamped log directory for this run."""
         os.makedirs(self.log_dir, exist_ok=True)
-        print(f"✅ Created log directory: {self.log_dir}")
+        print(f"✅ Created log directory for this run: {self.log_dir}")
+
+        # Create a 'latest' symlink pointing to this run
+        latest_link = os.path.join(self.base_log_dir, "latest")
+        if os.path.islink(latest_link):
+            os.unlink(latest_link)
+        elif os.path.exists(latest_link):
+            shutil.rmtree(latest_link)
+
+        os.symlink(self.run_timestamp, latest_link)
+        print("✅ Updated 'latest' symlink to point to this run")
+
+    @staticmethod
+    def listTestRuns(baseLogDir: str) -> list[str]:
+        """
+        List all test run timestamps in chronological order.
+
+        Parameters
+        ----------
+        baseLogDir : `str`
+            The base log directory containing timestamped subdirectories.
+
+        Returns
+        -------
+        runs : `list[str]`
+            List of run timestamps, newest first.
+        """
+        if not os.path.exists(baseLogDir):
+            return []
+
+        runs = []
+        for entry in os.listdir(baseLogDir):
+            path = os.path.join(baseLogDir, entry)
+            # Skip the 'latest' symlink and only include directories
+            if os.path.isdir(path) and entry != "latest" and not os.path.islink(path):
+                runs.append(entry)
+
+        # Sort in reverse chronological order (newest first)
+        return sorted(runs, reverse=True)
+
+    @staticmethod
+    def getRunByIndex(baseLogDir: str, index: int) -> str | None:
+        """
+        Get a test run by index (0 = most recent, 1 = second most recent, etc).
+
+        Parameters
+        ----------
+        baseLogDir : `str`
+            The base log directory containing timestamped subdirectories.
+        index : `int`
+            The index of the run to retrieve (0-based, 0 is most recent).
+
+        Returns
+        -------
+        runTimestamp : `str` or `None`
+            The timestamp of the requested run, or None if index is out of
+            range.
+        """
+        runs = LogManager.listTestRuns(baseLogDir)
+        if 0 <= index < len(runs):
+            return runs[index]
+        return None
+
+    @staticmethod
+    def getRunDirectory(baseLogDir: str, identifier: str | int) -> str | None:
+        """
+        Get the log directory for a specific run.
+
+        Parameters
+        ----------
+        baseLogDir : `str`
+            The base log directory containing timestamped subdirectories.
+        identifier : `str` or `int`
+            Either a timestamp string or an integer index (0 = most recent).
+
+        Returns
+        -------
+        runDir : `str` or `None`
+            The full path to the run's log directory, or None if not found.
+        """
+        if isinstance(identifier, int):
+            timestamp = LogManager.getRunByIndex(baseLogDir, identifier)
+            if timestamp is None:
+                return None
+        else:
+            timestamp = identifier
+
+        runDir = os.path.join(baseLogDir, timestamp)
+        if os.path.isdir(runDir):
+            return runDir
+        return None
 
     def get_log_filename(self, test_script: TestScript, pid: int) -> str:
         """Generate a log filename for a test script and process ID."""
