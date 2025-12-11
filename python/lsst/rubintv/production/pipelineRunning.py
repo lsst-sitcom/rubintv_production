@@ -26,7 +26,7 @@ import logging
 import os
 import time
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.time import Time
@@ -37,6 +37,7 @@ from lsst.daf.butler import (
     DataCoordinate,
     DatasetIdGenEnum,
     DatasetRef,
+    DimensionGroup,
     DimensionRecord,
     LimitedButler,
     Quantum,
@@ -60,6 +61,7 @@ from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .utils import (
+    getEquivalentDataId,
     getExpIdOrVisitId,
     getExpRecordFromId,
     getShardPath,
@@ -299,12 +301,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 return True
         return False
 
-    def getIntraFocalInputs(
+    def finishAosQgBuilder(
         self,
         payload: Payload,
         pipelineGraph: PipelineGraph,
         expRecord: DimensionRecord,
-    ) -> dict[str, list[DatasetRef]]:
+        dataIds: dict[DimensionGroup, DataCoordinate],
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
         """Get any subset inputs needed for the TrivialQuantumGraphBuilder.
 
         This MUST only be called for step1a non-FAM images.
@@ -322,59 +325,118 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         inputRefs : `dict` [`str`, `list` [`lsst.daf.butler.DatasetRef`]]
             The input dataset references needed for the builder.
         """
-        inputRefs: dict[str, list[DatasetRef]] = {}
-        if subset := pipelineGraph.task_subsets.get("detector-pair-merge-task"):
-            if payload.dataId["detector"] not in EXTRA_IDS:
-                return inputRefs  # no-op for the intras
+        assert self.step == "step1a"
+        inputRefs: dict[str, dict[str, list[DatasetRef]]] = {}
+        idGenerationModes: dict[str, DatasetIdGenEnum] = {}
+        timeouts: dict[str, float | None] = {}
+
+        DATAID_TYPE_RUN = DatasetIdGenEnum.DATAID_TYPE_RUN
+
+        if subset := pipelineGraph.task_subsets.get("detector-pair-merge-task"):  # means non-FAM but AOS
+            otherDetector = int(payload.dataId["detector"]) + 1
+            if expRecord.observation_type.lower() == "cwfs":
+                raise ValueError("You should not try to run non-FAM pipelines on FAM images")
             if payload.dataId["detector"] not in EXTRA_IDS and payload.dataId["detector"] not in INTRA_IDS:
                 # guard against madness
-                raise ValueError("pair-merge-task should only be defined for AOS step1a non-FAM pipelines")
+                raise ValueError(
+                    "detector-pair-merge-task should only be defined for AOS step1a non-FAM pipelines"
+                )
 
-            for taskLabel in subset:
-                taskNode = pipelineGraph.tasks[taskLabel]
-                for readEdge in taskNode.iter_all_inputs():
-                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
-                    dataId = self.butler.registry.expandDataId(
-                        visit=getExpIdOrVisitId(payload.dataId),
-                        detector=int(payload.dataId["detector"]) + 1,
-                        instrument=self.instrument,
-                    )
-                    inputRefs[readEdge.parent_dataset_type_name] = [
-                        DatasetRef(
-                            datasetTypeNode.dataset_type,
-                            dataId,
-                            run=self.runCollection,
-                            id_generation_mode=DatasetIdGenEnum.DATAID_TYPE_RUN,
+            if payload.dataId["detector"] in EXTRA_IDS:
+                for taskLabel in subset:
+                    taskNode = pipelineGraph.tasks[taskLabel]
+                    for readEdge in taskNode.iter_all_inputs():
+                        datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                        if "detector" not in datasetTypeNode.dimensions:
+                            continue
+                        extraFocalDataId = dataIds[datasetTypeNode.dimensions]
+                        intraFocalDataId = self.butler.registry.expandDataId(
+                            extraFocalDataId, detector=otherDetector
                         )
-                    ]
+                        inputRefs.setdefault(taskLabel, {})[readEdge.connection_name] = [
+                            DatasetRef(
+                                datasetTypeNode.dataset_type,
+                                intraFocalDataId,
+                                run=self.runCollection,
+                                id_generation_mode=DATAID_TYPE_RUN,
+                            )
+                        ]
+                        timeouts[readEdge.parent_dataset_type_name] = 30.0  # this can come from the other pod
+                        idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+
         elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):
+            otherVisit = getExpIdOrVisitId(payload.dataId) - 1
             if expRecord.observation_type.lower() != "cwfs":
                 raise ValueError("visit-pair-merge-task should only be defined for AOS step1a FAM pipelines")
-            if "intra" in expRecord.observation_reason.lower():
-                return inputRefs  # no-op for the intras
-
-            for taskLabel in subset:
-                taskNode = pipelineGraph.tasks[taskLabel]
-                for readEdge in taskNode.iter_all_inputs():
-                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
-                    dataId = self.butler.registry.expandDataId(
-                        visit=getExpIdOrVisitId(payload.dataId) - 1,
-                        detector=payload.dataId["detector"],
-                        instrument=self.instrument,
-                    )
-                    inputRefs[readEdge.parent_dataset_type_name] = [
-                        DatasetRef(
-                            datasetTypeNode.dataset_type,
-                            dataId,
-                            run=self.runCollection,
-                            id_generation_mode=DatasetIdGenEnum.DATAID_TYPE_RUN,
+            if "extra" in expRecord.observation_reason.lower():
+                for taskLabel in subset:
+                    taskNode = pipelineGraph.tasks[taskLabel]
+                    for readEdge in taskNode.iter_all_inputs():
+                        datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                        if not datasetTypeNode.dimensions.names & {"visit", "exposure", "group"}:
+                            continue
+                        intraFocalExposureDataId = self.butler.registry.expandDataId(
+                            payload.dataId, exposure=otherVisit
                         )
-                    ]
-        return inputRefs
+                        intraFocalDataId = getEquivalentDataId(
+                            self.butler,
+                            intraFocalExposureDataId,
+                            datasetTypeNode.dimensions,
+                        )
 
-    def getQuantumGraphBuiler(
+                        inputRefs.setdefault(taskLabel, {})[readEdge.connection_name] = [
+                            DatasetRef(
+                                datasetTypeNode.dataset_type,
+                                intraFocalDataId,
+                                run=self.runCollection,
+                                id_generation_mode=DATAID_TYPE_RUN,
+                            )
+                        ]
+                        timeouts[readEdge.parent_dataset_type_name] = 300.0  # much longer timeout for FAM
+                        idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+
+        # TODO: need to think about whether we need to know about FAM
+        # mode and increase timeout there (can use None for infinite)
+        butlerToReturn = BlockingLimitedButler(
+            self.cachingButler,
+            timeouts=timeouts,
+        )
+        builder = TrivialQuantumGraphBuilder(
+            pipeline_graph=pipelineGraph,
+            butler=self.butler,
+            data_ids=dataIds,
+            input_refs=inputRefs,
+            dataset_id_modes=idGenerationModes,
+            clobber=True,  # TBD by Jim as to whether this should be removed
+            input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+            output_run=self.runCollection,
+        )
+        return builder, "", {}, butlerToReturn
+
+    def getQuantumGraphBuilder(
         self, payload: Payload, pipelineGraph: PipelineGraph
     ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
+        """
+        Get the quantum graph builder to use for this payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process.
+        pipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+
+        Returns
+        -------
+        builder : `lsst.pipe.base.quantum_graph_builder.QuantumGraphBuilder`
+            The quantum graph builder to use.
+        where : `str`
+            The where clause used for building the quantum graph.
+        bind : `dict` [`str`, `Any`]
+            The bind parameters used for building the quantum graph.
+        butlerToUse : `lsst.daf.butler.LimitedButler`
+            The butler to use for executing the quantum graph.
+        """
         expId = getExpIdOrVisitId(payload.dataId)
         expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
         # isFamImage = expRecord.observation_type.lower() == "cwfs"
@@ -404,51 +466,33 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return builder, where, bind, self.cachingButler
 
         else:  # all step1as
-            dataIds: list[DataCoordinate] = [dataId]
+            dataIds: dict[DimensionGroup, DataCoordinate] = {dataId.dimensions: dataId}
             self.log.info(f"Making TrivialQG builder for {self.step} for expId {expId} for {payload.who}")
 
             # this is not for the extra quanta, this is making sure the visit
             # record stuff makes it into the QGG
             allDimensions = pipelineGraph.get_all_dimensions()
+
             if "visit" in allDimensions:
-                visitDataCoord = self.butler.registry.expandDataId(
-                    visit=expId, instrument=self.instrument, detector=payload.dataId["detector"]
-                )
-                dataIds.append(visitDataCoord)
+                visitDataCoord = getEquivalentDataId(self.butler, payload.dataId, ["visit", "detector"])
+                dataIds[visitDataCoord.dimensions] = visitDataCoord
             if "group" in allDimensions:
-                groupDataCoord = self.butler.registry.expandDataId(
-                    instrument=self.instrument, detector=payload.dataId["detector"], group=expRecord.group
-                )
-                dataIds.append(groupDataCoord)
+                groupDataCoord = getEquivalentDataId(self.butler, payload.dataId, ["group", "detector"])
+                dataIds[groupDataCoord.dimensions] = groupDataCoord
 
-            inputRefs: dict[str, list[DatasetRef]] = {  # all step1as have a raw as an input
-                "raw": [cast(DatasetRef, self.butler.find_dataset("raw", payload.dataId))],
-            }
-
-            intraFocalInputs: dict[str, list[DatasetRef]] = {}
-            butlerToReturn: LimitedButler = self.cachingButler
             if payload.who == "AOS":
-                intraFocalInputs = self.getIntraFocalInputs(payload, pipelineGraph, expRecord)
-                inputRefs.update(intraFocalInputs)
+                return self.finishAosQgBuilder(payload, pipelineGraph, expRecord, dataIds)
 
-                # TODO: need to think about whether we need to know about FAM
-                # mode and increase timeout there (can use None for infinite)
-                butlerToReturn = BlockingLimitedButler(
-                    self.cachingButler,
-                    timeouts={datasetTypeName: 30.0 for datasetTypeName in inputRefs.keys()},
+            else:
+                builder = TrivialQuantumGraphBuilder(
+                    pipeline_graph=pipelineGraph,
+                    butler=self.butler,
+                    data_ids=dataIds,
+                    clobber=True,  # TBD by Jim as to whether this should be removed
+                    input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+                    output_run=self.runCollection,
                 )
-
-            builder = TrivialQuantumGraphBuilder(
-                pipeline_graph=pipelineGraph,
-                butler=self.butler,
-                data_ids=dataIds,
-                input_refs=inputRefs,
-                clobber=True,  # TBD by Jim as to whether this should be removed
-                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
-                output_run=self.runCollection,
-                dataset_id_modes=dict.fromkeys(intraFocalInputs.keys(), DatasetIdGenEnum.DATAID_TYPE_RUN),
-            )
-            return builder, "", {}, butlerToReturn
+                return builder, "", {}, self.cachingButler
 
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
@@ -467,8 +511,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.runCollection = payload.run  # TODO: remove this from being on the class at all
         who = payload.who  # who are we running this for?
 
-        extraCoord = self.getExtraDataCoordinate(payload)
-        dataIds = [dataId, extraCoord] if extraCoord is not None else [dataId]
+        # extraCoord = self.getExtraDataCoordinate(payload)
+        # dataIds = [dataId, extraCoord] if extraCoord is not None
+        # ## else [dataId]
+        dataIds = [dataId]
         del dataId
 
         try:
@@ -527,7 +573,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " (should be ~1s per id)"
             )
 
-            builder, where, bind, butlerToUse = self.getQuantumGraphBuiler(payload, pipelineGraph)
+            builder, where, bind, butlerToUse = self.getQuantumGraphBuilder(payload, pipelineGraph)
 
             with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
                 qg: PredictedQuantumGraph = builder.finish(
