@@ -366,6 +366,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             otherVisit = getExpIdOrVisitId(payload.dataId) - 1
             if expRecord.observation_type.lower() != "cwfs":
                 raise ValueError("visit-pair-merge-task should only be defined for AOS step1a FAM pipelines")
+            if payload.dataId["detector"] in EXTRA_IDS or payload.dataId["detector"] in INTRA_IDS:
+                # guard against madness
+                raise ValueError("FAM does not run on corner chips")
+
             if "extra" in expRecord.observation_reason.lower():
                 for taskLabel in subset:
                     taskNode = pipelineGraph.tasks[taskLabel]
