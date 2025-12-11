@@ -662,7 +662,8 @@ def _loadConfigFile(site: str) -> dict[str, str]:
     """
     packageDir = getPackageDir("rubintv_production")
     configFile = os.path.join(packageDir, "config", f"config_{site}.yaml")
-    config = yaml.safe_load(open(configFile, "rb"))
+    with open(configFile, "rb") as f:
+        config = yaml.safe_load(f)
     return config
 
 
