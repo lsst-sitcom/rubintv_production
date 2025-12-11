@@ -999,6 +999,7 @@ class HeadProcessController:
         # record pipeline config via the first id for interoperability with
         # CWFS processing. This is just so the step1b dispatch knows what the
         # active pipeline was
+        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosFamPipeline)
         self.redisHelper.recordAosPipelineConfig(self.instrument, record2.id, self.currentAosFamPipeline)
 
         # deliberately do NOT set isAos=True here because we want this written
@@ -1011,32 +1012,32 @@ class HeadProcessController:
         # excludeCwfs because they get normal fanout to CWFS pipelines
         detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
 
+        # for step1b dispatch
         self.redisHelper.writeDetectorsToExpect(self.instrument, record2.id, detectorIds, "AOS")
+
+        # for step1a mosaicing
         for expRecord in expRecords:
             # send expect signal with who=ISR for single expIds as these are
             # for the focal plane mosaicing, and send above with who=AOS as
             # for just the extra-focal id
             self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
 
-        payloads: dict[int, Payload] = {}
-        for detectorId in detectorIds:
-            dataId = DataCoordinate.standardize(record2.dataId, detector=detectorId)
-            payloads[detectorId] = Payload(
-                dataId=dataId,
-                pipelineGraphBytes=targetPipelineBytes,
-                run=self.outputRun,
-                who="AOS",
-            )
+        for record in [record1, record2]:
+            payloads: dict[int, Payload] = {}
+            for detectorId in detectorIds:
+                dataId = DataCoordinate.standardize(record.dataId, detector=detectorId)
+                payloads[detectorId] = Payload(
+                    dataId=dataId,
+                    pipelineGraphBytes=targetPipelineBytes,
+                    run=self.outputRun,
+                    who="AOS",
+                )
 
-        dayObs = record2.day_obs
-        self.log.info(
-            f"Fanning out {instrument}-{dayObs}-{[r.seq_num for r in expRecords]} for"
-            f" {len(detectorIds)} detectors"
-        )
+            self.log.info(f"Fanning out {instrument}-{record.id} for {len(detectorIds)} detectors")
 
-        # SFM_WORKER set here deliberately as we're appropriating the entire
-        # cluster for this processing.
-        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
+            # SFM_WORKER set here deliberately as we're appropriating the
+            # entire cluster for this processing.
+            self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
 
     def _dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
         """Distribute payloads to available workers based on detector IDs.
