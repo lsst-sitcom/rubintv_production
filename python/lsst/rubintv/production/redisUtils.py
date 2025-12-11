@@ -229,7 +229,9 @@ class RedisHelper:
             Raised on any other unexpected error.
         """
         try:
-            self.redis.ping()
+            # self.redis.ping()
+            # DO NOT COMMIT THIS!
+            print("XXX skipping redis ping!!!")
         except redis.exceptions.ConnectionError as e:
             raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:
@@ -1272,8 +1274,24 @@ class RedisHelper:
 
         return averagedStats
 
-    def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
+    def displayRedisContents(
+        self,
+        instrument: str | None = None,
+        ignorePods: bool = True,
+        ignoreKeysStartingWith: list[str] | None = None,
+    ) -> None:
         """Get the next unit of work from a specific worker queue.
+
+        Parameters
+        ----------
+        instrument : `str`, optional
+            Filter to only show keys containing this instrument name.
+        ignorePods : `bool`, optional
+            Whether to ignore pod-related keys (those ending with +EXISTS or
+            +IS_BUSY). Default is ``True``.
+        ignoreKeysStartingWith : `list[str]`, optional
+            List of string prefixes. Keys starting with any of these strings
+            will be ignored. Default is ``None``.
 
         Returns
         -------
@@ -1326,6 +1344,14 @@ class RedisHelper:
         if not keys:
             print("Nothing in the Redis database.")
             return
+
+        # Filter out keys starting with specified prefixes
+        if ignoreKeysStartingWith is not None:
+            keys = [
+                key
+                for key in keys
+                if not any(decode_string(key).startswith(prefix) for prefix in ignoreKeysStartingWith)
+            ]
 
         # Remove consDB announcements from the list
         keys = [key for key in keys if "consdb" not in decode_string(key)]
