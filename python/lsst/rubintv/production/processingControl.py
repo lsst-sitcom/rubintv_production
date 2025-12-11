@@ -1266,7 +1266,7 @@ class HeadProcessController:
                         self.log.warning(f"No worker available for {who} step1b")
                         return False
                     self.log.info(
-                        f"Dispatching step1b for {who} with complete inputs: {dataCoord} to {worker}"
+                        f"Dispatching step1b for {whoToUse} with complete inputs: {dataCoord} to {worker}"
                     )
                     self.redisHelper.enqueuePayload(payload, worker)
                     if who == "AOS":
