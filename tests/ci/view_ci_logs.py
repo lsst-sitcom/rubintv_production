@@ -3,22 +3,105 @@
 Convenience script to view CI test logs.
 
 Usage:
-    python view_ci_logs.py <pid>          # View process ID
-    python view_ci_logs.py <script_name>  # View script name (partial match)
-    python view_ci_logs.py --list         # List all available log files
-"""
+    python view_ci_logs.py <pid>                    # View process ID from latest run
+    python view_ci_logs.py <script_name>            # View script name (partial match) from latest run
+    python view_ci_logs.py --list                   # List all available log files from latest run
+    python view_ci_logs.py --runs                   # List all test runs
+    python view_ci_logs.py --run <timestamp> <pid>  # View logs from specific run by timestamp
+    python view_ci_logs.py --run <N> <pid>          # View logs from Nth most recent run (0=latest)
+"""  # noqa: W505
 
 import argparse
 import sys
 from pathlib import Path
 
 
-def getLogDir() -> Path:
-    """Get the CI logs directory path."""
+def getBaseLogDir() -> Path:
+    """
+    Get the base CI logs directory path.
+
+    Returns
+    -------
+    logDir : `Path`
+        The base log directory containing timestamped subdirectories.
+    """
     scriptDir = Path(__file__).parent.resolve()
     packageDir = scriptDir.parent.parent
     logDir = packageDir / "ci_logs"
     return logDir
+
+
+def getLogDir(baseLogDir: Path, runIdentifier: str | None = None) -> Path:
+    """
+    Get the log directory for a specific run or the latest run.
+
+    Parameters
+    ----------
+    baseLogDir : `Path`
+        The base log directory.
+    runIdentifier : `str`, optional
+        Either a timestamp or an integer index (as string). If None, uses
+        latest.
+
+    Returns
+    -------
+    logDir : `Path`
+        The log directory for the specified run.
+    """
+    if runIdentifier is None:
+        # Use the 'latest' symlink
+        latestLink = baseLogDir / "latest"
+        if latestLink.exists() and latestLink.is_symlink():
+            return baseLogDir / latestLink.readlink()
+
+        # Fallback: find the most recent directory
+        runs = listTestRuns(baseLogDir)
+        if runs:
+            return baseLogDir / runs[0]
+
+        return baseLogDir
+
+    # Check if it's an integer index
+    if runIdentifier.isdigit():
+        index = int(runIdentifier)
+        runs = listTestRuns(baseLogDir)
+        if 0 <= index < len(runs):
+            return baseLogDir / runs[index]
+        raise ValueError(f"Run index {index} out of range (0-{len(runs) - 1})")
+
+    # Treat as timestamp
+    runDir = baseLogDir / runIdentifier
+    if not runDir.exists():
+        raise ValueError(f"Run directory not found: {runDir}")
+
+    return runDir
+
+
+def listTestRuns(baseLogDir: Path) -> list[str]:
+    """
+    List all test run timestamps in chronological order.
+
+    Parameters
+    ----------
+    baseLogDir : `Path`
+        The base log directory.
+
+    Returns
+    -------
+    runs : `list[str]`
+        List of run timestamps, newest first.
+    """
+    if not baseLogDir.exists():
+        return []
+
+    runs = []
+    for entry in baseLogDir.iterdir():
+        # Skip the 'latest' symlink and only include directories
+        if entry.is_dir() and entry.name != "latest" and not entry.is_symlink():
+            runs.append(entry.name)
+
+    # Sort in reverse chronological order (newest first)
+    return sorted(runs, reverse=True)
 
 
 def listLogFiles(logDir: Path) -> list[Path]:
@@ -65,17 +148,59 @@ def main() -> None:
         "--list",
         "-l",
         action="store_true",
-        help="List all available log files",
+        help="List all available log files from the selected run",
+    )
+    parser.add_argument(
+        "--runs",
+        "-r",
+        action="store_true",
+        help="List all test runs",
+    )
+    parser.add_argument(
+        "--run",
+        metavar="TIMESTAMP_OR_INDEX",
+        help="Specify which run to view (timestamp or index, 0=latest)",
     )
 
     args = parser.parse_args()
 
-    logDir = getLogDir()
+    baseLogDir = getBaseLogDir()
+
+    if not baseLogDir.exists():
+        print(f"Error: Log directory does not exist: {baseLogDir}")
+        print("Have you run the test suite yet?")
+        sys.exit(1)
+
+    # List runs mode
+    if args.runs:
+        runs = listTestRuns(baseLogDir)
+        if not runs:
+            print(f"No test runs found in {baseLogDir}")
+            sys.exit(0)
+
+        print(f"Available test runs in {baseLogDir}:\n")
+        for i, run in enumerate(runs):
+            marker = " (latest)" if i == 0 else ""
+            print(f"  {i}. {run}{marker}")
+        sys.exit(0)
+
+    # Determine which run to use
+    try:
+        logDir = getLogDir(baseLogDir, args.run)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
     if not logDir.exists():
         print(f"Error: Log directory does not exist: {logDir}")
         print("Have you run the test suite yet?")
         sys.exit(1)
+
+    # Show which run we're viewing
+    if args.run is not None:
+        print(f"Viewing logs from run: {logDir.name}\n")
+    else:
+        print(f"Viewing logs from latest run: {logDir.name}\n")
 
     # List mode
     if args.list:
@@ -84,7 +209,7 @@ def main() -> None:
             print(f"No log files found in {logDir}")
             sys.exit(0)
 
-        print(f"Available log files in {logDir}:\n")
+        print("Available log files:\n")
         for logFile in logFiles:
             print(f"  {logFile.name}")
         sys.exit(0)
