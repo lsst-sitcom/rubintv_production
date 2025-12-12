@@ -79,6 +79,7 @@ EXPECTED_PIPELINES = [
 EXPECTED_AOS_PIPELINES = [p for p in EXPECTED_PIPELINES if p.startswith("AOS")]
 EXPECTED_FAM_PIPEPLINES = [p for p in EXPECTED_AOS_PIPELINES if "FAM" in p]
 EXPECTED_UNPAIRED_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "UNPAIRED" in p]
+EXPECTED_AOS_NON_FAM_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "FAM" not in p and "AOS" in p]
 
 
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
@@ -124,27 +125,60 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         )
 
     def testAosFamPipelinesStep1a(self) -> None:
-        step = "step1a"
-        dataCoord = self.butler.registry.expandDataId(
-            exposure=self.records["extra"].id,
+        taskExpectations: dict[str, int] = {
+            "calcZernikes": 1,
+        }
+        self.runTest(
+            step="step1a",
+            imageType="extra",
             detector=self.scienceDetector,
+            pipelinesToRun=EXPECTED_FAM_PIPEPLINES,
+            taskExpectations=taskExpectations,
+        )
+
+    def testAosRegularPipelines(self) -> None:
+        taskExpectations: dict[str, int] = {
+            "calcZernikes": 1,
+        }
+
+        self.runTest(
+            step="step1a",
+            imageType="inFocus",
+            detector=self.extraDetector,
+            pipelinesToRun=EXPECTED_AOS_NON_FAM_PIPELINES,
+            taskExpectations=taskExpectations,
+        )
+
+    def runTest(
+        self,
+        step: str,
+        imageType: str,
+        detector: int,
+        pipelinesToRun: list[str],
+        taskExpectations: dict[str, int] | None = None,
+    ) -> None:
+        taskExpectations = taskExpectations or {}
+        dataCoord = self.butler.registry.expandDataId(
+            exposure=self.records[imageType].id,
+            detector=detector,
             instrument=self.instrument,
         )
+
         with swallowLogs():
-            for pipelineName in EXPECTED_FAM_PIPEPLINES:
+            for pipelineName in pipelinesToRun:
                 print(f"Checking pipeline {pipelineName} with {dataCoord}")
                 self.assertIn(pipelineName, self.pipelines)
 
-                graph = self.pipelines["AOS_FAM_DANISH"].graphs[step]
+                graph = self.pipelines[pipelineName].graphs[step]
 
                 sfmRunner = SingleCorePipelineRunner(
                     butler=self.butler,
                     locationConfig=self.locationConfig,
                     instrument=self.instrument,
                     step=step,
-                    awaitsDataProduct="raw",
+                    awaitsDataProduct="raw" if step == "step1a" else None,
                     podDetails=self.podDetails,
-                    doRaise=True,
+                    doRaise=False,
                 )
                 payload = Payload(dataCoord, b"", "LSSTCam/runs/quickLookTesting/126", who="AOS")
                 payload = Payload.from_json(payload.to_json(), self.butler)  # fully formed
@@ -152,47 +186,36 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 qgb, _, _, _ = sfmRunner.getQuantumGraphBuilder(payload, graph)
                 qg = qgb.finish().assemble()
                 self.assertIsInstance(qg, PredictedQuantumGraph)
-                self.assertEqual(len(qg.quanta_by_task["calcZernikesTask"]), 1)
+
+                taskNames = list(qg.quanta_by_task.keys())
+                # Check that all expected tasks are present
+                for taskSubStringToExpect in taskExpectations.keys():
+                    foundTask = False
+                    for taskName in taskNames:
+                        if taskSubStringToExpect in taskName:
+                            foundTask = True
+                            break
+                    self.assertTrue(
+                        foundTask,
+                        f"Expected task containing '{taskSubStringToExpect}' not found in {taskNames}",
+                    )
+
+                # Check that expected tasks have the correct number of quanta
+                for taskSubStringToExpect, numTasksToExpectForString in taskExpectations.items():
+                    for taskName in taskNames:
+                        if taskSubStringToExpect in taskName:
+                            self.assertEqual(
+                                len(qg.quanta_by_task[taskName]),
+                                numTasksToExpectForString,
+                                (
+                                    f"Task '{taskName}' has {len(qg.quanta_by_task[taskName])} quanta,"
+                                    f" expected {numTasksToExpectForString}"
+                                ),
+                            )
 
                 quanta = qg.build_execution_quanta()
                 self.assertIsInstance(quanta, dict)
                 self.assertGreaterEqual(len(quanta), 1)
-
-    def testAosRegularPipelines(self) -> None:
-        step = "step1a"
-        dataCoord = self.butler.registry.expandDataId(
-            exposure=self.records["inFocus"].id,
-            detector=self.extraDetector,
-            instrument=self.instrument,
-        )
-
-        # with swallowLogs():
-        for pipelineName in EXPECTED_AOS_PIPELINES:
-            print(f"Checking pipeline {pipelineName} with {dataCoord}")
-            self.assertIn(pipelineName, self.pipelines)
-
-            graph = self.pipelines["AOS_DANISH"].graphs[step]
-
-            sfmRunner = SingleCorePipelineRunner(
-                butler=self.butler,
-                locationConfig=self.locationConfig,
-                instrument=self.instrument,
-                step=step,
-                awaitsDataProduct="raw",
-                podDetails=self.podDetails,
-                doRaise=False,
-            )
-            payload = Payload(dataCoord, b"", "LSSTCam/runs/quickLookTesting/126", who="AOS")
-            payload = Payload.from_json(payload.to_json(), self.butler)  # fully formed
-            sfmRunner.runCollection = payload.run
-            qgb, _, _, _ = sfmRunner.getQuantumGraphBuilder(payload, graph)
-            qg = qgb.finish().assemble()
-            self.assertIsInstance(qg, PredictedQuantumGraph)
-            self.assertEqual(len(qg.quanta_by_task["calcZernikesTask"]), 1)
-
-            quanta = qg.build_execution_quanta()
-            self.assertIsInstance(quanta, dict)
-            self.assertGreaterEqual(len(quanta), 1)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
