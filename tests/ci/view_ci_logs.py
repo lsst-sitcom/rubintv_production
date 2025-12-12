@@ -353,21 +353,23 @@ def handleTracebackMode(logDir: Path) -> None:
 
     # List all files with tracebacks
     for i, (logFile, tracebacks) in enumerate(fileList, 1):
-        # Get a preview of the first error
+        # Get a preview of the last error line (the actual error message)
         errorLine = ""
-        if tracebacks:
-            for line in reversed(tracebacks[0].tracebackLines):
-                if line.strip() and not line.strip().startswith("File"):
-                    errorLine = line.strip()
+        if tracebacks and tracebacks[-1].tracebackLines:
+            # Get the last non-empty line from the last traceback
+            for line in reversed(tracebacks[-1].tracebackLines):
+                stripped = line.strip()
+                if stripped:
+                    errorLine = stripped
                     break
 
         print(f"  {i}. {logFile.name} ({len(tracebacks)} traceback(s))")
         if errorLine:
             previewLength = 80
             if len(errorLine) > previewLength:
-                print(f"     First: {errorLine[:previewLength]}...")
+                print(f"     Last: {errorLine[:previewLength]}...")
             else:
-                print(f"     First: {errorLine}")
+                print(f"     Last: {errorLine}")
 
     print("\nOptions:")
     print("  - Enter number(s) to view (e.g., '1', '1,3,5', or '1-3')")
