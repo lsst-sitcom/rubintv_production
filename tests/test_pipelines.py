@@ -229,9 +229,22 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                                 ),
                             )
 
-                quanta = qg.build_execution_quanta()
-                self.assertIsInstance(quanta, dict)
-                self.assertGreaterEqual(len(quanta), 1)
+                executionQuanta = qg.build_execution_quanta()
+                self.assertIsInstance(executionQuanta, dict)
+
+                executionQuanta = qg.build_execution_quanta()
+                # quantaTaskList deliberately may contain duplicates
+                quantaTaskList = [q.taskName for q in executionQuanta.values() if q.taskName is not None]
+                for taskSubStringToExpect, numTasksToExpectForString in taskExpectations.items():
+                    count = sum(1 for t in quantaTaskList if taskSubStringToExpect in t)
+                    self.assertEqual(
+                        count,
+                        numTasksToExpectForString,
+                        (
+                            f"Execution quanta: Task containing '{taskSubStringToExpect}' has"
+                            f" {count} quanta, expected {numTasksToExpectForString}"
+                        ),
+                    )
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
