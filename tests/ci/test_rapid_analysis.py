@@ -300,19 +300,16 @@ class TestConfig:
         )
 
         # AOS Workers for LSSTCam
-        # these do the corner chips, and the run as dual dataIds on the
-        # split chips, so need only 4
-        # XXX TODO: bugfix the need to use odd numbers! fix AOS_WORKER_MAPPING
         aos_workers = [
             TestScript(
                 "scripts/LSSTCam/runAosWorker.py",
-                ["usdf_testing", "1"],
+                ["usdf_testing", "0"],
                 display_on_pass=True,
                 tee_output=True,
             )
         ]
         aos_workers.extend(
-            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(8)]
+            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(1, 8)]
         )
 
         # Additional LSSTCam scripts
