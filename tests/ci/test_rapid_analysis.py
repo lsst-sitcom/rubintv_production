@@ -753,9 +753,11 @@ class LogManager:
 
     def get_log_filename(self, test_script: TestScript, pid: int) -> str:
         """Generate a log filename for a test script and process ID."""
-        script_name = os.path.basename(test_script.path).replace(".py", "")
-        args_suffix = "_".join(test_script.args) if test_script.args else "no_args"
-        return os.path.join(self.log_dir, f"{script_name}_{args_suffix}_pid_{pid}.log")
+        scriptPath = Path(test_script.path)
+        scriptName = scriptPath.stem  # filename without .py extension
+        parentDir = scriptPath.parent.name  # e.g., 'LSSTCam' or 'LATISS'
+        argsSuffix = "_".join(test_script.args) if test_script.args else "no_args"
+        return os.path.join(self.log_dir, f"{parentDir}_{scriptName}_{argsSuffix}_pid_{pid}.log")
 
     def write_log(
         self, filename: str, stdout: str, stderr: str, logs: str, exit_code: int | str | None
