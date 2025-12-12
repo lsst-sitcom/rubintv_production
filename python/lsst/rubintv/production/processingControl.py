@@ -1005,6 +1005,7 @@ class HeadProcessController:
         detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
 
         # for step1b dispatch
+        self.redisHelper.writeDetectorsToExpect(self.instrument, record1.id, detectorIds, "AOS")
         self.redisHelper.writeDetectorsToExpect(self.instrument, record2.id, detectorIds, "AOS")
 
         # for step1a mosaicing
