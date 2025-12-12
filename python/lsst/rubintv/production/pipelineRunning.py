@@ -56,7 +56,7 @@ from lsst.ts.ofc import OFCData
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
-from .payloads import getDetectorId, pipelineGraphFromBytes
+from .payloads import pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
@@ -232,63 +232,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         # add any necessary data-driven logic here to choose if we process
         return True
-
-    def getExtraDataCoordinate(self, payload: Payload) -> DataCoordinate | None:
-        """Get the extra data coordinate (if any) for AOS pipelines.
-
-        AOS pipelines are always dispatched via their extra-focal id. For the
-        initial steps, and for normal images, group this with the corner pair.
-        For FAM images, pair with the intra-focal image, rather than detector.
-        For step1b, which doesn't have a detector, pair with nothing for normal
-        images, with the intra-focal image for FAM images.
-
-        Parameters
-        ----------
-        dataId : `lsst.daf.butler.DataCoordinate`
-            The data coordinate.
-
-        Returns
-        -------
-        extraDataId : `dict` [`str`, `str` or `int`]
-            Any extra dataId components needed for this runner.
-        """
-        # TODO: need make this aware of whether we're running pair or unpaired
-        # also need to make a sister-function called dropExtraDataCoordinate
-        # for used in the main loop so we drop the intra-id for paired running.
-
-        if payload.who != "AOS":  # keep things simple for other pipelines
-            return None
-
-        expId = getExpIdOrVisitId(payload.dataId)
-        expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
-        isFamImage = expRecord.observation_type.lower() == "cwfs"
-        if isFamImage:
-            # For FAM images we want to pair with the previous visit,
-            # regardless of whether we're step1a or step1b. Detector as-is
-            previousVisit = expRecord.id - 1  # intra is always taken first, and we always key on extra
-            extraCoordNoRecords = DataCoordinate.standardize(
-                visit=previousVisit, universe=self.butler.dimensions, instrument=self.instrument
-            )
-            extraCoord = self.butler.registry.expandDataId(extraCoordNoRecords)
-            return extraCoord
-
-        # for non-FAM images, for step1a we pair with the intra-focal detector,
-        # for step1b things are already visit-level so don't pair with anything
-        detectorId = getDetectorId(payload)
-        if detectorId is None:  # deals with non-FAM step1b
-            return None
-
-        if detectorId in EXTRA_IDS:  # intra-focal IDs hard-coded for now
-            extraCoordNoRecords = DataCoordinate.standardize(
-                visit=expRecord.id,
-                detector=detectorId + 1,
-                universe=self.butler.dimensions,
-                instrument=self.instrument,
-            )
-            extraCoord = self.butler.registry.expandDataId(extraCoordNoRecords)
-            return extraCoord
-
-        assert False, "This should be unreachable, detectorId should be in EXTRA_IDS for AOS non-FAM images"
 
     def doDropQuantum(self, node: QuantumNode) -> bool:
         taskName = node.task_node.label
@@ -515,9 +458,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.runCollection = payload.run  # TODO: remove this from being on the class at all
         who = payload.who  # who are we running this for?
 
-        # extraCoord = self.getExtraDataCoordinate(payload)
-        # dataIds = [dataId, extraCoord] if extraCoord is not None
-        # ## else [dataId]
         dataIds = [dataId]
         del dataId
 
