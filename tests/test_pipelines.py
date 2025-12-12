@@ -134,7 +134,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             taskExpectations=taskExpectations,
         )
 
-    def testAosCalibsPipeline(self) -> None:
+    def testCalibsPipeline(self) -> None:
         taskExpectations: dict[str, int] = {"isr": 1}
         self.runTest(
             step="step1a",
@@ -144,7 +144,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             taskExpectations=taskExpectations,
         )
 
-    def testAosFamPipelinesStep1a(self) -> None:
+    def testAosFamPipelinesStep1aExtraFocal(self) -> None:
         taskExpectations: dict[str, int] = {"isr": 1, "calcZernikes": 1}
         self.runTest(
             step="step1a",
@@ -154,9 +154,19 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             taskExpectations=taskExpectations,
         )
 
+    def testAosFamPipelinesStep1aIntraFocal(self) -> None:
+        # unpaired intra should have no calcZernikes
+        taskExpectations: dict[str, int] = {"isr": 1, "calcZernikes": 0}
+        self.runTest(
+            step="step1a",
+            imageType="intra",
+            detector=self.scienceDetector,
+            pipelinesToRun=EXPECTED_FAM_PIPEPLINES,
+            taskExpectations=taskExpectations,
+        )
+
     def testAosRegularPipelines(self) -> None:
         taskExpectations: dict[str, int] = {"isr": 1, "calcZernikes": 1}
-
         self.runTest(
             step="step1a",
             imageType="inFocus",
