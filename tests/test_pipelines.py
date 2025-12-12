@@ -124,10 +124,28 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
         )
 
+    def testAosSfmPipelinesStep1a(self) -> None:
+        taskExpectations: dict[str, int] = {"isr": 1, "calibrateImage": 1}
+        self.runTest(
+            step="step1a",
+            imageType="inFocus",
+            detector=self.scienceDetector,
+            pipelinesToRun=["SFM"],
+            taskExpectations=taskExpectations,
+        )
+
+    def testAosCalibsPipeline(self) -> None:
+        taskExpectations: dict[str, int] = {"isr": 1}
+        self.runTest(
+            step="step1a",
+            imageType="dark",
+            detector=self.scienceDetector,
+            pipelinesToRun=["ISR"],
+            taskExpectations=taskExpectations,
+        )
+
     def testAosFamPipelinesStep1a(self) -> None:
-        taskExpectations: dict[str, int] = {
-            "calcZernikes": 1,
-        }
+        taskExpectations: dict[str, int] = {"isr": 1, "calcZernikes": 1}
         self.runTest(
             step="step1a",
             imageType="extra",
@@ -137,9 +155,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         )
 
     def testAosRegularPipelines(self) -> None:
-        taskExpectations: dict[str, int] = {
-            "calcZernikes": 1,
-        }
+        taskExpectations: dict[str, int] = {"isr": 1, "calcZernikes": 1}
 
         self.runTest(
             step="step1a",
@@ -166,8 +182,8 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 
         with swallowLogs():
             for pipelineName in pipelinesToRun:
-                print(f"Checking pipeline {pipelineName} with {dataCoord}")
-                self.assertIn(pipelineName, self.pipelines)
+                print(f"Checking {pipelineName}:{step} with {dataCoord}, expecting {taskExpectations}")
+                self.assertIn(pipelineName, self.pipelines, f"Pipeline {pipelineName} not found")
 
                 graph = self.pipelines[pipelineName].graphs[step]
 
