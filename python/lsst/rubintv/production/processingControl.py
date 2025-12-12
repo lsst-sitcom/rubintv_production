@@ -869,33 +869,25 @@ class HeadProcessController:
             targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
             who = "ISR"
 
-        detectorIds = self.focalPlaneControl.EXTRA_FOCAL_IDS
+        detectorIds = self.focalPlaneControl.EXTRA_FOCAL_IDS + self.focalPlaneControl.INTRA_FOCAL_IDS
 
         payloads: dict[int, Payload] = {}
         for detId in detectorIds:
             dataId = DataCoordinate.standardize(expRecord.dataId, detector=detId)
-            self.log.debug("AOS paired dispatch:")
             payload = Payload(
                 dataId,
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
             )
-            # TODO: indexing payloads by only det1 wastes half the worker pool
-            # the way it's currently done. If this stays the way we do things,
-            # fix this.
             payloads[detId] = payload
 
         self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
         # AOS is running ISR (for now, at least) so we need to write that we
         # expected the detectors from that processing too.
-        cwfsDets = list(self.focalPlaneControl.CWFS_IDS)
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, cwfsDets, "ISR")
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "ISR")
         self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
-        # NOTE: probably want a segregated pool for AOS processing when we go
-        # to dynamic allocation - SFM shouldn't be able to bog down the AOS
-        # pool
         self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
 
         # TODO: Consider whether this should move to the expRecord getting
@@ -920,7 +912,7 @@ class HeadProcessController:
         writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)  # all pipelines contain an ISR step
 
         detectorIds: list[int] = []
-        nEnabled = None
+        nEnabled: int | None = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
             # excludeCwfs=True if we sent them to AOS
             detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
