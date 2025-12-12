@@ -7,7 +7,7 @@ Usage:
     python view_ci_logs.py <script_name>            # View script name (partial match) from latest run
     python view_ci_logs.py --list                   # List all available log files from latest run
     python view_ci_logs.py --runs                   # List all test runs
-    python view_ci_logs.py --run <timestamp> <pid>  # View logs from specific run by timestamp
+    python view_ci_logs.py --run <run_id> <pid>     # View logs from specific run by run ID
     python view_ci_logs.py --run <N> <pid>          # View logs from Nth most recent run (0=latest)
 """  # noqa: W505
 
@@ -40,8 +40,8 @@ def getLogDir(baseLogDir: Path, runIdentifier: str | None = None) -> Path:
     baseLogDir : `Path`
         The base log directory.
     runIdentifier : `str`, optional
-        Either a timestamp or an integer index (as string). If None, uses
-        latest.
+        Either a run ID (timestamp or label_timestamp) or an integer index
+        (as string). If None, uses latest.
 
     Returns
     -------
@@ -69,7 +69,7 @@ def getLogDir(baseLogDir: Path, runIdentifier: str | None = None) -> Path:
             return baseLogDir / runs[index]
         raise ValueError(f"Run index {index} out of range (0-{len(runs) - 1})")
 
-    # Treat as timestamp
+    # Treat as run ID (timestamp or label_timestamp)
     runDir = baseLogDir / runIdentifier
     if not runDir.exists():
         raise ValueError(f"Run directory not found: {runDir}")
@@ -158,8 +158,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--run",
-        metavar="TIMESTAMP_OR_INDEX",
-        help="Specify which run to view (timestamp or index, 0=latest)",
+        metavar="RUN_ID_OR_INDEX",
+        help="Specify which run to view (run ID or index, 0=latest)",
     )
 
     args = parser.parse_args()
