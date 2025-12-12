@@ -154,6 +154,10 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 self.assertIsInstance(qg, PredictedQuantumGraph)
                 self.assertEqual(len(qg.quanta_by_task["calcZernikesTask"]), 1)
 
+                quanta = qg.build_execution_quanta()
+                self.assertIsInstance(quanta, dict)
+                self.assertGreaterEqual(len(quanta), 1)
+
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
