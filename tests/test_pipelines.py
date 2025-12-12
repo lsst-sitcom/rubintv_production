@@ -158,6 +158,42 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 self.assertIsInstance(quanta, dict)
                 self.assertGreaterEqual(len(quanta), 1)
 
+    def testAosRegularPipelines(self) -> None:
+        step = "step1a"
+        dataCoord = self.butler.registry.expandDataId(
+            exposure=self.records["inFocus"].id,
+            detector=self.extraDetector,
+            instrument=self.instrument,
+        )
+
+        # with swallowLogs():
+        for pipelineName in EXPECTED_AOS_PIPELINES:
+            print(f"Checking pipeline {pipelineName} with {dataCoord}")
+            self.assertIn(pipelineName, self.pipelines)
+
+            graph = self.pipelines["AOS_DANISH"].graphs[step]
+
+            sfmRunner = SingleCorePipelineRunner(
+                butler=self.butler,
+                locationConfig=self.locationConfig,
+                instrument=self.instrument,
+                step=step,
+                awaitsDataProduct="raw",
+                podDetails=self.podDetails,
+                doRaise=False,
+            )
+            payload = Payload(dataCoord, b"", "LSSTCam/runs/quickLookTesting/126", who="AOS")
+            payload = Payload.from_json(payload.to_json(), self.butler)  # fully formed
+            sfmRunner.runCollection = payload.run
+            qgb, _, _, _ = sfmRunner.getQuantumGraphBuilder(payload, graph)
+            qg = qgb.finish().assemble()
+            self.assertIsInstance(qg, PredictedQuantumGraph)
+            self.assertEqual(len(qg.quanta_by_task["calcZernikesTask"]), 1)
+
+            quanta = qg.build_execution_quanta()
+            self.assertIsInstance(quanta, dict)
+            self.assertGreaterEqual(len(quanta), 1)
+
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
