@@ -160,7 +160,7 @@ class TestConfig:
         # Test execution settings
         self.do_run_meta_tests = True
         self.do_check_yaml_files = True
-        self.copy_plots_to_public_html = False
+        self.copy_plots_to_public_html = True
 
         self.debug = False
 
@@ -173,7 +173,7 @@ class TestConfig:
 
         # Test durations
         self.meta_test_duration = 30
-        self.test_duration_round_1 = 600
+        self.test_duration_round_1 = 900
         self.test_duration_round_2 = 200  # spin-up + plotting needed
 
         # Date for testing
@@ -644,10 +644,20 @@ class RedisManager:
 class LogManager:
     """Manages log file operations for test scripts."""
 
-    def __init__(self, log_dir: str) -> None:
+    def __init__(self, log_dir: str, run_label: str | None = None) -> None:
         self.base_log_dir = log_dir
         self.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_dir = os.path.join(self.base_log_dir, self.run_timestamp)
+
+        # Use provided label or fall back to timestamp
+        if run_label:
+            # Sanitize the label to avoid filesystem issues
+            sanitized_label = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in run_label)
+            # Append timestamp to ensure uniqueness
+            self.run_id = f"{sanitized_label}_{self.run_timestamp}"
+        else:
+            self.run_id = self.run_timestamp
+
+        self.log_dir = os.path.join(self.base_log_dir, self.run_id)
 
     def setup_log_directory(self) -> None:
         """Create the timestamped log directory for this run."""
@@ -661,7 +671,7 @@ class LogManager:
         elif os.path.exists(latest_link):
             shutil.rmtree(latest_link)
 
-        os.symlink(self.run_timestamp, latest_link)
+        os.symlink(self.run_id, latest_link)
         print("✅ Updated 'latest' symlink to point to this run")
 
     @staticmethod
@@ -1326,10 +1336,10 @@ class ResultCollector:
 class TestRunner:
     """Main class for orchestrating the test suite."""
 
-    def __init__(self) -> None:
+    def __init__(self, run_label: str | None = None) -> None:
         self.config = TestConfig()
         self.redis_manager = RedisManager(self.config)
-        self.log_manager = LogManager(self.config.log_dir)
+        self.log_manager = LogManager(self.config.log_dir, run_label)
         self.process_manager = ProcessManager(self.log_manager)
         self.result_collector = ResultCollector()
         self.patches: Any = []  # not sure what type to use here
@@ -1533,7 +1543,23 @@ class TestRunner:
 
 def main() -> None:
     """Main entry point for the test suite."""
-    runner = TestRunner()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run the RubinTV rapid analysis CI test suite",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--label",
+        "-l",
+        type=str,
+        default=None,
+        help="Optional label for this test run (timestamp will be appended for uniqueness)",
+    )
+
+    args = parser.parse_args()
+
+    runner = TestRunner(run_label=args.label)
     runner.run()
 
 
