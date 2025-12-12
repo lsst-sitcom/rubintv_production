@@ -3,17 +3,32 @@
 Convenience script to view CI test logs.
 
 Usage:
-    python view_ci_logs.py <pid>                    # View process ID from latest run
-    python view_ci_logs.py <script_name>            # View script name (partial match) from latest run
-    python view_ci_logs.py --list                   # List all available log files from latest run
-    python view_ci_logs.py --runs                   # List all test runs
-    python view_ci_logs.py --run <run_id> <pid>     # View logs from specific run by run ID
-    python view_ci_logs.py --run <N> <pid>          # View logs from Nth most recent run (0=latest)
+    python view_ci_logs.py <pid>                      # View process ID from latest run
+    python view_ci_logs.py <script_name>              # View script name (partial match) from latest run
+    python view_ci_logs.py --list                     # List all available log files from latest run
+    python view_ci_logs.py --runs                     # List all test runs
+    python view_ci_logs.py --run <run_id> <pid>       # View logs from specific run by run ID
+    python view_ci_logs.py --run <N> <pid>            # View logs from Nth most recent run (0=latest)
+    python view_ci_logs.py --tracebacks               # Find all tracebacks in latest run
+    python view_ci_logs.py --tracebacks --run <N>     # Find all tracebacks in specified run
 """  # noqa: W505
 
 import argparse
+import re
 import sys
 from pathlib import Path
+
+
+class Traceback:
+    """Represents a traceback found in a log file."""
+
+    def __init__(self, logFile: Path, preLines: list[str], tracebackLines: list[str]) -> None:
+        self.logFile = logFile
+        self.preLines = preLines
+        self.tracebackLines = tracebackLines
+
+    def __str__(self) -> str:
+        return f"Traceback from {self.logFile.name}"
 
 
 def getBaseLogDir() -> Path:
@@ -105,26 +120,332 @@ def listTestRuns(baseLogDir: Path) -> list[str]:
 
 
 def listLogFiles(logDir: Path) -> list[Path]:
-    """List all log files in the directory."""
+    """
+    List all log files in the directory.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+
+    Returns
+    -------
+    logFiles : `list[Path]`
+        Sorted list of log file paths.
+    """
     if not logDir.exists():
         return []
     return sorted(logDir.glob("*.log"))
 
 
 def findLogsByPid(logDir: Path, pid: str) -> list[Path]:
-    """Find log files matching a process ID."""
+    """
+    Find log files matching a process ID.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+    pid : `str`
+        The process ID to search for.
+
+    Returns
+    -------
+    logFiles : `list[Path]`
+        List of matching log file paths.
+    """
     pattern = f"*_pid_{pid}.log"
     return sorted(logDir.glob(pattern))
 
 
 def findLogsByName(logDir: Path, name: str) -> list[Path]:
-    """Find log files matching a script name (partial match)."""
+    """
+    Find log files matching a script name (partial match).
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+    name : `str`
+        The script name to search for.
+
+    Returns
+    -------
+    logFiles : `list[Path]`
+        List of matching log file paths.
+    """
     allLogs = listLogFiles(logDir)
     return [log for log in allLogs if name.lower() in log.name.lower()]
 
 
+def extractTracebacks(logFile: Path, contextLines: int = 5) -> list[Traceback]:
+    """
+    Extract tracebacks from a log file.
+
+    Parameters
+    ----------
+    logFile : `Path`
+        The log file to search.
+    contextLines : `int`, optional
+        Number of lines before the traceback to include.
+
+    Returns
+    -------
+    tracebacks : `list[Traceback]`
+        List of found tracebacks.
+    """
+    tracebacks = []
+
+    with open(logFile, "r") as f:
+        lines = f.readlines()
+
+    # Pattern to match "Traceback (most recent call last):"
+    tracebackPattern = re.compile(r"Traceback \(most recent call last\):")
+
+    i = 0
+    while i < len(lines):
+        if tracebackPattern.search(lines[i]):
+            # Found a traceback start
+            # Get context lines before
+            startIdx = max(0, i - contextLines)
+            preLines = lines[startIdx:i]
+
+            # Extract the traceback
+            tracebackLines = [lines[i]]
+            i += 1
+
+            # Continue until we hit a line that doesn't start with spaces or "
+            # File" or contains an error message
+            while i < len(lines):
+                line = lines[i]
+                # Check if this is part of the traceback
+                if (
+                    line.startswith("  ")
+                    or line.startswith("Traceback")
+                    or line.strip().endswith("Error:")
+                    or line.strip().endswith("Error")
+                    or re.match(r"^[A-Z]\w+Error:", line)
+                    or re.match(r"^[A-Z]\w+Exception:", line)
+                ):
+                    tracebackLines.append(line)
+                    i += 1
+                    # If we hit an error line without a colon at the end, check
+                    # next line
+                    if re.match(r"^[A-Z]\w+(Error|Exception):", line):
+                        # This is the error message, continue for one more line
+                        # if it exists
+                        if i < len(lines) and lines[i].strip():
+                            # Check if next line is indented or looks like
+                            # continuation
+                            if not lines[i].startswith("Traceback"):
+                                tracebackLines.append(lines[i])
+                                i += 1
+                        break
+                else:
+                    break
+
+            tracebacks.append(Traceback(logFile, preLines, tracebackLines))
+        else:
+            i += 1
+
+    return tracebacks
+
+
+def findAllTracebacks(logDir: Path) -> dict[Path, list[Traceback]]:
+    """
+    Find all tracebacks in all log files in a directory, grouped by file.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+
+    Returns
+    -------
+    tracebacksByFile : `dict[Path, list[Traceback]]`
+        Dictionary mapping log files to their tracebacks.
+    """
+    tracebacksByFile: dict[Path, list[Traceback]] = {}
+    logFiles = listLogFiles(logDir)
+
+    for logFile in logFiles:
+        # Skip meta test logs
+        if logFile.name.startswith("meta"):
+            continue
+
+        tracebacks = extractTracebacks(logFile)
+        if tracebacks:
+            tracebacksByFile[logFile] = tracebacks
+
+    return tracebacksByFile
+
+
+def printTraceback(traceback: Traceback) -> None:
+    """
+    Print a traceback with context.
+
+    Parameters
+    ----------
+    traceback : `Traceback`
+        The traceback to print.
+    """
+    print(f"\n{'=' * 80}")
+    print(f"Traceback from: {traceback.logFile.name}")
+    print(f"{'=' * 80}\n")
+
+    if traceback.preLines:
+        print("Context (5 lines before traceback):")
+        print("-" * 80)
+        for line in traceback.preLines:
+            print(line.rstrip())
+        print("-" * 80)
+        print()
+
+    print("Traceback:")
+    print("-" * 80)
+    for line in traceback.tracebackLines:
+        print(line.rstrip())
+    print("-" * 80)
+
+
+def printAllTracebacksForFile(logFile: Path, tracebacks: list[Traceback]) -> None:
+    """
+    Print all tracebacks from a specific log file.
+
+    Parameters
+    ----------
+    logFile : `Path`
+        The log file.
+    tracebacks : `list[Traceback]`
+        List of tracebacks from this file.
+    """
+    print(f"\n{'#' * 80}")
+    print(f"# Log file: {logFile.name}")
+    print(f"# Found {len(tracebacks)} traceback(s)")
+    print(f"{'#' * 80}")
+
+    for tb in tracebacks:
+        printTraceback(tb)
+
+
+def handleTracebackMode(logDir: Path) -> None:
+    """
+    Handle the traceback finding and display mode.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files to search.
+    """
+    print(f"Searching for tracebacks in {logDir.name}...\n")
+
+    tracebacksByFile = findAllTracebacks(logDir)
+
+    if not tracebacksByFile:
+        print("No tracebacks found!")
+        return
+
+    totalTracebacks = sum(len(tbs) for tbs in tracebacksByFile.values())
+    print(f"Found {totalTracebacks} traceback(s) across {len(tracebacksByFile)} log file(s):\n")
+
+    # Create a sorted list of (logFile, tracebacks) for consistent indexing
+    fileList = sorted(tracebacksByFile.items(), key=lambda x: x[0].name)
+
+    # List all files with tracebacks
+    for i, (logFile, tracebacks) in enumerate(fileList, 1):
+        # Get a preview of the first error
+        errorLine = ""
+        if tracebacks:
+            for line in reversed(tracebacks[0].tracebackLines):
+                if line.strip() and not line.strip().startswith("File"):
+                    errorLine = line.strip()
+                    break
+
+        print(f"  {i}. {logFile.name} ({len(tracebacks)} traceback(s))")
+        if errorLine:
+            previewLength = 80
+            if len(errorLine) > previewLength:
+                print(f"     First: {errorLine[:previewLength]}...")
+            else:
+                print(f"     First: {errorLine}")
+
+    print("\nOptions:")
+    print("  - Enter number(s) to view (e.g., '1', '1,3,5', or '1-3')")
+    print("  - Enter 'all' to view all tracebacks from all files")
+    print("  - Enter 'q' to quit")
+
+    choice = input("\nYour choice: ").strip()
+
+    if choice.lower() == "q":
+        return
+
+    if choice.lower() == "all":
+        for logFile, tracebacks in fileList:
+            printAllTracebacksForFile(logFile, tracebacks)
+        return
+
+    # Parse selection
+    try:
+        indices = parseSelection(choice, len(fileList))
+        for idx in indices:
+            logFile, tracebacks = fileList[idx]
+            printAllTracebacksForFile(logFile, tracebacks)
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
+
+
+def parseSelection(selection: str, maxIndex: int) -> list[int]:
+    """
+    Parse user selection string into list of indices.
+
+    Parameters
+    ----------
+    selection : `str`
+        User input string (e.g., '1', '1,3,5', '1-3').
+    maxIndex : `int`
+        Maximum valid index (1-based).
+
+    Returns
+    -------
+    indices : `list[int]`
+        List of 0-based indices.
+    """
+    indices: list[int] = []
+    parts = selection.split(",")
+
+    for part in parts:
+        part = part.strip()
+        if "-" in part:
+            # Range
+            start, end = part.split("-")
+            startNum = int(start.strip())
+            endNum = int(end.strip())
+            del start, end
+
+            if startNum < 1 or endNum > maxIndex or startNum > endNum:
+                raise ValueError(f"Invalid range: {part}")
+
+            indices.extend(range(startNum - 1, endNum))
+        else:
+            # Single number
+            num = int(part)
+            if num < 1 or num > maxIndex:
+                raise ValueError(f"Invalid selection: {num}")
+            indices.append(num - 1)
+
+    return sorted(set(indices))
+
+
 def printLogFile(logPath: Path) -> None:
-    """Print the contents of a log file."""
+    """
+    Print the contents of a log file.
+
+    Parameters
+    ----------
+    logPath : `Path`
+        The log file to print.
+    """
     print(f"\n{'=' * 80}")
     print(f"Log file: {logPath.name}")
     print(f"{'=' * 80}\n")
@@ -161,6 +482,12 @@ def main() -> None:
         metavar="RUN_ID_OR_INDEX",
         help="Specify which run to view (run ID or index, 0=latest)",
     )
+    parser.add_argument(
+        "--tracebacks",
+        "-t",
+        action="store_true",
+        help="Find and display all tracebacks in the selected run",
+    )
 
     args = parser.parse_args()
 
@@ -195,6 +522,11 @@ def main() -> None:
         print(f"Error: Log directory does not exist: {logDir}")
         print("Have you run the test suite yet?")
         sys.exit(1)
+
+    # Traceback mode
+    if args.tracebacks:
+        handleTracebackMode(logDir)
+        sys.exit(0)
 
     # Show which run we're viewing
     if args.run is not None:
