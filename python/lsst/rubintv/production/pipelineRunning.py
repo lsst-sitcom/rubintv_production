@@ -285,13 +285,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     "detector-pair-merge-task should only be defined for AOS step1a non-FAM pipelines"
                 )
 
-            if payload.dataId["detector"] in EXTRA_IDS:
-                for taskLabel in subset:
-                    taskNode = pipelineGraph.tasks[taskLabel]
-                    for readEdge in taskNode.iter_all_inputs():
-                        datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
-                        if "detector" not in datasetTypeNode.dimensions:
-                            continue
+            for taskLabel in subset:
+                taskNode = pipelineGraph.tasks[taskLabel]
+                for readEdge in taskNode.iter_all_inputs():
+                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                    if "detector" not in datasetTypeNode.dimensions:
+                        continue
+                    idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+                    if payload.dataId["detector"] in EXTRA_IDS:
                         extraFocalDataId = dataIds[datasetTypeNode.dimensions]
                         intraFocalDataId = self.butler.registry.expandDataId(
                             extraFocalDataId, detector=otherDetector
@@ -304,8 +305,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                                 id_generation_mode=DATAID_TYPE_RUN,
                             )
                         ]
-                        timeouts[readEdge.parent_dataset_type_name] = 30.0  # this can come from the other pod
-                        idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+                        timeouts[readEdge.parent_dataset_type_name] = (
+                            600.0  # this can come from the other pod
+                        )
 
         elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):
             otherVisit = getExpIdOrVisitId(payload.dataId) - 1
@@ -315,13 +317,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 # guard against madness
                 raise ValueError("FAM does not run on corner chips")
 
-            if "extra" in expRecord.observation_reason.lower():
-                for taskLabel in subset:
-                    taskNode = pipelineGraph.tasks[taskLabel]
-                    for readEdge in taskNode.iter_all_inputs():
-                        datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
-                        if not datasetTypeNode.dimensions.names & {"visit", "exposure", "group"}:
-                            continue
+            for taskLabel in subset:
+                taskNode = pipelineGraph.tasks[taskLabel]
+                for readEdge in taskNode.iter_all_inputs():
+                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                    if not datasetTypeNode.dimensions.names & {"visit", "exposure", "group"}:
+                        continue
+                    idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+                    if "extra" in expRecord.observation_reason.lower():
                         intraFocalExposureDataId = self.butler.registry.expandDataId(
                             payload.dataId, exposure=otherVisit
                         )
@@ -340,7 +343,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                             )
                         ]
                         timeouts[readEdge.parent_dataset_type_name] = 300.0  # much longer timeout for FAM
-                        idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
 
         # TODO: need to think about whether we need to know about FAM
         # mode and increase timeout there (can use None for infinite)
@@ -528,8 +530,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     }
                 ).assemble()
 
-            if not qg:
-                raise RuntimeError(f"No work found for {dataIds}")
+            if not qg:  # fine to still iterate this though, easier this way
+                # TODO: remove this warning if intra-focal and step1b and
+                # paired so that we don't warn when it's expected
+                self.log.warning(f"No work found for {dataIds} in quantum graph")
 
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
@@ -539,6 +543,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 task_factory=TaskFactory(),
                 limited_butler_factory=lambda _: butlerToUse,
                 clobber_outputs=True,  # check with Jim if this is how we should handle clobbering
+                assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
             )
