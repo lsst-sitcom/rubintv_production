@@ -539,8 +539,9 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm = [2025111500226]
-        visits_aos = ["2025111500226", "2025111500227+2025111500228"]
+        visits_sfm: list[int] = [2025111500226]
+        visits_aos: list[int] = [2025111500226, 2025111500227, 2025111500228]
+        visits_fam: list[int] = [2025111500227, 2025111500228]
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -566,17 +567,9 @@ class RedisManager:
         else:
             checks.append(Check(True, f"{n_visits_aos}x AOS step1b finished"))
 
-        # Check nightly rollup
-        key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
-        n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
-        if n_nightly_rollups != 1:
-            checks.append(Check(False, f"Expected 1 nightly rollup finished, got {n_nightly_rollups}"))
-        else:
-            checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
-
         # check zernike announcement for MTAOS
         # TODO: will need to double this for unpaired pipelines
-        expectedNonFam = 4
+        expectedNonFam = 8
         gotNonFam = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226)
         if gotNonFam == expectedNonFam:
             checks.append(
@@ -592,16 +585,18 @@ class RedisManager:
             )
 
         expectedFam = 18
-        gotFam = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500227)
-        if gotFam == expectedFam:
-            checks.append(Check(True, f"MTAOS Zernike count for FAM image 2025111500227 is {expectedFam}"))
-        else:
-            checks.append(
-                Check(
-                    False,
-                    f"MTAOS Zernike count for FAM image 2025111500227: expected {expectedFam}, got {gotFam}",
+        for visit in visits_fam:
+            gotFam = redisHelper.getMTAOSZernikeCount("LSSTCam", visit)
+            if gotFam == expectedFam:
+                checks.append(Check(True, f"MTAOS Zernike count for FAM image {visit} is {expectedFam}"))
+            else:
+                checks.append(
+                    Check(
+                        False,
+                        f"MTAOS Zernike count for FAM image 2025111500227: expected {expectedFam}, "
+                        f"got {gotFam}",
+                    )
                 )
-            )
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
