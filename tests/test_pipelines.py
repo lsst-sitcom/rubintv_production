@@ -175,6 +175,35 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             taskExpectations=taskExpectations,
         )
 
+    def testRaising(self) -> None:
+        for pipeline in EXPECTED_AOS_NON_FAM_PIPELINES:
+            # all detectors should fail for intra + extra images for non-FAM
+            for imageType in ["intra", "extra"]:
+                for detector in [self.intraDetector, self.extraDetector, self.scienceDetector]:
+                    failingToFailMsg = f"Failed to raise for {pipeline=}, {imageType=}, {detector=}"
+                    with self.assertRaises(ValueError, msg=failingToFailMsg):
+                        self.runTest(
+                            step="step1a",
+                            imageType=imageType,
+                            detector=detector,
+                            pipelinesToRun=[pipeline],
+                            taskExpectations={},
+                        )
+
+        for pipeline in EXPECTED_FAM_PIPEPLINES:
+            # all images should fail for all corner chips for FAM
+            for imageType in ["inFocus", "intra", "extra"]:
+                for detector in [self.intraDetector, self.extraDetector]:
+                    failingToFailMsg = f"Failed to raise for {pipeline=}, {imageType=}, {detector=}"
+                    with self.assertRaises(ValueError):
+                        self.runTest(
+                            step="step1a",
+                            imageType=imageType,
+                            detector=detector,
+                            pipelinesToRun=[pipeline],
+                            taskExpectations={},
+                        )
+
     def runTest(
         self,
         step: str,
