@@ -307,7 +307,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                             600.0  # this can come from the other pod
                         )
 
-        elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):
+        elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):  # means FAM pipeline
             otherVisit = getExpIdOrVisitId(payload.dataId) - 1
             if expRecord.observation_type.lower() != "cwfs":
                 raise ValueError("visit-pair-merge-task should only be defined for AOS step1a FAM pipelines")
