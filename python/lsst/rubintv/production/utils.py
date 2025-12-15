@@ -1736,6 +1736,26 @@ def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> Di
     return expR
 
 
+def getCurrentOutputCollection(butler: Butler, locationConfig: LocationConfig, instrument: str) -> str:
+    """Get the current output collection for the given instrument.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the collection info.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    instrument : `str`
+        The instrument name.
+
+    Returns
+    -------
+    outputCollection : `str`
+        The current output collection for the given instrument.
+    """
+    return butler.collections.get_info(locationConfig.getOutputChain(instrument)).children[0]
+
+
 def getEquivalentDataId(
     butler: Butler,
     exposureDataId: DataCoordinate,
