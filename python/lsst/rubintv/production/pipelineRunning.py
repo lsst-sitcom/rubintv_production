@@ -357,7 +357,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             input_refs=inputRefs,
             dataset_id_modes=idGenerationModes,
             clobber=True,  # TBD by Jim as to whether this should be removed
-            input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+            input_collections=[self.runCollection] + list(self.butler.collections.defaults),
             output_run=self.runCollection,
         )
         return builder, "", {}, butlerToReturn
@@ -409,7 +409,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 where=where,
                 bind=bind,
                 clobber=True,
-                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+                input_collections=[self.runCollection] + list(self.butler.collections.defaults),
                 output_run=self.runCollection,
             )
             return builder, where, bind, self.cachingButler
@@ -438,7 +438,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     butler=self.butler,
                     data_ids=dataIds,
                     clobber=True,  # TBD by Jim as to whether this should be removed
-                    input_collections=list(self.butler.collections.defaults) + [self.runCollection],
+                    input_collections=[self.runCollection] + list(self.butler.collections.defaults),
                     output_run=self.runCollection,
                 )
                 return builder, "", {}, self.cachingButler
