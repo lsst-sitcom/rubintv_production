@@ -60,6 +60,7 @@ from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .utils import (
+    getCurrentOutputCollection,
     getEquivalentDataId,
     getExpIdOrVisitId,
     getExpRecordFromId,
@@ -348,6 +349,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.cachingButler,
             timeouts=timeouts,
         )
+        tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+        newDefaults = list(
+            d
+            for d in self.butler.collections.defaults
+            if d != self.locationConfig.getOutputChain(self.instrument)
+        )
         builder = TrivialQuantumGraphBuilder(
             pipeline_graph=pipelineGraph,
             butler=self.butler,
@@ -355,7 +362,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             input_refs=inputRefs,
             dataset_id_modes=idGenerationModes,
             clobber=True,  # TBD by Jim as to whether this should be removed
-            input_collections=[self.runCollection] + list(self.butler.collections.defaults),
+            input_collections=[tip] + newDefaults,
             output_run=self.runCollection,
         )
         return builder, "", {}, butlerToReturn
@@ -399,15 +406,23 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # TODO: tidy this up
             idString = f"dataId_{0}_"
             where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+            # if not unpaired:  #  XXX need to get the paired into here somehow
+            # where += f" AND detector not in ({','.join(INTRA_IDS)})"
             bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
 
+            tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+            newDefaults = list(
+                d
+                for d in self.butler.collections.defaults
+                if d != self.locationConfig.getOutputChain(self.instrument)
+            )
             builder = AllDimensionsQuantumGraphBuilder(
                 pipelineGraph,
                 self.butler,
                 where=where,
                 bind=bind,
                 clobber=True,
-                input_collections=[self.runCollection] + list(self.butler.collections.defaults),
+                input_collections=[tip] + newDefaults,
                 output_run=self.runCollection,
             )
             return builder, where, bind, self.cachingButler
@@ -431,12 +446,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 return self.finishAosQgBuilder(payload, pipelineGraph, expRecord, dataIds)
 
             else:
+                tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+                newDefaults = list(
+                    d
+                    for d in self.butler.collections.defaults
+                    if d != self.locationConfig.getOutputChain(self.instrument)
+                )
                 builder = TrivialQuantumGraphBuilder(
                     pipeline_graph=pipelineGraph,
                     butler=self.butler,
                     data_ids=dataIds,
                     clobber=True,  # TBD by Jim as to whether this should be removed
-                    input_collections=[self.runCollection] + list(self.butler.collections.defaults),
+                    input_collections=[tip] + newDefaults,
                     output_run=self.runCollection,
                 )
                 return builder, "", {}, self.cachingButler
