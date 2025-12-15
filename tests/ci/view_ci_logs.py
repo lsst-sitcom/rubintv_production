@@ -16,6 +16,7 @@ Usage:
 import argparse
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -115,8 +116,66 @@ def listTestRuns(baseLogDir: Path) -> list[str]:
         if entry.is_dir() and entry.name != "latest" and not entry.is_symlink():
             runs.append(entry.name)
 
-    # Sort in reverse chronological order (newest first)
-    return sorted(runs, reverse=True)
+    # Sort in reverse chronological order (newest first) by timestamp
+    def getTimestampForSorting(runName: str) -> str:
+        """Extract timestamp from run name for sorting."""
+        _, timestamp = parseRunName(runName)
+        return timestamp
+
+    return sorted(runs, key=getTimestampForSorting, reverse=True)
+
+
+def parseRunName(runName: str) -> tuple[str | None, str]:
+    """
+    Parse a run name into label and timestamp components.
+
+    Parameters
+    ----------
+    runName : `str`
+        The run directory name (e.g., '20240101_123456' or
+        'label_20240101_123456').
+
+    Returns
+    -------
+    label : `str` | None
+        The label portion, or None if no label.
+    timestamp : `str`
+        The timestamp portion (YYYYMMDD_HHMMSS).
+    """
+    # Try to find a timestamp pattern in the name
+    timestampPattern = re.compile(r"(\d{8}_\d{6})")
+    match = timestampPattern.search(runName)
+
+    if match:
+        timestamp = match.group(1)
+        # Everything before the timestamp is the label
+        labelPart = runName[: match.start()].rstrip("_")
+        label = labelPart if labelPart else None
+        return label, timestamp
+
+    # If no timestamp pattern found, treat entire name as label
+    return runName, "unknown"
+
+
+def formatTimestamp(timestamp: str) -> str:
+    """
+    Format a timestamp string for display.
+
+    Parameters
+    ----------
+    timestamp : `str`
+        Timestamp in format YYYYMMDD_HHMMSS.
+
+    Returns
+    -------
+    formatted : `str`
+        Formatted timestamp.
+    """
+    try:
+        dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return timestamp
 
 
 def listLogFiles(logDir: Path) -> list[Path]:
@@ -270,7 +329,7 @@ def findAllTracebacks(logDir: Path) -> dict[Path, list[Traceback]]:
 
     for logFile in logFiles:
         # Skip meta test logs
-        if logFile.name.startswith("meta"):
+        if "meta" in logFile.name:
             continue
 
         tracebacks = extractTracebacks(logFile)
@@ -456,16 +515,231 @@ def printLogFile(logPath: Path) -> None:
         print(f.read())
 
 
+def displayRunsTable(baseLogDir: Path) -> list[str]:
+    """
+    Display available test runs in a formatted table.
+
+    Parameters
+    ----------
+    baseLogDir : `Path`
+        The base log directory.
+
+    Returns
+    -------
+    runs : `list[str]`
+        List of run names, newest first.
+    """
+    runs = listTestRuns(baseLogDir)
+
+    if not runs:
+        print("No test runs found.")
+        return []
+
+    print("\nAvailable test runs:\n")
+    print(f"{'Index':<8} {'Label':<30} {'Timestamp':<20}")
+    print("-" * 60)
+
+    for i, run in enumerate(runs):
+        label, timestamp = parseRunName(run)
+        labelDisplay = label if label else "(no label)"
+        timestampDisplay = formatTimestamp(timestamp)
+        marker = " ← latest" if i == 0 else ""
+        print(f"{i:<8} {labelDisplay:<30} {timestampDisplay:<20}{marker}")
+
+    return runs
+
+
+def selectRun(baseLogDir: Path) -> Path | None:
+    """
+    Interactively select a test run.
+
+    Parameters
+    ----------
+    baseLogDir : `Path`
+        The base log directory.
+
+    Returns
+    -------
+    logDir : `Path` | None
+        The selected run's log directory, or None if user quits.
+    """
+    runs = displayRunsTable(baseLogDir)
+
+    if not runs:
+        return None
+
+    print("\nOptions:")
+    print("  - Enter index number (e.g., '0' for latest, '1' for second most recent)")
+    print("  - Enter 'q' to quit")
+
+    while True:
+        choice = input("\nSelect run: ").strip()
+
+        if choice.lower() == "q":
+            return None
+
+        try:
+            index = int(choice)
+            if 0 <= index < len(runs):
+                return baseLogDir / runs[index]
+            else:
+                print(f"Invalid index. Please enter a number between 0 and {len(runs) - 1}.")
+        except ValueError:
+            print("Invalid input. Please enter a number or 'q'.")
+
+
+def displayLogsMenu(logDir: Path) -> None:
+    """
+    Display menu for viewing logs or tracebacks from a run.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+    """
+    while True:
+        print(f"\n{'=' * 80}")
+        print(f"Viewing run: {logDir.name}")
+        print(f"{'=' * 80}\n")
+
+        logFiles = listLogFiles(logDir)
+
+        print("Options:")
+        print("  1. View individual logs")
+        print("  2. View all tracebacks")
+        print("  3. List all log files")
+        print("  4. Search logs by name")
+        print("  5. Back to run selection")
+        print("  q. Quit")
+
+        choice = input("\nYour choice: ").strip().lower()
+
+        if choice == "q":
+            sys.exit(0)
+        elif choice == "5":
+            return
+        elif choice == "1":
+            viewIndividualLogs(logDir, logFiles)
+        elif choice == "2":
+            handleTracebackMode(logDir)
+        elif choice == "3":
+            listLogsDisplay(logFiles)
+        elif choice == "4":
+            searchLogsByName(logDir)
+        else:
+            print("Invalid choice. Please try again.")
+
+
+def viewIndividualLogs(logDir: Path, logFiles: list[Path]) -> None:
+    """
+    Interactively view individual log files.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+    logFiles : `list[Path]`
+        List of available log files.
+    """
+    if not logFiles:
+        print("\nNo log files found.")
+        input("\nPress Enter to continue...")
+        return
+
+    print(f"\nAvailable log files ({len(logFiles)} total):\n")
+    for i, logFile in enumerate(logFiles, 1):
+        print(f"  {i}. {logFile.name}")
+
+    print("\nOptions:")
+    print("  - Enter number(s) to view (e.g., '1', '1,3,5', or '1-3')")
+    print("  - Enter 'b' to go back")
+
+    choice = input("\nYour choice: ").strip().lower()
+
+    if choice == "b":
+        return
+
+    try:
+        indices = parseSelection(choice, len(logFiles))
+        for idx in indices:
+            printLogFile(logFiles[idx])
+        input("\nPress Enter to continue...")
+    except ValueError as e:
+        print(f"Error: {e}")
+        input("\nPress Enter to continue...")
+
+
+def listLogsDisplay(logFiles: list[Path]) -> None:
+    """
+    Display a list of all log files.
+
+    Parameters
+    ----------
+    logFiles : `list[Path]`
+        List of log files to display.
+    """
+    if not logFiles:
+        print("\nNo log files found.")
+    else:
+        print(f"\nLog files ({len(logFiles)} total):\n")
+        for i, logFile in enumerate(logFiles, 1):
+            print(f"  {i}. {logFile.name}")
+
+    input("\nPress Enter to continue...")
+
+
+def searchLogsByName(logDir: Path) -> None:
+    """
+    Search for log files by name.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+    """
+    searchTerm = input("\nEnter search term (or 'b' to go back): ").strip()
+
+    if searchTerm.lower() == "b":
+        return
+
+    matchingLogs = findLogsByName(logDir, searchTerm)
+
+    if not matchingLogs:
+        print(f"\nNo log files found matching '{searchTerm}'")
+        input("\nPress Enter to continue...")
+        return
+
+    viewIndividualLogs(logDir, matchingLogs)
+
+
+def interactiveMode(baseLogDir: Path) -> None:
+    """
+    Run the script in interactive mode.
+
+    Parameters
+    ----------
+    baseLogDir : `Path`
+        The base log directory.
+    """
+    while True:
+        logDir = selectRun(baseLogDir)
+        if logDir is None:
+            print("\nGoodbye!")
+            sys.exit(0)
+
+        displayLogsMenu(logDir)
+
+
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="View CI test logs by process ID or script name",
+        description="View CI test logs interactively or by process ID/script name",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "identifier",
         nargs="?",
-        help="Process ID or script name to search for",
+        help="Process ID or script name to search for (if omitted, interactive mode)",
     )
     parser.add_argument(
         "--list",
@@ -500,17 +774,14 @@ def main() -> None:
         print("Have you run the test suite yet?")
         sys.exit(1)
 
+    # Interactive mode - if no arguments provided (except possibly --run)
+    if not args.identifier and not args.list and not args.runs and not args.tracebacks:
+        interactiveMode(baseLogDir)
+        sys.exit(0)
+
     # List runs mode
     if args.runs:
-        runs = listTestRuns(baseLogDir)
-        if not runs:
-            print(f"No test runs found in {baseLogDir}")
-            sys.exit(0)
-
-        print(f"Available test runs in {baseLogDir}:\n")
-        for i, run in enumerate(runs):
-            marker = " (latest)" if i == 0 else ""
-            print(f"  {i}. {run}{marker}")
+        displayRunsTable(baseLogDir)
         sys.exit(0)
 
     # Determine which run to use
