@@ -64,14 +64,14 @@ EXPECTED_PIPELINES = [
     # "BIAS",
     # "DARK",
     # "FLAT",
-    # "ISR",
+    "ISR",
     "SFM",
     "AOS_DANISH",
-    # "AOS_TIE",
-    # "AOS_REFIT_WCS",
-    # "AOS_AI_DONUT",
+    "AOS_TIE",
+    "AOS_REFIT_WCS",
+    "AOS_AI_DONUT",
     # "AOS_TARTS",
-    # "AOS_FAM_TIE",
+    "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
     # "AOS_UNPAIRED_DANISH",
 ]
@@ -122,6 +122,33 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         self.scienceDetector = 94
         self.podDetails = PodDetails(
             instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
+        )
+
+    def testCalibPipelines(self) -> None:
+        # calib pipelines run the verify<product>Isr tasks but the quanta that
+        # they actually execute are isr quanta, so check they exist with the
+        # right names, but check the quanta counts under 'isr'
+        for pipelineName in ["BIAS", "DARK", "FLAT"]:
+            taskName = f"verify{pipelineName.lower().capitalize()}Isr"
+            taskExpectations: dict[str, int] = {taskName: 1}
+            quantaExpectations: dict[str, int] = {"isr": 1}
+            self.runTest(
+                step="step1a",
+                imageType="inFocus",
+                detector=self.scienceDetector,
+                pipelinesToRun=[pipelineName],
+                taskExpectations=taskExpectations,
+                quantaExpectations=quantaExpectations,
+            )
+
+    def testIsrOnly(self) -> None:
+        taskExpectations: dict[str, int] = {"isr": 1}
+        self.runTest(
+            step="step1a",
+            imageType="inFocus",
+            detector=self.scienceDetector,
+            pipelinesToRun=["ISR"],
+            taskExpectations=taskExpectations,
         )
 
     def testAosSfmPipelinesStep1a(self) -> None:
@@ -211,8 +238,10 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         detector: int,
         pipelinesToRun: list[str],
         taskExpectations: dict[str, int] | None = None,
+        quantaExpectations: dict[str, int] | None = None,
     ) -> None:
         taskExpectations = taskExpectations or {}
+        quantaExpectations = quantaExpectations or taskExpectations
         dataCoord = self.butler.registry.expandDataId(
             exposure=self.records[imageType].id,
             detector=detector,
@@ -272,9 +301,10 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 self.assertIsInstance(executionQuanta, dict)
 
                 executionQuanta = qg.build_execution_quanta()
+
                 # quantaTaskList deliberately may contain duplicates
                 quantaTaskList = [q.taskName for q in executionQuanta.values() if q.taskName is not None]
-                for taskSubStringToExpect, numTasksToExpectForString in taskExpectations.items():
+                for taskSubStringToExpect, numTasksToExpectForString in quantaExpectations.items():
                     count = sum(1 for t in quantaTaskList if taskSubStringToExpect in t)
                     self.assertEqual(
                         count,
