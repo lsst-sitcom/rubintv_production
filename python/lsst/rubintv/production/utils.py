@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 
     from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import Exposure, ExposureSummaryStats
+    from lsst.pipe.base import PipelineGraph
 
 __all__ = [
     "writeDimensionUniverseFile",
@@ -1787,3 +1788,19 @@ def getEquivalentDataId(
         visit=exposureDataId["exposure"],
         group=exposureDataId["group"],
     )
+
+
+def isFamPipeline(pipelineGraph: PipelineGraph) -> bool:
+    """Check if the pipeline graph is a FAM pipeline.
+
+    Parameters
+    ----------
+    pipelineGraph : `lsst.daf.butler.PipelineGraph`
+        The pipeline graph to check.
+
+    Returns
+    -------
+    isFamPipeline : `bool`
+        ``True`` if the pipeline graph is a FAM pipeline, else ``False``.
+    """
+    return pipelineGraph.task_subsets.get("visit-pair-merge-task") is not None
