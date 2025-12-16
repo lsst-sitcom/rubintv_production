@@ -3,12 +3,20 @@ import os
 from lsst.sconsUtils import env, scripts
 scripts.BasicSConscript.tests(pyList=[])
 
-passThrough = ['DAF_BUTLER_REPOSITORY_INDEX',  # for repo locations
-               'EXTERNAL_URL',  # needed to determine site location - see utils.getSite()
-               'HOSTNAME'  # needed to determine site location - see utils.getSite()
-               'PGPASSFILE',  # needed for butler authentication
-               'PGUSER',  # needed for butler authentication
-               ]
+passThrough = [
+    "DAF_BUTLER_REPOSITORY_INDEX",  # for repo locations
+    "EXTERNAL_INSTANCE_URL",  # needed to determine site location - see utils.getSite()
+    "HOSTNAME",  # needed to determine site location - see utils.getSite()
+    "PGPASSFILE",  # needed for butler authentication
+    "PGUSER",  # needed for butler authentication
+    "RAPID_ANALYSIS_LOCATION",
+    "JENKINS_HOME",  # needed to determine site location - see utils.getSite()
+    "PGPASSFILE",  # needed for butler authentication
+    "PGUSER",  # needed for butler authentication
+    "AWS_SHARED_CREDENTIALS_FILE",  # needed for embargo butler
+    "LSST_RESOURCES_S3_PROFILE_embargo",  # needed for embargo butler
+    "S3_ENDPOINT_URL",  # needed for embargo butler
+]
 
 for item in passThrough:
     # check and set rather than using getenv(item, "") to deal with existing
