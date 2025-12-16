@@ -61,9 +61,9 @@ if getSite() in ["staff-rsp", "rubin-devl"]:
     NO_BUTLER = False
 
 EXPECTED_PIPELINES = [
-    # "BIAS",
-    # "DARK",
-    # "FLAT",
+    "BIAS",
+    "DARK",
+    "FLAT",
     "ISR",
     "SFM",
     "AOS_DANISH",
@@ -221,7 +221,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             taskExpectations=taskExpectations,
         )
 
-    def testRaising(self) -> None:
+    def testRaisingNonFAM(self) -> None:
         for pipeline in EXPECTED_AOS_NON_FAM_PIPELINES:
             # all detectors should fail for intra + extra images for non-FAM
             for imageType in ["intra", "extra"]:
@@ -236,12 +236,13 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                             taskExpectations={},
                         )
 
+    def testRaisingFAM(self) -> None:
         for pipeline in EXPECTED_FAM_PIPEPLINES:
             # all images should fail for all corner chips for FAM
             for imageType in ["inFocus", "intra", "extra"]:
                 for detector in [self.intraDetector, self.extraDetector]:
                     failingToFailMsg = f"Failed to raise for {pipeline=}, {imageType=}, {detector=}"
-                    with self.assertRaises(ValueError):
+                    with self.assertRaises(ValueError, msg=failingToFailMsg):
                         self.runTest(
                             step="step1a",
                             imageType=imageType,
@@ -278,6 +279,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 
         with swallowLogs():
             for pipelineName in pipelinesToRun:
+                extraInfo = f"{imageType=} in {step} with {detector=} running {pipelineName}"
                 print(f"Checking {pipelineName}:{step} with {dataCoord}, expecting {taskExpectations}")
                 self.assertIn(pipelineName, self.pipelines, f"Pipeline {pipelineName} not found")
 
@@ -326,6 +328,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                                 (
                                     f"Task '{taskName}' has {len(qg.quanta_by_task[taskName])} quanta,"
                                     f" expected {numTasksToExpectForString} in pipeline {pipelineName}"
+                                    f" for {extraInfo}. Found tasks: {taskNames}"
                                 ),
                             )
 
@@ -346,7 +349,8 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                         numTasksToExpectForString,
                         (
                             f"Execution quanta: Task containing '{taskSubStringToExpect}' has"
-                            f" {count} quanta, expected {numTasksToExpectForString}"
+                            f" {count} quanta, expected {numTasksToExpectForString} for {extraInfo}."
+                            f" Found tasks: {quantaTaskList}"
                         ),
                     )
 
