@@ -70,16 +70,20 @@ EXPECTED_PIPELINES = [
     "AOS_TIE",
     "AOS_REFIT_WCS",
     "AOS_AI_DONUT",
-    # "AOS_TARTS",
+    "AOS_TARTS_UNPAIRED",
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
-    # "AOS_UNPAIRED_DANISH",
+    "AOS_UNPAIRED_DANISH",
 ]
 
 EXPECTED_AOS_PIPELINES = [p for p in EXPECTED_PIPELINES if p.startswith("AOS")]
 EXPECTED_FAM_PIPEPLINES = [p for p in EXPECTED_AOS_PIPELINES if "FAM" in p]
 EXPECTED_UNPAIRED_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "UNPAIRED" in p]
-EXPECTED_AOS_NON_FAM_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "FAM" not in p and "AOS" in p]
+EXPECTED_AOS_NON_FAM_PIPELINES = [
+    p for p in EXPECTED_AOS_PIPELINES if "FAM" not in p and "UNPAIRED" not in p and "AOS" in p
+]
+
+# TODO: still need to add step1b tests for all the other pipelines
 
 
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
@@ -201,13 +205,33 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             taskExpectations=taskExpectationsExtra,
         )
 
-        # no calcZernikes for intrafocal for unpair pipelines
+        # no calcZernikes for intrafocal for unpaired pipelines
         taskExpectationsIntra: dict[str, int] = {"isr": 1}
         self.runTest(
             step="step1a",
             imageType="inFocus",
             detector=self.intraDetector,
             pipelinesToRun=EXPECTED_AOS_NON_FAM_PIPELINES,
+            taskExpectations=taskExpectationsIntra,
+        )
+
+    def testAosRegularUnpairedPipelines(self) -> None:
+        taskExpectationsExtra: dict[str, int] = {"isr": 1, "calcZernikes": 1}
+        self.runTest(
+            step="step1a",
+            imageType="inFocus",
+            detector=self.extraDetector,
+            pipelinesToRun=EXPECTED_UNPAIRED_PIPELINES,
+            taskExpectations=taskExpectationsExtra,
+        )
+
+        # calcZernikes *is* expected for intra detectors for unpaired pipelines
+        taskExpectationsIntra: dict[str, int] = {"isr": 1, "calcZernikes": 1}
+        self.runTest(
+            step="step1a",
+            imageType="inFocus",
+            detector=self.intraDetector,
+            pipelinesToRun=EXPECTED_UNPAIRED_PIPELINES,
             taskExpectations=taskExpectationsIntra,
         )
 
