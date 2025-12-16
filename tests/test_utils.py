@@ -24,6 +24,7 @@ import unittest
 
 import lsst.utils.tests
 from lsst.rubintv.production.utils import isDayObsContiguous, sanitizeNans
+from lsst.summit.utils.utils import getSite
 
 
 class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
@@ -51,6 +52,13 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
 
         noneKeyedDict = {None: 1.0, "b": {"c": float("nan"), "d": 2.0}}
         self.assertEqual(sanitizeNans(noneKeyedDict), {None: 1.0, "b": {"c": None, "d": 2.0}})
+
+    def test_getSite(self) -> None:
+        site = getSite()
+        self.assertNotEqual(site.lower(), "unknown")
+        self.assertIn(
+            site.lower(), ["tucson", "summit", "base", "staff-rsp", "rubin-devl", "jenkins", "usdf-k8s"]
+        )
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
