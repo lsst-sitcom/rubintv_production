@@ -193,11 +193,30 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         )
 
     def testAosRegularPipelines(self) -> None:
-        taskExpectations: dict[str, int] = {"isr": 1, "calcZernikes": 1}
+        taskExpectationsExtra: dict[str, int] = {"isr": 1, "calcZernikes": 1}
         self.runTest(
             step="step1a",
             imageType="inFocus",
             detector=self.extraDetector,
+            pipelinesToRun=EXPECTED_AOS_NON_FAM_PIPELINES,
+            taskExpectations=taskExpectationsExtra,
+        )
+
+        # no calcZernikes for intrafocal for unpair pipelines
+        taskExpectationsIntra: dict[str, int] = {"isr": 1}
+        self.runTest(
+            step="step1a",
+            imageType="inFocus",
+            detector=self.intraDetector,
+            pipelinesToRun=EXPECTED_AOS_NON_FAM_PIPELINES,
+            taskExpectations=taskExpectationsIntra,
+        )
+
+    def testAosRegularPipelinesStep1b(self) -> None:
+        taskExpectations: dict[str, int] = {"plotAOSTask": 1}
+        self.runTest(
+            step="step1b",
+            imageType="inFocus",
             pipelinesToRun=EXPECTED_AOS_NON_FAM_PIPELINES,
             taskExpectations=taskExpectations,
         )
@@ -233,20 +252,29 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 
     def runTest(
         self,
+        *,
         step: str,
         imageType: str,
-        detector: int,
         pipelinesToRun: list[str],
+        detector: int | None = None,
         taskExpectations: dict[str, int] | None = None,
         quantaExpectations: dict[str, int] | None = None,
     ) -> None:
         taskExpectations = taskExpectations or {}
         quantaExpectations = quantaExpectations or taskExpectations
-        dataCoord = self.butler.registry.expandDataId(
-            exposure=self.records[imageType].id,
-            detector=detector,
-            instrument=self.instrument,
-        )
+        if step == "step1a":
+            dataCoord = self.butler.registry.expandDataId(
+                exposure=self.records[imageType].id,
+                detector=detector,
+                instrument=self.instrument,
+            )
+        elif step == "step1b":
+            dataCoord = self.butler.registry.expandDataId(
+                visit=self.records[imageType].id,
+                instrument=self.instrument,
+            )
+        else:
+            raise ValueError(f"Unknown step {step}")
 
         with swallowLogs():
             for pipelineName in pipelinesToRun:
@@ -274,9 +302,11 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 taskNames = list(qg.quanta_by_task.keys())
                 # Check that all expected tasks are present
                 for taskSubStringToExpect in taskExpectations.keys():
+                    taskSubStringToExpect = taskSubStringToExpect.lower()
                     foundTask = False
                     for taskName in taskNames:
-                        if taskSubStringToExpect in taskName:
+                        taskNameLower = taskName.lower()
+                        if taskSubStringToExpect in taskNameLower:
                             foundTask = True
                             break
                     self.assertTrue(
@@ -286,14 +316,16 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 
                 # Check that expected tasks have the correct number of quanta
                 for taskSubStringToExpect, numTasksToExpectForString in taskExpectations.items():
+                    taskSubStringToExpect = taskSubStringToExpect.lower()
                     for taskName in taskNames:
-                        if taskSubStringToExpect in taskName:
+                        taskNameLower = taskName.lower()
+                        if taskSubStringToExpect in taskNameLower:
                             self.assertEqual(
                                 len(qg.quanta_by_task[taskName]),
                                 numTasksToExpectForString,
                                 (
                                     f"Task '{taskName}' has {len(qg.quanta_by_task[taskName])} quanta,"
-                                    f" expected {numTasksToExpectForString}"
+                                    f" expected {numTasksToExpectForString} in pipeline {pipelineName}"
                                 ),
                             )
 
@@ -303,8 +335,11 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 executionQuanta = qg.build_execution_quanta()
 
                 # quantaTaskList deliberately may contain duplicates
-                quantaTaskList = [q.taskName for q in executionQuanta.values() if q.taskName is not None]
+                quantaTaskList = [
+                    q.taskName.lower() for q in executionQuanta.values() if q.taskName is not None
+                ]
                 for taskSubStringToExpect, numTasksToExpectForString in quantaExpectations.items():
+                    taskSubStringToExpect = taskSubStringToExpect.lower()
                     count = sum(1 for t in quantaTaskList if taskSubStringToExpect in t)
                     self.assertEqual(
                         count,
