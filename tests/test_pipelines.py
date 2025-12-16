@@ -83,7 +83,6 @@ EXPECTED_AOS_NON_FAM_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "FAM" not
 
 
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
-    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
     def setUp(self) -> None:
         self.locationConfig = getAutomaticLocationConfig()
         self.instrument = "LSSTCam"
