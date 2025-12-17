@@ -46,7 +46,7 @@ from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, makePlotFile, runningCI, writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputCollection, makePlotFile, runningCI, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
@@ -508,7 +508,14 @@ class TaskResult:
     failures: dict[int | None, str]
     logs: dict[int | None, ButlerLogRecords]
 
-    def __init__(self, butler: Butler, record: DimensionRecord, task: TaskNode, debug: bool = False) -> None:
+    def __init__(
+        self,
+        butler: Butler,
+        record: DimensionRecord,
+        task: TaskNode,
+        locationConfig: LocationConfig,
+        debug: bool = False,
+    ) -> None:
         self.record = record
         self.task = task
         self.taskName = task.label
@@ -521,9 +528,11 @@ class TaskResult:
 
         where = makeWhere(task, record)
         dRefs: list[DatasetRef] = []
+        collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
         try:
             dRefs = butler.query_datasets(
                 f"{self.taskName}_log",
+                collections=[collection],
                 find_first=True,
                 where=where,
                 explain=False,
@@ -811,6 +820,7 @@ class PerformanceBrowser:
                 butler=self.butler,
                 record=record,
                 task=task,
+                locationConfig=self.locationConfig,
             )
             data[taskName] = taskResult
         self.data[expRecord] = data
