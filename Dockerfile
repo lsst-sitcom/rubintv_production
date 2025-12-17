@@ -11,6 +11,8 @@ ENV GID=73006
 
 ENV obs_lsst_branch="w.2025.48"
 ENV drp_pipe_branch="w.2025.48"
+ENV daf_butler_branch="w.2025.48"
+ENV pipe_base_branch="w.2025.48"
 ENV spectractor_branch="w.2025.48"
 ENV atmospec_branch="w.2025.48"
 ENV summit_utils_branch="w.2025.48"
@@ -103,7 +105,10 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
 
 # TODO: (DM-43475) Resync RA images with the rest of the summit.
 RUN git clone https://github.com/lsst/obs_lsst.git && \
+    git clone https://github.com/lsst/daf_butler.git && \
+    git clone https://github.com/lsst/pipe_base.git && \
     git clone https://github.com/lsst/drp_pipe.git
+
 
 WORKDIR /repos/obs_lsst
 
@@ -112,6 +117,22 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
     setup obs_lsst -t saluser && \
     SCONSFLAGS="--no-tests" scons
+
+WORKDIR /repos/daf_butler
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${daf_butler_branch} && \
+    eups declare -r . -t saluser && \
+    setup daf_butler -t saluser && \
+    scons version
+
+WORKDIR /repos/pipe_base
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${pipe_base_branch} && \
+    eups declare -r . -t saluser && \
+    setup pipe_base -t saluser && \
+    scons version
 
 WORKDIR /repos/drp_pipe
 
@@ -246,6 +267,8 @@ RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.
 RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
     setup atmospec -j -t saluser && \
+    setup daf_butler -j -t saluser && \
+    setup pipe_base -j -t saluser && \
     setup summit_utils -j -t saluser && \
     setup summit_extras -j -t saluser && \
     setup rubintv_production -j -t saluser && \
@@ -282,6 +305,8 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/drp_pipe && \
     git config --system --add safe.directory /repos/Spectractor && \
     git config --system --add safe.directory /repos/atmospec && \
+    git config --system --add safe.directory /repos/daf_butler && \
+    git config --system --add safe.directory /repos/pipe_base && \
     git config --system --add safe.directory /repos/summit_utils && \
     git config --system --add safe.directory /repos/summit_extras && \
     git config --system --add safe.directory /repos/rubintv_production && \
