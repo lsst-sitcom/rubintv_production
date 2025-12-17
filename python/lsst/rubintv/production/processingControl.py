@@ -72,6 +72,22 @@ if TYPE_CHECKING:
     from lsst.pipe.base import PipelineTaskConfig
     from lsst.pipe.base.pipeline_graph import TaskNode
 
+PIPELINE_NAMES: tuple[str, ...] = (
+    "SFM",
+    "BIAS",
+    "DARK",
+    "FLAT",
+    "ISR",
+    "AOS_DANISH",
+    "AOS_TIE",
+    "AOS_REFIT_WCS",
+    "AOS_AI_DONUT",
+    "AOS_TARTS_UNPAIRED",
+    "AOS_FAM_TIE",
+    "AOS_FAM_DANISH",
+    "AOS_UNPAIRED_DANISH",
+)
+
 
 class WorkerProcessingMode(enum.IntEnum):
     """Defines the mode in which worker nodes process images.
@@ -434,10 +450,18 @@ def buildPipelines(
     darkFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookDark.yaml").as_posix()
     flatFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookFlat.yaml").as_posix()
 
-    pipelines["BIAS"] = PipelineComponents(butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"])
-    pipelines["DARK"] = PipelineComponents(butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"])
-    pipelines["FLAT"] = PipelineComponents(butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"])
-    pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"], ["step1a"])
+    pipelines["BIAS"] = PipelineComponents(
+        butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"], isCalibrationPipeline=True
+    )
+    pipelines["DARK"] = PipelineComponents(
+        butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"], isCalibrationPipeline=True
+    )
+    pipelines["FLAT"] = PipelineComponents(
+        butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"], isCalibrationPipeline=True
+    )
+    pipelines["ISR"] = PipelineComponents(
+        butler.registry, sfmPipelineFile, ["isr"], ["step1a"], isCalibrationPipeline=True
+    )
 
     if instrument == "LATISS":
         # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
@@ -515,6 +539,7 @@ class PipelineComponents:
     steps: list[str]
     stepAliases: list[str]
     pipelineFile: str
+    isCalibrationPipeline: bool = False
 
     def __init__(
         self,
@@ -523,12 +548,14 @@ class PipelineComponents:
         steps: list[str],
         stepAliases: list[str],
         overrides: list[tuple[str, str, object]] | None = None,
+        isCalibrationPipeline: bool = False,
     ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
         self.pipelineFile = pipelineFile
         self.stepAliases = stepAliases
+        self.isCalibrationPipeline = isCalibrationPipeline
 
         if len(steps) != len(stepAliases):
             raise ValueError(
@@ -552,6 +579,21 @@ class PipelineComponents:
     def isUnpaired(self) -> bool:
         """Is this an unpaired AOS pipeline?"""
         return "unpaired" in self.pipelineFile.lower()
+
+    @property
+    def isPaired(self) -> bool:
+        """Is this a paired AOS pipeline?"""
+        return not self.isUnpaired
+
+    @property
+    def isFullArrayMode(self) -> bool:
+        """Is this a full-array-mode AOS pipeline?"""
+        return "sciencesensor" in self.pipelineFile.lower()
+
+    @property
+    def isAosPipeline(self) -> bool:
+        """Is this an AOS pipeline?"""
+        return "donut_viz" in self.pipelineFile.lower()
 
     def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
