@@ -26,6 +26,8 @@ import unittest
 from contextlib import contextmanager
 from typing import Iterator
 
+from utils import getUserRunCollectionName  # type: ignore[import]
+
 import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionRecord
 from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
@@ -87,20 +89,35 @@ EXPECTED_AOS_NON_FAM_PIPELINES = [
 
 
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
-    def setUp(self) -> None:
-        self.locationConfig = getAutomaticLocationConfig()
-        self.instrument = "LSSTCam"
-        self.butler = Butler.from_config(
+    def _makeMinimalButler(self) -> Butler:
+        butler = Butler.from_config(
             self.locationConfig.lsstCamButlerPath,
             instrument=self.instrument,
             collections=[
                 f"{self.instrument}/defaults",
-                self.locationConfig.getOutputChain(self.instrument),
+            ],
+        )
+        return butler
+
+    def _makeButler(self, pipelineName: str) -> Butler:
+        runCollection = getUserRunCollectionName(pipelineName)
+        butler = Butler.from_config(
+            self.locationConfig.lsstCamButlerPath,
+            instrument=self.instrument,
+            collections=[
+                f"{self.instrument}/defaults",
+                runCollection,
                 "u/gmegias/intrinsic_aberrations_collection_temp",
             ],
             writeable=True,
         )
-        self.graphs, self.pipelines = buildPipelines("LSSTCam", self.locationConfig, self.butler)
+        return butler
+
+    def setUp(self) -> None:
+        self.locationConfig = getAutomaticLocationConfig()
+        self.instrument = "LSSTCam"
+        self.minimalButler = self._makeMinimalButler()
+        self.graphs, self.pipelines = buildPipelines("LSSTCam", self.locationConfig, self.minimalButler)
 
         for pipelineName in EXPECTED_PIPELINES:
             self.assertIn(pipelineName, self.pipelines)
@@ -112,7 +129,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         # f"Unexpected pipeline {pipelineName} found")
 
         where = "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436) AND instrument='LSSTCam'"
-        records = self.butler.query_dimension_records("exposure", where=where)
+        records = self.minimalButler.query_dimension_records("exposure", where=where)
         self.assertEqual(len(records), 4)
         rd = {r.seq_num: r for r in records}
         self.records: dict[str, DimensionRecord] = {}
@@ -128,7 +145,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         )
 
         self.step1aRunner = SingleCorePipelineRunner(
-            butler=self.butler,
+            butler=self.minimalButler,
             locationConfig=self.locationConfig,
             instrument=self.instrument,
             step="step1a",
@@ -137,7 +154,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             doRaise=False,
         )
         self.step1bRunner = SingleCorePipelineRunner(
-            butler=self.butler,
+            butler=self.minimalButler,
             locationConfig=self.locationConfig,
             instrument=self.instrument,
             step="step1b",
@@ -145,8 +162,6 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             podDetails=self.podDetails,
             doRaise=False,
         )
-        self.step1aRunner.runCollection = "LSSTCam/runs/quickLookTesting/126"
-        self.step1bRunner.runCollection = "LSSTCam/runs/quickLookTesting/126"
 
     def testCalibPipelines(self) -> None:
         # calib pipelines run the verify<product>Isr tasks but the quanta that
@@ -308,13 +323,13 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         taskExpectations = taskExpectations or {}
         quantaExpectations = quantaExpectations or taskExpectations
         if step == "step1a":
-            dataCoord = self.butler.registry.expandDataId(
+            dataCoord = self.minimalButler.registry.expandDataId(
                 exposure=self.records[imageType].id,
                 detector=detector,
                 instrument=self.instrument,
             )
         elif step == "step1b":
-            dataCoord = self.butler.registry.expandDataId(
+            dataCoord = self.minimalButler.registry.expandDataId(
                 visit=self.records[imageType].id,
                 instrument=self.instrument,
             )
@@ -323,15 +338,21 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 
         with swallowLogs():
             for pipelineName in pipelinesToRun:
-                extraInfo = f"{imageType=} in {step} with {detector=} running {pipelineName}"
+                runCollection = getUserRunCollectionName(pipelineName)
+                extraInfo = (
+                    f"{imageType=} in {step} with {dataCoord=} using {runCollection=} running {pipelineName}"
+                )
                 print(f"Checking {pipelineName}:{step} with {dataCoord}, expecting {taskExpectations}")
                 self.assertIn(pipelineName, self.pipelines, f"Pipeline {pipelineName} not found")
 
                 graph = self.pipelines[pipelineName].graphs[step]
 
                 runner = self.step1aRunner if step == "step1a" else self.step1bRunner
+                butler = self._makeButler(pipelineName)
+                runner.butler = butler  # patch this in now, it's much quicker having runners premade
+                runner.runCollection = runCollection
                 payload = Payload(dataCoord, b"", "does not matter here", who="AOS")
-                payload = Payload.from_json(payload.to_json(), self.butler)  # fully formed
+                payload = Payload.from_json(payload.to_json(), self.minimalButler)  # fully formed
                 qgb, _, _, _ = runner.getQuantumGraphBuilder(payload, graph)
                 qg = qgb.finish().assemble()
                 self.assertIsInstance(qg, PredictedQuantumGraph)
