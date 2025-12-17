@@ -127,6 +127,27 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
         )
 
+        self.step1aRunner = SingleCorePipelineRunner(
+            butler=self.butler,
+            locationConfig=self.locationConfig,
+            instrument=self.instrument,
+            step="step1a",
+            awaitsDataProduct="raw",
+            podDetails=self.podDetails,
+            doRaise=False,
+        )
+        self.step1bRunner = SingleCorePipelineRunner(
+            butler=self.butler,
+            locationConfig=self.locationConfig,
+            instrument=self.instrument,
+            step="step1b",
+            awaitsDataProduct=None,
+            podDetails=self.podDetails,
+            doRaise=False,
+        )
+        self.step1aRunner.runCollection = "LSSTCam/runs/quickLookTesting/126"
+        self.step1bRunner.runCollection = "LSSTCam/runs/quickLookTesting/126"
+
     def testCalibPipelines(self) -> None:
         # calib pipelines run the verify<product>Isr tasks but the quanta that
         # they actually execute are isr quanta, so check they exist with the
@@ -308,19 +329,10 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 
                 graph = self.pipelines[pipelineName].graphs[step]
 
-                sfmRunner = SingleCorePipelineRunner(
-                    butler=self.butler,
-                    locationConfig=self.locationConfig,
-                    instrument=self.instrument,
-                    step=step,
-                    awaitsDataProduct="raw" if step == "step1a" else None,
-                    podDetails=self.podDetails,
-                    doRaise=False,
-                )
-                payload = Payload(dataCoord, b"", "LSSTCam/runs/quickLookTesting/126", who="AOS")
+                runner = self.step1aRunner if step == "step1a" else self.step1bRunner
+                payload = Payload(dataCoord, b"", "does not matter here", who="AOS")
                 payload = Payload.from_json(payload.to_json(), self.butler)  # fully formed
-                sfmRunner.runCollection = payload.run
-                qgb, _, _, _ = sfmRunner.getQuantumGraphBuilder(payload, graph)
+                qgb, _, _, _ = runner.getQuantumGraphBuilder(payload, graph)
                 qg = qgb.finish().assemble()
                 self.assertIsInstance(qg, PredictedQuantumGraph)
 
