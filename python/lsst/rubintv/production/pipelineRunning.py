@@ -357,6 +357,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             for d in self.butler.collections.defaults
             if d != self.locationConfig.getOutputChain(self.instrument)
         )
+        collections = newDefaults if not tip else [tip, *newDefaults]
         builder = TrivialQuantumGraphBuilder(
             pipeline_graph=pipelineGraph,
             butler=self.butler,
@@ -364,7 +365,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             input_refs=inputRefs,
             dataset_id_modes=idGenerationModes,
             clobber=True,  # TBD by Jim as to whether this should be removed
-            input_collections=[tip] + newDefaults,
+            input_collections=collections,
             output_run=self.runCollection,
         )
         return builder, "", {}, butlerToReturn
@@ -418,13 +419,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 for d in self.butler.collections.defaults
                 if d != self.locationConfig.getOutputChain(self.instrument)
             )
+            collections = newDefaults if not tip else [tip, *newDefaults]
             builder = AllDimensionsQuantumGraphBuilder(
                 pipelineGraph,
                 self.butler,
                 where=where,
                 bind=bind,
                 clobber=True,
-                input_collections=[tip] + newDefaults,
+                input_collections=collections,
                 output_run=self.runCollection,
             )
             return builder, where, bind, self.cachingButler
@@ -454,12 +456,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     for d in self.butler.collections.defaults
                     if d != self.locationConfig.getOutputChain(self.instrument)
                 )
+                collections = newDefaults if not tip else [tip, *newDefaults]
                 builder = TrivialQuantumGraphBuilder(
                     pipeline_graph=pipelineGraph,
                     butler=self.butler,
                     data_ids=dataIds,
                     clobber=True,  # TBD by Jim as to whether this should be removed
-                    input_collections=[tip] + newDefaults,
+                    input_collections=collections,
                     output_run=self.runCollection,
                 )
                 return builder, "", {}, self.cachingButler
