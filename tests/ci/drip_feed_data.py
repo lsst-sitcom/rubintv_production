@@ -43,10 +43,19 @@ performancePod = PodDetails(
     instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None
 )
 
+podsOffline = True
+while podsOffline:
+    workers = redisHelper.getAllWorkers(instrument=instrument, podFlavor=PodFlavor.SFM_WORKER)
+    podsOffline = len(workers) < 8
+    if not podsOffline:
+        print("Waiting for SFM pods to come online...")
+        time.sleep(1)
+
 for record in records:
     assert isinstance(record, DimensionRecord)
     redisHelper.pushNewExposureToHeadNode(record)  # let the SFM go first
     redisHelper.pushToButlerWatcherList(instrument, record)
+    time.sleep(record.exposure_time)
 
     # queue everything up for performance monitoring once that spins up
     # that comes as a 2nd round, so only starts once everything else is over
