@@ -789,6 +789,7 @@ class HeadProcessController:
                 self.currentAosPipeline = f"AOS_{aosOverride.upper()}"
                 self.currentAosFamPipeline = f"AOS_FAM_{aosOverride.upper()}"
                 self.log.info(f"Now running AOS: {self.currentAosPipeline}")
+                self.redisHelper.redis.set("RUBINTV_CONTROL_AOS_PIPELINE_READBACK", self.currentAosPipeline)
             else:
                 self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
 
