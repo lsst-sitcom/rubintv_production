@@ -1474,6 +1474,11 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
+def runningScons() -> bool:
+    """Check if the code is running under scons."""
+    return os.environ.get("SCONS_BUILDING", "false").lower() == "true"
+
+
 def makePlotFileFromRecord(
     locationConfig: LocationConfig, record: DimensionRecord, plotType: str, suffix: str
 ) -> str:
@@ -1737,7 +1742,7 @@ def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> Di
     return expR
 
 
-def getCurrentOutputCollection(butler: Butler, locationConfig: LocationConfig, instrument: str) -> str:
+def getCurrentOutputCollection(butler: Butler, locationConfig: LocationConfig, instrument: str) -> str | None:
     """Get the current output collection for the given instrument.
 
     Parameters
@@ -1748,12 +1753,17 @@ def getCurrentOutputCollection(butler: Butler, locationConfig: LocationConfig, i
         The location configuration.
     instrument : `str`
         The instrument name.
+    ignoreCiFlag : `bool`, optional
+        If ``True``, ignore the CI environment flag when determining the
+        output collection.
 
     Returns
     -------
     outputCollection : `str`
         The current output collection for the given instrument.
     """
+    if runningScons():
+        return None
     return butler.collections.get_info(locationConfig.getOutputChain(instrument)).children[0]
 
 

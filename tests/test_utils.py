@@ -23,7 +23,7 @@
 import unittest
 
 import lsst.utils.tests
-from lsst.rubintv.production.utils import isDayObsContiguous, sanitizeNans
+from lsst.rubintv.production.utils import isDayObsContiguous, runningScons, sanitizeNans
 from lsst.summit.utils.utils import getSite
 
 
@@ -59,6 +59,9 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
         self.assertIn(
             site.lower(), ["tucson", "summit", "base", "staff-rsp", "rubin-devl", "jenkins", "usdf-k8s"]
         )
+
+    def test_runningScons(self) -> None:
+        self.assertTrue(runningScons())  # SCons sets the SCONS_BUILDING env var
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
