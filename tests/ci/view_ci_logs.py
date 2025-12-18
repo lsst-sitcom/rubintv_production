@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-Convenience script to view CI test logs.
+Interactive tool to view CI test logs.
 
 Usage:
-    python view_ci_logs.py <pid>                      # View process ID from latest run
-    python view_ci_logs.py <script_name>              # View script name (partial match) from latest run
-    python view_ci_logs.py --list                     # List all available log files from latest run
-    python view_ci_logs.py --runs                     # List all test runs
-    python view_ci_logs.py --run <run_id> <pid>       # View logs from specific run by run ID
-    python view_ci_logs.py --run <N> <pid>            # View logs from Nth most recent run (0=latest)
-    python view_ci_logs.py --tracebacks               # Find all tracebacks in latest run
-    python view_ci_logs.py --tracebacks --run <N>     # Find all tracebacks in specified run
-"""  # noqa: W505
+    python view_ci_logs.py
 
-import argparse
+Provides an interactive menu to:
+- Select from available test runs
+- View individual log files
+- Find and display tracebacks
+- Search logs by name
+"""
+
 import re
 import sys
 from datetime import datetime
@@ -602,8 +600,10 @@ def displayLogsMenu(logDir: Path) -> None:
         print(f"Viewing run: {logDir.name}")
         print(f"{'=' * 80}\n")
 
+        # Get log files from this specific run directory
         logFiles = listLogFiles(logDir)
 
+        print(f"Found {len(logFiles)} log file(s) in this run.\n")
         print("Options:")
         print("  1. View individual logs")
         print("  2. View all tracebacks")
@@ -619,7 +619,7 @@ def displayLogsMenu(logDir: Path) -> None:
         elif choice == "5":
             return
         elif choice == "1":
-            viewIndividualLogs(logDir, logFiles)
+            viewIndividualLogs(logFiles)
         elif choice == "2":
             handleTracebackMode(logDir)
         elif choice == "3":
@@ -630,14 +630,12 @@ def displayLogsMenu(logDir: Path) -> None:
             print("Invalid choice. Please try again.")
 
 
-def viewIndividualLogs(logDir: Path, logFiles: list[Path]) -> None:
+def viewIndividualLogs(logFiles: list[Path]) -> None:
     """
     Interactively view individual log files.
 
     Parameters
     ----------
-    logDir : `Path`
-        The directory containing log files.
     logFiles : `list[Path]`
         List of available log files.
     """
@@ -709,7 +707,7 @@ def searchLogsByName(logDir: Path) -> None:
         input("\nPress Enter to continue...")
         return
 
-    viewIndividualLogs(logDir, matchingLogs)
+    viewIndividualLogs(matchingLogs)
 
 
 def interactiveMode(baseLogDir: Path) -> None:
@@ -732,41 +730,6 @@ def interactiveMode(baseLogDir: Path) -> None:
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="View CI test logs interactively or by process ID/script name",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "identifier",
-        nargs="?",
-        help="Process ID or script name to search for (if omitted, interactive mode)",
-    )
-    parser.add_argument(
-        "--list",
-        "-l",
-        action="store_true",
-        help="List all available log files from the selected run",
-    )
-    parser.add_argument(
-        "--runs",
-        "-r",
-        action="store_true",
-        help="List all test runs",
-    )
-    parser.add_argument(
-        "--run",
-        metavar="RUN_ID_OR_INDEX",
-        help="Specify which run to view (run ID or index, 0=latest)",
-    )
-    parser.add_argument(
-        "--tracebacks",
-        "-t",
-        action="store_true",
-        help="Find and display all tracebacks in the selected run",
-    )
-
-    args = parser.parse_args()
-
     baseLogDir = getBaseLogDir()
 
     if not baseLogDir.exists():
@@ -774,94 +737,7 @@ def main() -> None:
         print("Have you run the test suite yet?")
         sys.exit(1)
 
-    # Interactive mode - if no arguments provided (except possibly --run)
-    if not args.identifier and not args.list and not args.runs and not args.tracebacks:
-        interactiveMode(baseLogDir)
-        sys.exit(0)
-
-    # List runs mode
-    if args.runs:
-        displayRunsTable(baseLogDir)
-        sys.exit(0)
-
-    # Determine which run to use
-    try:
-        logDir = getLogDir(baseLogDir, args.run)
-    except ValueError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-
-    if not logDir.exists():
-        print(f"Error: Log directory does not exist: {logDir}")
-        print("Have you run the test suite yet?")
-        sys.exit(1)
-
-    # Traceback mode
-    if args.tracebacks:
-        handleTracebackMode(logDir)
-        sys.exit(0)
-
-    # Show which run we're viewing
-    if args.run is not None:
-        print(f"Viewing logs from run: {logDir.name}\n")
-    else:
-        print(f"Viewing logs from latest run: {logDir.name}\n")
-
-    # List mode
-    if args.list:
-        logFiles = listLogFiles(logDir)
-        if not logFiles:
-            print(f"No log files found in {logDir}")
-            sys.exit(0)
-
-        print("Available log files:\n")
-        for logFile in logFiles:
-            print(f"  {logFile.name}")
-        sys.exit(0)
-
-    # Search mode
-    if not args.identifier:
-        parser.print_help()
-        sys.exit(1)
-
-    identifier = args.identifier
-
-    # Try searching by PID first (if identifier is numeric)
-    matchingLogs = []
-    if identifier.isdigit():
-        matchingLogs = findLogsByPid(logDir, identifier)
-
-    # If no PID matches, try searching by name
-    if not matchingLogs:
-        matchingLogs = findLogsByName(logDir, identifier)
-
-    if not matchingLogs:
-        print(f"No log files found matching '{identifier}'")
-        print("\nUse --list to see all available log files")
-        sys.exit(1)
-
-    if len(matchingLogs) == 1:
-        printLogFile(matchingLogs[0])
-    else:
-        print(f"Found {len(matchingLogs)} matching log files:\n")
-        for i, logFile in enumerate(matchingLogs, 1):
-            print(f"  {i}. {logFile.name}")
-
-        print("\nEnter the number of the log file to view (or 'q' to quit): ", end="")
-        try:
-            choice = input().strip()
-            if choice.lower() == "q":
-                sys.exit(0)
-
-            index = int(choice) - 1
-            if 0 <= index < len(matchingLogs):
-                printLogFile(matchingLogs[index])
-            else:
-                print("Invalid selection")
-                sys.exit(1)
-        except (ValueError, KeyboardInterrupt):
-            print("\nInvalid input or interrupted")
-            sys.exit(1)
+    interactiveMode(baseLogDir)
 
 
 if __name__ == "__main__":
