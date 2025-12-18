@@ -529,6 +529,7 @@ class TaskResult:
         where = makeWhere(task, record)
         dRefs: list[DatasetRef] = []
         collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
+        assert collection is not None, "Collection should not be None, is ignoreCiFlag not being respected?"
         try:
             dRefs = butler.query_datasets(
                 f"{self.taskName}_log",

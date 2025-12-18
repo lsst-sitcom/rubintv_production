@@ -24,3 +24,6 @@ for item in passThrough:
     # but empty env vars correctly
     if item in os.environ:
         env['ENV'][item] = os.environ[item]
+
+
+env['ENV']["SCONS_BUILDING"] = True  # always set this for scons regardless of env value
