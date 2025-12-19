@@ -235,6 +235,70 @@ def findLogsByName(logDir: Path, name: str) -> list[Path]:
     return [log for log in allLogs if name.lower() in log.name.lower()]
 
 
+def searchInLogFile(logFile: Path, searchString: str, caseInsensitive: bool = True) -> list[tuple[int, str]]:
+    """
+    Search for a string within a log file.
+
+    Parameters
+    ----------
+    logFile : `Path`
+        The log file to search.
+    searchString : `str`
+        The string to search for.
+    caseInsensitive : `bool`, optional
+        Whether to perform case-insensitive search.
+
+    Returns
+    -------
+    matches : `list[tuple[int, str]]`
+        List of (line_number, line_content) tuples for matching lines.
+    """
+    matches: list[tuple[int, str]] = []
+
+    with open(logFile, "r") as f:
+        for lineNum, line in enumerate(f, start=1):
+            if caseInsensitive:
+                if searchString.lower() in line.lower():
+                    matches.append((lineNum, line.rstrip()))
+            else:
+                if searchString in line:
+                    matches.append((lineNum, line.rstrip()))
+
+    return matches
+
+
+def searchAcrossAllLogs(
+    logDir: Path, searchString: str, caseInsensitive: bool = True
+) -> dict[Path, list[tuple[int, str]]]:
+    """
+    Search for a string across all log files.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files.
+    searchString : `str`
+        The string to search for.
+    caseInsensitive : `bool`, optional
+        Whether to perform case-insensitive search.
+
+    Returns
+    -------
+    resultsByFile : `dict[Path, list[tuple[int, str]]]`
+        Dictionary mapping log files to lists of (line_number, line_content)
+        tuples.
+    """
+    resultsByFile: dict[Path, list[tuple[int, str]]] = {}
+    logFiles = listLogFiles(logDir)
+
+    for logFile in logFiles:
+        matches = searchInLogFile(logFile, searchString, caseInsensitive)
+        if matches:
+            resultsByFile[logFile] = matches
+
+    return resultsByFile
+
+
 def extractTracebacks(logFile: Path, contextLines: int = 5) -> list[Traceback]:
     """
     Extract tracebacks from a log file.
@@ -383,6 +447,127 @@ def printAllTracebacksForFile(logFile: Path, tracebacks: list[Traceback]) -> Non
 
     for tb in tracebacks:
         printTraceback(tb)
+
+
+def displaySearchResults(
+    searchString: str, resultsByFile: dict[Path, list[tuple[int, str]]], maxLinesPerFile: int = 50
+) -> None:
+    """
+    Display search results grouped by file.
+
+    Parameters
+    ----------
+    searchString : `str`
+        The search string used.
+    resultsByFile : `dict[Path, list[tuple[int, str]]]`
+        Dictionary mapping log files to matching lines.
+    maxLinesPerFile : `int`, optional
+        Maximum number of lines to display per file before truncating.
+    """
+    totalMatches = sum(len(matches) for matches in resultsByFile.values())
+
+    print(f"\n{'=' * 80}")
+    print(f"Search results for: '{searchString}'")
+    print(f"Found {totalMatches} match(es) across {len(resultsByFile)} file(s)")
+    print(f"{'=' * 80}\n")
+
+    for logFile, matches in sorted(resultsByFile.items(), key=lambda x: x[0].name):
+        print(f"\n{'-' * 80}")
+        print(f"File: {logFile.name} ({len(matches)} match(es))")
+        print(f"{'-' * 80}")
+
+        displayedLines = min(len(matches), maxLinesPerFile)
+        for lineNum, line in matches[:displayedLines]:
+            # Highlight the search string in the output
+            print(f"  Line {lineNum}: {line}")
+
+        if len(matches) > maxLinesPerFile:
+            remaining = len(matches) - maxLinesPerFile
+            print(f"\n  ... ({remaining} more match(es) not shown)")
+
+
+def handleStringSearchMode(logDir: Path) -> None:
+    """
+    Handle string search mode - search for a string in logs.
+
+    Parameters
+    ----------
+    logDir : `Path`
+        The directory containing log files to search.
+    """
+    print("\nString Search Mode")
+    print("=" * 80)
+    print("\nOptions:")
+    print("  1. Search across all logs")
+    print("  2. Search within a specific log")
+    print("  b. Back to menu")
+
+    choice = input("\nYour choice: ").strip()
+
+    if choice.lower() == "b":
+        return
+
+    searchString = input("\nEnter search string: ").strip()
+    if not searchString:
+        print("Empty search string. Aborting.")
+        input("\nPress Enter to continue...")
+        return
+
+    caseInput = input("Case-insensitive search? (y/n, default: y): ").strip().lower()
+    caseInsensitive = caseInput != "n"
+
+    if choice == "1":
+        # Search across all logs
+        print(f"\nSearching for '{searchString}' across all logs...")
+        resultsByFile = searchAcrossAllLogs(logDir, searchString, caseInsensitive)
+
+        if not resultsByFile:
+            print(f"\nNo matches found for '{searchString}'")
+        else:
+            displaySearchResults(searchString, resultsByFile)
+
+        input("\nPress Enter to continue...")
+
+    elif choice == "2":
+        # Search within a specific log
+        logFiles = listLogFiles(logDir)
+
+        if not logFiles:
+            print("\nNo log files found.")
+            input("\nPress Enter to continue...")
+            return
+
+        print(f"\nAvailable log files ({len(logFiles)} total):\n")
+        for i, logFile in enumerate(logFiles, 1):
+            print(f"  {i}. {logFile.name}")
+
+        logChoice = input("\nEnter log file number: ").strip()
+
+        try:
+            logIndex = int(logChoice) - 1
+            if logIndex < 0 or logIndex >= len(logFiles):
+                print("Invalid selection.")
+                input("\nPress Enter to continue...")
+                return
+
+            selectedLog = logFiles[logIndex]
+            print(f"\nSearching for '{searchString}' in {selectedLog.name}...")
+
+            matches = searchInLogFile(selectedLog, searchString, caseInsensitive)
+
+            if not matches:
+                print(f"\nNo matches found for '{searchString}'")
+            else:
+                displaySearchResults(searchString, {selectedLog: matches})
+
+            input("\nPress Enter to continue...")
+
+        except ValueError:
+            print("Invalid input.")
+            input("\nPress Enter to continue...")
+    else:
+        print("Invalid choice.")
+        input("\nPress Enter to continue...")
 
 
 def handleTracebackMode(logDir: Path) -> None:
@@ -609,14 +794,15 @@ def displayLogsMenu(logDir: Path) -> None:
         print("  2. View all tracebacks")
         print("  3. List all log files")
         print("  4. Search logs by name")
-        print("  5. Back to run selection")
+        print("  5. Search for string in logs")
+        print("  6. Back to run selection")
         print("  q. Quit")
 
         choice = input("\nYour choice: ").strip().lower()
 
         if choice == "q":
             sys.exit(0)
-        elif choice == "5":
+        elif choice == "6":
             return
         elif choice == "1":
             viewIndividualLogs(logFiles)
@@ -626,6 +812,8 @@ def displayLogsMenu(logDir: Path) -> None:
             listLogsDisplay(logFiles)
         elif choice == "4":
             searchLogsByName(logDir)
+        elif choice == "5":
+            handleStringSearchMode(logDir)
         else:
             print("Invalid choice. Please try again.")
 
