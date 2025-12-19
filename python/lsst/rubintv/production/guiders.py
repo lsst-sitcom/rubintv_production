@@ -195,13 +195,11 @@ def getConsDbValues(
     consDbValues["guider_roi_cols"] = int(cols)
     consDbValues["guider_roi_rows"] = int(rows)
 
-    # there should be a better way of doing this, but this will have to do for
-    # now. One of the big problems here is that this is subtracting the *total*
-    # missing (across all 8 chips) from the expected number for a single chip,
-    # but having the expected number multiplied by 8 would be confusing too.
-    expected = max([len(stamps) for stamps in guiderData.stampsMap.values()])
-    consDbValues["guider_n_stamps_expected"] = expected
-    consDbValues["guider_n_stamps_delivered"] = expected - int(guiderData.nMissingStamps)
+    missingMap = guiderData.missingStampsMap
+    nMissing = int(max(missingMap.values()))  # find the one with the most missed stamps and use that
+
+    consDbValues["guider_n_stamps_expected"] = len(guiderData)  # automatically uses the max length chip
+    consDbValues["guider_n_stamps_delivered"] = len(guiderData) - nMissing  # min delivered across chips
 
     for key, (value, _type) in CONSDB_KEY_MAP.items():
         try:
