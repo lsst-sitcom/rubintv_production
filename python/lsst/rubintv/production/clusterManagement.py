@@ -788,16 +788,10 @@ class ClusterManager:
             A set of pods that are inaccessible to the head node, i.e. not used
             in the current setup.
         """
-        # the extra-focal AOS pods don't get any work while
-        # things are run in serial - work runs on the intra-focal
-        # indexed workers
-        pods = status.flavorStatuses[PodFlavor.AOS_WORKER].workers
-        inaccessible = {p for p in pods if p.detectorNumber in self.focalPlaneControl.EXTRA_FOCAL_IDS}
-
         # right now the SFM workers are done //205 not //189
         # so the pods with detectorNumber between 189-205 are never used
         pods = status.flavorStatuses[PodFlavor.SFM_WORKER].workers
-        inaccessible |= {p for p in pods if p.detectorNumber is not None and p.detectorNumber >= 189}
+        inaccessible = {p for p in pods if p.detectorNumber is not None and p.detectorNumber >= 189}
 
         if onlyFreeWorkers:
             # if we only want free pods, filter out the busy ones
