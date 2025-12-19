@@ -158,8 +158,7 @@ def waitForIngest(nExpected: int, timeout: float, expRecord: DimensionRecord, bu
             return nIngested
 
         if monotonic() - startTime >= timeout:
-            log = logging.getLogger("lsst.rubintv.production.guiders")
-            log.warning(
+            _LOG.warning(
                 f"Timed out waiting for ingest of {nExpected} guider_raws (got {nIngested}) for "
                 f"dataId={expRecord.dataId} after {timeout:.1f}s"
             )
@@ -168,7 +167,9 @@ def waitForIngest(nExpected: int, timeout: float, expRecord: DimensionRecord, bu
         sleep(cadence)
 
 
-def getConsDbValues(guiderData: GuiderData, metrics: DataFrame, stars: DataFrame | None) -> dict[str, float]:
+def getConsDbValues(
+    guiderData: GuiderData, metrics: DataFrame, stars: DataFrame | None
+) -> dict[str, float | int]:
     """Map the metrics to the ConsDB values.
 
     Parameters
@@ -178,7 +179,7 @@ def getConsDbValues(guiderData: GuiderData, metrics: DataFrame, stars: DataFrame
 
     Returns
     -------
-    consDbValues : `dict` [`str`, `float`]
+    consDbValues : `dict` [`str`, `float` | `int`]
         Dictionary mapping the ConsDB value names to their values.
     """
     consDbValues: dict[str, float | int] = {}
@@ -193,6 +194,14 @@ def getConsDbValues(guiderData: GuiderData, metrics: DataFrame, stars: DataFrame
     consDbValues["guider_stamp_exp_time"] = stampExpTime
     consDbValues["guider_roi_cols"] = int(cols)
     consDbValues["guider_roi_rows"] = int(rows)
+
+    # there should be a better way of doing this, but this will have to do for
+    # now. One of the big problems here is that this is subtracting the *total*
+    # missing (across all 8 chips) from the expected number for a single chip,
+    # but having the expected number multiplied by 8 would be confusing too.
+    expected = max([len(stamps) for stamps in guiderData.stampsMap.values()])
+    consDbValues["guider_n_stamps_expected"] = expected
+    consDbValues["guider_n_stamps_delivered"] = expected - int(guiderData.nMissingStamps)
 
     for key, (value, _type) in CONSDB_KEY_MAP.items():
         try:
@@ -209,7 +218,6 @@ def getConsDbValues(guiderData: GuiderData, metrics: DataFrame, stars: DataFrame
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
     if stars is not None and not stars.empty:
-        consDbValues["guider_t_mean"] = float(np.nanmedian(stars["e1_altaz"]))
         consDbValues["guider_e1_mean"] = float(np.nanmedian(stars["e1_altaz"]))
         consDbValues["guider_e2_mean"] = float(np.nanmedian(stars["e2_altaz"]))
 
@@ -420,5 +428,5 @@ class GuiderWorker(BaseButlerChannel):
             values=consDbValues,
             dayObs=dayObs,
             seqNum=seqNum,
-            allowUpdate=True,  # insert into existing an row requires allowUpdate
+            allowUpdate=True,  # insert into existing row requires allowUpdate
         )
