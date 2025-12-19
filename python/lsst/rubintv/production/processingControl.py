@@ -57,6 +57,7 @@ from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
 from .utils import (
     LocationConfig,
+    getExpIdOrVisitId,
     getShardPath,
     isCalibration,
     isWepImage,
@@ -1087,7 +1088,7 @@ class HeadProcessController:
 
         sentToBusy = 0
         sentToFree = 0
-        notDispatched = 0
+        failures: list[Payload] = []
         for detectorId, payload in payloads.items():
             matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
             if matchingFreeWorkers:
@@ -1105,7 +1106,7 @@ class HeadProcessController:
                     self.redisHelper.enqueuePayload(payload, worker)
                     continue
                 else:
-                    notDispatched += 1
+                    failures.append(payload)
                     self.log.error(
                         f"No workers (not even busy ones) available for {detectorId=},"
                         f" cannot dispatch process for {payload.who}",
@@ -1117,8 +1118,16 @@ class HeadProcessController:
         self.log.info(
             f"Sent {sentToFree} {mixed}payloads to free workers, {sentToBusy} to busy workers for {whos}"
         )
-        if notDispatched:
-            self.log.error(f"Failed to dispatch {notDispatched} {mixed}payloads for {whos}")
+        for failure in failures:
+            self.log.error(f"Failed to dispatch {failure.dataId} payload for {whos}")
+            if "detector" in failure.dataId:
+                det = int(failure.dataId["detector"])
+                expId = getExpIdOrVisitId(failure.dataId)
+                # who=ISR is always set to expect in addition, so always
+                # remove in addition
+                pipelines = ["ISR"] if failure.who == "ISR" else ["ISR", failure.who]
+                for who in pipelines:
+                    self.redisHelper.removeDetectorsToExpect(self.instrument, expId, [det], who)
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
