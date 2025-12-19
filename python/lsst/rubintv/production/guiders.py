@@ -207,10 +207,9 @@ def getConsDbValues(
         except (KeyError, IndexError):
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
-    expTime = float(metrics["exptime"].values[0])
     for key, (value, _type) in CONSDB_KEY_MAP_EXPTIME_SCALED.items():
         try:
-            scaledValue = _type(metrics[value].values[0]) * expTime
+            scaledValue = _type(metrics[value].values[0]) * totalExpTime
             consDbValues[key] = scaledValue
         except (KeyError, IndexError):
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
