@@ -472,7 +472,7 @@ class ConsDBPopulator:
         if allowUpdate and "exposure" in table.lower() and "exposure_id" not in values:
             raise ValueError("When updating an exposure table, exposure_id must be in values")
         if allowUpdate and "visit" in table.lower() and "visit_id" not in values:
-            raise ValueError("When updating a visit table, visit must be in values")
+            raise ValueError("When updating a visit table, visit_id must be in values")
 
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
             location = self.locationConfig.location
@@ -491,7 +491,7 @@ class ConsDBPopulator:
             typeFunc = changeType(consDbKey, typeMapping)
             toSend[consDbKey] = typeFunc(value)
 
-        self._insertIfAllowed(
+        inserted = self._insertIfAllowed(
             instrument=instrument,
             table=table,
             # tuple-form for obsId required for updating non ccd-type tables
@@ -499,6 +499,8 @@ class ConsDBPopulator:
             values=toSend,
             allowUpdate=allowUpdate,
         )
+        if inserted:
+            logger.info(f"Inserted consDB values into {instrument}.{table} for ({dayObs=}, {seqNum=})")
 
     def populateMountErrors(
         self,
