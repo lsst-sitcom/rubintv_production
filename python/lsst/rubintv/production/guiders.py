@@ -219,6 +219,13 @@ def getConsDbValues(
         consDbValues["guider_e1_mean"] = float(np.nanmedian(stars["e1_altaz"]))
         consDbValues["guider_e2_mean"] = float(np.nanmedian(stars["e2_altaz"]))
 
+    try:
+        consDbValues["guider_psf_fwhm"] = consDbValues["guider_psf_fwhm_start"] + (
+            consDbValues["guider_psf_fwhm_drift"] / 2  # these values are already scaled by exptime
+        )
+    except KeyError:
+        pass
+
     return consDbValues
 
 
