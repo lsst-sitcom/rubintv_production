@@ -528,8 +528,11 @@ class TaskResult:
 
         where = makeWhere(task, record)
         dRefs: list[DatasetRef] = []
-        collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
-        assert collection is not None, "Collection should not be None, is ignoreCiFlag not being respected?"
+        if runningCI():  # must just use the tip of the chain for CI runs
+            collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
+        else:  # processing old data in production envs means we need to look down the chain
+            collection = locationConfig.getOutputChain("LSSTCam")
+        assert collection is not None, "Collection should not be None, this isn't tested by scons"
         try:
             dRefs = butler.query_datasets(
                 f"{self.taskName}_log",
