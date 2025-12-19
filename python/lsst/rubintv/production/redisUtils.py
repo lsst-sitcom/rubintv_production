@@ -920,6 +920,14 @@ class RedisHelper:
     ) -> None:
         """Write the detectors we are processing for a given exposureId.
 
+        Notes
+        -----
+        Whilst this function is only called by the head node, this remains
+        safe, as is the existence of ``removeDetectorsToExpect``, because the
+        head node is single threaded, so this is functioanlly atomic. However,
+        usage of ``removeDetectorsToExpect`` from elsewhere would be non-atomic
+        and thus unsafe.
+
         Parameters
         ----------
         instrument : `str`
@@ -958,6 +966,37 @@ class RedisHelper:
         # those dispatches do actually happen, they remove their task counters
         # and thus no longer check for the expected detectors.
         self.redis.expire(key, int(86400 * 2.5))  # expire in 2.5 days
+
+    def removeDetectorsToExpect(
+        self, instrument: str, indentifier: int, detectors: list[int], who: str
+    ) -> None:
+        """Remove detectors from the expected detectors for a given exposureId.
+
+        Notes
+        -----
+        See notes in ``writeDetectorsToExpect`` about atomicity and safety.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        indentifier : `int` or `str`
+            The exposure or visit ID(s) the detectors are being processed for.
+        detectors : `list` of `int`
+            The list of detectors to expect.
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        """
+        existingDetectors = self.getExpectedDetectors(instrument, indentifier, who, noWarn=False)
+        for det in detectors:
+            if det in existingDetectors:
+                existingDetectors.remove(det)
+            else:
+                self.log.warning(
+                    f"Detector {det} not found in existing detectors for"
+                    f" {instrument} {who} {indentifier} when attempting removal!"
+                )
+        self.writeDetectorsToExpect(instrument, indentifier, existingDetectors, who, append=False)
 
     def getExpectedDetectors(
         self, instrument: str, indentifier: int, who: str, noWarn: bool = False
