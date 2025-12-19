@@ -38,6 +38,7 @@ where = (
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 4, f"Expected 4 records, got {len(records)}"
+records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))  # always dispatch in order
 
 performancePod = PodDetails(
     instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None
