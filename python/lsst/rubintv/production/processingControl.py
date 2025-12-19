@@ -769,6 +769,36 @@ class HeadProcessController:
         return False
 
     def updateConfigsFromRubinTV(self) -> None:
+        def updateFromKey(redisKey: str, attribute: str) -> None:
+            value = self.redisHelper.redis.getdel(redisKey)
+            if value is not None:
+                prefix = "AOS_FAM_" if "fam" in attribute.lower() else "AOS_"
+                valueStr = f"{prefix}{value.decode()}"  # comes without the AOS_/AOS_FAM_ prefix from RubinTV
+                if valueStr not in self.pipelines.keys():
+                    self.log.error(
+                        f"Received invalid pipeline name {valueStr} for {attribute} from RubinTV control!"
+                    )
+                    return
+                attr = getattr(self, attribute)
+                if attr != valueStr:
+                    if attribute == "currentAosFamPipeline":
+                        if self.isBetweenFamPair():
+                            self.log.warning(
+                                f"Cannot switch {attribute} to {valueStr} from RubinTV control"
+                                " as we are between a FAM pair"
+                            )
+                            # if we want to implement resuming state from redis
+                            # we'll need to either remove this message, or
+                            # store the actual current value elsewhere, this
+                            # would break that pattern
+                            self.redisHelper.redis.set(f"{redisKey}_READBACK", "REJECTED_BETWEEN_PAIR!")
+                            return
+                    setattr(self, attribute, valueStr)
+                    self.log.info(f"Updating {attribute} to {valueStr} from RubinTV control")
+                    self.redisHelper.redis.set(f"{redisKey}_READBACK", valueStr)
+                else:
+                    self.log.info(f"Skipped setting {attribute} to {valueStr} as it was already set")
+
         if self.instrument != "LSSTCam":
             # TODO: Only the LSSTCam head node should consume these, and this
             # is a solution, but it's not a very good one. Need frontend
@@ -780,19 +810,9 @@ class HeadProcessController:
             self.log.warning("Received reset command from RubinTV, restarting the head node...")
             sys.exit(0)
 
-        _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
-        if _aosPipeline is not None:
-            aosOverride = _aosPipeline.decode()
-            if aosOverride != self.currentAosPipeline:
-                # comes as 'tie' or 'danish'
-                # Note: always keep currentAosPipeline and
-                # currentAosFamPipeline as the same flavour
-                self.currentAosPipeline = f"AOS_{aosOverride.upper()}"
-                self.currentAosFamPipeline = f"AOS_FAM_{aosOverride.upper()}"
-                self.log.info(f"Now running AOS: {self.currentAosPipeline}")
-                self.redisHelper.redis.set("RUBINTV_CONTROL_AOS_PIPELINE_READBACK", self.currentAosPipeline)
-            else:
-                self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
+        updateFromKey("RUBINTV_CONTROL_AOS_PIPELINE", "currentAosPipeline")
+
+        updateFromKey("RUBINTV_CONTROL_AOS_FAM_PIPELINE", "currentAosFamPipeline")
 
         _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
         if _processingMode is not None:
