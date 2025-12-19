@@ -306,9 +306,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                                 id_generation_mode=DATAID_TYPE_RUN,
                             )
                         ]
-                        timeouts[readEdge.parent_dataset_type_name] = (
-                            600.0  # this can come from the other pod
-                        )
+                        timeouts[readEdge.parent_dataset_type_name] = 60.0  # this can come from the other pod
 
         elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):  # means FAM pipeline
             otherVisit = getExpIdOrVisitId(payload.dataId) - 1
