@@ -598,7 +598,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         self.redisHelper.reportTaskFinished(
                             self.instrument, taskLabel, dataCoord, failed=True
                         )
-                        assert (postQuantum is None) or (postQuantum is preQuantum), "This must be true"
                         if postQuantum is not None:
                             self.postProcessQuantum(postQuantum)
                         raise e  # still raise the error once we've logged the quantum as finishing
