@@ -39,6 +39,7 @@ from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.ts.ofc import OFCData
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
@@ -175,6 +176,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
+        self.ofcData = OFCData("lsst")
 
     @cached_property
     def efdClient(self) -> EfdClient:
@@ -743,12 +745,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         zernikes.meta["shutter_to_zernike_time"] = float((Time.now() - expRecord.timespan.end).sec)
 
         rowSums = []
-        zkOcs = zernikes["zk_OCS"]
+
         nollIndices = zernikes.meta["nollIndices"]
         maxNollIndex = np.max(zernikes.meta["nollIndices"])
-        for row in zkOcs:
-            zk_fwhm = convertZernikesToPsfWidth(makeDense(row, nollIndices, maxNollIndex))
-            rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
+        for row in zernikes:
+            zkOcs = row["zk_OCS"]
+            detector = row["detector"]
+            zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
+            zkDense -= self.ofcData.y2_corrections[detector]
+            zkFwhm = convertZernikesToPsfWidth(zkDense)
+            rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
 
         average_result = np.nanmean(rowSums)
         residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
