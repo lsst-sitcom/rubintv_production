@@ -229,9 +229,7 @@ class RedisHelper:
             Raised on any other unexpected error.
         """
         try:
-            # self.redis.ping()
-            # DO NOT COMMIT THIS!
-            print("XXX skipping redis ping!!!")
+            self.redis.ping()
         except redis.exceptions.ConnectionError as e:
             raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:
