@@ -643,12 +643,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 fwhmValues.append(float(fwhm))
 
         fwhmValuesArray = np.array(fwhmValues)[~np.isnan(fwhmValues)]
-        psfGradient = np.sqrt(fwhmValuesArray**2 - np.min(fwhmValuesArray) ** 2)
-        gradientMedian = np.median(psfGradient)
-        outputDict["PSF gradient"] = gradientMedian
-        if gradientMedian >= PSF_GRADIENT_BAD:  # note this flag must be set after the measured labels
+        fwhmValues05, fwhmValues95 = np.percentile(fwhmValuesArray, [5, 95])
+        psfGradient = np.sqrt(fwhmValues95**2 - fwhmValues05**2)
+        outputDict["PSF gradient"] = psfGradient
+        if psfGradient >= PSF_GRADIENT_BAD:  # note this flag must be set after the measured labels
             outputDict["PSF gradient" + "_flag"] = "bad"
-        elif gradientMedian >= PSF_GRADIENT_WARNING:
+        elif psfGradient >= PSF_GRADIENT_WARNING:
             outputDict["PSF gradient" + "_flag"] = "warning"
 
         shardPath = getShardPath(self.locationConfig, expRecord)
