@@ -80,8 +80,8 @@ TASK_ENDPOINTS_TO_TRACK = (
 )
 
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera", "astrometry_camera"}
-PSF_GRADIENT_WARNING = 0.3
-PSF_GRADIENT_BAD = 0.35
+PSF_GRADIENT_WARNING = 0.65
+PSF_GRADIENT_BAD = 0.85
 
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
