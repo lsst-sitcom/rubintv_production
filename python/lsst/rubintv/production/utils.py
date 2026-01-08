@@ -1645,6 +1645,32 @@ def getAirmass(exp: Exposure) -> float | None:
     return None
 
 
+def hasRaDec(record: DimensionRecord) -> bool:
+    """Check if an exposure record has valid RA and Dec.
+
+    Parameters
+    ----------
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure record to check.
+
+    Returns
+    -------
+    hasRaDec : `bool`
+        True if the exposure record has valid RA and Dec, else False.
+    """
+    try:
+        ra = float(record.tracking_ra)
+        dec = float(record.tracking_dec)
+    except (AttributeError, TypeError):  # AttributeError for missing, TypeError for None
+        return False
+
+    if ra is None or dec is None:
+        return False
+    if not np.isfinite(ra) or not np.isfinite(dec):
+        return False
+    return True
+
+
 def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
     """Get the exposure ID or visit ID from an exposure record.
 

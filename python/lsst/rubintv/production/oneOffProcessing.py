@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import astropy.units as u
+import astropy.units as u  # type: ignore[import-untyped]
 import numpy as np
 from astropy.coordinates import SkyCoord
 
@@ -67,6 +67,7 @@ from .utils import (
     getFilterColorName,
     getRubinTvInstrumentName,
     getShardPath,
+    hasRaDec,
     isCalibration,
     makePlotFile,
     makeWitnessDetectorTitle,
@@ -372,8 +373,8 @@ class OneOffProcessor(BaseButlerChannel):
 
         raDeg = expRecord.tracking_ra
         decDeg = expRecord.tracking_dec
-        if raDeg is None or decDeg is None:
-            self.log.info(f"Skipping ecliptic coords for {expRecord.id} - no RA/Dec")
+        if not hasRaDec(expRecord):
+            self.log.info(f"Skipping ecliptic coords for {expRecord.id} - missing/non-finite RA/Dec")
             return
 
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
@@ -644,7 +645,7 @@ class OneOffProcessor(BaseButlerChannel):
             self._doMountAnalysisAuxTel(expRecord)
         else:
             try:  # this often fails due to missing mount data, catch so other plots can still work
-                if expRecord.zenith_angle is not None:  # XXX hopefully we can remove this soon
+                if expRecord.zenith_angle is not None and hasRaDec(expRecord):
                     self._doMountAnalysisSimonyi(expRecord)
                 else:
                     self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
