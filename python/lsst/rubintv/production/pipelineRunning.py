@@ -749,7 +749,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         nollIndices = zernikes.meta["nollIndices"]
         maxNollIndex = np.max(zernikes.meta["nollIndices"])
         for row in zernikes:
-            zkOcs = row["zk_OCS"]
+            zkOcs = row["zk_deviation_OCS"]
             detector = row["detector"]
             zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
             zkDense -= self.ofcData.y2_corrections[detector]
