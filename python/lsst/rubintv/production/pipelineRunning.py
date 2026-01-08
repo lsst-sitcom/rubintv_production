@@ -647,9 +647,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         psfGradient = np.sqrt(fwhmValues95**2 - fwhmValues05**2)
         outputDict["PSF gradient"] = psfGradient
         if psfGradient >= PSF_GRADIENT_BAD:  # note this flag must be set after the measured labels
-            outputDict["PSF gradient" + "_flag"] = "bad"
+            outputDict["_PSF gradient"] = "bad"
         elif psfGradient >= PSF_GRADIENT_WARNING:
-            outputDict["PSF gradient" + "_flag"] = "warning"
+            outputDict["_PSF gradient"] = "warning"
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)
