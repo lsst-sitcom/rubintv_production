@@ -39,6 +39,7 @@ from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.ts.ofc import OFCData
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
@@ -79,8 +80,8 @@ TASK_ENDPOINTS_TO_TRACK = (
 )
 
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera", "astrometry_camera"}
-PSF_GRADIENT_WARNING = 0.3
-PSF_GRADIENT_BAD = 0.35
+PSF_GRADIENT_WARNING = 0.65
+PSF_GRADIENT_BAD = 0.85
 
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
@@ -175,6 +176,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
         self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
+        self.ofcData = OFCData("lsst")
 
     @cached_property
     def efdClient(self) -> EfdClient:
@@ -641,13 +643,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 fwhmValues.append(float(fwhm))
 
         fwhmValuesArray = np.array(fwhmValues)[~np.isnan(fwhmValues)]
-        psfGradient = np.sqrt(fwhmValuesArray**2 - np.min(fwhmValuesArray) ** 2)
-        gradientMedian = np.median(psfGradient)
-        outputDict["PSF gradient"] = gradientMedian
-        if gradientMedian >= PSF_GRADIENT_BAD:  # note this flag must be set after the measured labels
-            outputDict["PSF gradient" + "_flag"] = "bad"
-        elif gradientMedian >= PSF_GRADIENT_WARNING:
-            outputDict["PSF gradient" + "_flag"] = "warning"
+        fwhmValues05, fwhmValues95 = np.percentile(fwhmValuesArray, [5, 95])
+        psfGradient = np.sqrt(fwhmValues95**2 - fwhmValues05**2)
+        outputDict["PSF gradient"] = psfGradient
+        if psfGradient >= PSF_GRADIENT_BAD:  # note this flag must be set after the measured labels
+            outputDict["_PSF gradient"] = "bad"
+        elif psfGradient >= PSF_GRADIENT_WARNING:
+            outputDict["_PSF gradient"] = "warning"
 
         shardPath = getShardPath(self.locationConfig, expRecord)
         writeMetadataShard(shardPath, dayObs, rowData)
@@ -743,12 +745,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         zernikes.meta["shutter_to_zernike_time"] = float((Time.now() - expRecord.timespan.end).sec)
 
         rowSums = []
-        zkOcs = zernikes["zk_OCS"]
+
         nollIndices = zernikes.meta["nollIndices"]
         maxNollIndex = np.max(zernikes.meta["nollIndices"])
-        for row in zkOcs:
-            zk_fwhm = convertZernikesToPsfWidth(makeDense(row, nollIndices, maxNollIndex))
-            rowSums.append(np.sqrt(np.sum(zk_fwhm**2)))
+        for row in zernikes:
+            zkOcs = row["zk_deviation_OCS"]
+            detector = row["detector"]
+            zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
+            zkDense -= self.ofcData.y2_correction[detector][: len(zkDense)]
+            zkFwhm = convertZernikesToPsfWidth(zkDense)
+            rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
 
         average_result = np.nanmean(rowSums)
         residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
