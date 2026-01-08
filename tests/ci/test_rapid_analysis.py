@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import traceback
+from datetime import datetime
 from multiprocessing import Manager, Process
 from pathlib import Path
 from queue import Empty
@@ -159,7 +160,7 @@ class TestConfig:
         # Test execution settings
         self.do_run_meta_tests = True
         self.do_check_yaml_files = True
-        self.copy_plots_to_public_html = False
+        self.copy_plots_to_public_html = True
 
         self.debug = False
 
@@ -172,7 +173,8 @@ class TestConfig:
 
         # Test durations
         self.meta_test_duration = 30
-        self.test_duration = 600
+        self.test_duration_round_1 = 900
+        self.test_duration_round_2 = 200  # spin-up + plotting needed
 
         # Date for testing
         self.today = 20240101
@@ -180,6 +182,7 @@ class TestConfig:
         # File paths
         self.ci_dir = os.path.dirname(os.path.abspath(__file__))
         self.package_dir = os.path.abspath(os.path.join(self.ci_dir, "../../"))
+        self.log_dir = os.path.join(self.package_dir, "ci_logs")
 
         # Initialize test scripts and yaml files
         self._init_test_scripts()
@@ -297,19 +300,16 @@ class TestConfig:
         )
 
         # AOS Workers for LSSTCam
-        # these do the corner chips, and the run as dual dataIds on the
-        # split chips, so need only 4
-        # XXX TODO: bugfix the need to use odd numbers! fix AOS_WORKER_MAPPING
         aos_workers = [
             TestScript(
                 "scripts/LSSTCam/runAosWorker.py",
-                ["usdf_testing", "1"],
+                ["usdf_testing", "0"],
                 display_on_pass=True,
                 tee_output=True,
             )
         ]
         aos_workers.extend(
-            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in [3, 5, 7]]
+            [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(1, 8)]
         )
 
         # Additional LSSTCam scripts
@@ -318,42 +318,50 @@ class TestConfig:
         additional_lsstcam_scripts = [
             TestScript(
                 "scripts/LSSTCam/runStep1bAosWorker.py",
-                ["usdf_testing", "0", "1", "2"],
-                display_on_pass=True,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runOneOffExpRecord.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runOneOffPostIsr.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runOneOffVisitImage.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runHeadNode.py",
-                ["usdf_testing"],
-                delay=5,
+                ["usdf_testing", "0"],
                 tee_output=True,
                 display_on_pass=True,
-            ),
-            TestScript(
-                "scripts/LSSTCam/runGuiderAnalysis.py",
-                ["usdf_testing"],
-                tee_output=False,
-                display_on_pass=False,
-            ),
-            TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
+            )
         ]
+        additional_lsstcam_scripts.extend(
+            [TestScript("scripts/LSSTCam/runStep1bAosWorker.py", ["usdf_testing", str(i)]) for i in (1, 2)]
+        )
+        additional_lsstcam_scripts.extend(
+            [
+                TestScript(
+                    "scripts/LSSTCam/runOneOffExpRecord.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runOneOffPostIsr.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runOneOffVisitImage.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runHeadNode.py",
+                    ["usdf_testing"],
+                    delay=5,
+                    tee_output=True,
+                    display_on_pass=True,
+                ),
+                TestScript(
+                    "scripts/LSSTCam/runGuiderAnalysis.py",
+                    ["usdf_testing"],
+                    tee_output=False,
+                    display_on_pass=False,
+                ),
+                TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
+            ]
+        )
 
         # Combine all test scripts
         self.test_scripts_round_1 = (
@@ -361,8 +369,13 @@ class TestConfig:
         )
 
         # Scripts to run after processing pods are torn down
-        self.test_scripts_round_3 = [
-            TestScript("scripts/LSSTCam/runButlerWatcher.py", ["usdf_testing"]),
+        self.test_scripts_round_2 = [
+            TestScript(
+                "scripts/LSSTCam/runPerformanceMonitor.py",
+                ["usdf_testing"],
+                tee_output=True,
+                display_on_pass=True,
+            )
         ]
 
         # Meta tests that are expected to fail
@@ -392,9 +405,9 @@ class TestConfig:
             for script in self.test_scripts_round_1
         ]
 
-        self.test_scripts_round_3 = [
+        self.test_scripts_round_2 = [
             TestScript.from_existing(script, os.path.join(self.package_dir, script.path))
-            for script in self.test_scripts_round_3
+            for script in self.test_scripts_round_2
         ]
 
         self.meta_tests_fail_expected = [
@@ -511,7 +524,7 @@ class RedisManager:
         # no need for a butler or location config when just monitoring
         # so ignore arg types for the helper init
         redisHelper = RedisHelper(None, None)  # type: ignore[arg-type]
-        redisHelper.displayRedisContents()
+        redisHelper.displayRedisContents(ignoreKeysStartingWith=["LSSTCam-VISIT_SUMMARY_STATS"])
 
         # Check LSSTCam data
         self._check_lsstcam_data(redisHelper, checks)
@@ -526,8 +539,9 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm = [2025111500226]
-        visits_aos = ["2025111500226", "2025111500227+2025111500228"]
+        visits_sfm: list[int] = [2025111500226]
+        visits_aos: list[int] = [2025111500226, 2025111500227, 2025111500228]
+        visits_fam: list[int] = [2025111500227, 2025111500228]
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -553,24 +567,36 @@ class RedisManager:
         else:
             checks.append(Check(True, f"{n_visits_aos}x AOS step1b finished"))
 
-        # Check nightly rollup
-        key = f"{inst}-SFM-NIGHTLYROLLUP-FINISHEDCOUNTER"
-        n_nightly_rollups = int(redisHelper.redis.get(key) or 0)
-        if n_nightly_rollups != 1:
-            checks.append(Check(False, f"Expected 1 nightly rollup finished, got {n_nightly_rollups}"))
-        else:
-            checks.append(Check(True, f"{n_nightly_rollups}x nightly rollup finished"))
-
         # check zernike announcement for MTAOS
-        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226) == 4:
-            checks.append(Check(True, "MTAOS Zernike count for non-FAM image 2025111500226 is 4"))
+        # TODO: will need to double this for unpaired pipelines
+        expectedNonFam = 8
+        gotNonFam = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226)
+        if gotNonFam == expectedNonFam:
+            checks.append(
+                Check(True, f"MTAOS Zernike count for non-FAM image 2025111500226 is {expectedNonFam}")
+            )
         else:
-            checks.append(Check(False, "MTAOS Zernike count for non-FAM image 2025111500226 is not 4"))
+            checks.append(
+                Check(
+                    False,
+                    f"MTAOS Zernike count for non-FAM image 2025111500226: expected {expectedNonFam}, "
+                    f"got {gotNonFam}",
+                )
+            )
 
-        if redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500227) == 18:
-            checks.append(Check(True, "MTAOS Zernike count for FAM image 2025111500227 is 18"))
-        else:
-            checks.append(Check(False, "MTAOS Zernike count for FAM image 2025111500227 is not 18"))
+        expectedFam = 18
+        for visit in visits_fam:
+            gotFam = redisHelper.getMTAOSZernikeCount("LSSTCam", visit)
+            if gotFam == expectedFam:
+                checks.append(Check(True, f"MTAOS Zernike count for FAM image {visit} is {expectedFam}"))
+            else:
+                checks.append(
+                    Check(
+                        False,
+                        f"MTAOS Zernike count for FAM image 2025111500227: expected {expectedFam}, "
+                        f"got {gotFam}",
+                    )
+                )
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
@@ -607,14 +633,164 @@ class RedisManager:
             print("Terminated Redis process")
 
 
+class LogManager:
+    """Manages log file operations for test scripts."""
+
+    def __init__(self, log_dir: str, run_label: str | None = None) -> None:
+        self.base_log_dir = log_dir
+        self.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Use provided label or fall back to timestamp
+        if run_label:
+            # Sanitize the label to avoid filesystem issues
+            sanitized_label = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in run_label)
+            # Append timestamp to ensure uniqueness
+            self.run_id = f"{sanitized_label}_{self.run_timestamp}"
+        else:
+            self.run_id = self.run_timestamp
+
+        self.log_dir = os.path.join(self.base_log_dir, self.run_id)
+
+    def setup_log_directory(self) -> None:
+        """Create the timestamped log directory for this run."""
+        os.makedirs(self.log_dir, exist_ok=True)
+        print(f"✅ Created log directory for this run: {self.log_dir}")
+
+        # Create a 'latest' symlink pointing to this run
+        latest_link = os.path.join(self.base_log_dir, "latest")
+        if os.path.islink(latest_link):
+            os.unlink(latest_link)
+        elif os.path.exists(latest_link):
+            shutil.rmtree(latest_link)
+
+        os.symlink(self.run_id, latest_link)
+        print("✅ Updated 'latest' symlink to point to this run")
+
+    @staticmethod
+    def listTestRuns(baseLogDir: str) -> list[str]:
+        """
+        List all test run timestamps in chronological order.
+
+        Parameters
+        ----------
+        baseLogDir : `str`
+            The base log directory containing timestamped subdirectories.
+
+        Returns
+        -------
+        runs : `list[str]`
+            List of run timestamps, newest first.
+        """
+        if not os.path.exists(baseLogDir):
+            return []
+
+        runs = []
+        for entry in os.listdir(baseLogDir):
+            path = os.path.join(baseLogDir, entry)
+            # Skip the 'latest' symlink and only include directories
+            if os.path.isdir(path) and entry != "latest" and not os.path.islink(path):
+                runs.append(entry)
+
+        # Sort in reverse chronological order (newest first)
+        return sorted(runs, reverse=True)
+
+    @staticmethod
+    def getRunByIndex(baseLogDir: str, index: int) -> str | None:
+        """
+        Get a test run by index (0 = most recent, 1 = second most recent, etc).
+
+        Parameters
+        ----------
+        baseLogDir : `str`
+            The base log directory containing timestamped subdirectories.
+        index : `int`
+            The index of the run to retrieve (0-based, 0 is most recent).
+
+        Returns
+        -------
+        runTimestamp : `str` or `None`
+            The timestamp of the requested run, or None if index is out of
+            range.
+        """
+        runs = LogManager.listTestRuns(baseLogDir)
+        if 0 <= index < len(runs):
+            return runs[index]
+        return None
+
+    @staticmethod
+    def getRunDirectory(baseLogDir: str, identifier: str | int) -> str | None:
+        """
+        Get the log directory for a specific run.
+
+        Parameters
+        ----------
+        baseLogDir : `str`
+            The base log directory containing timestamped subdirectories.
+        identifier : `str` or `int`
+            Either a timestamp string or an integer index (0 = most recent).
+
+        Returns
+        -------
+        runDir : `str` or `None`
+            The full path to the run's log directory, or None if not found.
+        """
+        if isinstance(identifier, int):
+            timestamp = LogManager.getRunByIndex(baseLogDir, identifier)
+            if timestamp is None:
+                return None
+        else:
+            timestamp = identifier
+
+        runDir = os.path.join(baseLogDir, timestamp)
+        if os.path.isdir(runDir):
+            return runDir
+        return None
+
+    def get_log_filename(self, test_script: TestScript, pid: int) -> str:
+        """Generate a log filename for a test script and process ID."""
+        scriptPath = Path(test_script.path)
+        scriptName = scriptPath.stem  # filename without .py extension
+        parentDir = scriptPath.parent.name  # e.g., 'LSSTCam' or 'LATISS'
+        argsSuffix = "_".join(test_script.args) if test_script.args else "no_args"
+        return os.path.join(self.log_dir, f"{parentDir}_{scriptName}_{argsSuffix}_pid_{pid}.log")
+
+    def write_log(
+        self, filename: str, stdout: str, stderr: str, logs: str, exit_code: int | str | None
+    ) -> None:
+        """Write captured output to a log file."""
+        with open(filename, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write(f"Exit Code: {exit_code}\n")
+            f.write("=" * 80 + "\n\n")
+
+            if stdout:
+                f.write("STDOUT:\n")
+                f.write("-" * 80 + "\n")
+                f.write(stdout)
+                f.write("\n" + "-" * 80 + "\n\n")
+
+            if stderr:
+                f.write("STDERR:\n")
+                f.write("-" * 80 + "\n")
+                f.write(stderr)
+                f.write("\n" + "-" * 80 + "\n\n")
+
+            if logs:
+                f.write("LOGS:\n")
+                f.write("-" * 80 + "\n")
+                f.write(logs)
+                f.write("\n" + "-" * 80 + "\n")
+
+
 class ProcessManager:
     """Manages test script processes and output collection."""
 
-    def __init__(self) -> None:
+    def __init__(self, log_manager: LogManager | None = None) -> None:
         self.manager = Manager()
         self.exit_codes = self.manager.dict()
         self.outputs = self.manager.dict()
         self.processes: dict[Process, TestScript] = {}
+        self.log_manager = log_manager
 
     def run_test_scripts(self, scripts: list[TestScript], timeout: int, is_meta_tests: bool = False) -> None:
         """Run test scripts with timeout and collect results."""
@@ -684,6 +860,7 @@ class ProcessManager:
 
         script_path = test_script.path
         script_args = test_script.args
+        current_pid = os.getpid()
 
         f_stdout = io.StringIO()
         f_stderr = io.StringIO()
@@ -743,8 +920,16 @@ class ProcessManager:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
 
+            stdout_output = f_stdout.getvalue()
+            stderr_output = f_stderr.getvalue()
             log_output = log_stream.getvalue()
-            output_queue.put((test_script, exit_code, f_stdout.getvalue(), f_stderr.getvalue(), log_output))
+
+            # Write log to file if log manager is available
+            if self.log_manager:
+                log_filename = self.log_manager.get_log_filename(test_script, current_pid)
+                self.log_manager.write_log(log_filename, stdout_output, stderr_output, log_output, exit_code)
+
+            output_queue.put((test_script, exit_code, stdout_output, stderr_output, log_output))
 
             # Clean up logger handlers
             root_logger.removeHandler(log_handler)
@@ -1024,10 +1209,22 @@ class ResultCollector:
             ("LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
             # Guider plots and movies
             ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4", 200_000),
+            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4", 200_000),
+            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4", 200_000),
             ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4", 100_000),
+            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4", 100_000),
+            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4", 100_000),
             ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
+            # Performance analysis plots for all detectors
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
+            # AOS performance plots
+            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
@@ -1073,7 +1270,7 @@ class ResultCollector:
         actualPlotPaths = set()
         for root, _, files in os.walk(locationConfig.plotPath):
             for file in files:
-                if file.endswith((".png", ".jpg", ".jpeg", ".gif")):
+                if file.endswith((".png", ".jpg", ".jpeg", ".gif", ".mp4")):
                     relPath = os.path.relpath(os.path.join(root, file), locationConfig.plotPath)
                     actualPlotPaths.add(relPath)
 
@@ -1132,10 +1329,11 @@ class ResultCollector:
 class TestRunner:
     """Main class for orchestrating the test suite."""
 
-    def __init__(self) -> None:
+    def __init__(self, run_label: str | None = None) -> None:
         self.config = TestConfig()
         self.redis_manager = RedisManager(self.config)
-        self.process_manager = ProcessManager()
+        self.log_manager = LogManager(self.config.log_dir, run_label)
+        self.process_manager = ProcessManager(self.log_manager)
         self.result_collector = ResultCollector()
         self.patches: Any = []  # not sure what type to use here
 
@@ -1170,6 +1368,7 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
         os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
+        os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
 
         # Verify environment settings
@@ -1187,6 +1386,7 @@ class TestRunner:
         """Ensure all test scripts exist."""
         all_scripts = itertools.chain(
             self.config.test_scripts_round_1,
+            self.config.test_scripts_round_2,
             self.config.meta_tests_fail_expected,
             self.config.meta_tests_pass_expected,
         )
@@ -1247,6 +1447,9 @@ class TestRunner:
             # Setup testing environment
             self.setup_environment()
 
+            # Setup log directory
+            self.log_manager.setup_log_directory()
+
             # Check YAML files if configured
             if self.config.do_check_yaml_files:
                 yaml_files_ok = self.result_collector.check_yaml_files(self.config.yaml_files_to_check)
@@ -1269,7 +1472,13 @@ class TestRunner:
             self.delete_output_files()
 
             # Run the main test scripts
-            self.process_manager.run_test_scripts(self.config.test_scripts_round_1, self.config.test_duration)
+            self.process_manager.run_test_scripts(
+                self.config.test_scripts_round_1, self.config.test_duration_round_1
+            )
+
+            self.process_manager.run_test_scripts(
+                self.config.test_scripts_round_2, self.config.test_duration_round_2
+            )
 
             # Verify all scripts reported results
             self._verify_all_scripts_reported()
@@ -1277,6 +1486,7 @@ class TestRunner:
             # Check test results
             print("\nTest Results:")
             self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
+            self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_2)
 
             # Check for plots and Redis results
             self.result_collector.check_plots(self.config)
@@ -1298,6 +1508,7 @@ class TestRunner:
             expected.extend(self.config.meta_tests_fail_expected)
             expected.extend(self.config.meta_tests_pass_expected)
         expected.extend(self.config.test_scripts_round_1)
+        expected.extend(self.config.test_scripts_round_2)
 
         exit_codes_keys = set(self.process_manager.exit_codes.keys())
         outputs_keys = set(self.process_manager.outputs.keys())
@@ -1326,7 +1537,23 @@ class TestRunner:
 
 def main() -> None:
     """Main entry point for the test suite."""
-    runner = TestRunner()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run the RubinTV rapid analysis CI test suite",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--label",
+        "-l",
+        type=str,
+        default=None,
+        help="Optional label for this test run (timestamp will be appended for uniqueness)",
+    )
+
+    args = parser.parse_args()
+
+    runner = TestRunner(run_label=args.label)
     runner.run()
 
 

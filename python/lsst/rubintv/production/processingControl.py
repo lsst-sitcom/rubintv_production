@@ -57,10 +57,12 @@ from .redisUtils import RedisHelper
 from .timing import BoxCarTimer
 from .utils import (
     LocationConfig,
+    getExpIdOrVisitId,
     getShardPath,
     isCalibration,
     isWepImage,
     raiseIf,
+    runningCI,
     writeExpRecordMetadataShard,
     writeMetadataShard,
 )
@@ -70,6 +72,22 @@ if TYPE_CHECKING:
 
     from lsst.pipe.base import PipelineTaskConfig
     from lsst.pipe.base.pipeline_graph import TaskNode
+
+PIPELINE_NAMES: tuple[str, ...] = (
+    "SFM",
+    "BIAS",
+    "DARK",
+    "FLAT",
+    "ISR",
+    "AOS_DANISH",
+    "AOS_TIE",
+    "AOS_REFIT_WCS",
+    "AOS_AI_DONUT",
+    "AOS_TARTS_UNPAIRED",
+    "AOS_FAM_TIE",
+    "AOS_FAM_DANISH",
+    "AOS_UNPAIRED_DANISH",
+)
 
 
 class WorkerProcessingMode(enum.IntEnum):
@@ -433,10 +451,18 @@ def buildPipelines(
     darkFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookDark.yaml").as_posix()
     flatFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookFlat.yaml").as_posix()
 
-    pipelines["BIAS"] = PipelineComponents(butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"])
-    pipelines["DARK"] = PipelineComponents(butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"])
-    pipelines["FLAT"] = PipelineComponents(butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"])
-    pipelines["ISR"] = PipelineComponents(butler.registry, sfmPipelineFile, ["isr"], ["step1a"])
+    pipelines["BIAS"] = PipelineComponents(
+        butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"], isCalibrationPipeline=True
+    )
+    pipelines["DARK"] = PipelineComponents(
+        butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"], isCalibrationPipeline=True
+    )
+    pipelines["FLAT"] = PipelineComponents(
+        butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"], isCalibrationPipeline=True
+    )
+    pipelines["ISR"] = PipelineComponents(
+        butler.registry, sfmPipelineFile, ["isr"], ["step1a"], isCalibrationPipeline=True
+    )
 
     if instrument == "LATISS":
         # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
@@ -468,7 +494,7 @@ def buildPipelines(
         pipelines["AOS_AI_DONUT"] = PipelineComponents(
             butler.registry, aiDonutFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
-        pipelines["AOS_TARTS"] = PipelineComponents(
+        pipelines["AOS_TARTS_UNPAIRED"] = PipelineComponents(
             butler.registry, tartsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
 
@@ -514,6 +540,7 @@ class PipelineComponents:
     steps: list[str]
     stepAliases: list[str]
     pipelineFile: str
+    isCalibrationPipeline: bool = False
 
     def __init__(
         self,
@@ -522,12 +549,14 @@ class PipelineComponents:
         steps: list[str],
         stepAliases: list[str],
         overrides: list[tuple[str, str, object]] | None = None,
+        isCalibrationPipeline: bool = False,
     ) -> None:
         self.uris: dict[str, str] = {}
         self.graphs: dict[str, PipelineGraph] = {}
         self.graphBytes: dict[str, bytes] = {}
         self.pipelineFile = pipelineFile
         self.stepAliases = stepAliases
+        self.isCalibrationPipeline = isCalibrationPipeline
 
         if len(steps) != len(stepAliases):
             raise ValueError(
@@ -546,6 +575,26 @@ class PipelineComponents:
             self.graphBytes[stepAlias] = pipelineGraphToBytes(self.graphs[stepAlias])
 
         self.steps = steps
+
+    @property
+    def isUnpaired(self) -> bool:
+        """Is this an unpaired AOS pipeline?"""
+        return "unpaired" in self.pipelineFile.lower()
+
+    @property
+    def isPaired(self) -> bool:
+        """Is this a paired AOS pipeline?"""
+        return not self.isUnpaired
+
+    @property
+    def isFullArrayMode(self) -> bool:
+        """Is this a full-array-mode AOS pipeline?"""
+        return "sciencesensor" in self.pipelineFile.lower()
+
+    @property
+    def isAosPipeline(self) -> bool:
+        """Is this an AOS pipeline?"""
+        return "donut_viz" in self.pipelineFile.lower()
 
     def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
@@ -606,6 +655,7 @@ class HeadProcessController:
         self.nNightlyRollups: int = 0
         self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
         self.currentAosFamPipeline = "AOS_FAM_DANISH"  # ignored for ComCam
+        self._lastProcessedExp: DimensionRecord | None = None
 
         if self.focalPlaneControl is not None:
             if self.locationConfig.location == "bts":
@@ -657,6 +707,10 @@ class HeadProcessController:
         )
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
+        if runningCI():  # always need a new run for CI for timing plots
+            self.log.warning("Forcing new run because this is running in CI")  # check we don't see in prod
+            forceNewRun = True
+
         packages = Packages.fromSystem()
 
         allRuns: Sequence[str] = []
@@ -716,6 +770,36 @@ class HeadProcessController:
         return False
 
     def updateConfigsFromRubinTV(self) -> None:
+        def updateFromKey(redisKey: str, attribute: str) -> None:
+            value = self.redisHelper.redis.getdel(redisKey)
+            if value is not None:
+                prefix = "AOS_FAM_" if "fam" in attribute.lower() else "AOS_"
+                valueStr = f"{prefix}{value.decode()}"  # comes without the AOS_/AOS_FAM_ prefix from RubinTV
+                if valueStr not in self.pipelines.keys():
+                    self.log.error(
+                        f"Received invalid pipeline name {valueStr} for {attribute} from RubinTV control!"
+                    )
+                    return
+                attr = getattr(self, attribute)
+                if attr != valueStr:
+                    if attribute == "currentAosFamPipeline":
+                        if self.isBetweenFamPair():
+                            self.log.warning(
+                                f"Cannot switch {attribute} to {valueStr} from RubinTV control"
+                                " as we are between a FAM pair"
+                            )
+                            # if we want to implement resuming state from redis
+                            # we'll need to either remove this message, or
+                            # store the actual current value elsewhere, this
+                            # would break that pattern
+                            self.redisHelper.redis.set(f"{redisKey}_READBACK", "REJECTED_BETWEEN_PAIR!")
+                            return
+                    setattr(self, attribute, valueStr)
+                    self.log.info(f"Updating {attribute} to {valueStr} from RubinTV control")
+                    self.redisHelper.redis.set(f"{redisKey}_READBACK", valueStr)
+                else:
+                    self.log.info(f"Skipped setting {attribute} to {valueStr} as it was already set")
+
         if self.instrument != "LSSTCam":
             # TODO: Only the LSSTCam head node should consume these, and this
             # is a solution, but it's not a very good one. Need frontend
@@ -727,18 +811,9 @@ class HeadProcessController:
             self.log.warning("Received reset command from RubinTV, restarting the head node...")
             sys.exit(0)
 
-        _aosPipeline = self.redisHelper.redis.getdel("RUBINTV_CONTROL_AOS_PIPELINE")
-        if _aosPipeline is not None:
-            aosOverride = _aosPipeline.decode()
-            if aosOverride != self.currentAosPipeline:
-                # comes as 'tie' or 'danish'
-                # Note: always keep currentAosPipeline and
-                # currentAosFamPipeline as the same flavour
-                self.currentAosPipeline = f"AOS_{aosOverride.upper()}"
-                self.currentAosFamPipeline = f"AOS_FAM_{aosOverride.upper()}"
-                self.log.info(f"Now running AOS: {self.currentAosPipeline}")
-            else:
-                self.log.info(f"Received new AOS pipeline: {aosOverride} = a no-op as it was already set")
+        updateFromKey("RUBINTV_CONTROL_AOS_PIPELINE", "currentAosPipeline")
+
+        updateFromKey("RUBINTV_CONTROL_AOS_FAM_PIPELINE", "currentAosFamPipeline")
 
         _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
         if _processingMode is not None:
@@ -824,6 +899,11 @@ class HeadProcessController:
                 targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
                 targetPipelineGraph = self.pipelines["ISR"].graphs["step1a"]
                 who = "ISR"
+            case "cwfs":
+                self.log.info(f"Sending {expRecord.id} {imageType=} for step1a FAM processing")
+                targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
+                targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
+                who = "AOS"
             case _:  # all non-calib, properly headered images
                 self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
                 targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
@@ -859,48 +939,51 @@ class HeadProcessController:
             targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
             who = "ISR"
 
-        detectorPairs = self.focalPlaneControl.getIntraExtraFocalPairs()
+        detectorIds = self.focalPlaneControl.EXTRA_FOCAL_IDS + self.focalPlaneControl.INTRA_FOCAL_IDS
 
         payloads: dict[int, Payload] = {}
-        for det1, det2 in detectorPairs:
-            dataId1 = DataCoordinate.standardize(expRecord.dataId, detector=det1)
-            dataId2 = DataCoordinate.standardize(expRecord.dataId, detector=det2)
-            self.log.debug("AOS paired dispatch:")
-            self.log.debug(f"{dataId1=}")
-            self.log.debug(f"{dataId2=}")
+        for detId in detectorIds:
+            dataId = DataCoordinate.standardize(expRecord.dataId, detector=detId)
             payload = Payload(
-                dataIds=[dataId1, dataId2],
+                dataId,
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
             )
-            # TODO: indexing payloads by only det1 wastes half the worker pool
-            # the way it's currently done. If this stays the way we do things,
-            # fix this.
-            payloads[det1] = payload
+            payloads[detId] = payload
 
-        # TODO: Again just key on the first of the pair for downstream - the
-        # count needs to be the number of processings which will finish so
-        # that's 4 not 8 and there's no need to compoundify them as they're
-        # only counted in dispatchGatherSteps
-        self.redisHelper.writeDetectorsToExpect(
-            self.instrument, expRecord.id, list(d[0] for d in detectorPairs), "AOS"
-        )
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
         # AOS is running ISR (for now, at least) so we need to write that we
         # expected the detectors from that processing too.
-        cwfsDets = list(self.focalPlaneControl.CWFS_IDS)
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, cwfsDets, "ISR")
+        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "ISR")
         self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
-        # NOTE: probably want a segregated pool for AOS processing when we go
-        # to dynamic allocation - SFM shouldn't be able to bog down the AOS
-        # pool
         self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
 
         # TODO: Consider whether this should move to the expRecord getting
         # function, or the event loop, or if this is OK. If this really does
         # fire for every image this is probably fine.
         writeExpRecordMetadataShard(expRecord, aosShardPath)
+
+    def isBetweenFamPair(self) -> bool:
+        """Check if we've received an intra-focal FAM image and not yet
+        dispatched the extra-focal.
+
+        This is required in order to reject RubinTV control changes between FAM
+        images, which would result in the intra and extra focal images being
+        processed with different pipelines.
+
+        Returns
+        -------
+        isBetweenPair : `bool`
+            `True` if the last processed exposure was an intra-focal FAM image.
+        """
+        record = self._lastProcessedExp
+        if record is None:
+            return False
+        if isWepImage(record) and "intra" in record.reason.lower():
+            return True
+        return False
 
     def doDetectorFanout(self, expRecord: DimensionRecord) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -910,8 +993,20 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The expRecord to process.
         """
-        # AOS first
-        self.doAosFanout(expRecord)
+        self._lastProcessedExp = expRecord  # for making sure we don't switch FAM pipelines between exposures
+        isFam = isWepImage(expRecord)
+        instrument = expRecord.instrument
+        assert instrument == self.instrument, f"instrument {instrument} does not match head node instance!"
+
+        if not isFam:  # dispatch corner chips for normal images first
+            self.doAosFanout(expRecord)
+        else:  # write a shard to the AOS page for the FAM image
+            aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+            writeExpRecordMetadataShard(expRecord, aosShardPath)
+            self.log.info(f"Sending {expRecord.id} to {self.currentAosFamPipeline} pipeline")
+            # record pipeline config so the step1b dispatch knows what the
+            # active pipeline was
+            self.redisHelper.recordAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -919,21 +1014,22 @@ class HeadProcessController:
         writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)  # all pipelines contain an ISR step
 
         detectorIds: list[int] = []
-        nEnabled = None
+        nEnabled: int | None = None
         if self.focalPlaneControl is not None:  # only LSSTCam has a focalPlaneControl at present
-            # excludeCwfs=True if we sent them to AOS
+            # excludeCwfs=True as we've already done that, and they're ignored
+            # for FAM images
             detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
             nEnabled = len(detectorIds)
         else:
-            results = set(self.butler.registry.queryDataIds(["detector"], instrument=self.instrument))
+            results = set(self.butler.registry.queryDataIds(["detector"], instrument=instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, who)
+        self.redisHelper.writeDetectorsToExpect(instrument, expRecord.id, detectorIds, "ISR")
+        self.redisHelper.writeDetectorsToExpect(instrument, expRecord.id, detectorIds, who)
 
         namedPattern = self.focalPlaneControl.currentNamedPattern if self.focalPlaneControl else None
         self.log.info(
-            f"Fanning {expRecord.instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
+            f"Fanning {instrument}-{expRecord.day_obs}-{expRecord.seq_num}"
             f" out to {len(detectorIds)} detectors {'' if nEnabled is None else f'of {nEnabled} enabled'} "
             f"{' with named pattern ' + namedPattern if namedPattern else ''}"
         )
@@ -942,105 +1038,14 @@ class HeadProcessController:
         for detectorId in detectorIds:
             dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
             payload = Payload(
-                dataIds=[dataId],
+                dataId=dataId,
                 pipelineGraphBytes=targetPipelineBytes,
                 run=self.outputRun,
                 who=who,
             )
             payloads[detectorId] = payload
 
-        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
-
-    def doDonutPairFanout(self) -> None:
-        """Send the expRecord out for processing based on current selection.
-
-        This is ONLY for full-focal-plane intra-focal, extra-focal pairs where
-        the processing is triggered by OCS (vis OCPS sending a redis signal).
-
-        It appropriates the entire cluster for the processing of these pairs,
-        so uses the SFM worker pool, and the AOS pipeline graph.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The expRecord to process.
-        """
-        donutPair = self.redisHelper.checkForOcsDonutPair(self.instrument)
-        if donutPair is None:
-            return
-
-        self.log.info(f"Found a donut pair trigger for {donutPair}")
-        (record1,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[0])
-        (record2,) = self.butler.registry.queryDimensionRecords("exposure", exposure=donutPair[1])
-        aosShardPath = getShardPath(self.locationConfig, record1, isAos=True)
-        writeExpRecordMetadataShard(record1, aosShardPath)
-        writeExpRecordMetadataShard(record2, aosShardPath)
-
-        expRecords = [record1, record2]
-
-        # define visits here for the edge case that the donut pair
-        # signal arrives before the getNewExposureAndDefineVisit
-        # call in the main loop
-        defineVisit(self.butler, record1)
-        defineVisit(self.butler, record2)
-
-        # just some basic sanity checking
-        instruments = list(set([expRecord.instrument for expRecord in expRecords]))
-        assert len(instruments) == 1, f"Expected all expRecords to have same instrument, got {instruments=}"
-        instrument = instruments[0]
-        assert instrument == self.instrument, "Expected expRecords to make this head node instrument"
-
-        self.log.info(f"Sending {[r.id for r in expRecords]} to {self.currentAosFamPipeline} pipeline")
-        targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
-        targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
-        # record pipeline config via the first id for interoperability with
-        # CWFS processing. This is just so the step1b dispatch knows what the
-        # active pipeline was
-        self.redisHelper.recordAosPipelineConfig(self.instrument, record1.id, self.currentAosFamPipeline)
-
-        # deliberately do NOT set isAos=True here because we want this written
-        # to the main table, not the AOS page on RubinTV
-        for expRecord in expRecords:
-            shardPath = getShardPath(self.locationConfig, expRecord)
-            writeIsrConfigShard(expRecord, targetPipelineGraph, shardPath)
-
-        assert self.focalPlaneControl is not None  # just for mypy
-        # excludeCwfs because they get normal fanout to CWFS pipelines
-        detectorIds = self.focalPlaneControl.getEnabledDetIds(excludeCwfs=True)
-
-        identifier = "+".join(str(r.id) for r in expRecords)
-        self.redisHelper.writeDetectorsToExpect(self.instrument, identifier, detectorIds, "AOS")
-        for expRecord in expRecords:
-            # send expect signal with who=ISR for single expIds as these are
-            # for the focal plane mosaicing, and send above with who=AOS as
-            # + joined above, as this is the real dispatch
-            self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, detectorIds, "ISR")
-
-        dataIds: dict[int, list[DataCoordinate]] = {}
-        for detectorId in detectorIds:
-            dataIds[detectorId] = []
-            for expRecord in expRecords:
-                dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
-                dataIds[detectorId].append(dataId)
-
-        payloads: dict[int, Payload] = {}
-        for detectorId in detectorIds:
-            payloads[detectorId] = Payload(
-                dataIds=dataIds[detectorId],
-                pipelineGraphBytes=targetPipelineBytes,
-                run=self.outputRun,
-                who="AOS",
-            )
-
-        dayObs = expRecords[0].day_obs
-        self.log.info(
-            f"Fanning out {instrument}-{dayObs}-{[r.seq_num for r in expRecords]} for"
-            f" {len(detectorIds)} detectors"
-        )
-
-        # SFM_WORKER set here deliberately as we're appropriating the entire
-        # cluster for this processing.
-        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)
+        self._dispatchPayloads(payloads, PodFlavor.SFM_WORKER)  # FAM images go to SFM workers too
 
     def _dispatchPayloads(self, payloads: dict[int, Payload], podFlavor: PodFlavor) -> None:
         """Distribute payloads to available workers based on detector IDs.
@@ -1083,7 +1088,7 @@ class HeadProcessController:
 
         sentToBusy = 0
         sentToFree = 0
-        notDispatched = 0
+        failures: list[Payload] = []
         for detectorId, payload in payloads.items():
             matchingFreeWorkers = [w for w in freeWorkers if w.detectorNumber == detectorId]
             if matchingFreeWorkers:
@@ -1101,7 +1106,7 @@ class HeadProcessController:
                     self.redisHelper.enqueuePayload(payload, worker)
                     continue
                 else:
-                    notDispatched += 1
+                    failures.append(payload)
                     self.log.error(
                         f"No workers (not even busy ones) available for {detectorId=},"
                         f" cannot dispatch process for {payload.who}",
@@ -1113,8 +1118,16 @@ class HeadProcessController:
         self.log.info(
             f"Sent {sentToFree} {mixed}payloads to free workers, {sentToBusy} to busy workers for {whos}"
         )
-        if notDispatched:
-            self.log.error(f"Failed to dispatch {notDispatched} {mixed}payloads for {whos}")
+        for failure in failures:
+            self.log.error(f"Failed to dispatch {failure.dataId} payload for {whos}")
+            if "detector" in failure.dataId:
+                det = int(failure.dataId["detector"])
+                expId = getExpIdOrVisitId(failure.dataId)
+                # who=ISR is always set to expect in addition, so always
+                # remove in addition
+                pipelines = ["ISR"] if failure.who == "ISR" else ["ISR", failure.who]
+                for who in pipelines:
+                    self.redisHelper.removeDetectorsToExpect(self.instrument, expId, [det], who)
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -1135,7 +1148,7 @@ class HeadProcessController:
             return
 
         # who value doesn't matter for one-off processing, maybe SFM instead?
-        payload = Payload(dataIds=[expRecord.dataId], pipelineGraphBytes=b"", run="", who="ONE_OFF")
+        payload = Payload(dataId=expRecord.dataId, pipelineGraphBytes=b"", run="", who="ONE_OFF")
         self.redisHelper.enqueuePayload(payload, worker)
 
     def getNewExposureAndDefineVisit(self) -> DimensionRecord | None:
@@ -1185,7 +1198,7 @@ class HeadProcessController:
         )
 
         # TODO: this abuse of Payload really needs improving
-        payload = Payload([dataCoord], b"", dataProduct, who="SFM")
+        payload = Payload(dataCoord, b"", dataProduct, who="SFM")
         worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
         if worker is None:
             self.log.warning(f"No workers AT ALL for {dataProduct} mosaic - should be impossible, check k8s")
@@ -1210,16 +1223,15 @@ class HeadProcessController:
         if not processedIds:
             return False
 
-        completeIds: list[str] = []
-        for idStr in processedIds:
-            # idStr is "<int>" or "<int>+<int"> for AOS pairs
-            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, idStr)
-            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, idStr, who))
+        completeIds: list[int] = []
+        for expId in processedIds:
+            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, expId)
+            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expId, who))
             if nFinished >= nExpected:
-                completeIds.append(idStr)
+                completeIds.append(expId)
             if nFinished > nExpected:
                 self.log.warning(
-                    f"Found {nFinished} step1as finished for {idStr=}, but expected {nExpected} for {who=}"
+                    f"Found {nFinished} step1as finished for {expId=}, but expected {nExpected} for {who=}"
                 )
 
         if not completeIds:
@@ -1231,26 +1243,19 @@ class HeadProcessController:
 
         self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
 
-        for idStr in completeIds:
-            # idStr is a list of visitIds as a string with a + separator if AOS
-            # else idStr is a visit int as a string
-            intIds = [int(_id) for _id in idStr.split("+")]
-            self.log.debug(f"Found {len(intIds)} complete visits for {who} dispatch {intIds=}, {idStr}")
-            dataCoords = [
-                DataCoordinate.standardize(
-                    instrument=self.instrument, visit=intId, universe=self.butler.dimensions
-                )
-                for intId in intIds
-            ]
+        for expId in completeIds:
+            dataCoord = DataCoordinate.standardize(
+                instrument=self.instrument, visit=expId, universe=self.butler.dimensions
+            )
 
             if who == "AOS":  # get the full AOS_XXX name for this exposure
                 # Note: does not break the paired-processing because we always
                 # record the config via the first id. Therefore always retrieve
                 # the config for the first id.
-                whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, intIds[0])
+                whoToUse = self.redisHelper.getAosPipelineConfig(self.instrument, expId)
                 # whoToUse takes values like "AOS_DANISH" or "AOS_FAM_TIE"
                 if whoToUse is None:
-                    self.log.warning(f"Failed to dispatch {who} for {idStr=}! This shouldn't happen")
+                    self.log.warning(f"Failed to dispatch {who} for {expId=}! This shouldn't happen")
                     continue
             else:
                 whoToUse = who
@@ -1258,16 +1263,16 @@ class HeadProcessController:
             if self.pipelines[whoToUse].graphBytes.get("step1b") is not None:  # no step1b dispatch for ISR
                 visitRecord = None
                 try:  # not used, but checks whether this payload is even usable downstream
-                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoords[0])
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoord)
                 except ValueError:
                     # note: do not ``continue`` here, because there's other
                     # bits that still need to run later on - this is why we use
                     # a visitRecord=None sentinel instead
-                    self.log.info(f"Skipping doomed step1b dispatch for {idStr=} due to lack of visit record")
+                    self.log.info(f"Skipping doomed step1b dispatch for {expId=} due to lack of visit record")
 
                 if visitRecord is not None:
                     payload = Payload(
-                        dataIds=dataCoords,
+                        dataId=dataCoord,
                         pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
                         run=self.outputRun,
                         who=who,
@@ -1277,20 +1282,20 @@ class HeadProcessController:
                         self.log.warning(f"No worker available for {who} step1b")
                         return False
                     self.log.info(
-                        f"Dispatching step1b for {who} with complete inputs: {dataCoords} to {worker}"
+                        f"Dispatching step1b for {whoToUse} with complete inputs: {dataCoord} to {worker}"
                     )
                     self.redisHelper.enqueuePayload(payload, worker)
                     if who == "AOS":
                         intraId = visitRecord.id  # got from dataCoords[0] above so is intra
                         numZernikesFinished = self.redisHelper.getNumDetectorLevelFinished(
-                            self.instrument, "step1a", who, idStr
+                            self.instrument, "step1a", who, expId
                         )
                         self.redisHelper.sendZernikeCountToMTAOS(
                             self.instrument, intraId, numZernikesFinished
                         )
 
-            self.log.debug(f"Removing step1a finished counter for {idStr=}")
-            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, idStr)
+            self.log.debug(f"Removing step1a finished counter for {expId=}")
+            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, expId)
 
             # never dispatch this incomplete because it relies on a specific
             # detector having finished. It might have failed, but that's OK
@@ -1301,7 +1306,7 @@ class HeadProcessController:
                 # images, and if you used dataId=dataCoords[0] that will fail
                 # if the visit isn't defined.
                 (expRecord,) = self.butler.registry.queryDimensionRecords(
-                    "exposure", exposure=dataCoords[0]["visit"]
+                    "exposure", exposure=dataCoord["visit"]
                 )
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS" and who != "ISR":
@@ -1314,9 +1319,8 @@ class HeadProcessController:
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
             if who == "AOS":
-                for dataCoord in dataCoords:
-                    (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
-                    self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
+                self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 
         return True  # we sent something out
 
@@ -1393,7 +1397,7 @@ class HeadProcessController:
 
         for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
             # TODO: this abuse of Payload really needs improving
-            payload = Payload([dataId], b"", dataProduct, who="SFM")
+            payload = Payload(dataId, b"", dataProduct, who="SFM")
             worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
             if worker is None:
                 self.log.error(f"No free workers available for {dataProduct} mosaic")
@@ -1466,15 +1470,9 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
-                if not isWepImage(expRecord) or self.instrument == "LATISS":  # process CWFS image on LATISS
-                    self.doDetectorFanout(expRecord)
+                self.doDetectorFanout(expRecord)
                 if expRecord.can_see_sky and self.instrument == "LSSTCam":
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.GUIDER_WORKER)
-
-            try:
-                self.doDonutPairFanout()  # checks for pair signal and dispatches
-            except Exception as e:
-                self.log.exception(f"Failed during of donut PAIR fanout: {e}")
 
             # for now, only dispatch to step1b once things are complete because
             # there is some subtlety in the dispatching incomplete things

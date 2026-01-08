@@ -115,9 +115,17 @@ def conditional_redirect(tee_output, f_stdout, f_stderr, log_handler, root_logge
     if tee_output:
         stdout = sys.stdout
         stderr = sys.stderr
+
+        # Save existing handlers and remove them to prevent duplication
+        existing_handlers = root_logger.handlers[:]
+        for handler in existing_handlers:
+            root_logger.removeHandler(handler)
+
         sys.stdout = Tee(stdout, f_stdout)
         sys.stderr = Tee(stderr, f_stderr)
-        console_handler = logging.StreamHandler(sys.stdout)
+
+        # Console handler should write to original stdout, not the tee
+        console_handler = logging.StreamHandler(stdout)
         log_handler = LoggingTee(log_handler, console_handler)
         root_logger.addHandler(log_handler)
         try:
@@ -126,6 +134,9 @@ def conditional_redirect(tee_output, f_stdout, f_stderr, log_handler, root_logge
             sys.stdout = stdout
             sys.stderr = stderr
             root_logger.removeHandler(log_handler)
+            # Restore original handlers
+            for handler in existing_handlers:
+                root_logger.addHandler(handler)
     else:
         with contextlib.redirect_stdout(f_stdout), contextlib.redirect_stderr(f_stderr):
             yield

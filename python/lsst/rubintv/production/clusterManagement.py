@@ -187,21 +187,20 @@ class ClusterManager:
 
             try:
                 payload = Payload.from_json(item, self.butler)
-                dataIds = payload.dataIds
+                dataId = payload.dataId
 
                 # Extract the most relevant ID info from each dataId
                 id_parts = []
-                for dataId in dataIds:
-                    # Try different dimension identifiers in order of
-                    # preference
-                    for dim in ["exposure", "visit"]:
-                        if dim in dataId.required:
-                            id_parts.append(str(dataId.required[dim]))
-                            break
-                    else:
-                        # If none of the preferred dimensions exist, use the
-                        # string representation
-                        id_parts.append(str(dataId))
+                # Try different dimension identifiers in order of
+                # preference
+                for dim in ["exposure", "visit"]:
+                    if dim in dataId.required:
+                        id_parts.append(str(dataId.required[dim]))
+                        break
+                else:
+                    # If none of the preferred dimensions exist, use the
+                    # string representation
+                    id_parts.append(str(dataId))
 
                 dataIdInfo = "+".join(id_parts)
                 who = payload.who
@@ -789,16 +788,10 @@ class ClusterManager:
             A set of pods that are inaccessible to the head node, i.e. not used
             in the current setup.
         """
-        # the extra-focal AOS pods don't get any work while
-        # things are run in serial - work runs on the intra-focal
-        # indexed workers
-        pods = status.flavorStatuses[PodFlavor.AOS_WORKER].workers
-        inaccessible = {p for p in pods if p.detectorNumber in self.focalPlaneControl.EXTRA_FOCAL_IDS}
-
         # right now the SFM workers are done //205 not //189
         # so the pods with detectorNumber between 189-205 are never used
         pods = status.flavorStatuses[PodFlavor.SFM_WORKER].workers
-        inaccessible |= {p for p in pods if p.detectorNumber is not None and p.detectorNumber >= 189}
+        inaccessible = {p for p in pods if p.detectorNumber is not None and p.detectorNumber >= 189}
 
         if onlyFreeWorkers:
             # if we only want free pods, filter out the busy ones

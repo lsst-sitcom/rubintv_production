@@ -4,6 +4,8 @@ import time
 t0 = time.time()
 
 from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
+from lsst.rubintv.production.payloads import Payload  # noqa: E402
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.utils import getAutomaticLocationConfig  # noqa: E402
 
@@ -36,20 +38,34 @@ where = (
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 4, f"Expected 4 records, got {len(records)}"
+records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))  # always dispatch in order
+
+performancePod = PodDetails(
+    instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None
+)
+
+podsOffline = True
+while podsOffline:
+    workers = redisHelper.getAllWorkers(instrument=instrument, podFlavor=PodFlavor.SFM_WORKER)
+    podsOffline = len(workers) < 8
+    if not podsOffline:
+        print("Waiting for SFM pods to come online...")
+        time.sleep(1)
 
 for record in records:
     assert isinstance(record, DimensionRecord)
     redisHelper.pushNewExposureToHeadNode(record)  # let the SFM go first
     redisHelper.pushToButlerWatcherList(instrument, record)
+    time.sleep(record.exposure_time)
+
+    # queue everything up for performance monitoring once that spins up
+    # that comes as a 2nd round, so only starts once everything else is over
+    # so it's fine to just enqueue it all right now
+    payload = Payload(record.dataId, b"", "", who="")
+    redisHelper.enqueuePayload(payload, performancePod)
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
-
-# assert isinstance(toPush, DimensionRecord)
-# print(f"Pushing expId={toPush.id} for {toPush.instrument} for processing")
-# # this is what the butlerWatcher does for each new record
-# redisHelper.pushNewExposureToHeadNode(toPush)  # let the SFM go first
-# redisHelper.pushToButlerWatcherList(instrument, toPush)
 
 time.sleep(2)  # make sure the head node has done the dispatch of the SFM image
 

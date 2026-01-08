@@ -211,8 +211,7 @@ class Plotter:
             How to wait for data products to land before giving up and plotting
             what we have.
         """
-        dataId = payload.dataIds[0]
-        assert len(payload.dataIds) == 1, "Expected only one dataId - plotting doesn't support multiple"
+        dataId = payload.dataId
         dataProduct = payload.run  # TODO: this really needs improving
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         self.log.info(f"Making plots for {expRecord.dataId}")

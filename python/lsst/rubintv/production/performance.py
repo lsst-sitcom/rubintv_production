@@ -29,7 +29,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Iterable
 
 import matplotlib.dates as mdates
@@ -38,6 +38,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
+from lsst.daf.butler import MissingDatasetTypeError
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
@@ -45,12 +46,12 @@ from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, makePlotFile, writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputCollection, makePlotFile, runningCI, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
-    from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
+    from lsst.daf.butler import Butler, ButlerLogRecords, DatasetRef, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
 
     from .payloads import Payload
@@ -340,6 +341,9 @@ def plotGantt(
         and tr.taskName not in ignoreTasks
     ]
     shutterClose: datetime = expRecord.timespan.end.utc.to_datetime()
+    if runningCI():
+        shutterClose = min(tr.startTimeOverall for tr in valid if tr.startTimeOverall is not None)
+        shutterClose = shutterClose - timedelta(seconds=10)  # to make the plots legible in CI
     shutterCloseNum = mdates.date2num(shutterClose)
 
     for i, tr in enumerate(valid):
@@ -455,6 +459,9 @@ def calcTimeSinceShutterClose(
     if startOrEnd not in ["start", "end"]:
         raise ValueError(f"Invalid option {startOrEnd=}")
 
+    if runningCI():  # pretend old data is recent for CI so plots are legible
+        return 10.0
+
     if taskResult.startTimeOverall is None:  # if it has a start it has an end, and vice versa
         log = logging.getLogger("lsst.rubintv.production.performance.calcTimeSinceShutterClose")
         log.warning(f"Task {taskResult.taskName} has no {startOrEnd} time")
@@ -501,7 +508,14 @@ class TaskResult:
     failures: dict[int | None, str]
     logs: dict[int | None, ButlerLogRecords]
 
-    def __init__(self, butler: Butler, record: DimensionRecord, task: TaskNode, debug: bool = False) -> None:
+    def __init__(
+        self,
+        butler: Butler,
+        record: DimensionRecord,
+        task: TaskNode,
+        locationConfig: LocationConfig,
+        debug: bool = False,
+    ) -> None:
         self.record = record
         self.task = task
         self.taskName = task.label
@@ -513,13 +527,24 @@ class TaskResult:
         self.logs: dict[int | None, ButlerLogRecords] = {}
 
         where = makeWhere(task, record)
-        dRefs = list(
-            butler.registry.queryDatasets(
+        dRefs: list[DatasetRef] = []
+        if runningCI():  # must just use the tip of the chain for CI runs
+            collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
+        else:  # processing old data in production envs means we need to look down the chain
+            collection = locationConfig.getOutputChain("LSSTCam")
+        assert collection is not None, "Collection should not be None, this isn't tested by scons"
+        try:
+            dRefs = butler.query_datasets(
                 f"{self.taskName}_log",
-                findFirst=True,
+                collections=[collection],
+                find_first=True,
                 where=where,
+                explain=False,
             )
-        )
+        except MissingDatasetTypeError:
+            # this should only happen in CI or if a task has *never* been run
+            # in the repo (otherwise it's just an empty query result)
+            return
 
         if debug:
             print(f"Loading logs for {self.taskName=} with {where=} from {len(dRefs)=} dRefs")
@@ -799,6 +824,7 @@ class PerformanceBrowser:
                 butler=self.butler,
                 record=record,
                 task=task,
+                locationConfig=self.locationConfig,
             )
             data[taskName] = taskResult
         self.data[expRecord] = data
@@ -1027,7 +1053,7 @@ class PerformanceMonitor(BaseButlerChannel):
         payload : `Payload`
             The payload containing the exposure information.
         """
-        dataId = payload.dataIds[0]
+        dataId = payload.dataId
         record = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]
@@ -1173,9 +1199,10 @@ class PerformanceMonitor(BaseButlerChannel):
         )
 
 
-def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
+def getEffectiveReadoutDuration(client: EfdClient, expRecord: DimensionRecord) -> float:
     """
-    Get the end readout time for an exposure.
+    Get the time taken to read out the exposure, as seconds since end of
+    exposure.
 
     Parameters
     ----------
@@ -1194,13 +1221,14 @@ def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
     return timestamp - expRecord.timespan.end.unix_tai
 
 
-def getIngestTimes(
+def getIngestTiming(
     client: EfdClient,
     expRecord: DimensionRecord,
     key="private_kafkaStamp",
 ) -> tuple[dict[str, float], dict[str, float]]:
     """
-    Get ingestion times for wavefront and science sensors.
+    Get ingestion times for wavefront and science sensors, as seconds since the
+    end of the exposure.
 
     Parameters
     ----------
@@ -1214,9 +1242,9 @@ def getIngestTimes(
     Returns
     -------
     wfTimes : `dict`
-        Dictionary of wavefront sensor ingestion times.
+        Dictionary of wavefront sensor ingestion times since shutter close.
     sciTimes : `dict`
-        Dictionary of science sensor ingestion times.
+        Dictionary of science sensor ingestion times since shutter close.
     """
     oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
 
@@ -1280,13 +1308,13 @@ def calculateAosMetrics(
     metrics : `AosMetrics`
         The calculated metrics.
     """
-    wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
+    wfTimes, sciTimes = getIngestTiming(efdClient, expRecord)
 
     calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
     if calcZernikesTaskName is None:
         raise ValueError("No Zernike calculating task found in task results")
 
-    readoutDelay = getEndReadoutTime(efdClient, expRecord)
+    readoutDelay = getEffectiveReadoutDuration(efdClient, expRecord)
     zernikeDelivery = taskResults[calcZernikesTaskName].endTimeAfterShutterClose
     isrStart = taskResults["isr"].startTimeAfterShutterClose
     wfIngestStart = min(wfTimes.values())
@@ -1523,6 +1551,10 @@ def plotAosTaskTimings(
     )
 
     t0 = expRecord.timespan.end.utc.to_datetime().astimezone(timezone.utc)
+    if runningCI():  # to make the plots legible in CI
+        # pretend that the shutter closed 10s before the earliest task start
+        t0 = min(tr.startTimeOverall for tr in results.values() if tr.startTimeOverall is not None)
+        t0 = t0 - timedelta(seconds=10)  # to make the plots legible in CI
 
     detMap = {det: i for i, det in enumerate(detectorList)}
     bottoms: list[float] = [i - barHalf for i in range(len(detectorList))]

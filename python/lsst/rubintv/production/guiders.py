@@ -207,10 +207,9 @@ def getConsDbValues(
         except (KeyError, IndexError):
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
-    expTime = float(metrics["exptime"].values[0])
     for key, (value, _type) in CONSDB_KEY_MAP_EXPTIME_SCALED.items():
         try:
-            scaledValue = _type(metrics[value].values[0]) * expTime
+            scaledValue = _type(metrics[value].values[0]) * totalExpTime
             consDbValues[key] = scaledValue
         except (KeyError, IndexError):
             _LOG.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
@@ -277,7 +276,7 @@ class GuiderWorker(BaseButlerChannel):
         )
         self.detectorIds: tuple[int, ...] = tuple([camera[d].getId() for d in self.detectorNames])
 
-    def getRubinTvTableEntries(self, metrics: DataFrame) -> dict[str, str]:
+    def getRubinTvTableEntries(self, metrics: DataFrame, expTime: float) -> dict[str, str]:
         """Map the metrics to the RubinTV table entry names.
 
         Parameters
@@ -297,7 +296,6 @@ class GuiderWorker(BaseButlerChannel):
             except (KeyError, IndexError):
                 self.log.warning(f"Key {key} not found in metrics DataFrame columns or has no values")
 
-        expTime = float(metrics["exptime"].values[0])
         for key, value in RUBINTV_KEY_MAP_EXPTIME_SCALED.items():
             try:
                 scaledValue = float(metrics[key].values[0]) * expTime
@@ -346,7 +344,7 @@ class GuiderWorker(BaseButlerChannel):
 
     def callback(self, payload: Payload) -> None:
         """Callback function to be called when a new exposure is available."""
-        dataId = payload.dataIds[0]
+        dataId = payload.dataId
         record: DimensionRecord | None = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]
@@ -406,7 +404,8 @@ class GuiderWorker(BaseButlerChannel):
 
         metricsBuilder = GuiderMetricsBuilder(stars, guiderData.nMissingStamps)
         metrics = metricsBuilder.buildMetrics(guiderData.expid)
-        rubinTVtableItems.update(self.getRubinTvTableEntries(metrics))
+        expTime = cast(float, guiderData.header["guider_duration"])
+        rubinTVtableItems.update(self.getRubinTvTableEntries(metrics, expTime))
 
         md = {record.seq_num: rubinTVtableItems}
         writeMetadataShard(self.shardsDirectory, record.day_obs, md)
