@@ -23,11 +23,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import astropy.units as u
 import numpy as np
+from astropy.coordinates import SkyCoord
 
 import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.atmospec.utils import isDispersedDataId
+from lsst.obs.lsst.translators.lsst import SIMONYI_LOCATION
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.extras.slewTimingSimonyi import plotExposureTiming
 from lsst.summit.utils import ConsDbClient
@@ -362,7 +365,7 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: offsets}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
-    def publishEclipticCoords(
+    def publishExtraCoords(
         self,
         expRecord: DimensionRecord,
     ) -> None:
@@ -375,12 +378,19 @@ class OneOffProcessor(BaseButlerChannel):
 
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
 
-        eclipticData = {
+        data = {
             "Ecliptic Longitude (deg)": f"{lambda_:.2f}",
             "Ecliptic Latitude (deg)": f"{beta:.2f}",
         }
 
-        md = {expRecord.seq_num: eclipticData}
+        coord = SkyCoord(ra=raDeg * u.deg, dec=decDeg * u.deg, frame="icrs")
+        lst = expRecord.timespan.begin.sidereal_time("apparent", longitude=SIMONYI_LOCATION.lon)
+        hourAngle = (lst - coord.ra).wrap_at(12 * u.hour)
+
+        data["Hour angle"] = f"{hourAngle!s}"
+        data["LST"] = f"{lst!s}"
+
+        md = {expRecord.seq_num: data}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
     def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord, stretch: str) -> None:
@@ -626,9 +636,9 @@ class OneOffProcessor(BaseButlerChannel):
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
 
-        self.log.info("Calculating ecliptic coords...")
-        self.publishEclipticCoords(expRecord)
-        self.log.info("Finished publishing ecliptic coords")
+        self.log.info("Calculating extra coords...")
+        self.publishExtraCoords(expRecord)
+        self.log.info("Finished publishing extra coords")
 
         if expRecord.instrument == "LATISS":
             self._doMountAnalysisAuxTel(expRecord)
