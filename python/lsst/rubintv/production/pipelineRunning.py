@@ -752,7 +752,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zkOcs = row["zk_deviation_OCS"]
             detector = row["detector"]
             zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
-            zkDense -= self.ofcData.y2_correction[detector]
+            zkDense -= self.ofcData.y2_correction[detector][: len(zkDense)]
             zkFwhm = convertZernikesToPsfWidth(zkDense)
             rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
 
