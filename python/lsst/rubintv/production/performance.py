@@ -29,28 +29,33 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Iterable
 
 import matplotlib.dates as mdates
 import numpy as np
+import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from lsst.daf.butler import MissingDatasetTypeError
+from lsst.rubintv.production.utils import getFilterColorName
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.utils.plotting import get_multiband_plot_colors
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, makePlotFile, writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputCollection, makePlotFile, runningCI, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
-    from lsst.daf.butler import Butler, ButlerLogRecords, DimensionRecord
+    from lsst.daf.butler import Butler, ButlerLogRecords, DatasetRef, DimensionRecord
     from lsst.pipe.base.pipeline_graph import TaskNode
 
     from .payloads import Payload
@@ -72,6 +77,10 @@ AOS_TASK_COLORS = [
     "#bcbd22",
     "#17becf",
 ]
+
+COLORMAP = get_multiband_plot_colors()
+COLORMAP["unknown"] = "#FDFDFD"  # very slightly off-white
+COLORMAP["white"] = "#FDFDFD"  # very slightly off-white
 
 
 def isVisitType(task: TaskNode) -> bool:
@@ -340,6 +349,9 @@ def plotGantt(
         and tr.taskName not in ignoreTasks
     ]
     shutterClose: datetime = expRecord.timespan.end.utc.to_datetime()
+    if runningCI():
+        shutterClose = min(tr.startTimeOverall for tr in valid if tr.startTimeOverall is not None)
+        shutterClose = shutterClose - timedelta(seconds=10)  # to make the plots legible in CI
     shutterCloseNum = mdates.date2num(shutterClose)
 
     for i, tr in enumerate(valid):
@@ -455,6 +467,9 @@ def calcTimeSinceShutterClose(
     if startOrEnd not in ["start", "end"]:
         raise ValueError(f"Invalid option {startOrEnd=}")
 
+    if runningCI():  # pretend old data is recent for CI so plots are legible
+        return 10.0
+
     if taskResult.startTimeOverall is None:  # if it has a start it has an end, and vice versa
         log = logging.getLogger("lsst.rubintv.production.performance.calcTimeSinceShutterClose")
         log.warning(f"Task {taskResult.taskName} has no {startOrEnd} time")
@@ -501,7 +516,14 @@ class TaskResult:
     failures: dict[int | None, str]
     logs: dict[int | None, ButlerLogRecords]
 
-    def __init__(self, butler: Butler, record: DimensionRecord, task: TaskNode, debug: bool = False) -> None:
+    def __init__(
+        self,
+        butler: Butler,
+        record: DimensionRecord,
+        task: TaskNode,
+        locationConfig: LocationConfig,
+        debug: bool = False,
+    ) -> None:
         self.record = record
         self.task = task
         self.taskName = task.label
@@ -513,13 +535,24 @@ class TaskResult:
         self.logs: dict[int | None, ButlerLogRecords] = {}
 
         where = makeWhere(task, record)
-        dRefs = list(
-            butler.registry.queryDatasets(
+        dRefs: list[DatasetRef] = []
+        if runningCI():  # must just use the tip of the chain for CI runs
+            collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
+        else:  # processing old data in production envs means we need to look down the chain
+            collection = locationConfig.getOutputChain("LSSTCam")
+        assert collection is not None, "Collection should not be None, this isn't tested by scons"
+        try:
+            dRefs = butler.query_datasets(
                 f"{self.taskName}_log",
-                findFirst=True,
+                collections=[collection],
+                find_first=True,
                 where=where,
+                explain=False,
             )
-        )
+        except MissingDatasetTypeError:
+            # this should only happen in CI or if a task has *never* been run
+            # in the repo (otherwise it's just an empty query result)
+            return
 
         if debug:
             print(f"Loading logs for {self.taskName=} with {where=} from {len(dRefs)=} dRefs")
@@ -799,6 +832,7 @@ class PerformanceBrowser:
                 butler=self.butler,
                 record=record,
                 task=task,
+                locationConfig=self.locationConfig,
             )
             data[taskName] = taskResult
         self.data[expRecord] = data
@@ -1027,7 +1061,7 @@ class PerformanceMonitor(BaseButlerChannel):
         payload : `Payload`
             The payload containing the exposure information.
         """
-        dataId = payload.dataIds[0]
+        dataId = payload.dataId
         record = None
         if "exposure" in dataId.dimensions:
             record = dataId.records["exposure"]
@@ -1173,9 +1207,10 @@ class PerformanceMonitor(BaseButlerChannel):
         )
 
 
-def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
+def getEffectiveReadoutDuration(client: EfdClient, expRecord: DimensionRecord) -> float:
     """
-    Get the end readout time for an exposure.
+    Get the time taken to read out the exposure, as seconds since end of
+    exposure.
 
     Parameters
     ----------
@@ -1194,13 +1229,14 @@ def getEndReadoutTime(client: EfdClient, expRecord: DimensionRecord) -> float:
     return timestamp - expRecord.timespan.end.unix_tai
 
 
-def getIngestTimes(
+def getIngestTiming(
     client: EfdClient,
     expRecord: DimensionRecord,
     key="private_kafkaStamp",
 ) -> tuple[dict[str, float], dict[str, float]]:
     """
-    Get ingestion times for wavefront and science sensors.
+    Get ingestion times for wavefront and science sensors, as seconds since the
+    end of the exposure.
 
     Parameters
     ----------
@@ -1214,9 +1250,9 @@ def getIngestTimes(
     Returns
     -------
     wfTimes : `dict`
-        Dictionary of wavefront sensor ingestion times.
+        Dictionary of wavefront sensor ingestion times since shutter close.
     sciTimes : `dict`
-        Dictionary of science sensor ingestion times.
+        Dictionary of science sensor ingestion times since shutter close.
     """
     oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
 
@@ -1280,13 +1316,13 @@ def calculateAosMetrics(
     metrics : `AosMetrics`
         The calculated metrics.
     """
-    wfTimes, sciTimes = getIngestTimes(efdClient, expRecord)
+    wfTimes, sciTimes = getIngestTiming(efdClient, expRecord)
 
     calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
     if calcZernikesTaskName is None:
         raise ValueError("No Zernike calculating task found in task results")
 
-    readoutDelay = getEndReadoutTime(efdClient, expRecord)
+    readoutDelay = getEffectiveReadoutDuration(efdClient, expRecord)
     zernikeDelivery = taskResults[calcZernikesTaskName].endTimeAfterShutterClose
     isrStart = taskResults["isr"].startTimeAfterShutterClose
     wfIngestStart = min(wfTimes.values())
@@ -1523,6 +1559,10 @@ def plotAosTaskTimings(
     )
 
     t0 = expRecord.timespan.end.utc.to_datetime().astimezone(timezone.utc)
+    if runningCI():  # to make the plots legible in CI
+        # pretend that the shutter closed 10s before the earliest task start
+        t0 = min(tr.startTimeOverall for tr in results.values() if tr.startTimeOverall is not None)
+        t0 = t0 - timedelta(seconds=10)  # to make the plots legible in CI
 
     detMap = {det: i for i, det in enumerate(detectorList)}
     bottoms: list[float] = [i - barHalf for i in range(len(detectorList))]
@@ -1583,3 +1623,256 @@ def plotAosTaskTimings(
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
     fig.subplots_adjust(bottom=0.14)
     return fig
+
+
+def getData(dayObs: int) -> pd.DataFrame:
+    mainTable = pd.read_json(f"/project/rubintv/LSSTCam/sidecar_metadata/dayObs_{dayObs}.json").T
+    mainTable = mainTable.sort_index()
+
+    performanceTable = pd.read_json(f"/project/rubintv/raPerformance/sidecar_metadata/dayObs_{dayObs}.json").T
+    performanceTable = performanceTable.sort_index()
+
+    overlap = mainTable.columns.intersection(performanceTable.columns)
+
+    for col in overlap:
+        if not mainTable[col].equals(performanceTable[col]):
+            raise ValueError(f"Column {col} differs between dataframes")
+
+    merged = mainTable.copy()
+    merged = mainTable.join(performanceTable.drop(columns=overlap))
+    return merged
+
+
+def unpackTimes(table: pd.DataFrame, key: str) -> list[float]:
+    values: list[float] = []
+
+    column = table[key].values
+    for rowValue in column:
+        if not isinstance(rowValue, dict):
+            continue
+        for k, v in rowValue.items():
+            if k == "DISPLAY_VALUE":
+                continue
+            time = float(v.split(" in ")[1])
+            values.append(time)
+
+    return values
+
+
+def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
+    s = slice(None)
+    YMAX = 150
+
+    onSkyMask = ~table["Image type"].isin(["bias", "dark", "flat"])
+    table = table[onSkyMask]
+    if table.empty or "calcZernikesTask max runtime" not in table.columns:
+        return False
+
+    # table.dropna(subset=["calcZernikesTask max runtime"], inplace=True)
+    table = table.dropna(subset=["calcZernikesTask max runtime"])
+    XMAX = max(table.index)
+    XMIN = min(table.index)
+
+    fig = make_figure(figsize=(12, 8))
+
+    # --- main + side-hist layout (shared Y, no whitespace) ---
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=(4, 1), wspace=0.0)
+    ax = fig.add_subplot(gs[0, 0])
+    axHist = fig.add_subplot(gs[0, 1], sharey=ax)
+
+    # --- explicit colors (so lines & hist match) ---
+    calcColor = "C0"
+    deliveryColor = "C1"
+    isrColor = "k"
+    gapColor = "red"
+
+    # --- main lines ---
+    ax.plot(
+        table.index[s],
+        table["calcZernikesTask max runtime"][s],
+        "-",
+        color=calcColor,
+        label="calcZernikes max runtime",
+    )
+    ax.plot(
+        table.index[s],
+        table["Zernike delivery time (shutter)"][s],
+        "-",
+        color=deliveryColor,
+        label="Zernike delivery",
+    )
+    ax.plot(
+        table.index[s],
+        table["ISR start time (shutter)"][s],
+        "-",
+        color=isrColor,
+        label="ISR start delay",
+    )
+
+    # --- vertical dotted lines for long gaps ---
+    mask = table["Time since previous exposure"][s] > 100
+    for index, bigGap in mask.items():
+        if bigGap:
+            ax.vlines(
+                index,
+                ymin=0,
+                ymax=YMAX,
+                linestyles=":",
+                alpha=0.2,
+                color=gapColor,
+                linewidth=1.5,
+            )
+
+    gapLegendHandle = Line2D(
+        [0],
+        [0],
+        linestyle=":",
+        linewidth=1.5,
+        alpha=0.5,
+        color=gapColor,
+        label="More than 100s since previous exposure",
+    )
+
+    # --- filter band shading ---
+    bandY0 = 125.0
+    bandY1 = 150.0
+    bandAlpha = 0.15
+
+    x = table.index[s].to_numpy()
+    filters = table["Filter"][s].to_numpy()
+
+    # boundaries between seqnums (assumes monotonically increasing)
+    edges = np.empty(x.size + 1, dtype=float)
+    edges[1:-1] = (x[:-1] + x[1:]) / 2
+    edges[0] = x[0] - (x[1] - x[0]) / 2
+    edges[-1] = x[-1] + (x[-1] - x[-2]) / 2
+
+    # draw one shaded region per contiguous filter run
+    start = 0
+    for i in range(1, x.size + 1):
+        if i == x.size or filters[i] != filters[start]:
+            filterName = filters[start]
+            band = "unknown"
+            if filterName.lower() == "unknown" or filterName is None:
+                filterName = "unknown"
+            else:
+                colorName = getFilterColorName(filterName)
+                if colorName:
+                    band = colorName.split("_")[0]
+            ax.fill_between(
+                [edges[start], edges[i]],
+                bandY0,
+                bandY1,
+                color=COLORMAP[band],
+                alpha=bandAlpha,
+                linewidth=0,
+                zorder=0,  # behind your lines
+            )
+            start = i
+
+    # side histogram projection (explicit matching colors; shared Y; no legend)
+    bins = list(np.linspace(0.0, YMAX, 60))
+
+    zernF = np.asarray(table["calcZernikesTask max runtime"][s].to_numpy(), dtype=float)
+    delivF = np.asarray(table["Zernike delivery time (shutter)"][s].to_numpy(), dtype=float)
+    isrF = np.asarray(table["ISR start time (shutter)"][s].to_numpy(), dtype=float)
+
+    zernF = zernF[np.isfinite(zernF)]
+    delivF = delivF[np.isfinite(delivF)]
+    isrF = isrF[np.isfinite(isrF)]
+
+    nZern, binEdges, _ = axHist.hist(
+        zernF,
+        bins=bins,
+        orientation="horizontal",
+        histtype="step",
+        linewidth=1.5,
+        color=calcColor,
+    )
+    binEdgesList = binEdges.tolist()
+    nDeliv, _, _ = axHist.hist(
+        delivF,
+        bins=binEdgesList,
+        orientation="horizontal",
+        histtype="step",
+        linewidth=1.5,
+        color=deliveryColor,
+    )
+    nIsr, _, _ = axHist.hist(
+        isrF,
+        bins=binEdgesList,
+        orientation="horizontal",
+        histtype="step",
+        linewidth=1.5,
+        color=isrColor,
+    )
+
+    # make it look "attached"
+    axHist.tick_params(axis="y", left=False, labelleft=False)
+    axHist.set_xlabel("Count")
+    axHist.set_xlim(left=0)
+    axHist.grid(False)
+
+    # --- modal-bin markers + labels (sorted by value; top = largest) ---
+    def modeFromHist(counts, binEdges):
+        maxIdx = int(np.argmax(counts))
+        return float((binEdges[maxIdx] + binEdges[maxIdx + 1]) / 2)
+
+    modeValues = [
+        ("calcZernikes", calcColor, modeFromHist(nZern, binEdges)),
+        ("Zernike delivery", deliveryColor, modeFromHist(nDeliv, binEdges)),
+        ("ISR start", isrColor, modeFromHist(nIsr, binEdges)),
+    ]
+
+    # draw dashed lines at each mode
+    for label, color, modeCentre in modeValues:
+        axHist.axhline(
+            modeCentre,
+            linestyle="--",
+            linewidth=1.2,
+            color=color,
+            alpha=0.8,
+        )
+
+    # place text labels around y~100, ordered by mode (largest at top)
+    modeValues.sort(key=lambda x: x[2], reverse=True)
+
+    baseY = 100.0
+    dy = 6.0
+    yPositions = [baseY + dy, baseY, baseY - dy]
+
+    xRight = axHist.get_xlim()[1]
+    for (label, color, modeCentre), y in zip(modeValues, yPositions):
+        axHist.text(
+            xRight * 0.98,
+            y,
+            f"{label} mode ≈ {modeCentre:.1f}s",
+            color=color,
+            ha="right",
+            va="center",
+            fontsize="small",
+            alpha=0.9,
+        )
+
+    # --- legend inside the RIGHT axis, allowed to spill left ---
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(gapLegendHandle)
+    labels.append(gapLegendHandle.get_label())
+    axHist.legend(
+        handles,
+        labels,
+        loc="upper right",
+        bbox_to_anchor=(1.0, 1.0),
+        borderaxespad=0.2,
+        frameon=True,
+    )
+
+    # --- labels / limits ---
+    ax.set_xlabel(f"Seq. num for dayObs {dayObsIntToString(dayObs)}")
+    ax.set_ylabel("Time (s)")
+    ax.set_ylim(0, YMAX)
+    ax.set_xlim(XMIN, XMAX)
+
+    fig.tight_layout()
+    fig.savefig(filename)
+    return True

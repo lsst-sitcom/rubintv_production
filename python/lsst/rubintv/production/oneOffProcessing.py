@@ -23,11 +23,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import astropy.units as u  # type: ignore[import-untyped]
 import numpy as np
+from astropy.coordinates import SkyCoord
 
 import lsst.daf.butler as dafButler
 from lsst.afw.geom import ellipses
 from lsst.atmospec.utils import isDispersedDataId
+from lsst.obs.lsst.translators.lsst import SIMONYI_LOCATION
 from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 from lsst.summit.extras.slewTimingSimonyi import plotExposureTiming
 from lsst.summit.utils import ConsDbClient
@@ -64,6 +67,7 @@ from .utils import (
     getFilterColorName,
     getRubinTvInstrumentName,
     getShardPath,
+    hasRaDec,
     isCalibration,
     makePlotFile,
     makeWitnessDetectorTitle,
@@ -362,25 +366,32 @@ class OneOffProcessor(BaseButlerChannel):
         md = {expRecord.seq_num: offsets}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
-    def publishEclipticCoords(
+    def publishExtraCoords(
         self,
         expRecord: DimensionRecord,
     ) -> None:
 
         raDeg = expRecord.tracking_ra
         decDeg = expRecord.tracking_dec
-        if raDeg is None or decDeg is None:
-            self.log.info(f"Skipping ecliptic coords for {expRecord.id} - no RA/Dec")
+        if not hasRaDec(expRecord):
+            self.log.info(f"Skipping ecliptic coords for {expRecord.id} - missing/non-finite RA/Dec")
             return
 
         lambda_, beta = calcEclipticCoords(raDeg, decDeg)
 
-        eclipticData = {
+        data = {
             "Ecliptic Longitude (deg)": f"{lambda_:.2f}",
             "Ecliptic Latitude (deg)": f"{beta:.2f}",
         }
 
-        md = {expRecord.seq_num: eclipticData}
+        coord = SkyCoord(ra=raDeg * u.deg, dec=decDeg * u.deg, frame="icrs")
+        lst = expRecord.timespan.begin.sidereal_time("apparent", longitude=SIMONYI_LOCATION.lon)
+        hourAngle = (lst - coord.ra).wrap_at(12 * u.hour)
+
+        data["Hour angle"] = f"{hourAngle!s}"
+        data["LST"] = f"{lst!s}"
+
+        md = {expRecord.seq_num: data}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
 
     def makeWitnessImage(self, visitImage: Exposure, expRecord: DimensionRecord, stretch: str) -> None:
@@ -626,15 +637,15 @@ class OneOffProcessor(BaseButlerChannel):
         self.calcTimeSincePrevious(expRecord)
         self.setFilterCellColor(expRecord)
 
-        self.log.info("Calculating ecliptic coords...")
-        self.publishEclipticCoords(expRecord)
-        self.log.info("Finished publishing ecliptic coords")
+        self.log.info("Calculating extra coords...")
+        self.publishExtraCoords(expRecord)
+        self.log.info("Finished publishing extra coords")
 
         if expRecord.instrument == "LATISS":
             self._doMountAnalysisAuxTel(expRecord)
         else:
             try:  # this often fails due to missing mount data, catch so other plots can still work
-                if expRecord.zenith_angle is not None:  # XXX hopefully we can remove this soon
+                if expRecord.zenith_angle is not None and hasRaDec(expRecord):
                     self._doMountAnalysisSimonyi(expRecord)
                 else:
                     self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
@@ -795,9 +806,7 @@ class OneOffProcessor(BaseButlerChannel):
             writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, expRecord.day_obs, md)
 
     def callback(self, payload: Payload) -> None:
-        dataId: DataCoordinate = payload.dataIds[0]
-        if len(payload.dataIds) > 1:
-            raise ValueError(f"Expected only one dataId, got {len(payload.dataIds)}")
+        dataId = payload.dataId
 
         match self.processingStage:
             case "expRecord":

@@ -26,16 +26,29 @@ import logging
 import os
 import time
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.time import Time
 from galsim.zernike import zernikeRotMatrix
 
-from lsst.pipe.base import ExecutionResources, PipelineGraph, QuantumGraph, TaskFactory
+from lsst.daf.butler import (
+    Butler,
+    DataCoordinate,
+    DatasetIdGenEnum,
+    DatasetRef,
+    DimensionGroup,
+    DimensionRecord,
+    LimitedButler,
+    Quantum,
+)
+from lsst.pipe.base import ExecutionResources, PipelineGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
+from lsst.pipe.base.blocking_limited_butler import BlockingLimitedButler
 from lsst.pipe.base.caching_limited_butler import CachingLimitedButler
+from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
+from lsst.pipe.base.trivial_quantum_graph_builder import TrivialQuantumGraphBuilder
 from lsst.summit.utils import ConsDbClient, computeCcdExposureId
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
@@ -47,13 +60,23 @@ from .payloads import pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
-from .utils import getShardPath, logDuration, raiseIf, writeMetadataShard
+from .utils import (
+    getCurrentOutputCollection,
+    getEquivalentDataId,
+    getExpIdOrVisitId,
+    getExpRecordFromId,
+    getShardPath,
+    logDuration,
+    raiseIf,
+    writeMetadataShard,
+)
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
     from lsst.afw.image import ExposureSummaryStats
-    from lsst.daf.butler import Butler, DataCoordinate, Quantum
+    from lsst.pipe.base.graph.quantumNode import QuantumNode
+    from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
     from .payloads import Payload
     from .podDefinition import PodDetails
@@ -82,6 +105,9 @@ TASK_ENDPOINTS_TO_TRACK = (
 NO_COPY_ON_CACHE: set = {"bias", "dark", "flat", "defects", "camera", "astrometry_camera"}
 PSF_GRADIENT_WARNING = 0.65
 PSF_GRADIENT_BAD = 0.85
+
+INTRA_IDS = (192, 196, 200, 204)
+EXTRA_IDS = (191, 195, 199, 203)
 
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
@@ -168,7 +194,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.podDetails = podDetails
 
-        self.runCollection: str | None = None
+        self.runCollection: str = "uninitialized!"
         self.cachingButler = makeCachingLimitedButler(butler, self.allGraphs)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
@@ -208,6 +234,237 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         # add any necessary data-driven logic here to choose if we process
         return True
 
+    def doDropQuantum(self, node: QuantumNode) -> bool:
+        taskName = node.task_node.label
+        dataCoord = node.quantum.dataId
+        assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"  # for mypy
+        if "calczernikes" in taskName.lower():
+            if "detector" in dataCoord and dataCoord["detector"] in INTRA_IDS:
+                # TODO: need to not drop this for unpaired runs
+                self.log.info(f"Dropping unpaired calcZernikes quantum for {dataCoord}")
+                return True
+        return False
+
+    def finishAosQgBuilder(
+        self,
+        payload: Payload,
+        pipelineGraph: PipelineGraph,
+        expRecord: DimensionRecord,
+        dataIds: dict[DimensionGroup, DataCoordinate],
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
+        """Get any subset inputs needed for the TrivialQuantumGraphBuilder.
+
+        This MUST only be called for step1a non-FAM images.
+        TODO: add protection for this.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process.
+        pipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+
+        Returns
+        -------
+        inputRefs : `dict` [`str`, `list` [`lsst.daf.butler.DatasetRef`]]
+            The input dataset references needed for the builder.
+        """
+        assert self.step == "step1a"
+        inputRefs: dict[str, dict[str, list[DatasetRef]]] = {}
+        idGenerationModes: dict[str, DatasetIdGenEnum] = {}
+        timeouts: dict[str, float | None] = {}
+
+        DATAID_TYPE_RUN = DatasetIdGenEnum.DATAID_TYPE_RUN
+
+        if subset := pipelineGraph.task_subsets.get("detector-pair-merge-task"):  # means non-FAM but AOS
+            otherDetector = int(payload.dataId["detector"]) + 1
+            if expRecord.observation_type.lower() == "cwfs":
+                raise ValueError("You should not try to run non-FAM pipelines on FAM images")
+            if payload.dataId["detector"] not in EXTRA_IDS and payload.dataId["detector"] not in INTRA_IDS:
+                # guard against madness
+                raise ValueError(
+                    "detector-pair-merge-task should only be defined for AOS step1a non-FAM pipelines"
+                )
+
+            for taskLabel in subset:
+                taskNode = pipelineGraph.tasks[taskLabel]
+                for readEdge in taskNode.iter_all_inputs():
+                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                    if "detector" not in datasetTypeNode.dimensions:
+                        continue
+                    idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+                    if payload.dataId["detector"] in EXTRA_IDS:
+                        extraFocalDataId = dataIds[datasetTypeNode.dimensions]
+                        intraFocalDataId = self.butler.registry.expandDataId(
+                            extraFocalDataId, detector=otherDetector
+                        )
+                        inputRefs.setdefault(taskLabel, {})[readEdge.connection_name] = [
+                            DatasetRef(
+                                datasetTypeNode.dataset_type,
+                                intraFocalDataId,
+                                run=self.runCollection,
+                                id_generation_mode=DATAID_TYPE_RUN,
+                            )
+                        ]
+                        timeouts[readEdge.parent_dataset_type_name] = 60.0  # this can come from the other pod
+
+        elif subset := pipelineGraph.task_subsets.get("visit-pair-merge-task"):  # means FAM pipeline
+            otherVisit = getExpIdOrVisitId(payload.dataId) - 1
+            if expRecord.observation_type.lower() != "cwfs":
+                raise ValueError("visit-pair-merge-task should only be defined for AOS step1a FAM pipelines")
+            if payload.dataId["detector"] in EXTRA_IDS or payload.dataId["detector"] in INTRA_IDS:
+                # guard against madness
+                raise ValueError("FAM does not run on corner chips")
+
+            for taskLabel in subset:
+                taskNode = pipelineGraph.tasks[taskLabel]
+                for readEdge in taskNode.iter_all_inputs():
+                    datasetTypeNode = pipelineGraph.dataset_types[readEdge.parent_dataset_type_name]
+                    if not datasetTypeNode.dimensions.names & {"visit", "exposure", "group"}:
+                        continue
+                    idGenerationModes[readEdge.parent_dataset_type_name] = DATAID_TYPE_RUN
+                    if "extra" in expRecord.observation_reason.lower():
+                        intraFocalExposureDataId = self.butler.registry.expandDataId(
+                            payload.dataId, exposure=otherVisit
+                        )
+                        intraFocalDataId = getEquivalentDataId(
+                            self.butler,
+                            intraFocalExposureDataId,
+                            datasetTypeNode.dimensions,
+                        )
+
+                        inputRefs.setdefault(taskLabel, {})[readEdge.connection_name] = [
+                            DatasetRef(
+                                datasetTypeNode.dataset_type,
+                                intraFocalDataId,
+                                run=self.runCollection,
+                                id_generation_mode=DATAID_TYPE_RUN,
+                            )
+                        ]
+                        timeouts[readEdge.parent_dataset_type_name] = 300.0  # much longer timeout for FAM
+
+        # TODO: need to think about whether we need to know about FAM
+        # mode and increase timeout there (can use None for infinite)
+        butlerToReturn = BlockingLimitedButler(
+            self.cachingButler,
+            timeouts=timeouts,
+        )
+        tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+        newDefaults = list(
+            d
+            for d in self.butler.collections.defaults
+            if d != self.locationConfig.getOutputChain(self.instrument)
+        )
+        collections = newDefaults if not tip else [tip, *newDefaults]
+        builder = TrivialQuantumGraphBuilder(
+            pipeline_graph=pipelineGraph,
+            butler=self.butler,
+            data_ids=dataIds,
+            input_refs=inputRefs,
+            dataset_id_modes=idGenerationModes,
+            clobber=True,  # TBD by Jim as to whether this should be removed
+            input_collections=collections,
+            output_run=self.runCollection,
+        )
+        return builder, "", {}, butlerToReturn
+
+    def getQuantumGraphBuilder(
+        self, payload: Payload, pipelineGraph: PipelineGraph
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
+        """
+        Get the quantum graph builder to use for this payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process.
+        pipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+
+        Returns
+        -------
+        builder : `lsst.pipe.base.quantum_graph_builder.QuantumGraphBuilder`
+            The quantum graph builder to use.
+        where : `str`
+            The where clause used for building the quantum graph.
+        bind : `dict` [`str`, `Any`]
+            The bind parameters used for building the quantum graph.
+        butlerToUse : `lsst.daf.butler.LimitedButler`
+            The butler to use for executing the quantum graph.
+        """
+        expId = getExpIdOrVisitId(payload.dataId)
+        expRecord = getExpRecordFromId(expId, self.instrument, self.butler)
+        # isFamImage = expRecord.observation_type.lower() == "cwfs"
+        dataId = payload.dataId
+
+        builder: QuantumGraphBuilder
+        if self.step == "step1b":
+            self.log.info(f"Making AllDimensionQGBuilder for {self.step} for expId {expId} for {payload.who}")
+
+            where = ""
+            bind = {}
+
+            # TODO: tidy this up
+            idString = f"dataId_{0}_"
+            where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
+            # if not unpaired:  #  XXX need to get the paired into here somehow
+            # where += f" AND detector not in ({','.join(INTRA_IDS)})"
+            bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
+
+            tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+            newDefaults = list(
+                d
+                for d in self.butler.collections.defaults
+                if d != self.locationConfig.getOutputChain(self.instrument)
+            )
+            collections = newDefaults if not tip else [tip, *newDefaults]
+            builder = AllDimensionsQuantumGraphBuilder(
+                pipelineGraph,
+                self.butler,
+                where=where,
+                bind=bind,
+                clobber=True,
+                input_collections=collections,
+                output_run=self.runCollection,
+            )
+            return builder, where, bind, self.cachingButler
+
+        else:  # all step1as
+            dataIds: dict[DimensionGroup, DataCoordinate] = {dataId.dimensions: dataId}
+            self.log.info(f"Making TrivialQG builder for {self.step} for expId {expId} for {payload.who}")
+
+            # this is not for the extra quanta, this is making sure the visit
+            # record stuff makes it into the QGG
+            allDimensions = pipelineGraph.get_all_dimensions()
+
+            if "visit" in allDimensions:
+                visitDataCoord = getEquivalentDataId(self.butler, payload.dataId, ["visit", "detector"])
+                dataIds[visitDataCoord.dimensions] = visitDataCoord
+            if "group" in allDimensions:
+                groupDataCoord = getEquivalentDataId(self.butler, payload.dataId, ["group", "detector"])
+                dataIds[groupDataCoord.dimensions] = groupDataCoord
+
+            if payload.who == "AOS":
+                return self.finishAosQgBuilder(payload, pipelineGraph, expRecord, dataIds)
+
+            else:
+                tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+                newDefaults = list(
+                    d
+                    for d in self.butler.collections.defaults
+                    if d != self.locationConfig.getOutputChain(self.instrument)
+                )
+                collections = newDefaults if not tip else [tip, *newDefaults]
+                builder = TrivialQuantumGraphBuilder(
+                    pipeline_graph=pipelineGraph,
+                    butler=self.butler,
+                    data_ids=dataIds,
+                    clobber=True,  # TBD by Jim as to whether this should be removed
+                    input_collections=collections,
+                    output_run=self.runCollection,
+                )
+                return builder, "", {}, self.cachingButler
+
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
@@ -219,29 +476,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to process.
         """
-        dataIds: list[DataCoordinate] = payload.dataIds
-        pipelineGraphBytes: bytes = payload.pipelineGraphBytes
-        self.runCollection = payload.run
+        dataId = payload.dataId
+        expId = getExpIdOrVisitId(payload.dataId)  # for keying all the redis stuff by
+        pipelineGraphBytes = payload.pipelineGraphBytes
+        self.runCollection = payload.run  # TODO: remove this from being on the class at all
         who = payload.who  # who are we running this for?
 
-        compoundId = ""
-        sampleDataId = dataIds[0]  # they'd better all be the same or there's bigger problems I think
-        if "exposure" in sampleDataId:
-            # the sorted(set()) is to make sure that, when we have a repeated
-            # dataId, we don't end up with a compoundId of exposure+exposure
-            # and downstream can treat this as a regular visit-level dispatch.
-            # this is the case for regular corner CWFS images, and NOT the case
-            # for when the pair is coming from a full-focal plane pistoning,
-            # where the two ids will be different, and need to be passed to
-            # step1b together.
-            compoundId = "+".join(sorted(set(f"{dataId['exposure']}" for dataId in dataIds)))
-        elif "visit" in sampleDataId:
-            compoundId = "+".join(sorted(set(f"{dataId['visit']}" for dataId in dataIds)))
-        else:  # for day_obs or instrument level dataIds.
-            compoundId = "+".join(sorted(set(f"{dataId}" for dataId in dataIds)))
-
-        self.log.debug(f"Processing {compoundId=}")
-        self.log.debug(f"{self.step=} {self.dataProduct=}")
+        dataIds = [dataId]
+        del dataId
 
         try:
             # NOTE: if someone sends a pipelineGraphBytes that's so different
@@ -251,32 +493,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # CachingLimitedButler with the new pipelineGraph here.
             pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
 
-            # chain all the dataId components together with AND, and an OR
-            # between each dataId. Make sure to bind the dataId components
-            # correctly by using a unique string for each dataId.
-            where = ""
-            bind = {}
-            for i, dataId in enumerate(dataIds):
-                idString = f"dataId_{i}_"
-                where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
-                bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
-                where += " OR "
-            if where.endswith(" OR "):
-                where = where[:-4]
-            del dataId
-
-            self.log.debug(f"{where=}\n{bind=}")
-
-            builder = AllDimensionsQuantumGraphBuilder(
-                pipelineGraph,
-                self.butler,
-                where=where,
-                bind=bind,
-                clobber=True,
-                input_collections=list(self.butler.collections.defaults) + [self.runCollection],
-                output_run=self.runCollection,
-            )
-
             self.log.info(f"Running pipeline for {dataIds}")
 
             # _waitForDataProduct waits for the item to land in the repo and
@@ -285,7 +501,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # to RubinTV. If it doesn't arrive the qg will be empty
             t0 = time.time()
             for dataId in dataIds:
-                self.log.debug(f"waiting for {self.dataProduct} for {dataId}")
+                self.log.info(f"Waiting for {self.dataProduct} for {dataId}")
                 if self.locationConfig.location == "bts":
                     # TODO : Find something better when we're not about to go
                     # on sky.
@@ -303,6 +519,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     if "exposure" in dataId.dimensions:
                         record = dataId.records["exposure"]
                     elif "visit" in dataId.dimensions:
+                        # XXX is this ever true? Do we need this? How do visit
+                        # records ever get in here? Maybe for step1b?
                         record = dataId.records["visit"]
 
                     if record is None:  # not an else block because mypy
@@ -323,19 +541,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " (should be ~1s per id)"
             )
 
-            with logDuration(self.log, f"Building quantum graph for {compoundId} for {who}"):
-                qg: QuantumGraph = builder.build(
+            builder, where, bind, butlerToUse = self.getQuantumGraphBuilder(payload, pipelineGraph)
+
+            with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
+                qg: PredictedQuantumGraph = builder.finish(
                     metadata={
-                        "input": list(self.butler.collections.defaults) + [self.runCollection],
-                        "output_run": self.runCollection,
                         "data_query": where,
                         "bind": bind,
                         "time": f"{datetime.datetime.now()}",
                     }
-                )
+                ).assemble()
 
-            if not qg:
-                raise RuntimeError(f"No work found for {dataIds}")
+            if not qg:  # fine to still iterate this though, easier this way
+                # TODO: remove this warning if intra-focal and step1b and
+                # paired so that we don't warn when it's expected
+                self.log.warning(f"No work found for {dataIds} in quantum graph")
 
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
@@ -343,70 +563,75 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             executor = SingleQuantumExecutor(
                 butler=None,
                 task_factory=TaskFactory(),
-                limited_butler_factory=lambda _: self.cachingButler,
+                limited_butler_factory=lambda _: butlerToUse,
                 clobber_outputs=True,  # check with Jim if this is how we should handle clobbering
+                assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
             )
 
-            for node in qg:
-                # just to make sure taskName is defined, so if this shows
-                # up anywhere something is very wrong
-                dataCoord = node.quantum.dataId  # pull this out before the try so you can use in except block
-                assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
-                self.log.debug(f"Executing {node.taskDef.taskName} for {dataCoord}")
-                taskName = node.taskDef.taskName  # pull this first for the except block in case of raise
-                self.log.info(f"Starting to process {taskName}")
+            quanta = qg.build_execution_quanta()
+            for taskLabel, quantaForTask in qg.quanta_by_task.items():
+                postQuantum = None  # reset inside the loop so it can't be stale inside except block
+                for quantumId in quantaForTask.values():
+                    preQuantum = quanta[quantumId]
+                    # just to make sure taskName is defined, so if this shows
+                    # up anywhere something is very wrong
+                    dataCoord = (
+                        preQuantum.dataId
+                    )  # pull this out before the try so you can use in except block
+                    assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                    self.log.debug(f"Executing {taskLabel} for {dataCoord}")
+                    self.log.info(f"Starting to process {taskLabel}")
 
-                quantum = None  # reset inside the loop so it can't be stale inside except block
-                try:
-                    # TODO: add per-quantum timing info here and return in
-                    # PayloadResult
-                    quantum, _ = executor.execute(node.task_node, node.quantum)
-                    self.postProcessQuantum(quantum)
-                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord)
+                    try:
+                        # TODO: add per-quantum timing info here and return in
+                        # PayloadResult
+                        postQuantum, _ = executor.execute(qg.pipeline_graph.tasks[taskLabel], preQuantum)
+                        self.postProcessQuantum(postQuantum)
+                        self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
 
-                except Exception as e:
-                    # Track when the tasks finish, regardless of whether they
-                    # succeeded.
-                    self.log.exception(f"Task {taskName} failed: {e}")
-                    self.redisHelper.reportTaskFinished(self.instrument, taskName, dataCoord, failed=True)
-                    if quantum is not None:
-                        self.postProcessQuantum(quantum)
-                    raise e  # still raise the error once we've logged the quantum as finishing
+                    except Exception as e:
+                        # Track when the tasks finish, regardless of whether
+                        # they succeeded.
+                        self.log.exception(f"Task {taskLabel} failed: {e}")
+                        self.redisHelper.reportTaskFinished(
+                            self.instrument, taskLabel, dataCoord, failed=True
+                        )
+                        if postQuantum is not None:
+                            self.postProcessQuantum(postQuantum)
+                        raise e  # still raise the error once we've logged the quantum as finishing
 
-            self.log.debug(f"Finished iterating over nodes in QG for {compoundId} for {who}")
+            self.log.debug(f"Finished iterating over nodes in QG for {expId} for {who}")
 
             # finished looping over nodes
             if self.step == "step1a":
-                self.log.debug(f"Announcing completion of step1a for {compoundId} for {who}")
+                self.log.debug(f"Announcing completion of step1a for {expId} for {who}")
                 self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=compoundId
+                    self.instrument, "step1a", who=who, processingId=expId
                 )
             if self.step == "step1b":
-                self.log.debug(f"Announcing completion of step1b for {compoundId} for {who}")
+                self.log.debug(f"Announcing completion of step1b for {expId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
                 if who == "SFM":
-                    visitId = int(compoundId)  # in SFM this is never compound
-                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(visitId))
+                    # in SFM this is never compound
+                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(expId))
 
                     # required the visitSummary so needs to be post-step1b
-                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
+                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=expId)
                     self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
                     self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
-                    self.redisHelper.redis.lpush(
-                        f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(visitId)
-                    )
+                    self.redisHelper.redis.lpush(f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(expId))
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
             if self.step == "step1a":
                 self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=compoundId, failed=True
+                    self.instrument, "step1a", who=who, processingId=expId, failed=True
                 )
             if self.step == "step1b":
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who, failed=True)

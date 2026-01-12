@@ -19,12 +19,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import os
 
-from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.daf.butler import (
+    Butler,
+    DimensionConfig,
+    DimensionRecord,
+    DimensionUniverse,
+    MissingCollectionError,
+)
+from lsst.rubintv.production.processingControl import PIPELINE_NAMES
 from lsst.rubintv.production.utils import safeJsonOpen
 
-__all__ = ("getSampleExpRecord",)
+__all__ = ("getSampleExpRecord", "getUserRunCollectionName", "removeUserRunCollection")
+
+_LOG = logging.getLogger(__name__)
 
 
 def getSampleExpRecord() -> DimensionRecord:
@@ -37,3 +47,23 @@ def getSampleExpRecord() -> DimensionRecord:
     universe = DimensionUniverse(DimensionConfig(duJson))
     expRecord = DimensionRecord.from_json(expRecordJson, universe=universe)
     return expRecord
+
+
+def getUserRunCollectionName(pipelineName: str) -> str:
+    """Get the user RUN collection name for use in CI and unit testing."""
+    if pipelineName not in PIPELINE_NAMES:
+        raise ValueError(f"Unknown pipeline name: {pipelineName}")
+
+    username = os.getenv("USER", None)
+    if username is None:
+        raise RuntimeError("USER environment variable is not set")
+    return f"u/{username}/RAPID_ANALYSIS_CI/{pipelineName}"
+
+
+def removeUserRunCollection(butler: Butler, pipelineName: str) -> None:
+    """Get the user RUN collection name for use in CI and unit testing."""
+    runCollectionName = getUserRunCollectionName(pipelineName)
+    try:
+        butler.removeRuns([runCollectionName])
+    except MissingCollectionError:
+        _LOG.info(f"Collection {runCollectionName} does not exist, nothing to remove")
