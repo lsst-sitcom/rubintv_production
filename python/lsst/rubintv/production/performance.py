@@ -34,14 +34,18 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 import matplotlib.dates as mdates
 import numpy as np
+import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from lsst.daf.butler import MissingDatasetTypeError
+from lsst.rubintv.production.utils import getFilterColorName
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
+from lsst.utils.plotting import get_multiband_plot_colors
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
@@ -73,6 +77,10 @@ AOS_TASK_COLORS = [
     "#bcbd22",
     "#17becf",
 ]
+
+COLORMAP = get_multiband_plot_colors()
+COLORMAP["unknown"] = "#FDFDFD"  # very slightly off-white
+COLORMAP["white"] = "#FDFDFD"  # very slightly off-white
 
 
 def isVisitType(task: TaskNode) -> bool:
@@ -1615,3 +1623,256 @@ def plotAosTaskTimings(
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
     fig.subplots_adjust(bottom=0.14)
     return fig
+
+
+def getData(dayObs: int) -> pd.DataFrame:
+    mainTable = pd.read_json(f"/project/rubintv/LSSTCam/sidecar_metadata/dayObs_{dayObs}.json").T
+    mainTable = mainTable.sort_index()
+
+    performanceTable = pd.read_json(f"/project/rubintv/raPerformance/sidecar_metadata/dayObs_{dayObs}.json").T
+    performanceTable = performanceTable.sort_index()
+
+    overlap = mainTable.columns.intersection(performanceTable.columns)
+
+    for col in overlap:
+        if not mainTable[col].equals(performanceTable[col]):
+            raise ValueError(f"Column {col} differs between dataframes")
+
+    merged = mainTable.copy()
+    merged = mainTable.join(performanceTable.drop(columns=overlap))
+    return merged
+
+
+def unpackTimes(table: pd.DataFrame, key: str) -> list[float]:
+    values: list[float] = []
+
+    column = table[key].values
+    for rowValue in column:
+        if not isinstance(rowValue, dict):
+            continue
+        for k, v in rowValue.items():
+            if k == "DISPLAY_VALUE":
+                continue
+            time = float(v.split(" in ")[1])
+            values.append(time)
+
+    return values
+
+
+def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
+    s = slice(None)
+    YMAX = 150
+
+    onSkyMask = ~table["Image type"].isin(["bias", "dark", "flat"])
+    table = table[onSkyMask]
+    if table.empty or "calcZernikesTask max runtime" not in table.columns:
+        return False
+
+    # table.dropna(subset=["calcZernikesTask max runtime"], inplace=True)
+    table = table.dropna(subset=["calcZernikesTask max runtime"])
+    XMAX = max(table.index)
+    XMIN = min(table.index)
+
+    fig = make_figure(figsize=(12, 8))
+
+    # --- main + side-hist layout (shared Y, no whitespace) ---
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=(4, 1), wspace=0.0)
+    ax = fig.add_subplot(gs[0, 0])
+    axHist = fig.add_subplot(gs[0, 1], sharey=ax)
+
+    # --- explicit colors (so lines & hist match) ---
+    calcColor = "C0"
+    deliveryColor = "C1"
+    isrColor = "k"
+    gapColor = "red"
+
+    # --- main lines ---
+    ax.plot(
+        table.index[s],
+        table["calcZernikesTask max runtime"][s],
+        "-",
+        color=calcColor,
+        label="calcZernikes max runtime",
+    )
+    ax.plot(
+        table.index[s],
+        table["Zernike delivery time (shutter)"][s],
+        "-",
+        color=deliveryColor,
+        label="Zernike delivery",
+    )
+    ax.plot(
+        table.index[s],
+        table["ISR start time (shutter)"][s],
+        "-",
+        color=isrColor,
+        label="ISR start delay",
+    )
+
+    # --- vertical dotted lines for long gaps ---
+    mask = table["Time since previous exposure"][s] > 100
+    for index, bigGap in mask.items():
+        if bigGap:
+            ax.vlines(
+                index,
+                ymin=0,
+                ymax=YMAX,
+                linestyles=":",
+                alpha=0.2,
+                color=gapColor,
+                linewidth=1.5,
+            )
+
+    gapLegendHandle = Line2D(
+        [0],
+        [0],
+        linestyle=":",
+        linewidth=1.5,
+        alpha=0.5,
+        color=gapColor,
+        label="More than 100s since previous exposure",
+    )
+
+    # --- filter band shading ---
+    bandY0 = 125.0
+    bandY1 = 150.0
+    bandAlpha = 0.15
+
+    x = table.index[s].to_numpy()
+    filters = table["Filter"][s].to_numpy()
+
+    # boundaries between seqnums (assumes monotonically increasing)
+    edges = np.empty(x.size + 1, dtype=float)
+    edges[1:-1] = (x[:-1] + x[1:]) / 2
+    edges[0] = x[0] - (x[1] - x[0]) / 2
+    edges[-1] = x[-1] + (x[-1] - x[-2]) / 2
+
+    # draw one shaded region per contiguous filter run
+    start = 0
+    for i in range(1, x.size + 1):
+        if i == x.size or filters[i] != filters[start]:
+            filterName = filters[start]
+            band = "unknown"
+            if filterName.lower() == "unknown" or filterName is None:
+                filterName = "unknown"
+            else:
+                colorName = getFilterColorName(filterName)
+                if colorName:
+                    band = colorName.split("_")[0]
+            ax.fill_between(
+                [edges[start], edges[i]],
+                bandY0,
+                bandY1,
+                color=COLORMAP[band],
+                alpha=bandAlpha,
+                linewidth=0,
+                zorder=0,  # behind your lines
+            )
+            start = i
+
+    # side histogram projection (explicit matching colors; shared Y; no legend)
+    bins = list(np.linspace(0.0, YMAX, 60))
+
+    zernF = np.asarray(table["calcZernikesTask max runtime"][s].to_numpy(), dtype=float)
+    delivF = np.asarray(table["Zernike delivery time (shutter)"][s].to_numpy(), dtype=float)
+    isrF = np.asarray(table["ISR start time (shutter)"][s].to_numpy(), dtype=float)
+
+    zernF = zernF[np.isfinite(zernF)]
+    delivF = delivF[np.isfinite(delivF)]
+    isrF = isrF[np.isfinite(isrF)]
+
+    nZern, binEdges, _ = axHist.hist(
+        zernF,
+        bins=bins,
+        orientation="horizontal",
+        histtype="step",
+        linewidth=1.5,
+        color=calcColor,
+    )
+    binEdgesList = binEdges.tolist()
+    nDeliv, _, _ = axHist.hist(
+        delivF,
+        bins=binEdgesList,
+        orientation="horizontal",
+        histtype="step",
+        linewidth=1.5,
+        color=deliveryColor,
+    )
+    nIsr, _, _ = axHist.hist(
+        isrF,
+        bins=binEdgesList,
+        orientation="horizontal",
+        histtype="step",
+        linewidth=1.5,
+        color=isrColor,
+    )
+
+    # make it look "attached"
+    axHist.tick_params(axis="y", left=False, labelleft=False)
+    axHist.set_xlabel("Count")
+    axHist.set_xlim(left=0)
+    axHist.grid(False)
+
+    # --- modal-bin markers + labels (sorted by value; top = largest) ---
+    def modeFromHist(counts, binEdges):
+        maxIdx = int(np.argmax(counts))
+        return float((binEdges[maxIdx] + binEdges[maxIdx + 1]) / 2)
+
+    modeValues = [
+        ("calcZernikes", calcColor, modeFromHist(nZern, binEdges)),
+        ("Zernike delivery", deliveryColor, modeFromHist(nDeliv, binEdges)),
+        ("ISR start", isrColor, modeFromHist(nIsr, binEdges)),
+    ]
+
+    # draw dashed lines at each mode
+    for label, color, modeCentre in modeValues:
+        axHist.axhline(
+            modeCentre,
+            linestyle="--",
+            linewidth=1.2,
+            color=color,
+            alpha=0.8,
+        )
+
+    # place text labels around y~100, ordered by mode (largest at top)
+    modeValues.sort(key=lambda x: x[2], reverse=True)
+
+    baseY = 100.0
+    dy = 6.0
+    yPositions = [baseY + dy, baseY, baseY - dy]
+
+    xRight = axHist.get_xlim()[1]
+    for (label, color, modeCentre), y in zip(modeValues, yPositions):
+        axHist.text(
+            xRight * 0.98,
+            y,
+            f"{label} mode ≈ {modeCentre:.1f}s",
+            color=color,
+            ha="right",
+            va="center",
+            fontsize="small",
+            alpha=0.9,
+        )
+
+    # --- legend inside the RIGHT axis, allowed to spill left ---
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(gapLegendHandle)
+    labels.append(gapLegendHandle.get_label())
+    axHist.legend(
+        handles,
+        labels,
+        loc="upper right",
+        bbox_to_anchor=(1.0, 1.0),
+        borderaxespad=0.2,
+        frameon=True,
+    )
+
+    # --- labels / limits ---
+    ax.set_xlabel(f"Seq. num for dayObs {dayObsIntToString(dayObs)}")
+    ax.set_ylabel("Time (s)")
+    ax.set_ylim(0, YMAX)
+    ax.set_xlim(XMIN, XMAX)
+
+    fig.tight_layout()
+    fig.savefig(filename)
+    return True
