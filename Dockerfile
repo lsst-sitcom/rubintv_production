@@ -59,6 +59,8 @@ RUN yum install -y \
   && yum clean all \
   && rm -rf /var/cache/yum
 
+RUN df -h
+
 USER lsst
 
 RUN source ${WORKDIR}/loadLSST.bash && \
@@ -113,6 +115,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup obs_lsst -t saluser && \
     SCONSFLAGS="--no-tests" scons
 
+RUN df -h
+
 WORKDIR /repos/drp_pipe
 
 RUN source ${WORKDIR}/loadLSST.bash && \
@@ -130,6 +134,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 
 WORKDIR /repos/atmospec
 
+
+RUN df -h
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${atmospec_branch} && \
@@ -185,6 +191,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     scons version
 
 WORKDIR /repos/rubintv_analysis_service
+
+RUN df -h
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh main && \
@@ -254,6 +262,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup sconsUtils && \
     scons version
 
+RUN df -h
 
 ENV RUN_ARG="-v"
 ENV OPENBLAS_NUM_THREADS=1
