@@ -37,6 +37,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+import pandas as pd
 
 from lsst.daf.butler import MissingDatasetTypeError
 from lsst.summit.utils.dateTime import dayObsIntToString
@@ -1246,7 +1247,21 @@ def getIngestTiming(
     sciTimes : `dict`
         Dictionary of science sensor ingestion times since shutter close.
     """
-    oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
+    mt_oodsData = getEfdData(client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
+
+    # CCOODS is temporarily being used for wavefront ingest. Once it is moved to WFOODS, this can be
+    # removed.
+    cc_oodsData = getEfdData(client, "lsst.sal.CCOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
+
+    try:
+        # The WFOODS topic doesn't exist yet, so this will throw an error until it does. Once it is deployed,
+        # this catch can be removed.
+        wf_oodsData = getEfdData(client, "lsst.sal.WFOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60)
+    except ValueError:
+        wf_oodsData = None
+
+    oodsData = pd.concat([mt_oodsData, cc_oodsData, wf_oodsData]
+                         if wf_oodsData is not None else [mt_oodsData, cc_oodsData])
 
     endExposure = expRecord.timespan.end.unix_tai
     thisImageData = oodsData[oodsData["obsid"] == expRecord.obs_id]
